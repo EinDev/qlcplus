@@ -510,11 +510,7 @@ Rectangle
                         {
                             item.itemIcon = "qrc:/group.svg"
                             if (type)
-                            {
                                 item.itemType = type
-                                if (type === App.UniverseDragItem)
-                                    isExpanded = true
-                            }
                             item.isExpanded = isExpanded
                             item.nodePath = path
                             item.subTreeDelegate = "qrc:/FixtureNodeDelegate.qml"
