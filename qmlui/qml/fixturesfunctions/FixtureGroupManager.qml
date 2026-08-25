@@ -475,180 +475,33 @@ Rectangle
             }
         }
 
+        FixtureGroupFlatModel
+        {
+            id: flatGroupsModel
+            sourceModel: modelProvider ? modelProvider.groupsTreeModel : fixtureManager.groupsTreeModel
+        }
+
+        Connections
+        {
+            target: modelProvider ? modelProvider : fixtureManager
+            function onGroupsTreeModelChanged() { flatGroupsModel.rebuild() }
+        }
+
         ListView
         {
             id: groupListView
-            //implicitWidth: fgmContainer.width
             Layout.fillWidth: true
             Layout.fillHeight: true
-            //height: fgmContainer.height - topBar.height -
-            //        (searchBox.visible ? searchBox.height : 0) -
-            //        (propertiesHeader.visible ? propertiesHeader.height : 0)
             z: 4
             boundsBehavior: Flickable.StopAtBounds
 
             property bool dragActive: false
 
-            // QtQuick's own contentHeight estimate for a ListView is based on the average
-            // height of currently-realized delegates, which is wildly inaccurate here since
-            // a top-level tree node's rendered height ranges from one row (collapsed) to
-            // thousands of pixels (deeply expanded, since nested children aren't virtualized).
-            // That made the scrollbar thumb size swing around while scrolling. Instead, compute
-            // the exact visible row count from the model and derive contentHeight from that.
-            property int treeVersion: 0
-            contentHeight: (treeVersion, (model ? model.visibleRowCount() * UISettings.listItemHeight : 0))
-
-            Connections
+            model: flatGroupsModel
+            delegate: FixtureGroupFlatDelegate
             {
-                target: groupListView.model
-                function onRoleChanged() { groupListView.treeVersion++ }
-                function onRowsInserted() { groupListView.treeVersion++ }
-                function onRowsRemoved() { groupListView.treeVersion++ }
-                function onModelReset() { groupListView.treeVersion++ }
+                width: fgmContainer.width - (gEditScrollBar.visible ? gEditScrollBar.width : 0)
             }
-
-            model: modelProvider ? modelProvider.groupsTreeModel : fixtureManager.groupsTreeModel
-            delegate:
-              Component
-              {
-                Loader
-                {
-                    //width: groupListView.width - (gEditScrollBar.visible ? gEditScrollBar.width : 0)
-                    source: hasChildren ? "qrc:/TreeNodeDelegate.qml" : ""
-                    onLoaded:
-                    {
-                        //console.log("[groupEditor] Item " + label + " has children: " + hasChildren)
-                        item.width = Qt.binding(function() { return fgmContainer.width - (gEditScrollBar.visible ? gEditScrollBar.width : 0) })
-                        item.cRef = classRef
-                        item.textLabel = Qt.binding(function() { return label })
-                        item.isSelected = Qt.binding(function() { return isSelected })
-                        item.dragItem = gfhcDragItem
-
-                        if (hasChildren)
-                        {
-                            item.itemIcon = "qrc:/group.svg"
-                            if (type)
-                                item.itemType = type
-                            item.isExpanded = isExpanded
-                            item.nodePath = path
-                            item.subTreeDelegate = "qrc:/FixtureNodeDelegate.qml"
-                            item.childrenDelegate = "qrc:/FixtureNodeDelegate.qml"
-                            item.nodeChildren = childrenModel
-                        }
-                    }
-                    Connections
-                    {
-                        target: item
-
-                        function onMouseEvent(type, iID, iType, qItem, mouseMods)
-                        {
-                            switch (type)
-                            {
-                                case App.Pressed:
-                                    var posnInWindow = qItem.mapToItem(mainView, qItem.x, qItem.y)
-                                    gfhcDragItem.parent = mainView
-                                    gfhcDragItem.x = posnInWindow.x - (gfhcDragItem.width / 4)
-                                    gfhcDragItem.y = posnInWindow.y - (gfhcDragItem.height / 4)
-                                    if (!qItem.isSelected)
-                                    {
-                                        if ((mouseMods & Qt.ControlModifier) == 0)
-                                            gfhcDragItem.itemsList = []
-
-                                        gfhcDragItem.itemsList.push(qItem)
-                                        //console.log("[TOP LEVEL] Got item press event: " + gfhcDragItem.itemsList.length)
-
-                                        if (gfhcDragItem.itemsList.length === 1)
-                                        {
-                                            gfhcDragItem.itemLabel = qItem.textLabel
-                                            if (qItem.hasOwnProperty("itemIcon"))
-                                                gfhcDragItem.itemIcon = qItem.itemIcon
-                                            else
-                                                gfhcDragItem.itemIcon = ""
-                                        }
-                                    }
-                                break;
-                                case App.Clicked:
-                                    if (qItem === item)
-                                    {
-                                        model.isSelected = (mouseMods & Qt.ControlModifier) ? 2 : 1
-                                        if (model.hasChildren)
-                                            model.isExpanded = item.isExpanded
-                                    }
-
-                                    if (!(mouseMods & Qt.ControlModifier))
-                                        contextManager.resetFixtureSelection()
-
-                                    console.log("Item clicked. Type: " + qItem.itemType + ", id: " + iID)
-
-                                    var itemID = iID
-
-                                    switch (qItem.itemType)
-                                    {
-                                        case App.FixtureDragItem:
-                                            contextManager.setFixtureSelection(iID, -1, true)
-                                        break
-                                        case App.HeadDragItem:
-                                            itemID = qItem.itemID
-                                            contextManager.setFixtureSelection(qItem.itemID, iID, true)
-                                        break
-                                        case App.UniverseDragItem:
-                                            contextManager.setFixtureGroupSelection(iID, true, true)
-                                        break
-                                        case App.FixtureGroupDragItem:
-                                            contextManager.setFixtureGroupSelection(iID, true, false)
-                                        break
-                                    }
-
-                                    updateButtons(qItem.itemType, itemID)
-                                break;
-                                case App.DoubleClicked:
-                                    if (qItem === item && model.hasChildren)
-                                    {
-                                        item.isExpanded = !item.isExpanded
-                                        model.isExpanded = item.isExpanded
-                                    }
-                                    else if (allowEditing == false && qItem.itemType === App.FixtureDragItem)
-                                    {
-                                        fgmContainer.doubleClicked(iID, qItem.itemType)
-                                    }
-                                break;
-                                case App.DragStarted:
-                                    if (qItem === item && !model.isSelected)
-                                    {
-                                        model.isSelected = 1
-                                        // invalidate the modifiers to force a single selection
-                                        mouseMods = -1
-                                    }
-
-                                    groupListView.dragActive = true
-                                break;
-                                case App.DragFinished:
-                                    gfhcDragItem.Drag.drop()
-                                    gfhcDragItem.parent = groupListView
-                                    gfhcDragItem.x = 0
-                                    gfhcDragItem.y = 0
-                                    groupListView.dragActive = false
-                                    //gfhcDragItem.itemsList = []
-                                break;
-                            }
-                        }
-
-                        function onPathChanged(oldPath, newPath)
-                        {
-                            for (var i = 0; i < gfhcDragItem.itemsList.length; i++)
-                            {
-                                var item = gfhcDragItem.itemsList[i]
-
-                                if (item.itemType === App.FixtureGroupDragItem)
-                                {
-                                    fixtureManager.renameFixtureGroup(item.itemID, newPath)
-                                    return
-                                }
-                            }
-                        }
-                    }
-                } // Loader
-              } // Component
 
             ScrollBar.vertical: CustomScrollBar {
                 id: gEditScrollBar

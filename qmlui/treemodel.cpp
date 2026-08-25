@@ -336,20 +336,6 @@ int TreeModel::rowCount(const QModelIndex &parent) const
     return m_items.count();
 }
 
-int TreeModel::visibleRowCount() const
-{
-    int count = 0;
-
-    for (TreeModelItem *item : m_items)
-    {
-        count++;
-        if ((item->flags() & Expanded) && item->hasChildren())
-            count += item->children()->visibleRowCount();
-    }
-
-    return count;
-}
-
 QVariant TreeModel::data(const QModelIndex &index, int role) const
 {
     if (index.row() < 0 || index.row() >= m_items.count())

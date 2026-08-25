@@ -34,6 +34,7 @@ set(SRC_FILES
     fixtureeditor/modeedit.cpp fixtureeditor/modeedit.h
     fixtureeditor/physicaledit.cpp fixtureeditor/physicaledit.h
     fixturegroupeditor.cpp fixturegroupeditor.h
+    fixturegroupflatmodel.cpp fixturegroupflatmodel.h
     fixturemanager.cpp fixturemanager.h
     fixtureutils.cpp fixtureutils.h
     folderbrowser.cpp folderbrowser.h

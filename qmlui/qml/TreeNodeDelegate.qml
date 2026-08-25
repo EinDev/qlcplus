@@ -51,108 +51,25 @@ Column
     signal pathChanged(string oldPath, string newPath)
     signal itemsDropped(string path)
 
-
-    function getItemAtPos(x, y)
+    TreeNodeRow
     {
-        var child = nodeChildrenView.itemAt(x, y)
-        if (!child || !child.item)
-            return null
-        if (child.item.hasOwnProperty("nodePath"))
-            return child.item.getItemAtPos(x, y - child.item.y)
-
-        return child.item
-    }
-
-    Rectangle
-    {
-        id: nodeBgRect
-        color: nodeIconImg.visible ? "transparent" : UISettings.sectionHeader
+        id: rowItem
         width: nodeContainer.width
-        height: UISettings.listItemHeight
+        cRef: nodeContainer.cRef
+        textLabel: nodeContainer.textLabel
+        itemIcon: nodeContainer.itemIcon
+        itemType: nodeContainer.itemType
+        itemID: nodeContainer.itemID
+        isSelected: nodeContainer.isSelected
+        isCheckable: nodeContainer.isCheckable
+        isChecked: nodeContainer.isChecked
+        nodePath: nodeContainer.nodePath
+        dragItem: nodeContainer.dragItem
+        dropKeys: nodeContainer.dropKeys
 
-        // selection rectangle
-        Rectangle
-        {
-            anchors.fill: parent
-            radius: 3
-            color: UISettings.highlight
-            visible: isSelected || tnDropArea.containsDrag
-        }
-
-        Row
-        {
-            CustomCheckBox
-            {
-                id: nodeCheckBox
-                visible: isCheckable
-                implicitWidth: UISettings.listItemHeight
-                implicitHeight: implicitWidth
-                checked: isChecked
-                onCheckedChanged: nodeContainer.mouseEvent(App.Checked, -1, checked, nodeContainer, 0)
-            }
-
-            Image
-            {
-                id: nodeIconImg
-                visible: itemIcon == "" ? false : true
-                width: nodeBgRect.height
-                height: width
-                source: itemIcon
-                sourceSize: Qt.size(width, height)
-            }
-
-            CustomTextInput
-            {
-                id: nodeLabel
-                width: nodeBgRect.width - x - 1
-                text: cRef ? cRef.name : textLabel
-                originalText: text
-
-                onTextConfirmed: (text) => nodeContainer.pathChanged(nodePath, text)
-            }
-        } // Row
-
-        MouseArea
-        {
-            x: nodeCheckBox.visible ? nodeCheckBox.width : 0
-            width: parent.width
-            height: parent.height
-
-            property bool dragActive: drag.active
-
-            onDragActiveChanged:
-            {
-                console.log("Drag changed on node: " + textLabel)
-                nodeContainer.mouseEvent(dragActive ? App.DragStarted : App.DragFinished,
-                                         cRef ? cRef.id : -1, nodeContainer.itemType, nodeContainer, 0)
-            }
-
-            drag.target: dragItem
-
-            onPressed: (mouse) => nodeContainer.mouseEvent(App.Pressed, cRef ? cRef.id : -1, nodeContainer.itemType,
-                                                nodeContainer, mouse.modifiers)
-            onClicked: (mouse) =>
-            {
-                nodeLabel.forceActiveFocus()
-                nodeContainer.mouseEvent(App.Clicked, cRef ? cRef.id : -1, nodeContainer.itemType,
-                                         nodeContainer, mouse.modifiers)
-            }
-            onDoubleClicked: (mouse) => nodeContainer.mouseEvent(App.DoubleClicked, cRef ? cRef.id : -1,
-                                                                 nodeContainer.itemType, nodeContainer, mouse.modifiers)
-        }
-
-        DropArea
-        {
-            id: tnDropArea
-            anchors.fill: parent
-            keys: nodeContainer.dropKeys.length ? [ nodeContainer.dropKeys ] : []
-
-            onDropped: (drop) =>
-            {
-                console.log("Item dropped here. x: " + drop.x + " y: " + drop.y + ", items: " + drop.source.itemsList.length)
-                nodeContainer.itemsDropped(nodePath)
-            }
-        }
+        onMouseEvent: (type, iID, iType, qItem, mouseMods) => nodeContainer.mouseEvent(type, iID, iType, qItem, mouseMods)
+        onPathChanged: (oldPath, newPath) => nodeContainer.pathChanged(oldPath, newPath)
+        onItemsDropped: (path) => nodeContainer.itemsDropped(path)
     }
 
     Repeater
