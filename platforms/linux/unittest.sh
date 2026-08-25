@@ -93,6 +93,44 @@ do
 done
 
 #############################################################################
+# qmlui tests
+#############################################################################
+
+if [ "$TARGET" == "qmlui" ]; then
+
+TESTDIR=qmlui/test
+TESTS=$(find ${TESTDIR} -maxdepth 1 -mindepth 1 -type d)
+for test in ${TESTS}
+do
+    # Ignore .git
+    if [ $(echo ${test} | grep ".git") ]; then
+        continue
+    fi
+
+    # Ignore CMakeFiles
+    if [ $(echo ${test} | grep "CMakeFiles") ]; then
+        continue
+    fi
+
+    # Isolate just the test name
+    test=$(echo ${test} | sed 's/qmlui\/test\///')
+
+    $SLEEPCMD
+    # Execute the test
+    pushd ${TESTDIR}/${test}
+    echo "$TESTPREFIX ./test.sh"
+    eval $TESTPREFIX ./test.sh
+    RESULT=${?}
+    popd
+    if [ ${RESULT} != 0 ]; then
+        echo "${RESULT} qmlui unit tests failed. Please fix before commit."
+        exit ${RESULT}
+    fi
+done
+
+fi
+
+#############################################################################
 # UI tests
 #############################################################################
 

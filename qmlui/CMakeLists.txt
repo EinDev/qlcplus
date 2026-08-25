@@ -252,3 +252,5 @@ target_sources(${module_name} PUBLIC
 )
 
 install(TARGETS ${module_name} DESTINATION ${INSTALLROOT}/${BINDIR})
+
+add_subdirectory(test)
