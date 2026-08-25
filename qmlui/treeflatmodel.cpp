@@ -1,6 +1,6 @@
 /*
   Q Light Controller Plus
-  fixturegroupflatmodel.cpp
+  treeflatmodel.cpp
 
   Copyright (c) Massimo Callegari
 
@@ -17,43 +17,43 @@
   limitations under the License.
 */
 
-#include "fixturegroupflatmodel.h"
+#include "treeflatmodel.h"
 #include "treemodelitem.h"
 
-FixtureGroupFlatModel::FixtureGroupFlatModel(QObject *parent)
+TreeFlatModel::TreeFlatModel(QObject *parent)
     : QAbstractListModel(parent)
     , m_sourceModel(nullptr)
 {
 }
 
-FixtureGroupFlatModel::~FixtureGroupFlatModel()
+TreeFlatModel::~TreeFlatModel()
 {
 }
 
-QObject *FixtureGroupFlatModel::sourceModel() const
+QObject *TreeFlatModel::sourceModel() const
 {
     return m_sourceModel;
 }
 
-void FixtureGroupFlatModel::setSourceModel(QObject *model)
+void TreeFlatModel::setSourceModel(QObject *model)
 {
     TreeModel *tree = qobject_cast<TreeModel *>(model);
     if (tree == m_sourceModel)
         return;
 
     if (m_sourceModel != nullptr)
-        disconnect(m_sourceModel, &TreeModel::roleChanged, this, &FixtureGroupFlatModel::slotSourceRoleChanged);
+        disconnect(m_sourceModel, &TreeModel::roleChanged, this, &TreeFlatModel::slotSourceRoleChanged);
 
     m_sourceModel = tree;
 
     if (m_sourceModel != nullptr)
-        connect(m_sourceModel, &TreeModel::roleChanged, this, &FixtureGroupFlatModel::slotSourceRoleChanged);
+        connect(m_sourceModel, &TreeModel::roleChanged, this, &TreeFlatModel::slotSourceRoleChanged);
 
     emit sourceModelChanged();
     rebuild();
 }
 
-void FixtureGroupFlatModel::appendSubtree(TreeModel *tree, int depth, QVector<FlatRow> &out)
+void TreeFlatModel::appendSubtree(TreeModel *tree, int depth, QVector<FlatRow> &out)
 {
     if (tree == nullptr)
         return;
@@ -67,13 +67,13 @@ void FixtureGroupFlatModel::appendSubtree(TreeModel *tree, int depth, QVector<Fl
     }
 }
 
-void FixtureGroupFlatModel::reindexFrom(int from)
+void TreeFlatModel::reindexFrom(int from)
 {
     for (int i = from; i < m_rows.count(); i++)
         m_indexOfItem[m_rows.at(i).item] = i;
 }
 
-void FixtureGroupFlatModel::rebuild()
+void TreeFlatModel::rebuild()
 {
     beginResetModel();
 
@@ -110,7 +110,7 @@ void FixtureGroupFlatModel::rebuild()
     endResetModel();
 }
 
-int FixtureGroupFlatModel::rowCount(const QModelIndex &parent) const
+int TreeFlatModel::rowCount(const QModelIndex &parent) const
 {
     if (parent.isValid())
         return 0;
@@ -118,7 +118,7 @@ int FixtureGroupFlatModel::rowCount(const QModelIndex &parent) const
     return m_rows.count();
 }
 
-QVariant FixtureGroupFlatModel::data(const QModelIndex &index, int role) const
+QVariant TreeFlatModel::data(const QModelIndex &index, int role) const
 {
     if (!index.isValid() || index.row() < 0 || index.row() >= m_rows.count())
         return QVariant();
@@ -138,7 +138,7 @@ QVariant FixtureGroupFlatModel::data(const QModelIndex &index, int role) const
     return row.owner->data(row.owner->index(row.owner->items().indexOf(row.item)), ownerRole);
 }
 
-bool FixtureGroupFlatModel::setData(const QModelIndex &index, const QVariant &value, int role)
+bool TreeFlatModel::setData(const QModelIndex &index, const QVariant &value, int role)
 {
     if (!index.isValid() || index.row() < 0 || index.row() >= m_rows.count())
         return false;
@@ -159,7 +159,7 @@ bool FixtureGroupFlatModel::setData(const QModelIndex &index, const QVariant &va
     return row.owner->setData(row.owner->index(ownerRow), value, ownerRole);
 }
 
-QHash<int, QByteArray> FixtureGroupFlatModel::roleNames() const
+QHash<int, QByteArray> TreeFlatModel::roleNames() const
 {
     QHash<int, QByteArray> roles;
     roles[LabelRole] = "label";
@@ -185,7 +185,7 @@ QHash<int, QByteArray> FixtureGroupFlatModel::roleNames() const
     return roles;
 }
 
-void FixtureGroupFlatModel::slotSourceRoleChanged(TreeModelItem *item, int role, const QVariant &value)
+void TreeFlatModel::slotSourceRoleChanged(TreeModelItem *item, int role, const QVariant &value)
 {
     int row = m_indexOfItem.value(item, -1);
     if (row < 0)

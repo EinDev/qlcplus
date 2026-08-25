@@ -23,7 +23,7 @@ import org.qlcplus.classes 1.0
 import "."
 
 /* Single, fixed-height row for FixtureGroupManager.qml's groupListView, one row per
- * currently-visible entry of the flat FixtureGroupFlatModel (depth 0 = Universe/Group,
+ * currently-visible entry of the flat TreeFlatModel (depth 0 = Universe/Group,
  * depth 1 = Fixture, depth 2 = Head/Channel). Because every row is a real, uniform-height
  * ListView delegate now (instead of a recursively-nested, unvirtualized Repeater tree),
  * ListView's own contentHeight/scroll-position handling is simply correct.

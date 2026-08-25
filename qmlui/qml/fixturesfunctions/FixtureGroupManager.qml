@@ -475,7 +475,7 @@ Rectangle
             }
         }
 
-        FixtureGroupFlatModel
+        TreeFlatModel
         {
             id: flatGroupsModel
             sourceModel: modelProvider ? modelProvider.groupsTreeModel : fixtureManager.groupsTreeModel

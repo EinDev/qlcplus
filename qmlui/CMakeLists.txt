@@ -34,7 +34,6 @@ set(SRC_FILES
     fixtureeditor/modeedit.cpp fixtureeditor/modeedit.h
     fixtureeditor/physicaledit.cpp fixtureeditor/physicaledit.h
     fixturegroupeditor.cpp fixturegroupeditor.h
-    fixturegroupflatmodel.cpp fixturegroupflatmodel.h
     fixturemanager.cpp fixturemanager.h
     fixtureutils.cpp fixtureutils.h
     folderbrowser.cpp folderbrowser.h
@@ -60,6 +59,7 @@ set(SRC_FILES
     tardis/networkpacketizer.cpp tardis/networkpacketizer.h
     tardis/simplecrypt.cpp tardis/simplecrypt.h
     tardis/tardis.cpp tardis/tardis.h
+    treeflatmodel.cpp treeflatmodel.h
     treemodel.cpp treemodel.h
     treemodelitem.cpp treemodelitem.h
     uimanager.cpp uimanager.h

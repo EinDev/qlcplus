@@ -53,7 +53,7 @@
 #include "virtualconsole.h"
 #include "fixturebrowser.h"
 #include "fixturemanager.h"
-#include "fixturegroupflatmodel.h"
+#include "treeflatmodel.h"
 #include "fixtureremapmanager.h"
 #include "palettemanager.h"
 #include "functionmanager.h"
@@ -164,7 +164,7 @@ void App::startup()
     qmlRegisterUncreatableType<Fixture>("org.qlcplus.classes", 1, 0, "Fixture", "Can't create a Fixture!");
     qmlRegisterUncreatableType<Function>("org.qlcplus.classes", 1, 0, "QLCFunction", "Can't create a Function!");
     qmlRegisterType<ModelSelector>("org.qlcplus.classes", 1, 0, "ModelSelector");
-    qmlRegisterType<FixtureGroupFlatModel>("org.qlcplus.classes", 1, 0, "FixtureGroupFlatModel");
+    qmlRegisterType<TreeFlatModel>("org.qlcplus.classes", 1, 0, "TreeFlatModel");
     qmlRegisterType<FolderBrowser>("org.qlcplus.classes", 1, 0, "FolderBrowser");
 
     setTitle(APPNAME);
