@@ -42,15 +42,34 @@ void TreeFlatModel::setSourceModel(QObject *model)
         return;
 
     if (m_sourceModel != nullptr)
+    {
         disconnect(m_sourceModel, &TreeModel::roleChanged, this, &TreeFlatModel::slotSourceRoleChanged);
+        disconnect(m_sourceModel, &QAbstractItemModel::modelAboutToBeReset, this, &TreeFlatModel::slotSourceInvalidated);
+        disconnect(m_sourceModel, &QAbstractItemModel::rowsAboutToBeRemoved, this, &TreeFlatModel::slotSourceInvalidated);
+    }
 
     m_sourceModel = tree;
 
     if (m_sourceModel != nullptr)
+    {
         connect(m_sourceModel, &TreeModel::roleChanged, this, &TreeFlatModel::slotSourceRoleChanged);
+        connect(m_sourceModel, &QAbstractItemModel::modelAboutToBeReset, this, &TreeFlatModel::slotSourceInvalidated);
+        connect(m_sourceModel, &QAbstractItemModel::rowsAboutToBeRemoved, this, &TreeFlatModel::slotSourceInvalidated);
+    }
 
     emit sourceModelChanged();
     rebuild();
+}
+
+void TreeFlatModel::slotSourceInvalidated()
+{
+    if (m_rows.isEmpty())
+        return;
+
+    beginResetModel();
+    m_rows.clear();
+    m_indexOfItem.clear();
+    endResetModel();
 }
 
 void TreeFlatModel::appendSubtree(TreeModel *tree, int depth, QVector<FlatRow> &out)

@@ -116,6 +116,15 @@ protected:
 private slots:
     void slotSourceRoleChanged(TreeModelItem *item, int role, const QVariant &value);
 
+    /** The source model is about to delete some/all of its TreeModelItems (a structural
+     *  change: TreeModel::clear()/removeItem(), or a future modelReset-style change).
+     *  Drop every row referencing that model immediately and synchronously, before any
+     *  deletion can happen, so data()/setData() can never dereference a just-freed
+     *  TreeModelItem in the window between the deletion and whatever higher-level "tree
+     *  changed" signal (groupsTreeModelChanged, functionsListChanged, ...) eventually
+     *  calls rebuild() to repopulate. */
+    void slotSourceInvalidated();
+
 private:
     struct FlatRow
     {
