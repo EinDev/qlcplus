@@ -261,6 +261,18 @@ Rectangle
           }
       }
 
+      TreeFlatModel
+      {
+          id: flatFunctionsModel
+          sourceModel: functionManager.functionsList
+      }
+
+      Connections
+      {
+          target: functionManager
+          function onFunctionsListChanged() { flatFunctionsModel.rebuild() }
+      }
+
       ListView
       {
           id: functionsListView
@@ -268,126 +280,15 @@ Rectangle
           height: fmContainer.height - topBar.height - (searchBox.visible ? searchBox.height : 0)
           z: 4
           boundsBehavior: Flickable.StopAtBounds
-          cacheBuffer: Math.max(height, 0)
           Layout.fillHeight: true
 
           Component.onCompleted: contentY = functionManager.viewPosition
           property bool dragActive: false
 
-          model: functionManager.functionsList
-          delegate:
-              Component
-              {
-                  Loader
-                  {
-                      width: functionsListView.width
-                      source: (type === App.FunctionDragItem && !hasChildren) ?
-                                  "qrc:/FunctionDelegate.qml" : "qrc:/TreeNodeDelegate.qml"
+          model: flatFunctionsModel
+          delegate: FunctionManagerFlatDelegate {}
 
-                      onLoaded:
-                      {
-                          item.z = 2
-                          item.textLabel = Qt.binding(function() { return label })
-                          item.isSelected = Qt.binding(function() { return isSelected })
-                          item.dragItem = fDragItem
-
-                          if (type === App.FunctionDragItem)
-                          {
-                              item.cRef = classRef
-                          }
-                          else
-                          {
-                              item.nodePath = Qt.binding(function() { return path })
-                              item.isExpanded = Qt.binding(function() { return isExpanded })
-                              item.nodeChildren = Qt.binding(function() { return childrenModel })
-                              item.dropKeys = "function"
-                          }
-                      }
-                      Connections
-                      {
-                          target: item
-                          function onMouseEvent(type, iID, iType, qItem, mouseMods)
-                          {
-                              //console.log("Got a mouse event in Function Manager: " + type)
-                              switch (type)
-                              {
-                                case App.Pressed:
-                                    var posnInWindow = qItem.mapToItem(mainView, qItem.x, qItem.y)
-                                    fDragItem.parent = mainView
-                                    fDragItem.x = posnInWindow.x - (fDragItem.width / 4)
-                                    fDragItem.y = posnInWindow.y - (fDragItem.height / 4)
-                                    fDragItem.modifiers = mouseMods
-                                break;
-                                case App.Clicked:
-                                    if (qItem === item)
-                                    {
-                                        model.isSelected = (mouseMods & Qt.ControlModifier) ? 2 : 1
-                                        if (model.hasChildren)
-                                            model.isExpanded = item.isExpanded
-                                    }
-                                    if (qItem.itemType === App.FunctionDragItem)
-                                        functionManager.selectFunctionID(iID, mouseMods & Qt.ControlModifier)
-                                    else
-                                        functionManager.selectFolder(qItem.nodePath, mouseMods & Qt.ControlModifier)
-                                break;
-                                case App.DoubleClicked:
-                                    if (qItem === item && model.hasChildren)
-                                        model.isExpanded = !model.isExpanded
-                                    else if (allowEditing)
-                                        loadFunctionEditor(iID, iType)
-                                    else
-                                        fmContainer.doubleClicked(iID, iType)
-                                break;
-                                case App.DragStarted:
-                                    if (qItem === item && !model.isSelected)
-                                    {
-                                        model.isSelected = 1
-                                        // invalidate the modifiers to force a single selection
-                                        mouseMods = -1
-                                    }
-
-                                    if (mouseMods === -1)
-                                        functionManager.selectFunctionID(iID, false)
-
-                                    fDragItem.itemsList = functionManager.selectedFunctionsID()
-                                    fDragItem.itemLabel = qItem.textLabel
-                                    if (qItem.hasOwnProperty("itemIcon"))
-                                        fDragItem.itemIcon = qItem.itemIcon
-                                    else
-                                        fDragItem.itemIcon = ""
-                                    functionsListView.dragActive = true
-                                break;
-                                case App.DragFinished:
-                                    fDragItem.Drag.drop()
-                                    fDragItem.parent = functionsListView
-                                    fDragItem.x = 0
-                                    fDragItem.y = 0
-                                    functionsListView.dragActive = false
-                                break;
-                              }
-                          }
-                      }
-                      Connections
-                      {
-                          ignoreUnknownSignals: true
-                          target: item
-                          function onPathChanged(oldPath, newPath)
-                          {
-                              functionManager.setFolderPath(oldPath, newPath, true)
-                          }
-                      }
-                      Connections
-                      {
-                          ignoreUnknownSignals: true
-                          target: item
-                          function onItemsDropped(path)
-                          {
-                              functionManager.moveFunctions(path)
-                          }
-                      }
-                  } // Loader
-              } // Component
-              ScrollBar.vertical: CustomScrollBar { id: fMgrScrollBar }
+          ScrollBar.vertical: CustomScrollBar { id: fMgrScrollBar }
 
               // "deselection" mouse area
               MouseArea

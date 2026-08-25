@@ -143,6 +143,18 @@ CustomPopupDialog
             }
 
             // row 3 - Fixtures tree
+            TreeFlatModel
+            {
+                id: flatGroupsModel
+                sourceModel: popupRoot.visible ? importManager.groupsTreeModel : null
+            }
+
+            Connections
+            {
+                target: importManager
+                function onGroupsTreeModelChanged() { flatGroupsModel.rebuild() }
+            }
+
             ListView
             {
                 id: groupListView
@@ -154,69 +166,28 @@ CustomPopupDialog
 
                 property bool dragActive: false
 
-                model: popupRoot.visible ? importManager.groupsTreeModel : null
-                delegate:
-                  Component
-                  {
-                    Loader
-                    {
-                        width: groupListView.width - (gEditScrollBar.visible ? gEditScrollBar.width : 0)
-                        source: hasChildren ? "qrc:/TreeNodeDelegate.qml" : ""
-                        onLoaded:
-                        {
-                            //console.log("[groupEditor] Item " + label + " has children: " + hasChildren)
-                            item.width = Qt.binding(function() { return groupListView.width - (gEditScrollBar.visible ? gEditScrollBar.width : 0) })
-                            item.cRef = classRef
-                            item.textLabel = label
-                            item.isSelected = Qt.binding(function() { return isSelected })
-                            item.isCheckable = isCheckable
-                            item.isChecked = Qt.binding(function() { return isChecked })
+                model: flatGroupsModel
+                delegate: ImportGroupsFlatDelegate
+                {
+                    width: groupListView.width - (gEditScrollBar.visible ? gEditScrollBar.width : 0)
+                }
 
-                            if (hasChildren)
-                            {
-                                item.itemIcon = "qrc:/group.svg"
-                                if (type)
-                                {
-                                    item.itemType = type
-                                    if (type === App.UniverseDragItem)
-                                        isExpanded = true
-                                }
-                                item.nodePath = path
-                                item.isExpanded = isExpanded
-                                item.subTreeDelegate = "qrc:/FixtureNodeDelegate.qml"
-                                item.childrenDelegate = "qrc:/FixtureNodeDelegate.qml"
-                                item.nodeChildren = childrenModel
-                            }
-                        }
-                        Connections
-                        {
-                            target: item
-
-                            function onMouseEvent(type, iID, iType, qItem, mouseMods)
-                            {
-                                switch (type)
-                                {
-                                    case App.Clicked:
-                                        if (qItem === item)
-                                        {
-                                            model.isSelected = (mouseMods & Qt.ControlModifier) ? 2 : 1
-                                            if (model.hasChildren)
-                                                model.isExpanded = item.isExpanded
-                                        }
-                                    break;
-                                    case App.Checked:
-                                        if (qItem === item)
-                                            model.isChecked = iType
-                                    break;
-                                }
-                            }
-                        }
-                    } // Loader
-                  } // Component
                 ScrollBar.vertical: CustomScrollBar { id: gEditScrollBar }
             } // ListView
 
             // Functions tree
+            TreeFlatModel
+            {
+                id: flatImportFunctionsModel
+                sourceModel: popupRoot.visible ? importManager.functionsTreeModel : null
+            }
+
+            Connections
+            {
+                target: importManager
+                function onFunctionsTreeModelChanged() { flatImportFunctionsModel.rebuild() }
+            }
+
             ListView
             {
                 id: functionsListView
@@ -226,69 +197,12 @@ CustomPopupDialog
                 clip: true
                 boundsBehavior: Flickable.StopAtBounds
 
+                model: flatImportFunctionsModel
+                delegate: ImportFunctionsFlatDelegate
+                {
+                    width: functionsListView.width - (fMgrScrollBar.visible ? fMgrScrollBar.width : 0)
+                }
 
-                model: popupRoot.visible ? importManager.functionsTreeModel : null
-                delegate:
-                    Component
-                    {
-                        Loader
-                        {
-                            width: functionsListView.width
-                            source: hasChildren ? "qrc:/TreeNodeDelegate.qml" : "qrc:/FunctionDelegate.qml"
-
-                            onLoaded:
-                            {
-                                item.width = Qt.binding(function() { return functionsListView.width - (fMgrScrollBar.visible ? fMgrScrollBar.width : 0) })
-                                item.textLabel = label
-                                item.isSelected = Qt.binding(function() { return isSelected })
-                                item.isCheckable = isCheckable
-                                item.isChecked = Qt.binding(function() { return isChecked })
-
-                                if (hasChildren)
-                                {
-                                    console.log("Item path: " + path + ",label: " + label)
-                                    item.itemType = App.FolderDragItem
-                                    item.nodePath = Qt.binding(function() { return path })
-                                    item.isExpanded = Qt.binding(function() { return isExpanded })
-                                    item.nodeChildren = childrenModel
-                                    item.dropKeys = "function"
-                                }
-                                else
-                                {
-                                    item.cRef = classRef
-                                    item.itemType = App.FunctionDragItem
-                                    //item.functionType = funcType
-                                }
-                            }
-                            Connections
-                            {
-                                target: item
-
-                                function onMouseEvent(type, iID, iType, qItem, mouseMods)
-                                {
-                                    switch (type)
-                                    {
-                                        case App.Clicked:
-                                            if (qItem === item)
-                                            {
-                                                model.isSelected = (mouseMods & Qt.ControlModifier) ? 2 : 1
-                                                if (model.hasChildren)
-                                                    model.isExpanded = item.isExpanded
-                                            }
-                                        break;
-                                        case App.DoubleClicked:
-                                            if (qItem === item && model.hasChildren)
-                                                model.isExpanded = !model.isExpanded
-                                        break;
-                                        case App.Checked:
-                                            if (qItem === item)
-                                                model.isChecked = iType
-                                        break;
-                                    }
-                                }
-                            }
-                        } // Loader
-                    } // Component
                 ScrollBar.vertical: CustomScrollBar { id: fMgrScrollBar }
             } // ListView
         }

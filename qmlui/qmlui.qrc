@@ -91,6 +91,8 @@
     <file alias="PopupDisclaimer.qml">qml/popup/PopupDisclaimer.qml</file>
     <file alias="PopupFolderBrowser.qml">qml/popup/PopupFolderBrowser.qml</file>
     <file alias="PopupImportProject.qml">qml/popup/PopupImportProject.qml</file>
+    <file alias="ImportGroupsFlatDelegate.qml">qml/popup/ImportGroupsFlatDelegate.qml</file>
+    <file alias="ImportFunctionsFlatDelegate.qml">qml/popup/ImportFunctionsFlatDelegate.qml</file>
     <file alias="PopupPINRequest.qml">qml/popup/PopupPINRequest.qml</file>
     <file alias="PopupPINSetup.qml">qml/popup/PopupPINSetup.qml</file>
     <file alias="PopupRenameItems.qml">qml/popup/PopupRenameItems.qml</file>
@@ -100,6 +102,7 @@
     <file alias="PopupNetworkConnect.qml">qml/popup/PopupNetworkConnect.qml</file>
     <file alias="PopupNetworkServer.qml">qml/popup/PopupNetworkServer.qml</file>
     <file alias="PopupManualInputSource.qml">qml/popup/PopupManualInputSource.qml</file>
+    <file alias="InputChannelFlatDelegate.qml">qml/popup/InputChannelFlatDelegate.qml</file>
     <file alias="PopupInputChannelEditor.qml">qml/popup/PopupInputChannelEditor.qml</file>
     <file alias="PopupInputNumber.qml">qml/popup/PopupInputNumber.qml</file>
 
@@ -126,6 +129,7 @@
     <file alias="FixtureGroupEditor.qml">qml/fixturesfunctions/FixtureGroupEditor.qml</file>
     <file alias="FixtureGroupManager.qml">qml/fixturesfunctions/FixtureGroupManager.qml</file>
     <file alias="FixtureGroupFlatDelegate.qml">qml/fixturesfunctions/FixtureGroupFlatDelegate.qml</file>
+    <file alias="FunctionManagerFlatDelegate.qml">qml/fixturesfunctions/FunctionManagerFlatDelegate.qml</file>
     <file alias="FixtureNodeDelegate.qml">qml/fixturesfunctions/FixtureNodeDelegate.qml</file>
     <file alias="FixtureNodeRow.qml">qml/fixturesfunctions/FixtureNodeRow.qml</file>
     <file alias="FixtureSummary.qml">qml/fixturesfunctions/FixtureSummary.qml</file>

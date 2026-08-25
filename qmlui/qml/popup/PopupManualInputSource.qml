@@ -37,10 +37,19 @@ CustomPopupDialog
 
     onOpened:
     {
-        channelListView.model = virtualConsole.inputChannelsModel()
+        // inputChannelsModel() reuses the same TreeModel instance (cleared and
+        // repopulated in place) on every call, so TreeFlatModel's own pointer-change
+        // detection won't catch a re-open - rebuild explicitly instead.
+        flatInputModel.sourceModel = virtualConsole.inputChannelsModel()
+        flatInputModel.rebuild()
         uniCombo.model = virtualConsole.universeListModel()
     }
     //onClosed: channelListView.model = null
+
+    TreeFlatModel
+    {
+        id: flatInputModel
+    }
 
     onAccepted:
     {
@@ -105,63 +114,12 @@ CustomPopupDialog
                     visible: manualCheck.checked
                 }
 
-                //model: null
+                model: flatInputModel
+                delegate: InputChannelFlatDelegate
+                {
+                    width: channelListView.width - (cListScrollBar.visible ? cListScrollBar.width : 0)
+                }
 
-                delegate:
-                  Component
-                  {
-                    Loader
-                    {
-                        width: channelListView.width - (cListScrollBar.visible ? cListScrollBar.width : 0)
-                        source: hasChildren ? "qrc:/TreeNodeDelegate.qml" : ""
-                        onLoaded:
-                        {
-                            //console.log("[groupEditor] Item " + label + " has children: " + hasChildren)
-                            item.cRef = classRef
-                            item.textLabel = label
-                            item.isSelected = Qt.binding(function() { return isSelected })
-
-                            if (hasChildren)
-                            {
-                                item.itemIcon = "qrc:/group.svg"
-                                if (type)
-                                {
-                                    item.itemType = type
-                                    if (type == App.UniverseDragItem)
-                                        isExpanded = true
-                                }
-                                item.nodePath = path
-                                item.isExpanded = isExpanded
-                                item.childrenDelegate = "qrc:/InputChannelDelegate.qml"
-                                item.nodeChildren = childrenModel
-                            }
-                        }
-                        Connections
-                        {
-                            target: item
-
-                            function onMouseEvent(type, iID, iType, qItem, mouseMods)
-                            {
-                                switch (type)
-                                {
-                                    case App.Clicked:
-                                        if (qItem === item)
-                                        {
-                                            model.isSelected = (mouseMods & Qt.ControlModifier) ? 2 : 1
-                                            if (model.hasChildren)
-                                                model.isExpanded = item.isExpanded
-                                        }
-                                        if (qItem.itemType === App.ChannelDragItem)
-                                        {
-                                            popupRoot.universe = qItem.itemID >> 16
-                                            popupRoot.channel = qItem.itemID & 0x0000FFFF
-                                        }
-                                    break;
-                                }
-                            }
-                        }
-                    } // Loader
-                  } // Component
                 ScrollBar.vertical: CustomScrollBar { id: cListScrollBar }
             } // ListView
 
