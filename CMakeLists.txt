@@ -3,6 +3,11 @@ project(qlcplus VERSION 4.14.4 LANGUAGES C CXX)
 
 option(qmlui "Build for QLC+ 5 QML UI" OFF)
 
+# Needed here (not just in engine/test) so CTest's directory chain (CTestTestfile.cmake)
+# is generated all the way from the build root down to engine/test/<suite> - ctest run
+# from the build root otherwise reports "No tests were found!!!" despite tests existing.
+enable_testing()
+
 # Note: the default CMAKE_BUILD_TYPE is set in variables.cmake, together
 # with the DEVEL flag it follows
 

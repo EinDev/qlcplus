@@ -1,12 +1,12 @@
-add_executable(test WIN32 MACOSX_BUNDLE
+add_executable(hpm_test WIN32 MACOSX_BUNDLE
     hpmtest.cpp hpmtest.h
     main.cpp
 )
-target_include_directories(test PRIVATE
+target_include_directories(hpm_test PRIVATE
     ../src
 )
 
-target_link_libraries(test PRIVATE
+target_link_libraries(hpm_test PRIVATE
     Qt${QT_MAJOR_VERSION}::Core
     Qt${QT_MAJOR_VERSION}::Gui
     Qt${QT_MAJOR_VERSION}::Widgets
@@ -14,7 +14,7 @@ target_link_libraries(test PRIVATE
 )
 
 if(iokit)
-    target_link_libraries(test PRIVATE
+    target_link_libraries(hpm_test PRIVATE
         "-framework CoreFoundation"
         "-framework IOKit"
     )
