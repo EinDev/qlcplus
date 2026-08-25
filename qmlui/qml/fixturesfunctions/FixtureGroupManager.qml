@@ -489,6 +489,24 @@ Rectangle
 
             property bool dragActive: false
 
+            // QtQuick's own contentHeight estimate for a ListView is based on the average
+            // height of currently-realized delegates, which is wildly inaccurate here since
+            // a top-level tree node's rendered height ranges from one row (collapsed) to
+            // thousands of pixels (deeply expanded, since nested children aren't virtualized).
+            // That made the scrollbar thumb size swing around while scrolling. Instead, compute
+            // the exact visible row count from the model and derive contentHeight from that.
+            property int treeVersion: 0
+            contentHeight: (treeVersion, (model ? model.visibleRowCount() * UISettings.listItemHeight : 0))
+
+            Connections
+            {
+                target: groupListView.model
+                function onRoleChanged() { groupListView.treeVersion++ }
+                function onRowsInserted() { groupListView.treeVersion++ }
+                function onRowsRemoved() { groupListView.treeVersion++ }
+                function onModelReset() { groupListView.treeVersion++ }
+            }
+
             model: modelProvider ? modelProvider.groupsTreeModel : fixtureManager.groupsTreeModel
             delegate:
               Component

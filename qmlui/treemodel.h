@@ -122,6 +122,13 @@ public:
     /** @reimp */
     Q_INVOKABLE int rowCount(const QModelIndex & parent = QModelIndex()) const override;
 
+    /** Recursively count how many rows are currently visible (i.e. not hidden
+     *  inside a collapsed parent), including this tree and all expanded subtrees.
+     *  Used to compute an exact ListView content height instead of relying on
+     *  QtQuick's own height estimate, which is inaccurate for the wildly variable
+     *  delegate heights a deeply nested, partially expanded tree can have. */
+    Q_INVOKABLE int visibleRowCount() const;
+
     /** @reimp */
     QVariant data(const QModelIndex & index, int role = Qt::DisplayRole) const override;
 
