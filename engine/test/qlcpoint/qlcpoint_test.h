@@ -30,6 +30,7 @@ private slots:
     void initial();
     void equals();
     void hash();
+    void lessThan();
 };
 
 #endif

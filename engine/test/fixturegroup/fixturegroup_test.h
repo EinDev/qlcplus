@@ -48,6 +48,7 @@ private slots:
     void loadWrongHeadAttributes();
     void load();
     void save();
+    void dmxOrderGridRegeneration();
 
 private:
     Doc* m_doc;
