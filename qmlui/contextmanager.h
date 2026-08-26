@@ -277,6 +277,19 @@ public:
     /** Distribute the currently selected Fixtures with the provided $direction */
     Q_INVOKABLE void setFixturesDistribution(int direction);
 
+    /** Arrange the currently selected Fixtures evenly around a circle of the
+     *  given $diameter (mm), centered on their current centroid */
+    Q_INVOKABLE void arrangeFixturesInCircle(qreal diameter);
+
+    /** Arrange the currently selected Fixtures in a grid spanning $width x $height
+     *  (mm), centered on their current centroid. $columns <= 0 auto-picks a
+     *  near-square column count from the selection size */
+    Q_INVOKABLE void arrangeFixturesInGrid(qreal width, qreal height, int columns);
+
+    /** Arrange the currently selected Fixtures evenly along a line of the given
+     *  $length (mm) and $angleDegrees orientation, centered on their current centroid */
+    Q_INVOKABLE void arrangeFixturesInLine(qreal length, qreal angleDegrees);
+
     /** Add or remove a linked fixture based on the provided $itemID */
     Q_INVOKABLE void setLinkedFixture(quint32 itemID);
 
@@ -347,6 +360,16 @@ private:
     /** Select the next available Fixture group, cycling through the
      *  groups defined in the Doc. Deselects everything else. */
     void selectNextFixtureGroup();
+
+    /** Returns the world axis indices (0=X, 1=Y, 2=Z) that represent the
+     *  horizontal ($hAxis) and vertical ($vAxis) directions on screen for
+     *  $pointOfView, plus the remaining depth axis ($dAxis). Used by the
+     *  arrangeFixturesIn*() methods to lay fixtures out in the plane the
+     *  user is currently looking at. */
+    void fixturePlaneAxes(int pointOfView, int &hAxis, int &vAxis, int &dAxis) const;
+
+    /** Returns the average position (mm) of the currently selected fixtures */
+    QVector3D selectedFixturesCentroid() const;
 
 private:
     /** The list of the currently selected Fixture item IDs */
