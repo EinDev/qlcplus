@@ -286,7 +286,7 @@ Rectangle
           property bool dragActive: false
 
           model: flatFunctionsModel
-          delegate: FunctionManagerFlatDelegate {}
+          delegate: FunctionManagerFlatDelegate { width: functionsListView.width }
 
           ScrollBar.vertical: CustomScrollBar { id: fMgrScrollBar }
 
