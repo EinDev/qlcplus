@@ -313,6 +313,11 @@ public:
     /** Select/Deselect all the fixtures of the Group/Universe with the provided $id */
     Q_INVOKABLE void setFixtureGroupSelection(quint32 id, bool enable, bool isUniverse);
 
+    /** Returns true if every fixture belonging to the Group with the provided $id
+     *  is currently selected (extra, non-group fixtures also being selected does
+     *  not disqualify it). False for an empty or non-existent group. */
+    Q_INVOKABLE bool isGroupFullySelected(quint32 id) const;
+
     Q_INVOKABLE void setChannelValueByType(int type, int value, bool isRelative = false, quint32 channel = UINT_MAX);
 
     Q_INVOKABLE void setColorValue(QColor col, QColor wauv);
@@ -376,6 +381,15 @@ private:
      *  they were selected in. Used by the arrangeFixturesIn*() methods so
      *  a shape follows patch order rather than click order. */
     QList<quint32> sortedSelectedFixtures() const;
+
+    /** Returns the currently selected Fixture item IDs ordered by their
+     *  Fixture Group's own grid assignment (row-major, top-left to
+     *  bottom-right) when every selected fixture belongs to the same single
+     *  FixtureGroup - this is the order RGB Matrix effects actually use, and
+     *  is independent of both DMX order and 2D/3D monitor position. Falls
+     *  back to sortedSelectedFixtures() (DMX order) when the selection spans
+     *  multiple groups, or none. */
+    QList<quint32> groupOrSortedSelectedFixtures() const;
 
 private:
     /** The list of the currently selected Fixture item IDs */
