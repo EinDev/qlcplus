@@ -36,6 +36,7 @@ CustomPopupDialog
     property real gridWidth: 2000
     property real gridHeight: 2000
     property int gridColumns: 0 // 0 = auto (near-square)
+    property real gridAngle: 0
     property real lineLength: 2000
     property real lineAngle: 0
 
@@ -152,6 +153,20 @@ CustomPopupDialog
                     value: popupRoot.gridColumns
                     onValueModified: popupRoot.gridColumns = value
                 }
+
+                RobotoText
+                {
+                    label: qsTr("Angle: ") + gridAngleSlider.value.toFixed(0) + "°"
+                }
+                CustomSlider
+                {
+                    id: gridAngleSlider
+                    Layout.fillWidth: true
+                    from: -180
+                    to: 180
+                    value: popupRoot.gridAngle
+                    onValueChanged: popupRoot.gridAngle = value
+                }
             }
 
             // Line controls
@@ -204,7 +219,7 @@ CustomPopupDialog
                             contextManager.arrangeFixturesInCircle(popupRoot.circleDiameter)
                         break
                         case 1:
-                            contextManager.arrangeFixturesInGrid(popupRoot.gridWidth, popupRoot.gridHeight, popupRoot.gridColumns)
+                            contextManager.arrangeFixturesInGrid(popupRoot.gridWidth, popupRoot.gridHeight, popupRoot.gridColumns, popupRoot.gridAngle)
                         break
                         case 2:
                             contextManager.arrangeFixturesInLine(popupRoot.lineLength, popupRoot.lineAngle)
