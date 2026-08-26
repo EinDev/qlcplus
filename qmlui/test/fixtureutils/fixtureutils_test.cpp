@@ -19,9 +19,13 @@
 
 #include <QtTest>
 
+#include <algorithm>
+
 #include "fixtureutils_test.h"
 #include "fixtureutils.h"
 #include "monitorproperties.h"
+#include "fixture.h"
+#include "doc.h"
 
 // Every mass-selection, arrange/align, and drag-position code path this
 // session touched identifies a fixture (or one head of a multi-head/linked
@@ -86,6 +90,76 @@ void FixtureUtils_Test::alignLeftViewMovesOnlyTheAlignedAxis()
     pos = QVector3D(10, 999, 20);
     FixtureUtils::alignItem(ref, pos, MonitorProperties::LeftSideView, Qt::AlignTop);
     QCOMPARE(pos, QVector3D(10, 50, 20));
+}
+
+// Reimplements the comparator ContextManager::sortedSelectedFixtures() uses
+// (qmlui/contextmanager.cpp, commit a71fdd756) - ContextManager itself can't
+// be constructed headlessly (needs a live QQuickView*), so this exercises the
+// same rule directly against real Fixture/Doc objects and hand-packed itemIDs:
+// primary key is DMX order (Fixture::operator<), with head index then linked
+// index as tiebreakers for itemIDs sharing one base fixture.
+void FixtureUtils_Test::dmxOrderSortWithHeadTiebreak()
+{
+    Doc doc(this);
+
+    Fixture *fxLow = new Fixture(&doc);
+    fxLow->setChannels(1);
+    fxLow->setAddress(5);
+    doc.addFixture(fxLow);
+
+    Fixture *fxHigh = new Fixture(&doc);
+    fxHigh->setChannels(1);
+    fxHigh->setAddress(50);
+    doc.addFixture(fxHigh);
+
+    // Three itemIDs all pointing at fxHigh, with scrambled head/linked
+    // indices, plus one itemID pointing at fxLow (lower DMX address, so it
+    // must sort before all of fxHigh's items regardless of head/linked).
+    QList<quint32> itemIDs = {
+        FixtureUtils::fixtureItemID(fxHigh->id(), 2, 0),
+        FixtureUtils::fixtureItemID(fxHigh->id(), 0, 1),
+        FixtureUtils::fixtureItemID(fxLow->id(),  0, 0),
+        FixtureUtils::fixtureItemID(fxHigh->id(), 0, 0),
+        FixtureUtils::fixtureItemID(fxHigh->id(), 1, 0),
+    };
+
+    std::sort(itemIDs.begin(), itemIDs.end(), [&doc] (quint32 left, quint32 right)
+    {
+        Fixture *leftFixture = doc.fixture(FixtureUtils::itemFixtureID(left));
+        Fixture *rightFixture = doc.fixture(FixtureUtils::itemFixtureID(right));
+
+        if (leftFixture == nullptr || rightFixture == nullptr)
+            return false;
+
+        if (leftFixture != rightFixture)
+            return *leftFixture < *rightFixture;
+
+        quint16 leftHead = FixtureUtils::itemHeadIndex(left);
+        quint16 rightHead = FixtureUtils::itemHeadIndex(right);
+        if (leftHead != rightHead)
+            return leftHead < rightHead;
+
+        return FixtureUtils::itemLinkedIndex(left) < FixtureUtils::itemLinkedIndex(right);
+    });
+
+    QCOMPARE(itemIDs.count(), 5);
+    // fxLow first (lower DMX address)...
+    QCOMPARE(FixtureUtils::itemFixtureID(itemIDs.at(0)), fxLow->id());
+    // ...then all of fxHigh's items, head-ascending, linked-ascending within
+    // the tied head 0.
+    QCOMPARE(FixtureUtils::itemFixtureID(itemIDs.at(1)), fxHigh->id());
+    QCOMPARE(FixtureUtils::itemHeadIndex(itemIDs.at(1)), (quint16)0);
+    QCOMPARE(FixtureUtils::itemLinkedIndex(itemIDs.at(1)), (quint16)0);
+
+    QCOMPARE(FixtureUtils::itemFixtureID(itemIDs.at(2)), fxHigh->id());
+    QCOMPARE(FixtureUtils::itemHeadIndex(itemIDs.at(2)), (quint16)0);
+    QCOMPARE(FixtureUtils::itemLinkedIndex(itemIDs.at(2)), (quint16)1);
+
+    QCOMPARE(FixtureUtils::itemFixtureID(itemIDs.at(3)), fxHigh->id());
+    QCOMPARE(FixtureUtils::itemHeadIndex(itemIDs.at(3)), (quint16)1);
+
+    QCOMPARE(FixtureUtils::itemFixtureID(itemIDs.at(4)), fxHigh->id());
+    QCOMPARE(FixtureUtils::itemHeadIndex(itemIDs.at(4)), (quint16)2);
 }
 
 QTEST_APPLESS_MAIN(FixtureUtils_Test)
