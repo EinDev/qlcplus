@@ -21,10 +21,10 @@
 #include <QDebug>
 #include <QQmlEngine>
 #include <QQmlContext>
+#include <QMetaObject>
 
 #include "treeflatmodel.h"
 #include "treemodelitem.h"
-#include "contextmanager.h"
 
 TreeFlatModel::TreeFlatModel(QObject *parent)
     : QAbstractListModel(parent)
@@ -252,8 +252,10 @@ void TreeFlatModel::slotSourceRoleChanged(TreeModelItem *item, int role, const Q
         QQmlContext *ctx = engine->rootContext();
         if (ctx)
         {
-            ContextManager *cm = qobject_cast<ContextManager *>(ctx->contextProperty("contextManager").value<QObject *>());
-            if (cm && cm->isBatchSelection())
+            QObject *cm = ctx->contextProperty("contextManager").value<QObject *>();
+            bool batchSelection = false;
+            if (cm && QMetaObject::invokeMethod(cm, "isBatchSelection", Qt::DirectConnection,
+                                                 Q_RETURN_ARG(bool, batchSelection)) && batchSelection)
                 return;
         }
     }
