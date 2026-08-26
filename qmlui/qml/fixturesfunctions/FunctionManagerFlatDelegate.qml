@@ -119,11 +119,14 @@ Item
                         // Drag.drop() can synchronously trigger a tree rebuild (e.g.
                         // dropping onto a function calls functionManager.moveFunctions(),
                         // which rebuilds the model and destroys every delegate - including
-                        // this one, mid-handler). Anything after it here would silently
-                        // never run. Defer the cleanup so it always executes, against the
-                        // stable functionsListView/fDragItem objects rather than this
-                        // delegate's own (possibly about to be destroyed) context.
-                        fDragItem.Drag.drop()
+                        // this one, mid-*call*, not just after it returns. So the deferred
+                        // cleanup must be *scheduled* before calling Drag.drop(), not after -
+                        // a statement placed after Drag.drop() in this same handler may never
+                        // run at all if the delegate is destroyed while Drag.drop() is still
+                        // executing. Qt.callLater() itself only needs to be invoked, which
+                        // happens synchronously right here regardless of what Drag.drop()
+                        // does; the closure only touches the stable functionsListView/
+                        // fDragItem objects, not this delegate's own context.
                         Qt.callLater(function()
                         {
                             fDragItem.parent = functionsListView
@@ -131,6 +134,7 @@ Item
                             fDragItem.y = 0
                             functionsListView.dragActive = false
                         })
+                        fDragItem.Drag.drop()
                     break;
                 }
             }
