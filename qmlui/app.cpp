@@ -63,6 +63,7 @@
 #include "tardis.h"
 #include "networkmanager.h"
 #include "stagewizard.h"
+#include "apiserver.h"
 
 #include "qlcfixturedefcache.h"
 #include "audioplugincache.h"
@@ -96,6 +97,7 @@ App::App()
     , m_simpleDesk(nullptr)
     , m_videoProvider(nullptr)
     , m_networkManager(nullptr)
+    , m_apiServer(nullptr)
     , m_uiManager(nullptr)
     , m_stageWizard(nullptr)
     , m_doc(nullptr)
@@ -217,6 +219,12 @@ void App::startup()
     connect(m_networkManager, &NetworkManager::clientProjectRequest, this, &App::slotClientProjectRequest);
     connect(m_networkManager, &NetworkManager::storeAutostartProject,
             this, &App::slotSaveAutostart);
+
+    // WebSocket control API (docs/api-spec/) - constructed unconditionally like
+    // m_networkManager above, but doesn't start listening until App::startApiServer()
+    // is called (from main.cpp, gated behind --api/--api-port, mirroring how
+    // WebAccessQml is only lazily started via NetworkManager::startServer()).
+    m_apiServer = new ApiServer(this, m_doc);
 
     m_tardis = new Tardis(this, m_doc, m_networkManager, m_fixtureManager, m_functionManager,
                           m_contextManager, m_simpleDesk, m_showManager, m_virtualConsole);
@@ -556,6 +564,11 @@ SimpleDesk *App::simpleDesk() const
 NetworkManager *App::networkManager() const
 {
     return m_networkManager;
+}
+
+ApiServer *App::apiServer() const
+{
+    return m_apiServer;
 }
 
 bool App::docLoaded()

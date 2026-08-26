@@ -60,10 +60,10 @@ if (-not (Test-Path $Bash)) {
     Write-Error "MSYS2 bash not found at $Bash. This script expects the MSYS2 MinGW64 toolchain set up for this project."
 }
 
-# --- 1. Build the test binaries (fast: only engine_tests + its deps, not a full rebuild) ---
+# --- 1. Build the test binaries (fast: only engine_tests/controlapi_tests + their deps, not a full rebuild) ---
 if (-not $NoBuild) {
-    Write-Host "==> Building engine_tests..." -ForegroundColor Cyan
-    $buildCmd = "export MSYSTEM=MINGW64; source /etc/profile; cd $RepoRootMsys; cmake --build build --target engine_tests -j`$(nproc)"
+    Write-Host "==> Building engine_tests and controlapi_tests..." -ForegroundColor Cyan
+    $buildCmd = "export MSYSTEM=MINGW64; source /etc/profile; cd $RepoRootMsys; cmake --build build --target engine_tests controlapi_tests -j`$(nproc)"
     & $Bash -lc $buildCmd
     if ($LASTEXITCODE -ne 0) {
         Write-Error "Build failed (exit $LASTEXITCODE)."

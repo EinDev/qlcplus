@@ -221,6 +221,7 @@ target_link_libraries(${module_name} PRIVATE
     Qt${QT_MAJOR_VERSION}::WebSockets
     qlcplusengine
     qlcpluswebaccess
+    qlcplusapiserver
 )
 
 if(ANDROID)

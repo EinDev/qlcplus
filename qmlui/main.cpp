@@ -25,6 +25,7 @@
 
 #include "app.h"
 #include "networkmanager.h"
+#include "apiserver.h"
 #include "qlcconfig.h"
 #include "qlcfile.h"
 
@@ -133,6 +134,15 @@ int main(int argc, char *argv[])
         "Automatically grant full access to every native TCP client (unsafe on untrusted networks)");
     parser.addOption(allowAllNativeOption);
 
+    QCommandLineOption apiOption(QStringList() << "api",
+                                  "Enable the WebSocket control API (docs/api-spec/)");
+    parser.addOption(apiOption);
+
+    QCommandLineOption apiPortOption(QStringList() << "api-port",
+                                      "Set the port to use for the WebSocket control API",
+                                      "port", "");
+    parser.addOption(apiPortOption);
+
     parser.process(app);
 
     bool enableWebAccess = parser.isSet(webAccessOption)
@@ -144,6 +154,8 @@ int main(int argc, char *argv[])
     QString webAccessPasswordFile = parser.value(webAuthFileOption);
     bool allowAllNative = parser.isSet(allowAllNativeOption);
     bool enableNativeServer = parser.isSet(remoteOption) || allowAllNative;
+    bool enableApi = parser.isSet(apiOption) || parser.isSet(apiPortOption);
+    int apiPort = parser.value(apiPortOption).toInt();
 
 #if !defined Q_OS_ANDROID
     // 3D enablement
@@ -249,6 +261,16 @@ int main(int argc, char *argv[])
 
         netMgr->setForcedServerTypes(forcedTypes);
         netMgr->startServer();
+    }
+
+    if (enableApi && qlcplusApp.apiServer() != nullptr)
+    {
+        ApiServer *apiSrv = qlcplusApp.apiServer();
+        quint16 port = apiPort > 0 ? quint16(apiPort) : quint16(API_SERVER_DEFAULT_PORT);
+        if (apiSrv->listen(port) == false)
+            qCritical().noquote() << "Could not start the WebSocket control API:" << apiSrv->errorString();
+        else
+            qInfo().noquote() << "WebSocket control API listening on port" << port;
     }
 
     // fullscreen mode
