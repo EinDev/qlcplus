@@ -2076,6 +2076,12 @@ void FixtureManager::updateCapabilityCounter(bool update, QString capName, int d
     if (update == false)
         return;
 
+    if (m_deferCapabilityCounters)
+    {
+        m_pendingCapabilityDelta[capName] += delta;
+        return;
+    }
+
     QQuickItem *capItem = capabilityCounterItem(capName);
     if (capItem != nullptr)
     {
@@ -2105,6 +2111,27 @@ void FixtureManager::setCapabilityCounter(QString capName, int value)
     QQuickItem *capItem = capabilityCounterItem(capName);
     if (capItem)
         capItem->setProperty("counter", value);
+}
+
+void FixtureManager::setDeferCapabilityCounters(bool defer)
+{
+    m_deferCapabilityCounters = defer;
+}
+
+void FixtureManager::flushCapabilityCounters()
+{
+    m_deferCapabilityCounters = false;
+
+    QHash<QString, int> pending = m_pendingCapabilityDelta;
+    m_pendingCapabilityDelta.clear();
+
+    QHashIterator<QString, int> it(pending);
+    while (it.hasNext())
+    {
+        it.next();
+        if (it.value() != 0)
+            updateCapabilityCounter(true, it.key(), it.value());
+    }
 }
 
 QMultiHash<int, SceneValue> FixtureManager::getFixtureCapabilities(quint32 itemID, int headIndex, bool enable)
@@ -2208,8 +2235,6 @@ QMultiHash<int, SceneValue> FixtureManager::getFixtureCapabilities(quint32 itemI
                         m_maxPanDegrees = panDeg;
                     if (tiltDeg > m_maxTiltDegrees)
                         m_maxTiltDegrees = tiltDeg;
-
-                    qDebug() << "Fixture" << fixture->name() << "Pan:" << panDeg << ", Tilt:" << tiltDeg;
                 }
                 channelsMap.insert(chType, SceneValue(fixtureID, ch));
             }
