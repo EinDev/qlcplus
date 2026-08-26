@@ -30,8 +30,13 @@ Rectangle
     color: "transparent"
     objectName: "sceneFixtureConsole"
 
-    Component.onCompleted: sceneEditor.sceneConsoleLoaded(true)
-    Component.onDestruction: sceneEditor.sceneConsoleLoaded(false)
+    // sceneEditor can already be null by the time this component is torn down:
+    // switching directly from editing one Scene to another deletes the old
+    // SceneEditor (which nulls this context property) before the new one is
+    // constructed, and the delete also closes the bottom panel, destroying
+    // this component while sceneEditor is still null.
+    Component.onCompleted: if (sceneEditor) sceneEditor.sceneConsoleLoaded(true)
+    Component.onDestruction: if (sceneEditor) sceneEditor.sceneConsoleLoaded(false)
 
     property bool isSceneEditor: true
     property bool multipleSelection: false
@@ -78,7 +83,7 @@ Rectangle
         id: fixtureList
         anchors.fill: parent
         orientation: ListView.Horizontal
-        model: sceneEditor.fixtureList
+        model: sceneEditor ? sceneEditor.fixtureList : null
         boundsBehavior: Flickable.StopAtBounds
         highlightFollowsCurrentItem: false
         currentIndex: -1
