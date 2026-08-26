@@ -1,0 +1,101 @@
+# Worked example of the exact shape a fragment file must have. This one
+# fakes a tiny slice of a "widgets" domain (rename everything for your real
+# domain). Your fragment has exactly these three top-level keys.
+#
+# This one triplet shows the full pattern: a document-state (§4a) mutation
+# request, its response, and its broadcast event, all revision-aware. A
+# live/runtime (§4b) message would look the same minus baseRevision/
+# docRevision. Copy the shape, not the field names.
+
+messages:
+
+  WidgetsRenameRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: widgets.rename }
+        params:
+          type: object
+          required: [widgetId, name, baseRevision]
+          properties:
+            widgetId: { type: string }
+            name: { type: string }
+            baseRevision:
+              type: integer
+              description: "docRevision this client last observed (see 00-conventions.md §4a)"
+
+  WidgetsRenameResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/WidgetsRenameOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  WidgetsRenameOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          type: object
+          required: [docRevision]
+          properties:
+            docRevision: { type: integer }
+
+  WidgetsRenamedEvent:
+    payload:
+      type: object
+      required: [type, topic, data]
+      properties:
+        type: { const: event }
+        topic: { const: widgets.renamed }
+        originClientId: { type: [string, "null"] }
+        data:
+          type: object
+          required: [widgetId, name, docRevision]
+          properties:
+            widgetId: { type: string }
+            name: { type: string }
+            docRevision: { type: integer }
+
+schemas: {}
+  # Put any reusable payload shapes here if you have types shared across
+  # several of your own messages (e.g. a "FixtureRef" object used by five
+  # different fixtures.* messages). Simple/one-off shapes can stay inline
+  # in the message payload like above - don't over-factor.
+
+operations:
+
+  sendWidgetsRename:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/widgetsRenameRequest'
+
+  receiveWidgetsRenameResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/widgetsRenameResponse'
+
+  receiveWidgetsRenamed:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/widgetsRenamedEvent'
+
+# Note: at merge time, each message key you define here (e.g.
+# WidgetsRenameRequest) also needs a matching lowerCamelCase entry added
+# under channels.qlcplus.messages in the merged file (e.g.
+# `widgetsRenameRequest: { $ref: '#/components/messages/WidgetsRenameRequest' }`)
+# for the operations' $refs above to resolve. Just list those in your notes
+# file as "channel message keys to add"; don't try to edit the skeleton
+# yourself.

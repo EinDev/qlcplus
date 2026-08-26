@@ -1,0 +1,3977 @@
+messages:
+  FunctionsRgbMatrixListAlgorithmsRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.rgbmatrix.listAlgorithms
+        params:
+          type: object
+          description: No parameters. The algorithm catalog (built-ins + installed RGBScripts) is global,
+            not per-function.
+  FunctionsRgbMatrixListAlgorithmsResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsRgbMatrixListAlgorithmsOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsRgbMatrixListAlgorithmsOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - algorithms
+          properties:
+            algorithms:
+              type: array
+              items:
+                type: object
+                required:
+                - name
+                - type
+                properties:
+                  name:
+                    type: string
+                    description: Algorithm/script display name, e.g. 'Plain', 'Text', 'Balls'. Pass as
+                      algorithm.scriptName when type=script.
+                  type:
+                    $ref: '#/components/schemas/FunctionsRgbMatrixAlgorithmType'
+                  apiVersion:
+                    type: integer
+                    description: Script API version (type=script only)
+                  author:
+                    type: string
+                    description: Script author (type=script only)
+  FunctionsRgbMatrixGetScriptPropertiesRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.rgbmatrix.getScriptProperties
+        params:
+          type: object
+          required:
+          - scriptName
+          properties:
+            scriptName:
+              type: string
+              description: A name returned by functions.rgbmatrix.listAlgorithms with type=script
+  FunctionsRgbMatrixGetScriptPropertiesResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsRgbMatrixGetScriptPropertiesOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsRgbMatrixGetScriptPropertiesOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - properties
+          properties:
+            properties:
+              type: array
+              description: UI-editable properties this script exposes (RGBScriptProperty). Values themselves
+                live per-function in FunctionsRgbMatrixConfig.algorithm.scriptProperties.
+              items:
+                $ref: '#/components/schemas/FunctionsRgbMatrixScriptPropertyDef'
+  FunctionsRgbMatrixGetPreviewRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.rgbmatrix.getPreview
+        params:
+          type: object
+          required:
+          - functionId
+          - step
+          properties:
+            functionId:
+              type: string
+            step:
+              type: integer
+              description: Step index to render, 0-based, modulo the algorithm's stepsCount (see result.stepsCount)
+  FunctionsRgbMatrixGetPreviewResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsRgbMatrixGetPreviewOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsRgbMatrixGetPreviewOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - stepsCount
+          - width
+          - height
+          - pixels
+          properties:
+            stepsCount:
+              type: integer
+              description: Total steps the current algorithm produces at the bound Fixture Group's size
+            width:
+              type: integer
+              description: Fixture Group matrix width
+            height:
+              type: integer
+              description: Fixture Group matrix height
+            pixels:
+              type: array
+              description: height rows x width columns of packed 0xRRGGBB colors (0 = off/black)
+              items:
+                type: array
+                items:
+                  type: integer
+  FunctionsRgbMatrixSetConfigRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.rgbmatrix.setConfig
+        params:
+          type: object
+          required:
+          - functionId
+          - config
+          - baseRevision
+          properties:
+            functionId:
+              type: string
+            config:
+              $ref: '#/components/schemas/FunctionsRgbMatrixConfig'
+            baseRevision:
+              type: integer
+  FunctionsRgbMatrixSetConfigResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsRgbMatrixSetConfigOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsRgbMatrixSetConfigOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - docRevision
+          properties:
+            docRevision:
+              type: integer
+  FunctionsRgbMatrixConfigChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.rgbmatrix.configChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - functionId
+          - config
+          - docRevision
+          properties:
+            functionId:
+              type: string
+            config:
+              $ref: '#/components/schemas/FunctionsRgbMatrixConfig'
+            docRevision:
+              type: integer
+  FunctionsRgbMatrixSetScriptPropertyRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.rgbmatrix.setScriptProperty
+        params:
+          type: object
+          required:
+          - functionId
+          - propertyName
+          - value
+          - baseRevision
+          description: Single-property convenience mutation for live tweaking (mirrors RGBMatrixEditor's
+            per-spinner setScriptXxxProperty calls) without resending the whole config.
+          properties:
+            functionId:
+              type: string
+            propertyName:
+              type: string
+            value:
+              type: string
+              description: Always string-encoded, per the engine's RGBScript::setProperty(QString,QString)
+            baseRevision:
+              type: integer
+  FunctionsRgbMatrixSetScriptPropertyResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsRgbMatrixSetScriptPropertyOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsRgbMatrixSetScriptPropertyOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - docRevision
+          properties:
+            docRevision:
+              type: integer
+  FunctionsRgbMatrixScriptPropertyChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.rgbmatrix.scriptPropertyChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - functionId
+          - propertyName
+          - value
+          - docRevision
+          properties:
+            functionId:
+              type: string
+            propertyName:
+              type: string
+            value:
+              type: string
+            docRevision:
+              type: integer
+  FunctionsScriptValidateRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.script.validate
+        params:
+          type: object
+          required:
+          - functionId
+          properties:
+            functionId:
+              type: string
+  FunctionsScriptValidateResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsScriptValidateOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsScriptValidateOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - syntaxErrorLines
+          - functionRefs
+          - fixtureRefs
+          properties:
+            syntaxErrorLines:
+              type: array
+              items:
+                type: integer
+              description: 0-based line numbers that failed to parse
+            functionRefs:
+              type: array
+              description: Functions referenced via startfunction/stopfunction/waitfunctionstart/waitfunctionstop
+              items:
+                type: object
+                required:
+                - functionId
+                - line
+                properties:
+                  functionId:
+                    type: string
+                  line:
+                    type: integer
+            fixtureRefs:
+              type: array
+              description: Fixtures referenced via setfixture
+              items:
+                type: object
+                required:
+                - fixtureId
+                - line
+                properties:
+                  fixtureId:
+                    type: string
+                  line:
+                    type: integer
+  FunctionsScriptListCommandsRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.script.listCommands
+        params:
+          type: object
+          description: No parameters. Static keyword catalog, for editor autocomplete.
+  FunctionsScriptListCommandsResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsScriptListCommandsOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsScriptListCommandsOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - commands
+          properties:
+            commands:
+              type: array
+              description: 'The Script::*Cmd keyword set: stoponexit, startfunction, stopfunction, blackout,
+                wait, waitkey, waitfunctionstart, waitfunctionstop, setfixture, systemcommand, label,
+                jump'
+              items:
+                type: string
+  FunctionsScriptSetSourceRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.script.setSource
+        params:
+          type: object
+          required:
+          - functionId
+          - source
+          - baseRevision
+          properties:
+            functionId:
+              type: string
+            source:
+              type: string
+              description: Replaces the entire script body (Script::setData)
+            baseRevision:
+              type: integer
+  FunctionsScriptSetSourceResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsScriptSetSourceOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsScriptSetSourceOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - docRevision
+          properties:
+            docRevision:
+              type: integer
+  FunctionsScriptAppendLineRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.script.appendLine
+        params:
+          type: object
+          required:
+          - functionId
+          - line
+          - baseRevision
+          properties:
+            functionId:
+              type: string
+            line:
+              type: string
+              description: One script line, appended verbatim (Script::appendData)
+            baseRevision:
+              type: integer
+  FunctionsScriptAppendLineResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsScriptAppendLineOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsScriptAppendLineOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - docRevision
+          properties:
+            docRevision:
+              type: integer
+  FunctionsScriptSourceChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      description: Broadcast after both functions.script.setSource and functions.script.appendLine - always
+        carries the full resulting source (scripts are plain text; a line-oriented diff isn't worth an
+        RFC 6902 patch here, see notes.md).
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.script.sourceChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - functionId
+          - source
+          - docRevision
+          properties:
+            functionId:
+              type: string
+            source:
+              type: string
+            docRevision:
+              type: integer
+  FunctionsShowSetTimeDivisionRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.show.setTimeDivision
+        params:
+          type: object
+          required:
+          - functionId
+          - timeDivisionType
+          - baseRevision
+          properties:
+            functionId:
+              type: string
+            timeDivisionType:
+              $ref: '#/components/schemas/FunctionsShowTimeDivision'
+            bpm:
+              type: integer
+              description: Required when timeDivisionType is one of the BPM_* values
+            baseRevision:
+              type: integer
+  FunctionsShowSetTimeDivisionResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsShowSetTimeDivisionOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsShowSetTimeDivisionOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - docRevision
+          properties:
+            docRevision:
+              type: integer
+  FunctionsShowTimeDivisionChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.show.timeDivisionChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - functionId
+          - timeDivisionType
+          - timeDivisionBPM
+          - docRevision
+          properties:
+            functionId:
+              type: string
+            timeDivisionType:
+              $ref: '#/components/schemas/FunctionsShowTimeDivision'
+            timeDivisionBPM:
+              type: integer
+            docRevision:
+              type: integer
+  FunctionsShowTrackAddRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.show.track.add
+        params:
+          type: object
+          required:
+          - showId
+          - baseRevision
+          properties:
+            showId:
+              type: string
+            name:
+              type: string
+            sceneId:
+              type: string
+              description: Optional Scene function to bind this track to; omit for an audio/video-only
+                track
+            baseRevision:
+              type: integer
+  FunctionsShowTrackAddResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsShowTrackAddOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsShowTrackAddOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - trackId
+          - docRevision
+          properties:
+            trackId:
+              type: string
+            docRevision:
+              type: integer
+  FunctionsShowTrackAddedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.show.track.added
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - showId
+          - track
+          - docRevision
+          properties:
+            showId:
+              type: string
+            track:
+              $ref: '#/components/schemas/FunctionsShowTrack'
+            docRevision:
+              type: integer
+  FunctionsShowTrackRemoveRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.show.track.remove
+        params:
+          type: object
+          required:
+          - showId
+          - trackId
+          - baseRevision
+          properties:
+            showId:
+              type: string
+            trackId:
+              type: string
+            baseRevision:
+              type: integer
+  FunctionsShowTrackRemoveResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsShowTrackRemoveOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsShowTrackRemoveOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - docRevision
+          properties:
+            docRevision:
+              type: integer
+  FunctionsShowTrackRemovedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.show.track.removed
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - showId
+          - trackId
+          - docRevision
+          properties:
+            showId:
+              type: string
+            trackId:
+              type: string
+            docRevision:
+              type: integer
+  FunctionsShowTrackRenameRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.show.track.rename
+        params:
+          type: object
+          required:
+          - showId
+          - trackId
+          - name
+          - baseRevision
+          properties:
+            showId:
+              type: string
+            trackId:
+              type: string
+            name:
+              type: string
+            baseRevision:
+              type: integer
+  FunctionsShowTrackRenameResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsShowTrackRenameOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsShowTrackRenameOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - docRevision
+          properties:
+            docRevision:
+              type: integer
+  FunctionsShowTrackRenamedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.show.track.renamed
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - showId
+          - trackId
+          - name
+          - docRevision
+          properties:
+            showId:
+              type: string
+            trackId:
+              type: string
+            name:
+              type: string
+            docRevision:
+              type: integer
+  FunctionsShowTrackSetMuteRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.show.track.setMute
+        params:
+          type: object
+          required:
+          - showId
+          - trackId
+          - mute
+          - baseRevision
+          properties:
+            showId:
+              type: string
+            trackId:
+              type: string
+            mute:
+              type: boolean
+            baseRevision:
+              type: integer
+  FunctionsShowTrackSetMuteResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsShowTrackSetMuteOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsShowTrackSetMuteOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - docRevision
+          properties:
+            docRevision:
+              type: integer
+  FunctionsShowTrackMuteChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.show.track.muteChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - showId
+          - trackId
+          - mute
+          - docRevision
+          properties:
+            showId:
+              type: string
+            trackId:
+              type: string
+            mute:
+              type: boolean
+            docRevision:
+              type: integer
+  FunctionsShowTrackSetSoloRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.show.track.setSolo
+        params:
+          type: object
+          required:
+          - showId
+          - trackId
+          - solo
+          - baseRevision
+          description: Convenience mutation mirroring ShowManager::setTrackSolo - mutes every other track
+            in the Show and unmutes this one (solo=true), or just unmutes this one (solo=false). Not a
+            persisted 'solo' flag - it's sugar over multiple mute changes.
+          properties:
+            showId:
+              type: string
+            trackId:
+              type: string
+            solo:
+              type: boolean
+            baseRevision:
+              type: integer
+  FunctionsShowTrackSetSoloResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsShowTrackSetSoloOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsShowTrackSetSoloOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - docRevision
+          properties:
+            docRevision:
+              type: integer
+  FunctionsShowTrackMoveRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.show.track.move
+        params:
+          type: object
+          required:
+          - showId
+          - trackId
+          - direction
+          - baseRevision
+          properties:
+            showId:
+              type: string
+            trackId:
+              type: string
+            direction:
+              type: string
+              enum:
+              - up
+              - down
+            baseRevision:
+              type: integer
+  FunctionsShowTrackMoveResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsShowTrackMoveOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsShowTrackMoveOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - docRevision
+          properties:
+            docRevision:
+              type: integer
+  FunctionsShowTracksChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      description: Bulk track event for mutations that touch more than one track at once (functions.show.track.setSolo,
+        functions.show.track.move). Carries an RFC 6902 JSON Patch against the tracks array returned by
+        functions.show.get.
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.show.tracksChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - showId
+          - patch
+          - docRevision
+          properties:
+            showId:
+              type: string
+            patch:
+              type: array
+              items:
+                type: object
+              description: RFC 6902 JSON Patch operations against /tracks
+            docRevision:
+              type: integer
+  FunctionsShowItemAddRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.show.item.add
+        params:
+          type: object
+          required:
+          - showId
+          - trackId
+          - functionId
+          - startTime
+          - baseRevision
+          properties:
+            showId:
+              type: string
+            trackId:
+              type: string
+            functionId:
+              type: string
+              description: The generic function object to place on the timeline
+            startTime:
+              type: integer
+              description: Milliseconds from the Show's start
+            duration:
+              type: integer
+              description: Milliseconds; defaults to the placed function's own totalDuration if omitted
+            color:
+              type: string
+              description: Hex color; defaults to ShowFunction::defaultColor(type) if omitted
+            baseRevision:
+              type: integer
+  FunctionsShowItemAddResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsShowItemAddOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsShowItemAddOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - itemId
+          - docRevision
+          properties:
+            itemId:
+              type: string
+            docRevision:
+              type: integer
+  FunctionsShowItemAddedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.show.item.added
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - showId
+          - trackId
+          - item
+          - docRevision
+          properties:
+            showId:
+              type: string
+            trackId:
+              type: string
+            item:
+              $ref: '#/components/schemas/FunctionsShowItem'
+            docRevision:
+              type: integer
+  FunctionsShowItemRemoveRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.show.item.remove
+        params:
+          type: object
+          required:
+          - showId
+          - itemIds
+          - baseRevision
+          properties:
+            showId:
+              type: string
+            itemIds:
+              type: array
+              items:
+                type: string
+              description: Batch delete, mirrors ShowManager::deleteShowItems
+            baseRevision:
+              type: integer
+  FunctionsShowItemRemoveResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsShowItemRemoveOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsShowItemRemoveOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - docRevision
+          properties:
+            docRevision:
+              type: integer
+  FunctionsShowItemRemovedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.show.item.removed
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - showId
+          - itemIds
+          - docRevision
+          properties:
+            showId:
+              type: string
+            itemIds:
+              type: array
+              items:
+                type: string
+            docRevision:
+              type: integer
+  FunctionsShowItemMoveRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.show.item.move
+        params:
+          type: object
+          required:
+          - showId
+          - itemId
+          - trackId
+          - startTime
+          - baseRevision
+          description: Moves an item to a (possibly different) track and/or start time. Mirrors ShowManager::checkAndMoveItem,
+            including its overlap check.
+          properties:
+            showId:
+              type: string
+            itemId:
+              type: string
+            trackId:
+              type: string
+              description: Destination track (same as current track for a same-track move)
+            startTime:
+              type: integer
+            baseRevision:
+              type: integer
+  FunctionsShowItemMoveResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsShowItemMoveOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsShowItemMoveOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - docRevision
+          properties:
+            docRevision:
+              type: integer
+  FunctionsShowItemMovedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.show.item.moved
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - showId
+          - itemId
+          - trackId
+          - startTime
+          - docRevision
+          properties:
+            showId:
+              type: string
+            itemId:
+              type: string
+            trackId:
+              type: string
+            startTime:
+              type: integer
+            docRevision:
+              type: integer
+  FunctionsShowItemResizeRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.show.item.resize
+        params:
+          type: object
+          required:
+          - showId
+          - itemId
+          - duration
+          - baseRevision
+          properties:
+            showId:
+              type: string
+            itemId:
+              type: string
+            duration:
+              type: integer
+              description: New duration in ms; rejected (CONFLICT-style INVALID_PARAMS) if it would overlap
+                a following item
+            baseRevision:
+              type: integer
+  FunctionsShowItemResizeResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsShowItemResizeOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsShowItemResizeOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - docRevision
+          properties:
+            docRevision:
+              type: integer
+  FunctionsShowItemResizedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.show.item.resized
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - showId
+          - itemId
+          - duration
+          - docRevision
+          properties:
+            showId:
+              type: string
+            itemId:
+              type: string
+            duration:
+              type: integer
+            docRevision:
+              type: integer
+  FunctionsShowItemSetColorRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.show.item.setColor
+        params:
+          type: object
+          required:
+          - showId
+          - itemId
+          - color
+          - baseRevision
+          properties:
+            showId:
+              type: string
+            itemId:
+              type: string
+            color:
+              type: string
+              description: Hex color
+            baseRevision:
+              type: integer
+  FunctionsShowItemSetColorResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsShowItemSetColorOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsShowItemSetColorOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - docRevision
+          properties:
+            docRevision:
+              type: integer
+  FunctionsShowItemColorChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.show.item.colorChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - showId
+          - itemId
+          - color
+          - docRevision
+          properties:
+            showId:
+              type: string
+            itemId:
+              type: string
+            color:
+              type: string
+            docRevision:
+              type: integer
+  FunctionsShowItemSetLockedRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.show.item.setLocked
+        params:
+          type: object
+          required:
+          - showId
+          - itemId
+          - locked
+          - baseRevision
+          properties:
+            showId:
+              type: string
+            itemId:
+              type: string
+            locked:
+              type: boolean
+            baseRevision:
+              type: integer
+  FunctionsShowItemSetLockedResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsShowItemSetLockedOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsShowItemSetLockedOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - docRevision
+          properties:
+            docRevision:
+              type: integer
+  FunctionsShowItemLockedChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.show.item.lockedChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - showId
+          - itemId
+          - locked
+          - docRevision
+          properties:
+            showId:
+              type: string
+            itemId:
+              type: string
+            locked:
+              type: boolean
+            docRevision:
+              type: integer
+  FunctionsShowRippleInsertTimeRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.show.rippleInsertTime
+        params:
+          type: object
+          required:
+          - showId
+          - cursorTime
+          - length
+          - baseRevision
+          description: Inserts $length ms at $cursorTime, pushing/stretching every item covering or after
+            that point on every track. Mirrors ShowManager::insertTimeAtCursor.
+          properties:
+            showId:
+              type: string
+            cursorTime:
+              type: integer
+            length:
+              type: integer
+            baseRevision:
+              type: integer
+  FunctionsShowRippleInsertTimeResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsShowRippleInsertTimeOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsShowRippleInsertTimeOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - docRevision
+          properties:
+            docRevision:
+              type: integer
+  FunctionsShowRippleCutTimeRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.show.rippleCutTime
+        params:
+          type: object
+          required:
+          - showId
+          - cursorTime
+          - length
+          - baseRevision
+          description: Removes $length ms at $cursorTime, pulling/shrinking every item covering or after
+            that point on every track. Mirrors ShowManager::cutTimeAtCursor.
+          properties:
+            showId:
+              type: string
+            cursorTime:
+              type: integer
+            length:
+              type: integer
+            baseRevision:
+              type: integer
+  FunctionsShowRippleCutTimeResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsShowRippleCutTimeOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsShowRippleCutTimeOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - docRevision
+          properties:
+            docRevision:
+              type: integer
+  FunctionsShowItemsChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      description: Bulk item event for mutations that can touch many items across many tracks at once
+        (functions.show.rippleInsertTime, functions.show.rippleCutTime). Carries an RFC 6902 JSON Patch
+        against the flattened item list, per 00-conventions.md §4a's guidance for large nested resources.
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.show.itemsChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - showId
+          - patch
+          - docRevision
+          properties:
+            showId:
+              type: string
+            patch:
+              type: array
+              items:
+                type: object
+              description: RFC 6902 JSON Patch operations against the tracks[].items arrays
+            docRevision:
+              type: integer
+  FunctionsShowPlayheadEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      description: Live (§4b) playhead position while a Show is running. Subscribe-gated, see notes.md.
+        Not persisted - has no docRevision.
+      properties:
+        type:
+          const: event
+        topic:
+          type: string
+          pattern: ^functions\.show\.[^.]+\.playhead$
+          examples:
+          - functions.show.42.playhead
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - functionId
+          - time
+          properties:
+            functionId:
+              type: string
+            time:
+              type: integer
+              description: Elapsed milliseconds since the Show started (ShowRunner's cursor)
+  FunctionsAudioListCapabilitiesRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.audio.listCapabilities
+        params:
+          type: object
+          description: No parameters. Reflects the engine build's decoder support (Audio::getCapabilities).
+  FunctionsAudioListCapabilitiesResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsAudioListCapabilitiesOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsAudioListCapabilitiesOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - extensions
+          properties:
+            extensions:
+              type: array
+              items:
+                type: string
+              description: Supported source file extensions, e.g. 'wav', 'mp3'
+  FunctionsAudioSetSourceRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.audio.setSource
+        params:
+          type: object
+          required:
+          - functionId
+          - sourceFileName
+          - baseRevision
+          properties:
+            functionId:
+              type: string
+            sourceFileName:
+              type: string
+              description: Path resolved on the engine host machine, not the client
+            baseRevision:
+              type: integer
+  FunctionsAudioSetSourceResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsAudioSetSourceOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsAudioSetSourceOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - docRevision
+          properties:
+            docRevision:
+              type: integer
+  FunctionsAudioSourceChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.audio.sourceChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - functionId
+          - sourceFileName
+          - detectedDurationMs
+          - docRevision
+          properties:
+            functionId:
+              type: string
+            sourceFileName:
+              type: string
+            detectedDurationMs:
+              type: integer
+              description: Duration the decoder detected in the new file (Audio::totalDuration() right
+                after load)
+            docRevision:
+              type: integer
+  FunctionsAudioSetVolumeRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.audio.setVolume
+        params:
+          type: object
+          required:
+          - functionId
+          - volume
+          - baseRevision
+          description: Sets the function's persisted startup volume. For live fader-drag control while
+            the Audio is playing, use functions-core's generic attribute-override mechanism instead (see
+            notes.md).
+          properties:
+            functionId:
+              type: string
+            volume:
+              type: number
+              minimum: 0
+              maximum: 1
+            baseRevision:
+              type: integer
+  FunctionsAudioSetVolumeResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsAudioSetVolumeOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsAudioSetVolumeOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - docRevision
+          properties:
+            docRevision:
+              type: integer
+  FunctionsAudioVolumeChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.audio.volumeChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - functionId
+          - volume
+          - docRevision
+          properties:
+            functionId:
+              type: string
+            volume:
+              type: number
+            docRevision:
+              type: integer
+  FunctionsAudioSetDurationRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.audio.setDuration
+        params:
+          type: object
+          required:
+          - functionId
+          - duration
+          - baseRevision
+          description: Overrides the playback duration (Audio::setTotalDuration) independent of the source
+            file's own detected length.
+          properties:
+            functionId:
+              type: string
+            duration:
+              type: integer
+              description: Milliseconds
+            baseRevision:
+              type: integer
+  FunctionsAudioSetDurationResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsAudioSetDurationOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsAudioSetDurationOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - docRevision
+          properties:
+            docRevision:
+              type: integer
+  FunctionsAudioDurationChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.audio.durationChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - functionId
+          - duration
+          - docRevision
+          properties:
+            functionId:
+              type: string
+            duration:
+              type: integer
+            docRevision:
+              type: integer
+  FunctionsAudioSetDeviceRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.audio.setDevice
+        params:
+          type: object
+          required:
+          - functionId
+          - audioDevice
+          - baseRevision
+          description: audioDevice is an opaque output-device identifier string on the engine host; empty
+            string means 'use the global default output'. Enumerating available devices is out of scope
+            for this fragment - see notes.md.
+          properties:
+            functionId:
+              type: string
+            audioDevice:
+              type: string
+            baseRevision:
+              type: integer
+  FunctionsAudioSetDeviceResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsAudioSetDeviceOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsAudioSetDeviceOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - docRevision
+          properties:
+            docRevision:
+              type: integer
+  FunctionsAudioDeviceChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.audio.deviceChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - functionId
+          - audioDevice
+          - docRevision
+          properties:
+            functionId:
+              type: string
+            audioDevice:
+              type: string
+            docRevision:
+              type: integer
+  FunctionsAudioPlaybackEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      description: Live (§4b) playback position. Subscribe-gated, see notes.md. Not persisted - has no
+        docRevision.
+      properties:
+        type:
+          const: event
+        topic:
+          type: string
+          pattern: ^functions\.audio\.[^.]+\.playback$
+          examples:
+          - functions.audio.17.playback
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - functionId
+          - elapsedMs
+          - totalMs
+          - state
+          properties:
+            functionId:
+              type: string
+            elapsedMs:
+              type: integer
+            totalMs:
+              type: integer
+            state:
+              type: string
+              enum:
+              - playing
+              - paused
+              - stopped
+  FunctionsVideoListCapabilitiesRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.video.listCapabilities
+        params:
+          type: object
+          description: No parameters. Reflects the engine build's decoder support and the engine host's
+            display topology (see notes.md - screens are on the engine host, not the client).
+  FunctionsVideoListCapabilitiesResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsVideoListCapabilitiesOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsVideoListCapabilitiesOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - videoExtensions
+          - pictureExtensions
+          - screens
+          properties:
+            videoExtensions:
+              type: array
+              items:
+                type: string
+            pictureExtensions:
+              type: array
+              items:
+                type: string
+            screens:
+              type: array
+              description: Displays available on the engine host machine for functions.video.setScreenTarget
+              items:
+                type: object
+                required:
+                - index
+                - name
+                properties:
+                  index:
+                    type: integer
+                  name:
+                    type: string
+  FunctionsVideoSetSourceRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.video.setSource
+        params:
+          type: object
+          required:
+          - functionId
+          - sourceUrl
+          - baseRevision
+          properties:
+            functionId:
+              type: string
+            sourceUrl:
+              type: string
+              description: Path/URL resolved on the engine host machine, not the client
+            baseRevision:
+              type: integer
+  FunctionsVideoSetSourceResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsVideoSetSourceOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsVideoSetSourceOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - docRevision
+          properties:
+            docRevision:
+              type: integer
+  FunctionsVideoSourceChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.video.sourceChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - functionId
+          - sourceUrl
+          - isPicture
+          - docRevision
+          properties:
+            functionId:
+              type: string
+            sourceUrl:
+              type: string
+            isPicture:
+              type: boolean
+            detectedResolution:
+              type: object
+              properties:
+                width:
+                  type: integer
+                height:
+                  type: integer
+            detectedDurationMs:
+              type: integer
+              description: 0/absent for a picture source
+            videoCodec:
+              type: string
+            audioCodec:
+              type: string
+            docRevision:
+              type: integer
+  FunctionsVideoSetGeometryRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.video.setGeometry
+        params:
+          type: object
+          required:
+          - functionId
+          - baseRevision
+          properties:
+            functionId:
+              type: string
+            customGeometry:
+              type:
+              - object
+              - 'null'
+              description: null clears custom geometry (renders at natural/fullscreen size)
+              properties:
+                x:
+                  type: integer
+                y:
+                  type: integer
+                width:
+                  type: integer
+                height:
+                  type: integer
+            baseRevision:
+              type: integer
+  FunctionsVideoSetGeometryResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsVideoSetGeometryOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsVideoSetGeometryOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - docRevision
+          properties:
+            docRevision:
+              type: integer
+  FunctionsVideoGeometryChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.video.geometryChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - functionId
+          - docRevision
+          properties:
+            functionId:
+              type: string
+            customGeometry:
+              type:
+              - object
+              - 'null'
+              properties:
+                x:
+                  type: integer
+                y:
+                  type: integer
+                width:
+                  type: integer
+                height:
+                  type: integer
+            docRevision:
+              type: integer
+  FunctionsVideoSetRotationRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.video.setRotation
+        params:
+          type: object
+          required:
+          - functionId
+          - rotation
+          - baseRevision
+          description: Sets the designed/structural rotation. Live per-axis override via a VC control
+            uses functions-core's generic attribute mechanism (Video::VideoAttr XRotation/YRotation/ZRotation)
+            - not redefined here.
+          properties:
+            functionId:
+              type: string
+            rotation:
+              type: object
+              required:
+              - x
+              - y
+              - z
+              properties:
+                x:
+                  type: number
+                y:
+                  type: number
+                z:
+                  type: number
+            baseRevision:
+              type: integer
+  FunctionsVideoSetRotationResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsVideoSetRotationOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsVideoSetRotationOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - docRevision
+          properties:
+            docRevision:
+              type: integer
+  FunctionsVideoRotationChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.video.rotationChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - functionId
+          - rotation
+          - docRevision
+          properties:
+            functionId:
+              type: string
+            rotation:
+              type: object
+              properties:
+                x:
+                  type: number
+                y:
+                  type: number
+                z:
+                  type: number
+            docRevision:
+              type: integer
+  FunctionsVideoSetLayerRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.video.setLayer
+        params:
+          type: object
+          required:
+          - functionId
+          - zIndex
+          - baseRevision
+          properties:
+            functionId:
+              type: string
+            zIndex:
+              type: integer
+            baseRevision:
+              type: integer
+  FunctionsVideoSetLayerResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsVideoSetLayerOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsVideoSetLayerOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - docRevision
+          properties:
+            docRevision:
+              type: integer
+  FunctionsVideoLayerChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.video.layerChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - functionId
+          - zIndex
+          - docRevision
+          properties:
+            functionId:
+              type: string
+            zIndex:
+              type: integer
+            docRevision:
+              type: integer
+  FunctionsVideoSetScreenTargetRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.video.setScreenTarget
+        params:
+          type: object
+          required:
+          - functionId
+          - screen
+          - fullscreen
+          - baseRevision
+          properties:
+            functionId:
+              type: string
+            screen:
+              type: integer
+              description: Index into functions.video.listCapabilities' screens array
+            fullscreen:
+              type: boolean
+            baseRevision:
+              type: integer
+  FunctionsVideoSetScreenTargetResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsVideoSetScreenTargetOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsVideoSetScreenTargetOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - docRevision
+          properties:
+            docRevision:
+              type: integer
+  FunctionsVideoScreenTargetChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.video.screenTargetChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - functionId
+          - screen
+          - fullscreen
+          - docRevision
+          properties:
+            functionId:
+              type: string
+            screen:
+              type: integer
+            fullscreen:
+              type: boolean
+            docRevision:
+              type: integer
+  FunctionsVideoPlaybackEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      description: Live (§4b) playback position. Subscribe-gated, see notes.md. Not persisted - has no
+        docRevision.
+      properties:
+        type:
+          const: event
+        topic:
+          type: string
+          pattern: ^functions\.video\.[^.]+\.playback$
+          examples:
+          - functions.video.23.playback
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - functionId
+          - elapsedMs
+          - totalMs
+          - state
+          properties:
+            functionId:
+              type: string
+            elapsedMs:
+              type: integer
+            totalMs:
+              type: integer
+            state:
+              type: string
+              enum:
+              - playing
+              - paused
+              - stopped
+schemas:
+  FunctionsRgbMatrixAlgorithmType:
+    type: string
+    enum:
+    - plain
+    - text
+    - script
+    - image
+    - audio
+    description: RGBAlgorithm::Type. 'audio' here means the audio-reactive color algorithm (RGBAudio),
+      unrelated to the Audio function type.
+  FunctionsRgbMatrixAlgorithm:
+    type: object
+    required:
+    - type
+    description: 'Flat, not a strict oneOf: only the fields relevant to `type` are meaningful, the rest
+      are ignored by the engine. See functions-advanced-notes.md for why this shape was chosen over a
+      discriminated union.
+
+      '
+    properties:
+      type:
+        $ref: '#/components/schemas/FunctionsRgbMatrixAlgorithmType'
+      scriptName:
+        type: string
+        description: type=script only. One of functions.rgbmatrix.listAlgorithms' script entries
+      scriptProperties:
+        type: array
+        description: type=script only. Current values of the script's exposed properties.
+        items:
+          type: object
+          required:
+          - name
+          - value
+          properties:
+            name:
+              type: string
+            value:
+              type: string
+      text:
+        type: string
+        description: type=text only
+      font:
+        type: object
+        description: type=text only
+        properties:
+          family:
+            type: string
+          pointSize:
+            type: integer
+          bold:
+            type: boolean
+          italic:
+            type: boolean
+      imagePath:
+        type: string
+        description: type=image only. Path resolved on the engine host machine.
+      animationStyle:
+        type: string
+        description: 'type=text only: one of staticLetters, horizontal, vertical. type=image only: one
+          of static, horizontal, vertical, animation (the animated-source case, e.g. an animated GIF).
+
+          '
+        enum:
+        - staticLetters
+        - static
+        - horizontal
+        - vertical
+        - animation
+      xOffset:
+        type: integer
+        description: type=text|image only
+      yOffset:
+        type: integer
+        description: type=text|image only
+  FunctionsRgbMatrixScriptPropertyDef:
+    type: object
+    required:
+    - name
+    - displayName
+    - type
+    properties:
+      name:
+        type: string
+        description: Key to use in FunctionsRgbMatrixAlgorithm.scriptProperties / functions.rgbmatrix.setScriptProperty
+      displayName:
+        type: string
+      type:
+        type: string
+        enum:
+        - list
+        - range
+        - float
+        - string
+      listValues:
+        type: array
+        items:
+          type: string
+        description: type=list only
+      rangeMin:
+        type: integer
+        description: type=range only
+      rangeMax:
+        type: integer
+        description: type=range only
+  FunctionsRgbMatrixControlMode:
+    type: string
+    enum:
+    - rgb
+    - white
+    - amber
+    - uv
+    - dimmer
+    - shutter
+    description: RGBMatrix::ControlMode
+  FunctionsBlendMode:
+    type: string
+    enum:
+    - normal
+    - mask
+    - additive
+    - subtractive
+    description: Universe::BlendMode
+  FunctionsRgbMatrixConfig:
+    type: object
+    required:
+    - fixtureGroupId
+    - algorithm
+    - colors
+    - controlMode
+    properties:
+      fixtureGroupId:
+        type: string
+        description: Opaque Fixture Group ID (owned by the fixtures domain fragment)
+      algorithm:
+        $ref: '#/components/schemas/FunctionsRgbMatrixAlgorithm'
+      colors:
+        type: array
+        description: Up to 5 slots (Color1..Color5); a slot's value is null when unset (RGBMatrixEditor::hasColorAtIndex()==false,
+          algorithm falls back to its own default)
+        minItems: 5
+        maxItems: 5
+        items:
+          type:
+          - string
+          - 'null'
+      controlMode:
+        $ref: '#/components/schemas/FunctionsRgbMatrixControlMode'
+      blendMode:
+        $ref: '#/components/schemas/FunctionsBlendMode'
+      dimmerControl:
+        type: boolean
+        description: Legacy flag, superseded by controlMode=dimmer. See notes.md.
+  FunctionsShowTimeDivision:
+    type: string
+    enum:
+    - time
+    - bpm_4_4
+    - bpm_3_4
+    - bpm_2_4
+    description: Show::TimeDivision
+  FunctionsShowItem:
+    type: object
+    required:
+    - id
+    - functionId
+    - startTime
+    - duration
+    - color
+    - locked
+    properties:
+      id:
+        type: string
+        description: ShowFunction ID, unique within the Show
+      functionId:
+        type: string
+        description: The generic function object placed on the timeline
+      startTime:
+        type: integer
+        description: Milliseconds from the Show's start
+      duration:
+        type: integer
+        description: Milliseconds; independent of the placed function's own duration
+      color:
+        type: string
+      locked:
+        type: boolean
+  FunctionsShowTrack:
+    type: object
+    required:
+    - id
+    - name
+    - mute
+    - items
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+      sceneId:
+        type: string
+        description: Bound Scene function, if any (absent for an audio/video-only track)
+      mute:
+        type: boolean
+      items:
+        type: array
+        items:
+          $ref: '#/components/schemas/FunctionsShowItem'
+  FunctionsAudioConfig:
+    type: object
+    required:
+    - sourceFileName
+    - volume
+    - duration
+    properties:
+      sourceFileName:
+        type: string
+      volume:
+        type: number
+        minimum: 0
+        maximum: 1
+        description: Persisted startup volume
+      duration:
+        type: integer
+        description: Milliseconds; playback duration (may differ from the source file's own detected length,
+          see Audio::setTotalDuration)
+      audioDevice:
+        type: string
+        description: Output device identifier on the engine host; empty = global default
+  FunctionsVideoConfig:
+    type: object
+    required:
+    - sourceUrl
+    - zIndex
+    - screen
+    - fullscreen
+    properties:
+      sourceUrl:
+        type: string
+      isPicture:
+        type: boolean
+        description: Read-only, detected from the source
+      resolution:
+        type: object
+        description: Read-only, detected from the source
+        properties:
+          width:
+            type: integer
+          height:
+            type: integer
+      videoCodec:
+        type: string
+        description: Read-only, detected
+      audioCodec:
+        type: string
+        description: Read-only, detected
+      customGeometry:
+        type:
+        - object
+        - 'null'
+        properties:
+          x:
+            type: integer
+          y:
+            type: integer
+          width:
+            type: integer
+          height:
+            type: integer
+      rotation:
+        type: object
+        properties:
+          x:
+            type: number
+          y:
+            type: number
+          z:
+            type: number
+      zIndex:
+        type: integer
+      screen:
+        type: integer
+      fullscreen:
+        type: boolean
+  FunctionsRgbMatrixDetail:
+    type: object
+    required:
+    - functionId
+    - config
+    - docRevision
+    properties:
+      functionId:
+        type: string
+      config:
+        $ref: '#/components/schemas/FunctionsRgbMatrixConfig'
+      docRevision:
+        type: integer
+  FunctionsScriptDetail:
+    type: object
+    required:
+    - functionId
+    - source
+    - docRevision
+    properties:
+      functionId:
+        type: string
+      source:
+        type: string
+        description: Full raw script text (Script::data())
+      docRevision:
+        type: integer
+  FunctionsShowDetail:
+    type: object
+    required:
+    - functionId
+    - timeDivisionType
+    - timeDivisionBPM
+    - tracks
+    - docRevision
+    properties:
+      functionId:
+        type: string
+      timeDivisionType:
+        $ref: '#/components/schemas/FunctionsShowTimeDivision'
+      timeDivisionBPM:
+        type: integer
+      tracks:
+        type: array
+        items:
+          $ref: '#/components/schemas/FunctionsShowTrack'
+      docRevision:
+        type: integer
+  FunctionsAudioDetail:
+    type: object
+    required:
+    - functionId
+    - config
+    - docRevision
+    properties:
+      functionId:
+        type: string
+      config:
+        $ref: '#/components/schemas/FunctionsAudioConfig'
+      docRevision:
+        type: integer
+  FunctionsVideoDetail:
+    type: object
+    required:
+    - functionId
+    - config
+    - docRevision
+    properties:
+      functionId:
+        type: string
+      config:
+        $ref: '#/components/schemas/FunctionsVideoConfig'
+      docRevision:
+        type: integer
+operations:
+  sendFunctionsRgbMatrixListAlgorithms:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsRgbMatrixListAlgorithmsRequest'
+  receiveFunctionsRgbMatrixListAlgorithmsResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsRgbMatrixListAlgorithmsResponse'
+  sendFunctionsRgbMatrixGetScriptProperties:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsRgbMatrixGetScriptPropertiesRequest'
+  receiveFunctionsRgbMatrixGetScriptPropertiesResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsRgbMatrixGetScriptPropertiesResponse'
+  sendFunctionsRgbMatrixGetPreview:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsRgbMatrixGetPreviewRequest'
+  receiveFunctionsRgbMatrixGetPreviewResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsRgbMatrixGetPreviewResponse'
+  sendFunctionsRgbMatrixSetConfig:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsRgbMatrixSetConfigRequest'
+  receiveFunctionsRgbMatrixSetConfigResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsRgbMatrixSetConfigResponse'
+  receiveFunctionsRgbMatrixConfigChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsRgbMatrixConfigChangedEvent'
+  sendFunctionsRgbMatrixSetScriptProperty:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsRgbMatrixSetScriptPropertyRequest'
+  receiveFunctionsRgbMatrixSetScriptPropertyResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsRgbMatrixSetScriptPropertyResponse'
+  receiveFunctionsRgbMatrixScriptPropertyChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsRgbMatrixScriptPropertyChangedEvent'
+  sendFunctionsScriptValidate:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsScriptValidateRequest'
+  receiveFunctionsScriptValidateResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsScriptValidateResponse'
+  sendFunctionsScriptListCommands:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsScriptListCommandsRequest'
+  receiveFunctionsScriptListCommandsResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsScriptListCommandsResponse'
+  sendFunctionsScriptSetSource:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsScriptSetSourceRequest'
+  receiveFunctionsScriptSetSourceResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsScriptSetSourceResponse'
+  sendFunctionsScriptAppendLine:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsScriptAppendLineRequest'
+  receiveFunctionsScriptAppendLineResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsScriptAppendLineResponse'
+  receiveFunctionsScriptSourceChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsScriptSourceChangedEvent'
+  sendFunctionsShowSetTimeDivision:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowSetTimeDivisionRequest'
+  receiveFunctionsShowSetTimeDivisionResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowSetTimeDivisionResponse'
+  receiveFunctionsShowTimeDivisionChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowTimeDivisionChangedEvent'
+  sendFunctionsShowTrackAdd:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowTrackAddRequest'
+  receiveFunctionsShowTrackAddResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowTrackAddResponse'
+  receiveFunctionsShowTrackAdded:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowTrackAddedEvent'
+  sendFunctionsShowTrackRemove:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowTrackRemoveRequest'
+  receiveFunctionsShowTrackRemoveResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowTrackRemoveResponse'
+  receiveFunctionsShowTrackRemoved:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowTrackRemovedEvent'
+  sendFunctionsShowTrackRename:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowTrackRenameRequest'
+  receiveFunctionsShowTrackRenameResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowTrackRenameResponse'
+  receiveFunctionsShowTrackRenamed:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowTrackRenamedEvent'
+  sendFunctionsShowTrackSetMute:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowTrackSetMuteRequest'
+  receiveFunctionsShowTrackSetMuteResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowTrackSetMuteResponse'
+  receiveFunctionsShowTrackMuteChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowTrackMuteChangedEvent'
+  sendFunctionsShowTrackSetSolo:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowTrackSetSoloRequest'
+  receiveFunctionsShowTrackSetSoloResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowTrackSetSoloResponse'
+  sendFunctionsShowTrackMove:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowTrackMoveRequest'
+  receiveFunctionsShowTrackMoveResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowTrackMoveResponse'
+  receiveFunctionsShowTracksChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowTracksChangedEvent'
+  sendFunctionsShowItemAdd:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowItemAddRequest'
+  receiveFunctionsShowItemAddResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowItemAddResponse'
+  receiveFunctionsShowItemAdded:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowItemAddedEvent'
+  sendFunctionsShowItemRemove:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowItemRemoveRequest'
+  receiveFunctionsShowItemRemoveResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowItemRemoveResponse'
+  receiveFunctionsShowItemRemoved:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowItemRemovedEvent'
+  sendFunctionsShowItemMove:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowItemMoveRequest'
+  receiveFunctionsShowItemMoveResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowItemMoveResponse'
+  receiveFunctionsShowItemMoved:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowItemMovedEvent'
+  sendFunctionsShowItemResize:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowItemResizeRequest'
+  receiveFunctionsShowItemResizeResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowItemResizeResponse'
+  receiveFunctionsShowItemResized:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowItemResizedEvent'
+  sendFunctionsShowItemSetColor:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowItemSetColorRequest'
+  receiveFunctionsShowItemSetColorResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowItemSetColorResponse'
+  receiveFunctionsShowItemColorChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowItemColorChangedEvent'
+  sendFunctionsShowItemSetLocked:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowItemSetLockedRequest'
+  receiveFunctionsShowItemSetLockedResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowItemSetLockedResponse'
+  receiveFunctionsShowItemLockedChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowItemLockedChangedEvent'
+  sendFunctionsShowRippleInsertTime:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowRippleInsertTimeRequest'
+  receiveFunctionsShowRippleInsertTimeResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowRippleInsertTimeResponse'
+  sendFunctionsShowRippleCutTime:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowRippleCutTimeRequest'
+  receiveFunctionsShowRippleCutTimeResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowRippleCutTimeResponse'
+  receiveFunctionsShowItemsChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowItemsChangedEvent'
+  receiveFunctionsShowPlayhead:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowPlayheadEvent'
+  sendFunctionsAudioListCapabilities:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsAudioListCapabilitiesRequest'
+  receiveFunctionsAudioListCapabilitiesResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsAudioListCapabilitiesResponse'
+  sendFunctionsAudioSetSource:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsAudioSetSourceRequest'
+  receiveFunctionsAudioSetSourceResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsAudioSetSourceResponse'
+  receiveFunctionsAudioSourceChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsAudioSourceChangedEvent'
+  sendFunctionsAudioSetVolume:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsAudioSetVolumeRequest'
+  receiveFunctionsAudioSetVolumeResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsAudioSetVolumeResponse'
+  receiveFunctionsAudioVolumeChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsAudioVolumeChangedEvent'
+  sendFunctionsAudioSetDuration:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsAudioSetDurationRequest'
+  receiveFunctionsAudioSetDurationResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsAudioSetDurationResponse'
+  receiveFunctionsAudioDurationChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsAudioDurationChangedEvent'
+  sendFunctionsAudioSetDevice:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsAudioSetDeviceRequest'
+  receiveFunctionsAudioSetDeviceResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsAudioSetDeviceResponse'
+  receiveFunctionsAudioDeviceChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsAudioDeviceChangedEvent'
+  receiveFunctionsAudioPlayback:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsAudioPlaybackEvent'
+  sendFunctionsVideoListCapabilities:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsVideoListCapabilitiesRequest'
+  receiveFunctionsVideoListCapabilitiesResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsVideoListCapabilitiesResponse'
+  sendFunctionsVideoSetSource:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsVideoSetSourceRequest'
+  receiveFunctionsVideoSetSourceResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsVideoSetSourceResponse'
+  receiveFunctionsVideoSourceChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsVideoSourceChangedEvent'
+  sendFunctionsVideoSetGeometry:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsVideoSetGeometryRequest'
+  receiveFunctionsVideoSetGeometryResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsVideoSetGeometryResponse'
+  receiveFunctionsVideoGeometryChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsVideoGeometryChangedEvent'
+  sendFunctionsVideoSetRotation:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsVideoSetRotationRequest'
+  receiveFunctionsVideoSetRotationResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsVideoSetRotationResponse'
+  receiveFunctionsVideoRotationChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsVideoRotationChangedEvent'
+  sendFunctionsVideoSetLayer:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsVideoSetLayerRequest'
+  receiveFunctionsVideoSetLayerResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsVideoSetLayerResponse'
+  receiveFunctionsVideoLayerChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsVideoLayerChangedEvent'
+  sendFunctionsVideoSetScreenTarget:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsVideoSetScreenTargetRequest'
+  receiveFunctionsVideoSetScreenTargetResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsVideoSetScreenTargetResponse'
+  receiveFunctionsVideoScreenTargetChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsVideoScreenTargetChangedEvent'
+  receiveFunctionsVideoPlayback:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsVideoPlaybackEvent'

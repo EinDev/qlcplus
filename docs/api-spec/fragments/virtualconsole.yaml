@@ -1,0 +1,5846 @@
+messages:
+  VcDocRevisionOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - docRevision
+          properties:
+            docRevision:
+              type: integer
+  VcPageListRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.page.list
+        params:
+          type: object
+  VcPageListResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcPageListOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcPageListOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - pages
+          - selectedPage
+          properties:
+            pages:
+              type: array
+              items:
+                $ref: '#/components/schemas/VcPage'
+            selectedPage:
+              type: integer
+              description: Live/runtime - see vc.page.select.
+  VcPageCreateRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.page.create
+        params:
+          type: object
+          required:
+          - index
+          - baseRevision
+          properties:
+            index:
+              type: integer
+              description: VirtualConsole::addPage() - insertion index; the new page's caption defaults
+                to "Page N".
+            baseRevision:
+              type: integer
+  VcPageCreateResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcDocRevisionOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcPageCreatedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: vc.page.created
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - page
+          - docRevision
+          properties:
+            page:
+              $ref: '#/components/schemas/VcPage'
+            docRevision:
+              type: integer
+  VcPageDeleteRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.page.delete
+        params:
+          type: object
+          required:
+          - index
+          - baseRevision
+          description: VirtualConsole::deletePage() - also recursively deletes every widget on the page.
+          properties:
+            index:
+              type: integer
+            baseRevision:
+              type: integer
+  VcPageDeleteResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcDocRevisionOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcPageDeletedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: vc.page.deleted
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - index
+          - deletedWidgetIds
+          - docRevision
+          properties:
+            index:
+              type: integer
+            deletedWidgetIds:
+              type: array
+              items:
+                type: string
+            docRevision:
+              type: integer
+  VcPageRenameRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.page.rename
+        params:
+          type: object
+          required:
+          - index
+          - name
+          - baseRevision
+          description: A VCPage's name is its inherited VCWidget caption.
+          properties:
+            index:
+              type: integer
+            name:
+              type: string
+            baseRevision:
+              type: integer
+  VcPageRenameResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcDocRevisionOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcPageRenamedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: vc.page.renamed
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - index
+          - name
+          - docRevision
+          properties:
+            index:
+              type: integer
+            name:
+              type: string
+            docRevision:
+              type: integer
+  VcPageSetPinRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.page.setPin
+        params:
+          type: object
+          required:
+          - index
+          - baseRevision
+          description: 'VirtualConsole::setPagePIN(). currentPIN must match the page''s existing PIN (empty
+            string if none); newPIN empty clears protection. Mirrors vc.frame.setPin for a nested VCFrame''s
+            own PIN - a VCPage IS-A VCFrame (see VCPage : public VCFrame) but page-level PIN is set through
+            this dedicated pair for symmetry with VirtualConsole''s own page API.
+
+            '
+          properties:
+            index:
+              type: integer
+            currentPIN:
+              type: string
+              default: ''
+            newPIN:
+              type: string
+              default: ''
+            baseRevision:
+              type: integer
+  VcPageSetPinResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcDocRevisionOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcPageValidatePinRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.page.validatePin
+        params:
+          type: object
+          required:
+          - index
+          - pin
+          description: 'VirtualConsole::validatePagePIN(). Live/session-scoped: a correct PIN unlocks
+            the page for this client''s session only (per-connection, not broadcast), matching "remember"
+            behaviour in the current UI.
+
+            '
+          properties:
+            index:
+              type: integer
+            pin:
+              type: string
+  VcPageValidatePinResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcPageValidatePinOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcPageValidatePinOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - valid
+          properties:
+            valid:
+              type: boolean
+  VcPageSelectRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.page.select
+        params:
+          type: object
+          required:
+          - index
+          description: 'Live/runtime (§4b) - "which VC page is showing" is explicitly called out as ephemeral
+            in 00-conventions.md §4b. Per-client in spirit (each operator''s screen can show a different
+            page), but modelled here as a single shared value mirroring VirtualConsole::selectedPage,
+            matching today''s single-selection engine model. See notes.md.
+
+            '
+          properties:
+            index:
+              type: integer
+  VcPageSelectResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/GenericAckResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcPageSelectedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: vc.page.selected
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - index
+          properties:
+            index:
+              type: integer
+  VcWidgetListRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.widget.list
+        params:
+          type: object
+          description: VirtualConsole::widgetsList().
+          properties:
+            page:
+              type: integer
+              description: Optional filter - only widgets on this top-level page.
+            parentId:
+              type: string
+              description: Optional filter - only direct children of this Frame/SoloFrame/Page widget.
+            typeFilters:
+              type: array
+              items:
+                $ref: '#/components/schemas/VcWidgetType'
+  VcWidgetListResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcWidgetListOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcWidgetListOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - widgets
+          properties:
+            widgets:
+              type: array
+              items:
+                $ref: '#/components/schemas/VcWidgetSummary'
+  VcWidgetGetRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.widget.get
+        params:
+          type: object
+          required:
+          - widgetId
+          properties:
+            widgetId:
+              type: string
+  VcWidgetGetResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcWidgetGetOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcWidgetGetOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          $ref: '#/components/schemas/VcWidgetDetail'
+  VcWidgetUsageRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.widget.usage
+        params:
+          type: object
+          required:
+          - functionId
+          properties:
+            functionId:
+              type: string
+              description: VirtualConsole::usageList() - every widget that references this Function ID
+                in some way (attached, controlled, chaser, schedule...).
+  VcWidgetUsageResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcWidgetUsageOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcWidgetUsageOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - widgets
+          properties:
+            widgets:
+              type: array
+              items:
+                $ref: '#/components/schemas/VcWidgetSummary'
+  VcWidgetCreateRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.widget.create
+        params:
+          type: object
+          required:
+          - widgetType
+          - page
+          - geometry
+          - baseRevision
+          description: 'Generic creation for any of the 11 widget types. $parentId is the containing Frame/SoloFrame
+            widget ID, or absent to place the widget directly on the page''s root. $typeConfig''s shape
+            depends on $widgetType - see the Vc<Type>Config schemas (VcButtonConfig, VcSliderConfig, VcXyPadConfig,
+            VcFrameConfig, VcSoloFrameConfig, VcClockConfig, VcCueListConfig, VcSpeedDialConfig, VcAnimationConfig,
+            VcAudioTriggersConfig; VCLabel has no type-specific config). Omit $typeConfig for engine defaults.
+
+            '
+          properties:
+            widgetType:
+              $ref: '#/components/schemas/VcWidgetType'
+            page:
+              type: integer
+            parentId:
+              type: string
+            geometry:
+              $ref: '#/components/schemas/VcGeometry'
+            style:
+              $ref: '#/components/schemas/VcWidgetStyle'
+            typeConfig:
+              type: object
+            baseRevision:
+              type: integer
+  VcWidgetCreateResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcWidgetCreateOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcWidgetCreateOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - docRevision
+          - widgetId
+          properties:
+            docRevision:
+              type: integer
+            widgetId:
+              type: string
+  VcWidgetCreatedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: vc.widget.created
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - widget
+          - docRevision
+          properties:
+            widget:
+              $ref: '#/components/schemas/VcWidgetDetail'
+            docRevision:
+              type: integer
+  VcWidgetCreateMatrixRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.widget.createMatrix
+        params:
+          type: object
+          required:
+          - parentId
+          - matrixType
+          - position
+          - matrixSize
+          - widgetSize
+          - baseRevision
+          description: VCFrame::addWidgetMatrix() - bulk-creates a grid of identical widgets, optionally
+            wrapped in a container Frame/SoloFrame.
+          properties:
+            parentId:
+              type: string
+            matrixType:
+              $ref: '#/components/schemas/VcWidgetType'
+            position:
+              type: object
+              required:
+              - x
+              - y
+              properties:
+                x:
+                  type: integer
+                y:
+                  type: integer
+            matrixSize:
+              type: object
+              required:
+              - columns
+              - rows
+              properties:
+                columns:
+                  type: integer
+                rows:
+                  type: integer
+            widgetSize:
+              type: object
+              required:
+              - width
+              - height
+              properties:
+                width:
+                  type: integer
+                height:
+                  type: integer
+            soloFrame:
+              type: boolean
+              default: false
+              description: Wrap the matrix in a VCSoloFrame instead of a plain VCFrame.
+            baseRevision:
+              type: integer
+  VcWidgetCreateMatrixResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcWidgetCreateMatrixOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcWidgetCreateMatrixOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - docRevision
+          - widgetIds
+          properties:
+            docRevision:
+              type: integer
+            widgetIds:
+              type: array
+              items:
+                type: string
+  VcWidgetCreateFromFunctionsRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.widget.createFromFunctions
+        params:
+          type: object
+          required:
+          - parentId
+          - functionIds
+          - position
+          - widgetHint
+          - baseRevision
+          description: 'VCFrame::addFunctions() - the "drop Functions from the Function Manager onto the
+            VC" gesture. $widgetHint mirrors the drag''s keyModifiers: "button" creates one VCButton per
+            Function; "adjustSlider" creates one VCSlider per Function in Adjust mode controlling Intensity;
+            "cueList" creates a single VCCueList (only valid when every functionId is a Chaser).
+
+            '
+          properties:
+            parentId:
+              type: string
+            functionIds:
+              type: array
+              items:
+                type: string
+              minItems: 1
+            position:
+              type: object
+              required:
+              - x
+              - y
+              properties:
+                x:
+                  type: integer
+                y:
+                  type: integer
+            widgetHint:
+              type: string
+              enum:
+              - button
+              - adjustSlider
+              - cueList
+            baseRevision:
+              type: integer
+  VcWidgetCreateFromFunctionsResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcWidgetCreateMatrixOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcWidgetUpdateRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.widget.update
+        params:
+          type: object
+          required:
+          - widgetId
+          - baseRevision
+          description: 'Updates any VCWidget base property (geometry/z-order/style/ enable/visibility/page);
+            at least one optional field must be present. For type-specific config use vc.widget.setConfig.
+
+            '
+          properties:
+            widgetId:
+              type: string
+            geometry:
+              $ref: '#/components/schemas/VcGeometry'
+            zIndex:
+              type: integer
+            allowResize:
+              type: boolean
+            isDisabled:
+              type: boolean
+              description: 'VCWidget::setDisabled() - persisted (e.g. VCFrame''s "Enable" header button
+                state is saved to the show file), so document-state despite also being a common live show-control
+                gesture. See notes.md.
+
+                '
+            isVisible:
+              type: boolean
+            page:
+              type: integer
+              description: Move the widget to a different top-level VC page.
+            style:
+              $ref: '#/components/schemas/VcWidgetStyle'
+            baseRevision:
+              type: integer
+  VcWidgetUpdateResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcDocRevisionOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcWidgetUpdatedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      description: Broadcast after vc.widget.update and after vc.widget.reparent (position-only moves
+        use vc.widget.repositioned, see below).
+      properties:
+        type:
+          const: event
+        topic:
+          const: vc.widget.updated
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - widget
+          - docRevision
+          properties:
+            widget:
+              $ref: '#/components/schemas/VcWidgetDetail'
+            docRevision:
+              type: integer
+  VcWidgetSetConfigRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.widget.setConfig
+        params:
+          type: object
+          required:
+          - widgetId
+          - config
+          - baseRevision
+          description: 'Structural (§4a) update of a widget''s type-specific configuration. $config is
+            a partial patch merged onto the existing typeConfig; shape depends on the widget''s type -
+            see the Vc<Type>Config schemas referenced from vc.widget.create.
+
+            '
+          properties:
+            widgetId:
+              type: string
+            config:
+              type: object
+            baseRevision:
+              type: integer
+  VcWidgetSetConfigResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcDocRevisionOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcWidgetConfigChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: vc.widget.configChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - widget
+          - docRevision
+          properties:
+            widget:
+              $ref: '#/components/schemas/VcWidgetDetail'
+            docRevision:
+              type: integer
+  VcWidgetDeleteRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.widget.delete
+        params:
+          type: object
+          required:
+          - widgetIds
+          - baseRevision
+          description: VirtualConsole::deleteVCWidgets() - bulk. Deleting a Frame/SoloFrame/Page recursively
+            deletes its children too.
+          properties:
+            widgetIds:
+              type: array
+              items:
+                type: string
+              minItems: 1
+            baseRevision:
+              type: integer
+  VcWidgetDeleteResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcDocRevisionOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcWidgetDeletedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: vc.widget.deleted
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - widgetIds
+          - docRevision
+          properties:
+            widgetIds:
+              type: array
+              items:
+                type: string
+            docRevision:
+              type: integer
+  VcWidgetReparentRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.widget.reparent
+        params:
+          type: object
+          required:
+          - widgetId
+          - position
+          - baseRevision
+          description: VirtualConsole::reparentWidget()+moveWidget() - drag a widget into a different
+            Frame/SoloFrame (or to page root via absent newParentId), at the given position within the
+            new parent.
+          properties:
+            widgetId:
+              type: string
+            newParentId:
+              type: string
+            position:
+              type: object
+              required:
+              - x
+              - y
+              properties:
+                x:
+                  type: integer
+                y:
+                  type: integer
+            baseRevision:
+              type: integer
+  VcWidgetReparentResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcDocRevisionOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcWidgetRepositionRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.widget.reposition
+        params:
+          type: object
+          required:
+          - widgets
+          - baseRevision
+          description: 'Bulk geometry commit for a drag/resize gesture on the current selection (one or
+            many widgets moved/resized together, same parent). One event covers the whole gesture rather
+            than one per widget.
+
+            '
+          properties:
+            widgets:
+              type: array
+              minItems: 1
+              items:
+                type: object
+                required:
+                - widgetId
+                - geometry
+                properties:
+                  widgetId:
+                    type: string
+                  geometry:
+                    $ref: '#/components/schemas/VcGeometry'
+            baseRevision:
+              type: integer
+  VcWidgetRepositionResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcDocRevisionOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcWidgetRepositionedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: vc.widget.repositioned
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - widgets
+          - docRevision
+          properties:
+            widgets:
+              type: array
+              items:
+                type: object
+                required:
+                - widgetId
+                - geometry
+                properties:
+                  widgetId:
+                    type: string
+                  geometry:
+                    $ref: '#/components/schemas/VcGeometry'
+            docRevision:
+              type: integer
+  VcWidgetAlignRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.widget.align
+        params:
+          type: object
+          required:
+          - widgetIds
+          - referenceWidgetId
+          - alignment
+          - baseRevision
+          description: VirtualConsole::setWidgetsAlignment().
+          properties:
+            widgetIds:
+              type: array
+              items:
+                type: string
+              minItems: 1
+            referenceWidgetId:
+              type: string
+              description: The widget the others align to.
+            alignment:
+              type: string
+              enum:
+              - left
+              - hcenter
+              - right
+              - top
+              - vcenter
+              - bottom
+            baseRevision:
+              type: integer
+  VcWidgetAlignResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcDocRevisionOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcWidgetDistributeRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.widget.distribute
+        params:
+          type: object
+          required:
+          - widgetIds
+          - direction
+          - baseRevision
+          description: VirtualConsole::setWidgetsDistribution().
+          properties:
+            widgetIds:
+              type: array
+              items:
+                type: string
+              minItems: 3
+            direction:
+              type: string
+              enum:
+              - horizontal
+              - vertical
+            baseRevision:
+              type: integer
+  VcWidgetDistributeResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcDocRevisionOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcWidgetBulkStyleRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.widget.bulkStyle
+        params:
+          type: object
+          required:
+          - widgetIds
+          - baseRevision
+          description: 'VirtualConsole::setWidgetsCaption/setWidgetsForegroundColor/ setWidgetsBackgroundColor/setWidgetsBackgroundImage/
+            setWidgetsFont() - applies the same style field(s) to every listed widget in one commit. At
+            least one optional field required.
+
+            '
+          properties:
+            widgetIds:
+              type: array
+              items:
+                type: string
+              minItems: 1
+            caption:
+              type: string
+            foregroundColor:
+              type: string
+              description: Hex, or null to reset to default.
+            backgroundColor:
+              type: string
+              description: Hex, or null to reset to default.
+            backgroundImage:
+              type: string
+              description: Path/resource, or null to clear.
+            font:
+              $ref: '#/components/schemas/VcFont'
+            baseRevision:
+              type: integer
+  VcWidgetBulkStyleResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcDocRevisionOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcWidgetsBulkUpdatedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      description: Broadcast after vc.widget.align, vc.widget.distribute, vc.widget.bulkStyle or vc.widget.reparent
+        - carries every affected widget's resulting full state.
+      properties:
+        type:
+          const: event
+        topic:
+          const: vc.widget.bulkUpdated
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - widgets
+          - docRevision
+          properties:
+            widgets:
+              type: array
+              items:
+                $ref: '#/components/schemas/VcWidgetDetail'
+            docRevision:
+              type: integer
+  VcWidgetInputSourceSetRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.widget.inputSource.set
+        params:
+          type: object
+          required:
+          - widgetId
+          - controlId
+          - universe
+          - channel
+          - baseRevision
+          description: VirtualConsole::createAndAddInputSource() / VCWidget::updateInputSource() - manual
+            (non-autodetect) binding of an external controller input to one of the widget's controls.
+          properties:
+            widgetId:
+              type: string
+            controlId:
+              type: integer
+              description: One of the widget's externalControls ids (see VcWidgetDetail.externalControls).
+            universe:
+              type: integer
+            channel:
+              type: integer
+            lowerValue:
+              type: integer
+              minimum: 0
+              maximum: 255
+            upperValue:
+              type: integer
+              minimum: 0
+              maximum: 255
+            monitorValue:
+              type: integer
+              minimum: 0
+              maximum: 255
+            baseRevision:
+              type: integer
+  VcWidgetInputSourceSetResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcDocRevisionOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcWidgetInputSourceRemoveRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.widget.inputSource.remove
+        params:
+          type: object
+          required:
+          - widgetId
+          - controlId
+          - universe
+          - channel
+          - baseRevision
+          properties:
+            widgetId:
+              type: string
+            controlId:
+              type: integer
+            universe:
+              type: integer
+            channel:
+              type: integer
+            baseRevision:
+              type: integer
+  VcWidgetInputSourceRemoveResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcDocRevisionOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcWidgetInputSourcesChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      description: Broadcast after vc.widget.inputSource.set/remove and after an autodetected source is
+        bound.
+      properties:
+        type:
+          const: event
+        topic:
+          const: vc.widget.inputSourcesChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - widgetId
+          - inputSources
+          - docRevision
+          properties:
+            widgetId:
+              type: string
+            inputSources:
+              type: array
+              items:
+                $ref: '#/components/schemas/VcInputSource'
+            docRevision:
+              type: integer
+  VcWidgetKeySequenceSetRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.widget.keySequence.set
+        params:
+          type: object
+          required:
+          - widgetId
+          - controlId
+          - keySequence
+          - baseRevision
+          description: VCWidget::addKeySequence()/updateKeySequence() - Qt key sequence text, e.g. "Ctrl+G".
+          properties:
+            widgetId:
+              type: string
+            controlId:
+              type: integer
+            keySequence:
+              type: string
+            baseRevision:
+              type: integer
+  VcWidgetKeySequenceSetResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcDocRevisionOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcWidgetKeySequenceRemoveRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.widget.keySequence.remove
+        params:
+          type: object
+          required:
+          - widgetId
+          - keySequence
+          - baseRevision
+          properties:
+            widgetId:
+              type: string
+            keySequence:
+              type: string
+            baseRevision:
+              type: integer
+  VcWidgetKeySequenceRemoveResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcDocRevisionOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcWidgetKeySequencesChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: vc.widget.keySequencesChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - widgetId
+          - keySequences
+          - docRevision
+          properties:
+            widgetId:
+              type: string
+            keySequences:
+              type: array
+              items:
+                type: object
+                required:
+                - keySequence
+                - controlId
+                properties:
+                  keySequence:
+                    type: string
+                  controlId:
+                    type: integer
+            docRevision:
+              type: integer
+  VcWidgetInputDetectStartRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.widget.inputDetect.start
+        params:
+          type: object
+          required:
+          - widgetId
+          - controlId
+          description: 'VirtualConsole::createAndDetectInputSource()/ enableInputSourceAutoDetection()
+            - "learn" wizard: the server starts listening for the next external controller signal on behalf
+            of the requesting client and, once received, binds it to $controlId and broadcasts vc.widget.inputSourcesChanged.
+            Live/session-scoped; superseded by a second call or vc.widget.inputDetect.stop.
+
+            '
+          properties:
+            widgetId:
+              type: string
+            controlId:
+              type: integer
+  VcWidgetInputDetectStartResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/GenericAckResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcWidgetInputDetectStopRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.widget.inputDetect.stop
+        params:
+          type: object
+  VcWidgetInputDetectStopResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/GenericAckResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcButtonPressRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.button.press
+        params:
+          type: object
+          required:
+          - widgetId
+          - pressed
+          description: 'VCButton::requestStateChange() - the single gesture backing press-and-release
+            (Flash), a full click (Toggle/Blackout), and "panic" (StopAll, $pressed ignored). Live (§4b):
+            no baseRevision. Behaviour branches on the widget''s actionType (document-state, see VcButtonConfig):
+            Toggle starts/stops functionID; Flash keeps it running only while pressed=true; Blackout toggles
+            global blackout (mirrors io.blackout.toggle - see notes.md); StopAll fades/stops every running
+            Function.
+
+            '
+          properties:
+            widgetId:
+              type: string
+            pressed:
+              type: boolean
+  VcButtonPressResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/GenericAckResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcButtonStateChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      description: 'Broadcast whenever a button''s visual press-state changes for ANY reason: a vc.button.press
+        call (from this or another client), an external MIDI/DMX/keyboard input source, the attached Function
+        stopping on its own (e.g. it finished, or was stopped by a different widget/client), or a Solo
+        Frame forcing other buttons off when one is activated (notifyFunctionStarting).
+
+        '
+      properties:
+        type:
+          const: event
+        topic:
+          const: vc.button.stateChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - widgetId
+          - state
+          properties:
+            widgetId:
+              type: string
+            state:
+              type: string
+              enum:
+              - Inactive
+              - Monitoring
+              - Active
+  VcSliderSetValueRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.slider.setValue
+        params:
+          type: object
+          required:
+          - widgetId
+          - value
+          description: 'VCSlider::setValue() - live (§4b), no baseRevision, last-write- wins exactly like
+            a real fader (two clients can grab the same slider). Meaning of $value (0-255) depends on
+            the slider''s sliderMode (document-state, see VcSliderConfig): Level writes the value to every
+            configured levelChannel; Adjust maps it to the controlledFunction''s controlledAttribute fraction;
+            Submaster cascades it as an intensity multiplier to every sibling widget in the containing
+            Frame; GrandMaster forwards it verbatim to io.grandMaster.setValue (same engine call, InputOutputMap::setGrandMasterValue()
+            - see notes.md for the cross-domain duplication).
+
+            '
+          properties:
+            widgetId:
+              type: string
+            value:
+              type: integer
+              minimum: 0
+              maximum: 255
+  VcSliderSetValueResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/GenericAckResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcSliderValueChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      description: 'Broadcast whenever a slider''s value changes for ANY reason: a vc.slider.setValue
+        call, external controller input (subject to catchValues), or the engine echoing a running Function''s
+        attribute back (Adjust mode, slotControlledFunctionAttributeChanged).
+
+        '
+      properties:
+        type:
+          const: event
+        topic:
+          const: vc.slider.valueChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - widgetId
+          - value
+          properties:
+            widgetId:
+              type: string
+            value:
+              type: integer
+  VcSliderMonitorValueChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      description: 'Level-mode + monitorEnabled only: the live DMX value read back from the slider''s
+        configured channels (which may differ from the slider''s own $value when not overriding - e.g.
+        another source is driving those channels). Subscribe-gated, see notes.md.
+
+        '
+      properties:
+        type:
+          const: event
+        topic:
+          const: vc.slider.monitorValueChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - widgetId
+          - monitorValue
+          - isOverriding
+          properties:
+            widgetId:
+              type: string
+            monitorValue:
+              type: integer
+            isOverriding:
+              type: boolean
+  VcSliderFlashRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.slider.flash
+        params:
+          type: object
+          required:
+          - widgetId
+          - true
+          description: VCSlider::flashFunction() - Adjust mode's momentary flash button (adjustFlashEnabled
+            must be true, see VcSliderConfig). Live, mirrors vc.button.press's Flash action semantics.
+          properties:
+            widgetId:
+              type: string
+            true:
+              type: boolean
+  VcSliderFlashResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/GenericAckResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcSliderSetLevelChannelsRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.slider.setLevelChannels
+        params:
+          type: object
+          required:
+          - widgetId
+          - channels
+          - baseRevision
+          description: VCSlider::addLevelChannel/removeLevelChannel/clearLevelChannels() collapsed into
+            one bulk-replace, document-state (Level mode's channel list is saved to the show file).
+          properties:
+            widgetId:
+              type: string
+            channels:
+              type: array
+              items:
+                type: object
+                required:
+                - fixtureId
+                - channel
+                properties:
+                  fixtureId:
+                    type: string
+                  channel:
+                    type: integer
+            baseRevision:
+              type: integer
+  VcSliderSetLevelChannelsResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcDocRevisionOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcXyPadSetPositionRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.xyPad.setPosition
+        params:
+          type: object
+          required:
+          - widgetId
+          - x
+          - y
+          description: VCXYPad::setCurrentPosition() - live (§4b). x/y are normalized 0.0-1.0 fractions
+            of the pad's range window, regardless of displayMode (Percentage/Degrees/DMX are display-only
+            conversions - see VcXyPadConfig).
+          properties:
+            widgetId:
+              type: string
+            x:
+              type: number
+              minimum: 0
+              maximum: 1
+            y:
+              type: number
+              minimum: 0
+              maximum: 1
+  VcXyPadSetPositionResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/GenericAckResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcXyPadPositionChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      description: Broadcast on any position change (client drag, preset activation, external input, undo).
+      properties:
+        type:
+          const: event
+        topic:
+          const: vc.xyPad.positionChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - widgetId
+          - x
+          - y
+          properties:
+            widgetId:
+              type: string
+            x:
+              type: number
+            y:
+              type: number
+  VcXyPadSetFloorPositionRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.xyPad.setFloorPosition
+        params:
+          type: object
+          required:
+          - widgetId
+          - x
+          - y
+          - z
+          description: VCXYPad::setFloorPosition() - only meaningful when floorControl is enabled (VcXyPadConfig).
+            x/z in metres relative to the environment origin; y is height above the floor.
+          properties:
+            widgetId:
+              type: string
+            x:
+              type: number
+            y:
+              type: number
+            z:
+              type: number
+  VcXyPadSetFloorPositionResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/GenericAckResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcXyPadFloorPositionChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: vc.xyPad.floorPositionChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - widgetId
+          - x
+          - y
+          - z
+          properties:
+            widgetId:
+              type: string
+            x:
+              type: number
+            y:
+              type: number
+            z:
+              type: number
+  VcXyPadFixtureAddRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.xyPad.fixture.add
+        params:
+          type: object
+          required:
+          - widgetId
+          - baseRevision
+          description: 'Covers VCXYPad::addGroup()/addFixture()/addHead() - exactly one of {fixtureGroupId,
+            fixtureId (whole fixture), fixtureId+ headIndex (single head), universe (expands to every
+            fixture in it)} must be given.
+
+            '
+          properties:
+            widgetId:
+              type: string
+            fixtureGroupId:
+              type: string
+            fixtureId:
+              type: string
+            headIndex:
+              type: integer
+            universe:
+              type: integer
+            baseRevision:
+              type: integer
+  VcXyPadFixtureAddResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcDocRevisionOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcXyPadFixtureRemoveRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.xyPad.fixture.remove
+        params:
+          type: object
+          required:
+          - widgetId
+          - heads
+          - baseRevision
+          description: VCXYPad::removeHeads().
+          properties:
+            widgetId:
+              type: string
+            heads:
+              type: array
+              items:
+                type: object
+                required:
+                - fixtureId
+                - headIndex
+                properties:
+                  fixtureId:
+                    type: string
+                  headIndex:
+                    type: integer
+            baseRevision:
+              type: integer
+  VcXyPadFixtureRemoveResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcDocRevisionOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcXyPadSetHeadsRangeRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.xyPad.setHeadsRange
+        params:
+          type: object
+          required:
+          - widgetId
+          - heads
+          - xMin
+          - xMax
+          - xReverse
+          - yMin
+          - yMax
+          - yReverse
+          - baseRevision
+          description: VCXYPad::setHeadsRange() - per-head Pan/Tilt range restriction, in the units of
+            the widget's current displayMode.
+          properties:
+            widgetId:
+              type: string
+            heads:
+              type: array
+              items:
+                type: object
+                required:
+                - fixtureId
+                - headIndex
+                properties:
+                  fixtureId:
+                    type: string
+                  headIndex:
+                    type: integer
+            xMin:
+              type: integer
+            xMax:
+              type: integer
+            xReverse:
+              type: boolean
+            yMin:
+              type: integer
+            yMax:
+              type: integer
+            yReverse:
+              type: boolean
+            baseRevision:
+              type: integer
+  VcXyPadSetHeadsRangeResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcDocRevisionOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcXyPadFixturesChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      description: Broadcast after fixture.add/remove/setHeadsRange - carries the widget's full resulting
+        fixture/head list.
+      properties:
+        type:
+          const: event
+        topic:
+          const: vc.xyPad.fixturesChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - widgetId
+          - fixtures
+          - docRevision
+          properties:
+            widgetId:
+              type: string
+            fixtures:
+              type: array
+              items:
+                $ref: '#/components/schemas/VcXyPadFixtureEntry'
+            docRevision:
+              type: integer
+  VcXyPadPresetAddRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.xyPad.preset.add
+        params:
+          type: object
+          required:
+          - widgetId
+          - presetType
+          - baseRevision
+          description: 'Covers addPositionPreset/addFunctionPreset/ addFixtureGroupPreset/addFixtureGroupHeadPreset.
+            $functionID required when presetType=function; $fixtureGroupId required when presetType=fixtureGroup;
+            $fixtureId+$headIndex required when presetType=fixtureGroupHead.
+
+            '
+          properties:
+            widgetId:
+              type: string
+            presetType:
+              type: string
+              enum:
+              - position
+              - function
+              - fixtureGroup
+              - fixtureGroupHead
+            functionID:
+              type: string
+            fixtureGroupId:
+              type: string
+            fixtureId:
+              type: string
+            headIndex:
+              type: integer
+            baseRevision:
+              type: integer
+  VcXyPadPresetAddResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcXyPadPresetAddOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcXyPadPresetAddOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - docRevision
+          - presetId
+          properties:
+            docRevision:
+              type: integer
+            presetId:
+              type: integer
+  VcXyPadPresetRemoveRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.xyPad.preset.remove
+        params:
+          type: object
+          required:
+          - widgetId
+          - presetId
+          - baseRevision
+          properties:
+            widgetId:
+              type: string
+            presetId:
+              type: integer
+            baseRevision:
+              type: integer
+  VcXyPadPresetRemoveResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcDocRevisionOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcXyPadPresetMoveRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.xyPad.preset.move
+        params:
+          type: object
+          required:
+          - widgetId
+          - presetId
+          - direction
+          - baseRevision
+          description: movePresetUp/movePresetDown.
+          properties:
+            widgetId:
+              type: string
+            presetId:
+              type: integer
+            direction:
+              type: string
+              enum:
+              - up
+              - down
+            baseRevision:
+              type: integer
+  VcXyPadPresetMoveResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcDocRevisionOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcXyPadPresetRenameRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.xyPad.preset.rename
+        params:
+          type: object
+          required:
+          - widgetId
+          - presetId
+          - name
+          - baseRevision
+          properties:
+            widgetId:
+              type: string
+            presetId:
+              type: integer
+            name:
+              type: string
+            baseRevision:
+              type: integer
+  VcXyPadPresetRenameResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcDocRevisionOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcXyPadPresetsChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      description: Broadcast after preset.add/remove/move/rename - carries the widget's full resulting
+        preset list.
+      properties:
+        type:
+          const: event
+        topic:
+          const: vc.xyPad.presetsChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - widgetId
+          - presets
+          - docRevision
+          properties:
+            widgetId:
+              type: string
+            presets:
+              type: array
+              items:
+                $ref: '#/components/schemas/VcXyPadPreset'
+            docRevision:
+              type: integer
+  VcXyPadApplyPresetRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.xyPad.applyPreset
+        params:
+          type: object
+          required:
+          - widgetId
+          - presetId
+          description: VCXYPad::applyPreset() - live activation (moves the cursor and, for an EFX/Scene
+            preset, starts the underlying Function fitted to the pad's range window).
+          properties:
+            widgetId:
+              type: string
+            presetId:
+              type: integer
+  VcXyPadApplyPresetResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/GenericAckResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcXyPadActivePresetChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      description: Broadcast after vc.xyPad.applyPreset, and when the active preset's Function stops on
+        its own.
+      properties:
+        type:
+          const: event
+        topic:
+          const: vc.xyPad.activePresetChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - widgetId
+          - activePresetId
+          properties:
+            widgetId:
+              type: string
+            activePresetId:
+              type: integer
+              description: -1 when none active.
+  VcFrameGotoPageRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.frame.gotoPage
+        params:
+          type: object
+          required:
+          - widgetId
+          - pageIndex
+          description: 'VCFrame::gotoPage()/gotoNextPage()/gotoPreviousPage() - a multi-page Frame''s
+            *internal* page cursor (distinct from vc.page.select, which switches the top-level VC page).
+            Live (§4b), matching vc.page.select''s ephemeral treatment.
+
+            '
+          properties:
+            widgetId:
+              type: string
+            pageIndex:
+              type: integer
+  VcFrameGotoPageResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/GenericAckResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcFrameCurrentPageChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: vc.frame.currentPageChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - widgetId
+          - currentPage
+          properties:
+            widgetId:
+              type: string
+            currentPage:
+              type: integer
+  VcFrameCloneFirstPageRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.frame.cloneFirstPage
+        params:
+          type: object
+          required:
+          - widgetId
+          - baseRevision
+          description: VCFrame::cloneFirstPage() - document-state, duplicates page-0's children onto every
+            other internal page.
+          properties:
+            widgetId:
+              type: string
+            baseRevision:
+              type: integer
+  VcFrameCloneFirstPageResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcDocRevisionOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcFrameSetPinRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.frame.setPin
+        params:
+          type: object
+          required:
+          - widgetId
+          - baseRevision
+          description: VCFrame::PIN - only meaningful on a top-level Frame. Same semantics as vc.page.setPin.
+          properties:
+            widgetId:
+              type: string
+            currentPIN:
+              type: string
+              default: ''
+            newPIN:
+              type: string
+              default: ''
+            baseRevision:
+              type: integer
+  VcFrameSetPinResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcDocRevisionOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcFrameValidatePinRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.frame.validatePin
+        params:
+          type: object
+          required:
+          - widgetId
+          - pin
+          properties:
+            widgetId:
+              type: string
+            pin:
+              type: string
+  VcFrameValidatePinResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcPageValidatePinOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcClockPlayPauseRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.clock.playPause
+        params:
+          type: object
+          required:
+          - widgetId
+          description: VCClock::playPauseTimer() - Stopwatch/Countdown only.
+          properties:
+            widgetId:
+              type: string
+  VcClockPlayPauseResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/GenericAckResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcClockResetRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.clock.reset
+        params:
+          type: object
+          required:
+          - widgetId
+          description: VCClock::resetTimer().
+          properties:
+            widgetId:
+              type: string
+  VcClockResetResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/GenericAckResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcClockTimeChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      description: 'Broadcast every second while the clock is ticking (wall-clock display, or a running
+        Stopwatch/Countdown), and immediately on play/pause/reset. Subscribe-gated (1Hz per widget), see
+        notes.md.
+
+        '
+      properties:
+        type:
+          const: event
+        topic:
+          const: vc.clock.timeChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - widgetId
+          - currentTime
+          - running
+          properties:
+            widgetId:
+              type: string
+            currentTime:
+              type: integer
+              description: Seconds since midnight (Clock type) or elapsed/remaining ms (Stopwatch/Countdown).
+            running:
+              type: boolean
+  VcClockScheduleAddRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.clock.schedule.add
+        params:
+          type: object
+          required:
+          - widgetId
+          - functionIds
+          - baseRevision
+          description: VCClock::addSchedules() - one schedule entry per Function ID, default start/stop/weekFlags.
+          properties:
+            widgetId:
+              type: string
+            functionIds:
+              type: array
+              items:
+                type: string
+              minItems: 1
+            baseRevision:
+              type: integer
+  VcClockScheduleAddResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcDocRevisionOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcClockScheduleUpdateRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.clock.schedule.update
+        params:
+          type: object
+          required:
+          - widgetId
+          - index
+          - baseRevision
+          description: VCClockSchedule setters - startTime/stopTime are seconds-since-midnight, weekFlags
+            a Mon..Sun bitmask.
+          properties:
+            widgetId:
+              type: string
+            index:
+              type: integer
+            startTime:
+              type: integer
+            stopTime:
+              type: integer
+            weekFlags:
+              type: integer
+            baseRevision:
+              type: integer
+  VcClockScheduleUpdateResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcDocRevisionOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcClockScheduleRemoveRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.clock.schedule.remove
+        params:
+          type: object
+          required:
+          - widgetId
+          - index
+          - baseRevision
+          properties:
+            widgetId:
+              type: string
+            index:
+              type: integer
+            baseRevision:
+              type: integer
+  VcClockScheduleRemoveResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcDocRevisionOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcClockSchedulesChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      description: Broadcast after schedule.add/update/remove - carries the widget's full resulting schedule
+        list.
+      properties:
+        type:
+          const: event
+        topic:
+          const: vc.clock.schedulesChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - widgetId
+          - schedules
+          - docRevision
+          properties:
+            widgetId:
+              type: string
+            schedules:
+              type: array
+              items:
+                $ref: '#/components/schemas/VcClockSchedule'
+            docRevision:
+              type: integer
+  VcCueListPlayRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.cueList.play
+        params:
+          type: object
+          required:
+          - widgetId
+          description: VCCueList::playClicked()/playCurrentStep() - start, or resume from Paused.
+          properties:
+            widgetId:
+              type: string
+  VcCueListPlayResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/GenericAckResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcCueListStopRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.cueList.stop
+        params:
+          type: object
+          required:
+          - widgetId
+          properties:
+            widgetId:
+              type: string
+  VcCueListStopResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/GenericAckResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcCueListPreviousRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.cueList.previous
+        params:
+          type: object
+          required:
+          - widgetId
+          properties:
+            widgetId:
+              type: string
+  VcCueListPreviousResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/GenericAckResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcCueListNextRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.cueList.next
+        params:
+          type: object
+          required:
+          - widgetId
+          properties:
+            widgetId:
+              type: string
+  VcCueListNextResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/GenericAckResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcCueListSetPlaybackIndexRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.cueList.setPlaybackIndex
+        params:
+          type: object
+          required:
+          - widgetId
+          - playbackIndex
+          description: Jump directly to a step (e.g. double-click a row in the steps list). -1 stops.
+          properties:
+            widgetId:
+              type: string
+            playbackIndex:
+              type: integer
+  VcCueListSetPlaybackIndexResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/GenericAckResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcCueListPlaybackChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      description: 'Broadcast whenever playback state changes for ANY reason: a client request above,
+        or the engine naturally advancing/finishing a step (m_runner) - i.e. this is how every connected
+        client''s cue list UI stays in sync with a chase that is simply running on its own.
+
+        '
+      properties:
+        type:
+          const: event
+        topic:
+          const: vc.cueList.playbackChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - widgetId
+          - playbackStatus
+          - playbackIndex
+          - nextStepIndex
+          - primaryTop
+          properties:
+            widgetId:
+              type: string
+            playbackStatus:
+              type: string
+              enum:
+              - Stopped
+              - Playing
+              - Paused
+            playbackIndex:
+              type: integer
+            nextStepIndex:
+              type: integer
+            primaryTop:
+              type: boolean
+              description: Side-fader crossfade orientation
+              see VcCueListConfig.sideFaderMode.: null
+  VcCueListSetSideFaderLevelRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.cueList.setSideFaderLevel
+        params:
+          type: object
+          required:
+          - widgetId
+          - level
+          description: VCCueList::setSideFaderLevel() - live (§4b). Meaning depends on sideFaderMode (Crossfade
+            vs. Steps, see VcCueListConfig).
+          properties:
+            widgetId:
+              type: string
+            level:
+              type: integer
+              minimum: 0
+              maximum: 255
+  VcCueListSetSideFaderLevelResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/GenericAckResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcCueListSideFaderChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: vc.cueList.sideFaderChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - widgetId
+          - level
+          properties:
+            widgetId:
+              type: string
+            level:
+              type: integer
+  VcSpeedDialSetCurrentTimeRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.speedDial.setCurrentTime
+        params:
+          type: object
+          required:
+          - widgetId
+          - valueMs
+          description: VCSpeedDial::setCurrentTime() - dial/absolute-value editing. Live (§4b).
+          properties:
+            widgetId:
+              type: string
+            valueMs:
+              type: integer
+              minimum: 0
+  VcSpeedDialSetCurrentTimeResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/GenericAckResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcSpeedDialCurrentTimeChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: vc.speedDial.currentTimeChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - widgetId
+          - valueMs
+          properties:
+            widgetId:
+              type: string
+            valueMs:
+              type: integer
+  VcSpeedDialSetFactorRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.speedDial.setFactor
+        params:
+          type: object
+          required:
+          - widgetId
+          - factor
+          description: VCSpeedDial::setCurrentFactor()/increaseSpeedFactor()/decreaseSpeedFactor() (client
+            can compute +/- from the current value in the widget's last-known state; server just accepts
+            the resulting factor).
+          properties:
+            widgetId:
+              type: string
+            factor:
+              $ref: '#/components/schemas/VcSpeedDialMultiplier'
+  VcSpeedDialSetFactorResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/GenericAckResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcSpeedDialFactorChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: vc.speedDial.factorChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - widgetId
+          - factor
+          properties:
+            widgetId:
+              type: string
+            factor:
+              $ref: '#/components/schemas/VcSpeedDialMultiplier'
+  VcSpeedDialApplyRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.speedDial.apply
+        params:
+          type: object
+          required:
+          - widgetId
+          description: 'VCSpeedDial::applyFunctionsTime(enqueue=true) - "Apply" button: pushes currentTime
+            x factor onto every attached Function''s fadeIn/fadeOut/duration (per-function factor overrides
+            from VcSpeedDialConfig.functions). This mutates those Functions'' speed attributes, which
+            surfaces as functions.commonAttributesChanged events from functions-core - not duplicated
+            here.
+
+            '
+          properties:
+            widgetId:
+              type: string
+  VcSpeedDialApplyResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/GenericAckResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcSpeedDialTapRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.speedDial.tap
+        params:
+          type: object
+          required:
+          - widgetId
+          description: 'VCSpeedDial::tap() - tap-tempo. Successive taps within 1.5s compute a new currentTime
+            from the tap interval average. If controlBPM is enabled (VcSpeedDialConfig), this ALSO sets
+            the engine''s global BPM number (InputOutputMap::setBpmNumber()) - there is currently no dedicated
+            io.bpm.* message in io.yaml/core.yaml to broadcast that global value; flagged for the merge
+            pass, see notes.md.
+
+            '
+          properties:
+            widgetId:
+              type: string
+  VcSpeedDialTapResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/GenericAckResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcSpeedDialResetTapRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.speedDial.resetTap
+        params:
+          type: object
+          required:
+          - widgetId
+          properties:
+            widgetId:
+              type: string
+  VcSpeedDialResetTapResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/GenericAckResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcSpeedDialTapChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      description: Broadcast after tap/resetTap.
+      properties:
+        type:
+          const: event
+        topic:
+          const: vc.speedDial.tapChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - widgetId
+          - tapTimeValue
+          - currentTimeMs
+          properties:
+            widgetId:
+              type: string
+            tapTimeValue:
+              type: integer
+              description: Computed BPM.
+            currentTimeMs:
+              type: integer
+  VcSpeedDialPresetAddRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.speedDial.preset.add
+        params:
+          type: object
+          required:
+          - widgetId
+          - name
+          - valueMs
+          - baseRevision
+          properties:
+            widgetId:
+              type: string
+            name:
+              type: string
+            valueMs:
+              type: integer
+            baseRevision:
+              type: integer
+  VcSpeedDialPresetAddResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcXyPadPresetAddOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcSpeedDialPresetUpdateRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.speedDial.preset.update
+        params:
+          type: object
+          required:
+          - widgetId
+          - presetId
+          - baseRevision
+          properties:
+            widgetId:
+              type: string
+            presetId:
+              type: integer
+            name:
+              type: string
+            valueMs:
+              type: integer
+            baseRevision:
+              type: integer
+  VcSpeedDialPresetUpdateResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcDocRevisionOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcSpeedDialPresetRemoveRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.speedDial.preset.remove
+        params:
+          type: object
+          required:
+          - widgetId
+          - presetId
+          - baseRevision
+          properties:
+            widgetId:
+              type: string
+            presetId:
+              type: integer
+            baseRevision:
+              type: integer
+  VcSpeedDialPresetRemoveResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcDocRevisionOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcSpeedDialPresetsChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: vc.speedDial.presetsChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - widgetId
+          - presets
+          - docRevision
+          properties:
+            widgetId:
+              type: string
+            presets:
+              type: array
+              items:
+                $ref: '#/components/schemas/VcSpeedDialPreset'
+            docRevision:
+              type: integer
+  VcSpeedDialApplyPresetRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.speedDial.applyPreset
+        params:
+          type: object
+          required:
+          - widgetId
+          - presetId
+          description: Sets currentTime instantly from a stored preset value (live, does not itself call
+            applyFunctionsTime).
+          properties:
+            widgetId:
+              type: string
+            presetId:
+              type: integer
+  VcSpeedDialApplyPresetResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/GenericAckResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcAnimationSetFaderLevelRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.animation.setFaderLevel
+        params:
+          type: object
+          required:
+          - widgetId
+          - level
+          description: VCAnimation::setFaderLevel() - live (§4b) master intensity of the controlled RGBMatrix.
+          properties:
+            widgetId:
+              type: string
+            level:
+              type: integer
+              minimum: 0
+              maximum: 255
+  VcAnimationSetFaderLevelResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/GenericAckResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcAnimationFaderLevelChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: vc.animation.faderLevelChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - widgetId
+          - level
+          properties:
+            widgetId:
+              type: string
+            level:
+              type: integer
+  VcAnimationPresetAddRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.animation.preset.add
+        params:
+          type: object
+          required:
+          - widgetId
+          - presetType
+          - baseRevision
+          description: 'Covers addColorPreset/addColorKnobsPreset/addTextPreset/ addAlgorithmPreset. $colorIndex
+            (0-4) required for color/colorKnobs; $text required for text; $algorithmName (+optional $algorithmProperties)
+            required for algorithm.
+
+            '
+          properties:
+            widgetId:
+              type: string
+            presetType:
+              type: string
+              enum:
+              - color
+              - colorKnobs
+              - text
+              - algorithm
+            colorIndex:
+              type: integer
+              minimum: 0
+              maximum: 4
+            color:
+              type: string
+              description: Hex, for presetType=color.
+            text:
+              type: string
+            algorithmName:
+              type: string
+            algorithmProperties:
+              type: object
+              additionalProperties:
+                type: string
+            baseRevision:
+              type: integer
+  VcAnimationPresetAddResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcXyPadPresetAddOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcAnimationPresetRemoveRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.animation.preset.remove
+        params:
+          type: object
+          required:
+          - widgetId
+          - presetId
+          - baseRevision
+          properties:
+            widgetId:
+              type: string
+            presetId:
+              type: integer
+            baseRevision:
+              type: integer
+  VcAnimationPresetRemoveResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcDocRevisionOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcAnimationPresetMoveRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.animation.preset.move
+        params:
+          type: object
+          required:
+          - widgetId
+          - presetId
+          - direction
+          - baseRevision
+          properties:
+            widgetId:
+              type: string
+            presetId:
+              type: integer
+            direction:
+              type: string
+              enum:
+              - up
+              - down
+            baseRevision:
+              type: integer
+  VcAnimationPresetMoveResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcDocRevisionOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcAnimationPresetsChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      description: Broadcast after preset.add/remove/move - carries the widget's full resulting preset
+        list.
+      properties:
+        type:
+          const: event
+        topic:
+          const: vc.animation.presetsChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - widgetId
+          - presets
+          - docRevision
+          properties:
+            widgetId:
+              type: string
+            presets:
+              type: array
+              items:
+                $ref: '#/components/schemas/VcAnimationPreset'
+            docRevision:
+              type: integer
+  VcAnimationApplyPresetRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.animation.applyPreset
+        params:
+          type: object
+          required:
+          - widgetId
+          - presetId
+          description: VCAnimation::applyPreset() - live activation of a stored preset's color/text/algorithm
+            onto the running RGBMatrix.
+          properties:
+            widgetId:
+              type: string
+            presetId:
+              type: integer
+  VcAnimationApplyPresetResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/GenericAckResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcAnimationSetPresetKnobValueRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.animation.setPresetKnobValue
+        params:
+          type: object
+          required:
+          - widgetId
+          - presetId
+          - value
+          description: VCAnimation::setPresetKnobValue() - live (§4b), a ColorKnob preset's live intensity
+            turn (not persisted; the preset's base color is what's saved).
+          properties:
+            widgetId:
+              type: string
+            presetId:
+              type: integer
+            value:
+              type: integer
+              minimum: 0
+              maximum: 255
+  VcAnimationSetPresetKnobValueResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/GenericAckResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcAnimationActivePresetChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      description: Broadcast after applyPreset and setPresetKnobValue.
+      properties:
+        type:
+          const: event
+        topic:
+          const: vc.animation.activePresetChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - widgetId
+          - activePresetId
+          properties:
+            widgetId:
+              type: string
+            activePresetId:
+              type: integer
+              description: -1 when none active.
+            knobValue:
+              type: integer
+  VcAudioTriggersSetCaptureEnabledRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.audioTriggers.setCaptureEnabled
+        params:
+          type: object
+          required:
+          - widgetId
+          - enabled
+          description: VCAudioTriggers::setCaptureEnabled() - live (§4b), whether the mic/line-in is actively
+            being read; not persisted (audio hardware access shouldn't auto-start when a show file loads).
+          properties:
+            widgetId:
+              type: string
+            enabled:
+              type: boolean
+  VcAudioTriggersSetCaptureEnabledResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/GenericAckResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcAudioTriggersCaptureEnabledChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: vc.audioTriggers.captureEnabledChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - widgetId
+          - enabled
+          properties:
+            widgetId:
+              type: string
+            enabled:
+              type: boolean
+  VcAudioTriggersLevelsChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      description: 'Live spectrum/volume meter data (VCAudioTriggers::audioLevels, driven by slotSpectrumDataChanged
+        at audio-capture rate). Subscribe-gated - high frequency, see notes.md.
+
+        '
+      properties:
+        type:
+          const: event
+        topic:
+          const: vc.audioTriggers.levelsChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - widgetId
+          - levels
+          properties:
+            widgetId:
+              type: string
+            levels:
+              type: array
+              items:
+                type: integer
+                minimum: 0
+                maximum: 255
+              description: One entry per configured bar (index 0 is always the volume bar).
+  VcAudioTriggersSetBarConfigRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.audioTriggers.setBarConfig
+        params:
+          type: object
+          required:
+          - widgetId
+          - index
+          - baseRevision
+          description: 'VCAudioTriggers::setBarType/setBarThresholds/setBarFunction/ setBarWidget/setBarDmxChannels()
+            collapsed into one partial update, document-state (bar configuration is saved to the show
+            file). $type discriminates which of function/widget/ dmxChannels is meaningful.
+
+            '
+          properties:
+            widgetId:
+              type: string
+            index:
+              type: integer
+            type:
+              type: string
+              enum:
+              - None
+              - DMXBar
+              - FunctionBar
+              - VCWidgetBar
+            minThreshold:
+              type: integer
+              minimum: 0
+              maximum: 255
+            maxThreshold:
+              type: integer
+              minimum: 0
+              maximum: 255
+            functionId:
+              type: string
+            triggeredWidgetId:
+              type: string
+              description: For type=VCWidgetBar - the VC widget this bar's beats trigger (e.g. a button
+                press).
+            dmxChannels:
+              type: array
+              items:
+                type: object
+                required:
+                - fixtureId
+                - channel
+                properties:
+                  fixtureId:
+                    type: string
+                  channel:
+                    type: integer
+            baseRevision:
+              type: integer
+  VcAudioTriggersSetBarConfigResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcDocRevisionOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcAudioTriggersBarsChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      description: Broadcast after setBarConfig and after vc.widget.setConfig changes barsNumber - carries
+        the widget's full resulting bar list.
+      properties:
+        type:
+          const: event
+        topic:
+          const: vc.audioTriggers.barsChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - widgetId
+          - bars
+          - docRevision
+          properties:
+            widgetId:
+              type: string
+            bars:
+              type: array
+              items:
+                $ref: '#/components/schemas/VcAudioTriggersBar'
+            docRevision:
+              type: integer
+schemas:
+  VcWidgetType:
+    type: string
+    enum:
+    - Button
+    - Slider
+    - XYPad
+    - Frame
+    - SoloFrame
+    - Label
+    - AudioTriggers
+    - Animation
+    - Clock
+    - CueList
+    - Speed
+    description: VCWidget::WidgetType (ButtonWidget..ClockWidget), "Speed" = SpeedWidget/VCSpeedDial.
+  VcGeometry:
+    type: object
+    description: VCWidget::geometry() (QRectF), position relative to the widget's parent (page root, or
+      containing Frame/SoloFrame).
+    required:
+    - x
+    - y
+    - width
+    - height
+    properties:
+      x:
+        type: number
+      y:
+        type: number
+      width:
+        type: number
+      height:
+        type: number
+  VcFont:
+    type: object
+    properties:
+      family:
+        type: string
+      pointSize:
+        type: number
+      bold:
+        type: boolean
+      italic:
+        type: boolean
+      underline:
+        type: boolean
+  VcWidgetStyle:
+    type: object
+    description: VCWidget appearance block (KXMLQLCVCWidgetAppearance) - every field null/absent means
+      "use the platform/theme default".
+    properties:
+      caption:
+        type: string
+      backgroundColor:
+        type:
+        - string
+        - 'null'
+        description: Hex
+        or null for the default (no custom color).: null
+      backgroundImage:
+        type:
+        - string
+        - 'null'
+        description: Path/resource
+        or null for none.: null
+      foregroundColor:
+        type:
+        - string
+        - 'null'
+      font:
+        $ref: '#/components/schemas/VcFont'
+  VcWidgetSummary:
+    type: object
+    description: Compact form used in list/usage results and as the base of VcWidgetDetail.
+    required:
+    - id
+    - widgetType
+    - page
+    - geometry
+    - zIndex
+    - allowResize
+    - isDisabled
+    - isVisible
+    - style
+    properties:
+      id:
+        type: string
+      widgetType:
+        $ref: '#/components/schemas/VcWidgetType'
+      page:
+        type: integer
+      parentId:
+        type: string
+        description: Containing Frame/SoloFrame widget ID
+        absent when placed directly on the page root.: null
+      geometry:
+        $ref: '#/components/schemas/VcGeometry'
+      zIndex:
+        type: integer
+      allowResize:
+        type: boolean
+      isDisabled:
+        type: boolean
+      isVisible:
+        type: boolean
+      style:
+        $ref: '#/components/schemas/VcWidgetStyle'
+  VcWidgetDetail:
+    allOf:
+    - $ref: '#/components/schemas/VcWidgetSummary'
+    - type: object
+      required:
+      - typeConfig
+      properties:
+        typeConfig:
+          description: Type-specific config, discriminated by VcWidgetSummary.type. Label's type has no
+            dedicated Config schema (kept as an empty object, per the original {} case) - all others reference
+            their existing Vc<Type>Config schema directly.
+          oneOf:
+          - $ref: '#/components/schemas/VcButtonConfig'
+          - $ref: '#/components/schemas/VcSliderConfig'
+          - $ref: '#/components/schemas/VcXyPadConfig'
+          - $ref: '#/components/schemas/VcFrameConfig'
+          - $ref: '#/components/schemas/VcSoloFrameConfig'
+          - $ref: '#/components/schemas/VcClockConfig'
+          - $ref: '#/components/schemas/VcCueListConfig'
+          - $ref: '#/components/schemas/VcSpeedDialConfig'
+          - $ref: '#/components/schemas/VcAnimationConfig'
+          - $ref: '#/components/schemas/VcAudioTriggersConfig'
+          - type: object
+            maxProperties: 0
+            description: 'Label: no type-specific config.'
+        inputSources:
+          type: array
+          items:
+            $ref: '#/components/schemas/VcInputSource'
+        keySequences:
+          type: array
+          items:
+            type: object
+            required:
+            - keySequence
+            - controlId
+            properties:
+              keySequence:
+                type: string
+              controlId:
+                type: integer
+        externalControls:
+          type: array
+          description: VCWidget::externalControlsList() - the named controls this widget instance exposes
+            for input-source/key-sequence binding.
+          items:
+            type: object
+            required:
+            - controlId
+            - name
+            - allowKeyboard
+            properties:
+              controlId:
+                type: integer
+              name:
+                type: string
+              allowKeyboard:
+                type: boolean
+  VcInputSource:
+    type: object
+    required:
+    - controlId
+    - universe
+    - channel
+    properties:
+      controlId:
+        type: integer
+      universe:
+        type: integer
+      channel:
+        type: integer
+      lowerValue:
+        type: integer
+      upperValue:
+        type: integer
+      monitorValue:
+        type: integer
+  VcPage:
+    type: object
+    required:
+    - index
+    - name
+    properties:
+      index:
+        type: integer
+      name:
+        type: string
+      hasPin:
+        type: boolean
+        description: Whether a protection PIN is set - the PIN value itself is never returned.
+  VcButtonConfig:
+    type: object
+    description: VCButton document-state config.
+    properties:
+      functionID:
+        type: string
+      actionType:
+        type: string
+        enum:
+        - Toggle
+        - Flash
+        - Blackout
+        - StopAll
+      stopAllFadeOutTime:
+        type: integer
+        description: ms
+        only meaningful for actionType=StopAll.: null
+      startupIntensityEnabled:
+        type: boolean
+      startupIntensity:
+        type: number
+        minimum: 0
+        maximum: 1
+      flashOverrides:
+        type: boolean
+      flashForceLTP:
+        type: boolean
+  VcSliderConfig:
+    type: object
+    description: VCSlider document-state config.
+    properties:
+      widgetStyle:
+        type: string
+        enum:
+        - Slider
+        - Knob
+      valueDisplayStyle:
+        type: string
+        enum:
+        - DMXValue
+        - PercentageValue
+      invertedAppearance:
+        type: boolean
+      sliderMode:
+        type: string
+        enum:
+        - Level
+        - Adjust
+        - Submaster
+        - GrandMaster
+      catchValues:
+        type: boolean
+        description: Whether external-controller input must "catch up" to the slider's current value before
+          taking control.
+      rangeLowLimit:
+        type: number
+      rangeHighLimit:
+        type: number
+      monitorEnabled:
+        type: boolean
+        description: Level mode only.
+      levelChannels:
+        type: array
+        description: Level mode only - see vc.slider.setLevelChannels (its own message, since it changes
+          frequently and independently of other config).
+        items:
+          type: object
+          required:
+          - fixtureId
+          - channel
+          properties:
+            fixtureId:
+              type: string
+            channel:
+              type: integer
+      controlledFunction:
+        type: string
+        description: Adjust mode only.
+      controlledAttribute:
+        type: integer
+        description: Adjust mode only - index into the controlled Function's attributes.
+      adjustFlashEnabled:
+        type: boolean
+        description: Adjust mode only.
+      clickAndGoType:
+        type: string
+        enum:
+        - None
+        - Colors
+        - Preset
+      cngPrimaryColor:
+        type: string
+      cngSecondaryColor:
+        type: string
+      grandMasterValueMode:
+        type: string
+        enum:
+        - Limit
+        - Reduce
+        description: GrandMaster mode only - mirrors io.grandMaster's IoGrandMasterValueMode.
+      grandMasterChannelMode:
+        type: string
+        enum:
+        - Intensity
+        - AllChannels
+        description: GrandMaster mode only - mirrors io.grandMaster's IoGrandMasterChannelMode.
+  VcXyPadConfig:
+    type: object
+    description: VCXYPad document-state config. Fixtures/heads and presets are managed via their own dedicated
+      messages (vc.xyPad.fixture.*, vc.xyPad.preset.*), not here.
+    properties:
+      invertedAppearance:
+        type: boolean
+      displayMode:
+        type: string
+        enum:
+        - Percentage
+        - Degrees
+        - DMX
+      horizontalRange:
+        type: object
+        required:
+        - min
+        - max
+        properties:
+          min:
+            type: number
+          max:
+            type: number
+      verticalRange:
+        type: object
+        required:
+        - min
+        - max
+        properties:
+          min:
+            type: number
+          max:
+            type: number
+      floorControl:
+        type: boolean
+  VcXyPadFixtureEntry:
+    type: object
+    description: One entry of VCXYPad::m_fixtures - a single head, or a whole FixtureGroup (heads resolved
+      dynamically).
+    required:
+    - enabled
+    properties:
+      fixtureId:
+        type: string
+      headIndex:
+        type: integer
+      fixtureGroupId:
+        type: string
+        description: Present instead of fixtureId/headIndex when this entry represents a whole group.
+      enabled:
+        type: boolean
+      xRange:
+        type: object
+        properties:
+          min:
+            type: number
+          max:
+            type: number
+          reverse:
+            type: boolean
+      yRange:
+        type: object
+        properties:
+          min:
+            type: number
+          max:
+            type: number
+          reverse:
+            type: boolean
+  VcXyPadPreset:
+    type: object
+    required:
+    - presetId
+    - presetType
+    - name
+    properties:
+      presetId:
+        type: integer
+      presetType:
+        type: string
+        enum:
+        - position
+        - function
+        - fixtureGroup
+        - fixtureGroupHead
+      name:
+        type: string
+      position:
+        type: object
+        properties:
+          x:
+            type: number
+          y:
+            type: number
+      functionID:
+        type: string
+      fixtureGroupId:
+        type: string
+      fixtureId:
+        type: string
+      headIndex:
+        type: integer
+  VcFrameConfig:
+    type: object
+    description: VCFrame document-state config.
+    properties:
+      showHeader:
+        type: boolean
+      showEnable:
+        type: boolean
+      isCollapsed:
+        type: boolean
+      multiPageMode:
+        type: boolean
+      totalPagesNumber:
+        type: integer
+      pagesLoop:
+        type: boolean
+      pageLabels:
+        type: array
+        items:
+          type: object
+          required:
+          - pageIndex
+          - label
+          properties:
+            pageIndex:
+              type: integer
+            label:
+              type: string
+      hasPin:
+        type: boolean
+        description: Read-only - use vc.frame.setPin to change.
+  VcSoloFrameConfig:
+    allOf:
+    - $ref: '#/components/schemas/VcFrameConfig'
+    - type: object
+      properties:
+        soloframeMixing:
+          type: boolean
+          description: When true
+          starting a new Function in this frame fades the previous one out instead of cutting it.: null
+        excludeMonitoredFunctions:
+          type: boolean
+  VcClockConfig:
+    type: object
+    description: VCClock document-state config. Schedules managed via vc.clock.schedule.*.
+    properties:
+      clockType:
+        type: string
+        enum:
+        - Clock
+        - Stopwatch
+        - Countdown
+      targetTime:
+        type: integer
+        description: ms
+        Stopwatch/Countdown only.: null
+      enableSchedule:
+        type: boolean
+  VcClockSchedule:
+    type: object
+    required:
+    - index
+    - functionID
+    - startTime
+    - stopTime
+    - weekFlags
+    properties:
+      index:
+        type: integer
+      functionID:
+        type: string
+      startTime:
+        type: integer
+        description: Seconds since midnight.
+      stopTime:
+        type: integer
+      weekFlags:
+        type: integer
+        description: Mon=bit0..Sun=bit6 bitmask.
+  VcCueListConfig:
+    type: object
+    description: VCCueList document-state config. chaserID selects which Chaser Function's steps are displayed/played
+      (step content is edited via functions.chaser.*).
+    properties:
+      chaserID:
+        type: string
+      nextPrevBehavior:
+        type: string
+        enum:
+        - DefaultRunFirst
+        - RunNext
+        - Select
+        - Nothing
+      playbackLayout:
+        type: string
+        enum:
+        - PlayPauseStop
+        - PlayStopPause
+      sideFaderMode:
+        type: string
+        enum:
+        - None
+        - Crossfade
+        - Steps
+  VcSpeedDialMultiplier:
+    type: string
+    enum:
+    - None
+    - Zero
+    - OneSixteenth
+    - OneEighth
+    - OneFourth
+    - Half
+    - One
+    - Two
+    - Four
+    - Eight
+    - Sixteen
+  VcSpeedDialConfig:
+    type: object
+    description: VCSpeedDial document-state config. Presets managed via vc.speedDial.preset.*.
+    properties:
+      visibilityMask:
+        type: array
+        items:
+          type: string
+          enum:
+          - PlusMinus
+          - Dial
+          - Tap
+          - Hours
+          - Minutes
+          - Seconds
+          - Milliseconds
+          - Multipliers
+          - Apply
+          - Beats
+          - XPad
+      timeMinimumValue:
+        type: integer
+      timeMaximumValue:
+        type: integer
+      resetOnDialChange:
+        type: boolean
+      controlBPM:
+        type: boolean
+        description: When true
+        vc.speedDial.tap also sets the engine's global BPM - see notes.md.: null
+      functions:
+        type: array
+        description: Functions controlled by this dial's Apply action, each with independent fadeIn/fadeOut/duration
+          multiplier overrides.
+        items:
+          type: object
+          required:
+          - functionID
+          properties:
+            functionID:
+              type: string
+            fadeInFactor:
+              $ref: '#/components/schemas/VcSpeedDialMultiplier'
+            fadeOutFactor:
+              $ref: '#/components/schemas/VcSpeedDialMultiplier'
+            durationFactor:
+              $ref: '#/components/schemas/VcSpeedDialMultiplier'
+  VcSpeedDialPreset:
+    type: object
+    required:
+    - presetId
+    - name
+    - valueMs
+    properties:
+      presetId:
+        type: integer
+      name:
+        type: string
+      valueMs:
+        type: integer
+  VcAnimationConfig:
+    type: object
+    description: 'VCAnimation document-state config. Colors/algorithm are document- state (saved to the
+      show file) even though instantChanges makes editing them feel live - see notes.md. Presets/controls
+      managed via vc.animation.preset.*.
+
+      '
+    properties:
+      visibilityMask:
+        type: array
+        items:
+          type: string
+          enum:
+          - Fader
+          - Label
+          - PresetCombo
+          - Color1
+          - Color2
+          - Color3
+          - Color4
+          - Color5
+      functionID:
+        type: string
+        description: The controlled RGBMatrix Function.
+      instantChanges:
+        type: boolean
+        description: Whether color/algorithm edits are pushed to the running RGBMatrix immediately vs.
+          only on next start.
+      algorithmIndex:
+        type: integer
+      colors:
+        type: array
+        maxItems: 5
+        items:
+          type: string
+          description: Hex.
+  VcAnimationPreset:
+    type: object
+    required:
+    - presetId
+    - presetType
+    properties:
+      presetId:
+        type: integer
+      presetType:
+        type: string
+        enum:
+        - color
+        - colorKnobs
+        - text
+        - algorithm
+      colorIndex:
+        type: integer
+      color:
+        type: string
+      text:
+        type: string
+      algorithmName:
+        type: string
+      algorithmProperties:
+        type: object
+        additionalProperties:
+          type: string
+  VcAudioTriggersConfig:
+    type: object
+    description: VCAudioTriggers document-state config. Bars managed via vc.audioTriggers.setBarConfig;
+      captureEnabled is live, see its own message.
+    properties:
+      barsNumber:
+        type: integer
+        minimum: 1
+        description: Resizes the bars array (bar 0 is always the volume bar).
+      volumeLevel:
+        type: integer
+        minimum: 0
+        maximum: 255
+        description: Capture gain/threshold calibration.
+  VcAudioTriggersBar:
+    type: object
+    required:
+    - index
+    - type
+    properties:
+      index:
+        type: integer
+      type:
+        type: string
+        enum:
+        - None
+        - DMXBar
+        - FunctionBar
+        - VCWidgetBar
+      minThreshold:
+        type: integer
+      maxThreshold:
+        type: integer
+      functionId:
+        type: string
+      triggeredWidgetId:
+        type: string
+      dmxChannels:
+        type: array
+        items:
+          type: object
+          required:
+          - fixtureId
+          - channel
+          properties:
+            fixtureId:
+              type: string
+            channel:
+              type: integer
+operations:
+  sendVcPageList:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcPageListRequest'
+  receiveVcPageListResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcPageListResponse'
+  sendVcPageCreate:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcPageCreateRequest'
+  receiveVcPageCreateResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcPageCreateResponse'
+  receiveVcPageCreated:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcPageCreatedEvent'
+  sendVcPageDelete:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcPageDeleteRequest'
+  receiveVcPageDeleteResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcPageDeleteResponse'
+  receiveVcPageDeleted:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcPageDeletedEvent'
+  sendVcPageRename:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcPageRenameRequest'
+  receiveVcPageRenameResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcPageRenameResponse'
+  receiveVcPageRenamed:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcPageRenamedEvent'
+  sendVcPageSetPin:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcPageSetPinRequest'
+  receiveVcPageSetPinResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcPageSetPinResponse'
+  sendVcPageValidatePin:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcPageValidatePinRequest'
+  receiveVcPageValidatePinResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcPageValidatePinResponse'
+  sendVcPageSelect:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcPageSelectRequest'
+  receiveVcPageSelectResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcPageSelectResponse'
+  receiveVcPageSelected:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcPageSelectedEvent'
+  sendVcWidgetList:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetListRequest'
+  receiveVcWidgetListResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetListResponse'
+  sendVcWidgetGet:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetGetRequest'
+  receiveVcWidgetGetResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetGetResponse'
+  sendVcWidgetUsage:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetUsageRequest'
+  receiveVcWidgetUsageResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetUsageResponse'
+  sendVcWidgetCreate:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetCreateRequest'
+  receiveVcWidgetCreateResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetCreateResponse'
+  receiveVcWidgetCreated:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetCreatedEvent'
+  sendVcWidgetCreateMatrix:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetCreateMatrixRequest'
+  receiveVcWidgetCreateMatrixResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetCreateMatrixResponse'
+  sendVcWidgetCreateFromFunctions:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetCreateFromFunctionsRequest'
+  receiveVcWidgetCreateFromFunctionsResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetCreateFromFunctionsResponse'
+  receiveVcWidgetsBulkCreated:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    description: Broadcast after vc.widget.createMatrix and vc.widget.createFromFunctions (reuses vc.widget.bulkUpdated's
+      shape/topic for the resulting new widgets).
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetsBulkUpdatedEvent'
+  sendVcWidgetUpdate:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetUpdateRequest'
+  receiveVcWidgetUpdateResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetUpdateResponse'
+  receiveVcWidgetUpdated:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetUpdatedEvent'
+  sendVcWidgetSetConfig:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetSetConfigRequest'
+  receiveVcWidgetSetConfigResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetSetConfigResponse'
+  receiveVcWidgetConfigChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetConfigChangedEvent'
+  sendVcWidgetDelete:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetDeleteRequest'
+  receiveVcWidgetDeleteResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetDeleteResponse'
+  receiveVcWidgetDeleted:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetDeletedEvent'
+  sendVcWidgetReparent:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetReparentRequest'
+  receiveVcWidgetReparentResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetReparentResponse'
+  sendVcWidgetReposition:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetRepositionRequest'
+  receiveVcWidgetRepositionResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetRepositionResponse'
+  receiveVcWidgetRepositioned:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetRepositionedEvent'
+  sendVcWidgetAlign:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetAlignRequest'
+  receiveVcWidgetAlignResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetAlignResponse'
+  sendVcWidgetDistribute:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetDistributeRequest'
+  receiveVcWidgetDistributeResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetDistributeResponse'
+  sendVcWidgetBulkStyle:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetBulkStyleRequest'
+  receiveVcWidgetBulkStyleResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetBulkStyleResponse'
+  receiveVcWidgetBulkUpdated:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    description: Broadcast after align/distribute/bulkStyle/reparent.
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetsBulkUpdatedEvent'
+  sendVcWidgetInputSourceSet:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetInputSourceSetRequest'
+  receiveVcWidgetInputSourceSetResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetInputSourceSetResponse'
+  sendVcWidgetInputSourceRemove:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetInputSourceRemoveRequest'
+  receiveVcWidgetInputSourceRemoveResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetInputSourceRemoveResponse'
+  receiveVcWidgetInputSourcesChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetInputSourcesChangedEvent'
+  sendVcWidgetKeySequenceSet:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetKeySequenceSetRequest'
+  receiveVcWidgetKeySequenceSetResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetKeySequenceSetResponse'
+  sendVcWidgetKeySequenceRemove:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetKeySequenceRemoveRequest'
+  receiveVcWidgetKeySequenceRemoveResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetKeySequenceRemoveResponse'
+  receiveVcWidgetKeySequencesChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetKeySequencesChangedEvent'
+  sendVcWidgetInputDetectStart:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetInputDetectStartRequest'
+  receiveVcWidgetInputDetectStartResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetInputDetectStartResponse'
+  sendVcWidgetInputDetectStop:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetInputDetectStopRequest'
+  receiveVcWidgetInputDetectStopResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetInputDetectStopResponse'
+  sendVcButtonPress:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcButtonPressRequest'
+  receiveVcButtonPressResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcButtonPressResponse'
+  receiveVcButtonStateChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcButtonStateChangedEvent'
+  sendVcSliderSetValue:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcSliderSetValueRequest'
+  receiveVcSliderSetValueResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcSliderSetValueResponse'
+  receiveVcSliderValueChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcSliderValueChangedEvent'
+  receiveVcSliderMonitorValueChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcSliderMonitorValueChangedEvent'
+  sendVcSliderFlash:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcSliderFlashRequest'
+  receiveVcSliderFlashResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcSliderFlashResponse'
+  sendVcSliderSetLevelChannels:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcSliderSetLevelChannelsRequest'
+  receiveVcSliderSetLevelChannelsResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcSliderSetLevelChannelsResponse'
+  sendVcXyPadSetPosition:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcXyPadSetPositionRequest'
+  receiveVcXyPadSetPositionResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcXyPadSetPositionResponse'
+  receiveVcXyPadPositionChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcXyPadPositionChangedEvent'
+  sendVcXyPadSetFloorPosition:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcXyPadSetFloorPositionRequest'
+  receiveVcXyPadSetFloorPositionResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcXyPadSetFloorPositionResponse'
+  receiveVcXyPadFloorPositionChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcXyPadFloorPositionChangedEvent'
+  sendVcXyPadFixtureAdd:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcXyPadFixtureAddRequest'
+  receiveVcXyPadFixtureAddResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcXyPadFixtureAddResponse'
+  sendVcXyPadFixtureRemove:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcXyPadFixtureRemoveRequest'
+  receiveVcXyPadFixtureRemoveResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcXyPadFixtureRemoveResponse'
+  sendVcXyPadSetHeadsRange:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcXyPadSetHeadsRangeRequest'
+  receiveVcXyPadSetHeadsRangeResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcXyPadSetHeadsRangeResponse'
+  receiveVcXyPadFixturesChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcXyPadFixturesChangedEvent'
+  sendVcXyPadPresetAdd:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcXyPadPresetAddRequest'
+  receiveVcXyPadPresetAddResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcXyPadPresetAddResponse'
+  sendVcXyPadPresetRemove:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcXyPadPresetRemoveRequest'
+  receiveVcXyPadPresetRemoveResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcXyPadPresetRemoveResponse'
+  sendVcXyPadPresetMove:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcXyPadPresetMoveRequest'
+  receiveVcXyPadPresetMoveResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcXyPadPresetMoveResponse'
+  sendVcXyPadPresetRename:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcXyPadPresetRenameRequest'
+  receiveVcXyPadPresetRenameResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcXyPadPresetRenameResponse'
+  receiveVcXyPadPresetsChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcXyPadPresetsChangedEvent'
+  sendVcXyPadApplyPreset:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcXyPadApplyPresetRequest'
+  receiveVcXyPadApplyPresetResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcXyPadApplyPresetResponse'
+  receiveVcXyPadActivePresetChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcXyPadActivePresetChangedEvent'
+  sendVcFrameGotoPage:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcFrameGotoPageRequest'
+  receiveVcFrameGotoPageResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcFrameGotoPageResponse'
+  receiveVcFrameCurrentPageChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcFrameCurrentPageChangedEvent'
+  sendVcFrameCloneFirstPage:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcFrameCloneFirstPageRequest'
+  receiveVcFrameCloneFirstPageResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcFrameCloneFirstPageResponse'
+  sendVcFrameSetPin:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcFrameSetPinRequest'
+  receiveVcFrameSetPinResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcFrameSetPinResponse'
+  sendVcFrameValidatePin:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcFrameValidatePinRequest'
+  receiveVcFrameValidatePinResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcFrameValidatePinResponse'
+  sendVcClockPlayPause:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcClockPlayPauseRequest'
+  receiveVcClockPlayPauseResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcClockPlayPauseResponse'
+  sendVcClockReset:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcClockResetRequest'
+  receiveVcClockResetResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcClockResetResponse'
+  receiveVcClockTimeChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcClockTimeChangedEvent'
+  sendVcClockScheduleAdd:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcClockScheduleAddRequest'
+  receiveVcClockScheduleAddResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcClockScheduleAddResponse'
+  sendVcClockScheduleUpdate:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcClockScheduleUpdateRequest'
+  receiveVcClockScheduleUpdateResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcClockScheduleUpdateResponse'
+  sendVcClockScheduleRemove:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcClockScheduleRemoveRequest'
+  receiveVcClockScheduleRemoveResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcClockScheduleRemoveResponse'
+  receiveVcClockSchedulesChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcClockSchedulesChangedEvent'
+  sendVcCueListPlay:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcCueListPlayRequest'
+  receiveVcCueListPlayResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcCueListPlayResponse'
+  sendVcCueListStop:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcCueListStopRequest'
+  receiveVcCueListStopResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcCueListStopResponse'
+  sendVcCueListPrevious:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcCueListPreviousRequest'
+  receiveVcCueListPreviousResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcCueListPreviousResponse'
+  sendVcCueListNext:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcCueListNextRequest'
+  receiveVcCueListNextResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcCueListNextResponse'
+  sendVcCueListSetPlaybackIndex:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcCueListSetPlaybackIndexRequest'
+  receiveVcCueListSetPlaybackIndexResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcCueListSetPlaybackIndexResponse'
+  receiveVcCueListPlaybackChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcCueListPlaybackChangedEvent'
+  sendVcCueListSetSideFaderLevel:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcCueListSetSideFaderLevelRequest'
+  receiveVcCueListSetSideFaderLevelResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcCueListSetSideFaderLevelResponse'
+  receiveVcCueListSideFaderChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcCueListSideFaderChangedEvent'
+  sendVcSpeedDialSetCurrentTime:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcSpeedDialSetCurrentTimeRequest'
+  receiveVcSpeedDialSetCurrentTimeResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcSpeedDialSetCurrentTimeResponse'
+  receiveVcSpeedDialCurrentTimeChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcSpeedDialCurrentTimeChangedEvent'
+  sendVcSpeedDialSetFactor:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcSpeedDialSetFactorRequest'
+  receiveVcSpeedDialSetFactorResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcSpeedDialSetFactorResponse'
+  receiveVcSpeedDialFactorChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcSpeedDialFactorChangedEvent'
+  sendVcSpeedDialApply:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcSpeedDialApplyRequest'
+  receiveVcSpeedDialApplyResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcSpeedDialApplyResponse'
+  sendVcSpeedDialTap:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcSpeedDialTapRequest'
+  receiveVcSpeedDialTapResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcSpeedDialTapResponse'
+  sendVcSpeedDialResetTap:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcSpeedDialResetTapRequest'
+  receiveVcSpeedDialResetTapResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcSpeedDialResetTapResponse'
+  receiveVcSpeedDialTapChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcSpeedDialTapChangedEvent'
+  sendVcSpeedDialPresetAdd:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcSpeedDialPresetAddRequest'
+  receiveVcSpeedDialPresetAddResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcSpeedDialPresetAddResponse'
+  sendVcSpeedDialPresetUpdate:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcSpeedDialPresetUpdateRequest'
+  receiveVcSpeedDialPresetUpdateResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcSpeedDialPresetUpdateResponse'
+  sendVcSpeedDialPresetRemove:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcSpeedDialPresetRemoveRequest'
+  receiveVcSpeedDialPresetRemoveResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcSpeedDialPresetRemoveResponse'
+  receiveVcSpeedDialPresetsChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcSpeedDialPresetsChangedEvent'
+  sendVcSpeedDialApplyPreset:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcSpeedDialApplyPresetRequest'
+  receiveVcSpeedDialApplyPresetResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcSpeedDialApplyPresetResponse'
+  sendVcAnimationSetFaderLevel:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcAnimationSetFaderLevelRequest'
+  receiveVcAnimationSetFaderLevelResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcAnimationSetFaderLevelResponse'
+  receiveVcAnimationFaderLevelChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcAnimationFaderLevelChangedEvent'
+  sendVcAnimationPresetAdd:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcAnimationPresetAddRequest'
+  receiveVcAnimationPresetAddResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcAnimationPresetAddResponse'
+  sendVcAnimationPresetRemove:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcAnimationPresetRemoveRequest'
+  receiveVcAnimationPresetRemoveResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcAnimationPresetRemoveResponse'
+  sendVcAnimationPresetMove:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcAnimationPresetMoveRequest'
+  receiveVcAnimationPresetMoveResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcAnimationPresetMoveResponse'
+  receiveVcAnimationPresetsChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcAnimationPresetsChangedEvent'
+  sendVcAnimationApplyPreset:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcAnimationApplyPresetRequest'
+  receiveVcAnimationApplyPresetResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcAnimationApplyPresetResponse'
+  sendVcAnimationSetPresetKnobValue:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcAnimationSetPresetKnobValueRequest'
+  receiveVcAnimationSetPresetKnobValueResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcAnimationSetPresetKnobValueResponse'
+  receiveVcAnimationActivePresetChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcAnimationActivePresetChangedEvent'
+  sendVcAudioTriggersSetCaptureEnabled:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcAudioTriggersSetCaptureEnabledRequest'
+  receiveVcAudioTriggersSetCaptureEnabledResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcAudioTriggersSetCaptureEnabledResponse'
+  receiveVcAudioTriggersCaptureEnabledChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcAudioTriggersCaptureEnabledChangedEvent'
+  receiveVcAudioTriggersLevelsChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcAudioTriggersLevelsChangedEvent'
+  sendVcAudioTriggersSetBarConfig:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcAudioTriggersSetBarConfigRequest'
+  receiveVcAudioTriggersSetBarConfigResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcAudioTriggersSetBarConfigResponse'
+  receiveVcAudioTriggersBarsChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcAudioTriggersBarsChangedEvent'

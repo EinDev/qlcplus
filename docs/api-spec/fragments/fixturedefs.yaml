@@ -1,0 +1,1611 @@
+# fixturedefs domain fragment — fixture *definition* authoring (the .qxf
+# editor: manufacturer/model/type, channels, capabilities, modes, heads,
+# aliasing, physical properties, load/save/import/export).
+#
+# Explicitly NOT this domain: patching a definition onto a real fixture in a
+# universe/address (that's "fixtures.*", owned elsewhere). fixturedefs only
+# ever touches the fixture *definition library* (QLCFixtureDefCache) and
+# in-memory editing sessions cloned from it (mirrors qmlui/fixtureeditor/).
+#
+# See fixturedefs-notes.md for: the docRevision-vs-own-revision decision,
+# lockable resource types, subscribe-gated topics (none), scope cuts, and the
+# list of channel message keys the merge pass needs to add to
+# channels.qlcplus.messages in the merged skeleton.
+
+messages:
+
+  # ======================================================================
+  # Library browsing (read-only; not an editing session)
+  # ======================================================================
+
+  FixtureDefsListRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixturedefs.list }
+        params:
+          type: object
+          properties:
+            manufacturer:
+              type: string
+              description: "Optional filter: only return entries for this manufacturer."
+
+  FixtureDefsListResponse:
+    payload:
+      oneOf:
+        - type: object
+          required: [type, id, ok, result]
+          properties:
+            type: { const: response }
+            id: { type: string }
+            ok: { const: true }
+            result:
+              type: object
+              required: [entries]
+              properties:
+                entries:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/FixtureDefsLibraryEntry'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  FixtureDefsGetRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixturedefs.get }
+        params:
+          type: object
+          required: [manufacturer, model]
+          properties:
+            manufacturer: { type: string }
+            model: { type: string }
+
+  FixtureDefsGetResponse:
+    payload:
+      oneOf:
+        - type: object
+          required: [type, id, ok, result]
+          properties:
+            type: { const: response }
+            id: { type: string }
+            ok: { const: true }
+            result:
+              type: object
+              required: [definition, defRevision]
+              properties:
+                definition:
+                  $ref: '#/components/schemas/FixtureDefsDefinition'
+                defRevision:
+                  type: integer
+                  description: "See fixturedefs-notes.md — per-definition revision, independent of the show's docRevision."
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  FixtureDefsDeleteRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixturedefs.delete }
+        params:
+          type: object
+          required: [manufacturer, model, baseDefRevision]
+          properties:
+            manufacturer: { type: string }
+            model: { type: string }
+            baseDefRevision:
+              type: integer
+              description: "defRevision this client last observed for this manufacturer/model."
+
+  FixtureDefsDeleteResponse:
+    payload:
+      oneOf:
+        - type: object
+          required: [type, id, ok, result]
+          properties:
+            type: { const: response }
+            id: { type: string }
+            ok: { const: true }
+            result:
+              type: object
+              required: [manufacturer, model]
+              properties:
+                manufacturer: { type: string }
+                model: { type: string }
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  FixtureDefsDeletedEvent:
+    payload:
+      type: object
+      required: [type, topic, data]
+      properties:
+        type: { const: event }
+        topic: { const: fixturedefs.deleted }
+        originClientId: { type: [string, "null"] }
+        data:
+          type: object
+          required: [manufacturer, model]
+          properties:
+            manufacturer: { type: string }
+            model: { type: string }
+
+  FixtureDefsExportRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixturedefs.export }
+        params:
+          type: object
+          description: >
+            Provide either sessionId (export the in-progress working copy,
+            possibly unsaved) or manufacturer+model (export the saved
+            library entry). If both are omitted or an unknown sessionId is
+            given, the server responds NOT_FOUND.
+          properties:
+            sessionId: { type: string }
+            manufacturer: { type: string }
+            model: { type: string }
+
+  FixtureDefsExportResponse:
+    payload:
+      oneOf:
+        - type: object
+          required: [type, id, ok, result]
+          properties:
+            type: { const: response }
+            id: { type: string }
+            ok: { const: true }
+            result:
+              type: object
+              required: [fileName, qxfBase64]
+              properties:
+                fileName: { type: string, example: "My-Fixture.qxf" }
+                qxfBase64:
+                  type: string
+                  description: "Base64-encoded raw bytes of the QXF (XML) file. See fixturedefs-notes.md for why base64-in-params was chosen over a separate upload mechanism."
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  # ======================================================================
+  # Editing session lifecycle (mirrors FixtureEditor/EditorView: a session
+  # holds an in-memory *clone* of a definition; nothing touches the shared
+  # library/cache or disk until fixturedefs.save)
+  # ======================================================================
+
+  FixtureDefsSessionCreateRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixturedefs.session.create }
+        params:
+          type: object
+          description: "Creates a session around a brand-new, blank fixture definition (mirrors FixtureEditor::createDefinition)."
+
+  FixtureDefsSessionOpenRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixturedefs.session.open }
+        params:
+          type: object
+          required: [manufacturer, model]
+          description: "Opens an existing library definition for editing, by cloning it (mirrors FixtureEditor::editDefinition)."
+          properties:
+            manufacturer: { type: string }
+            model: { type: string }
+
+  FixtureDefsSessionImportRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixturedefs.session.import }
+        params:
+          type: object
+          required: [fileName, qxfBase64]
+          description: "Loads a raw QXF file's bytes into a new session (mirrors FixtureEditor::loadDefinition for .qxf files). Avolites D4 import (.d4) is out of scope — see fixturedefs-notes.md."
+          properties:
+            fileName: { type: string, example: "Imported-Fixture.qxf" }
+            qxfBase64:
+              type: string
+              description: "Base64-encoded raw bytes of a .qxf XML file."
+
+  FixtureDefsSessionOpenedResponse:
+    payload:
+      oneOf:
+        - type: object
+          required: [type, id, ok, result]
+          properties:
+            type: { const: response }
+            id: { type: string }
+            ok: { const: true }
+            result:
+              type: object
+              required: [sessionId, definition, sessionRevision, isUser, baseDefRevision]
+              properties:
+                sessionId: { type: string }
+                definition:
+                  $ref: '#/components/schemas/FixtureDefsDefinition'
+                sessionRevision:
+                  type: integer
+                  description: "Starts at 0. See fixturedefs-notes.md for the two-tier session-vs-library revision model."
+                isUser: { type: boolean }
+                baseDefRevision:
+                  type: [integer, "null"]
+                  description: "The library's defRevision for this manufacturer/model at the moment the session was opened; null for a brand-new (never-saved) session. Echoed back at fixturedefs.save time."
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  FixtureDefsSessionOpenedEvent:
+    payload:
+      type: object
+      required: [type, topic, data]
+      properties:
+        type: { const: event }
+        topic: { const: fixturedefs.session.opened }
+        originClientId: { type: [string, "null"] }
+        data:
+          type: object
+          required: [sessionId, source, definition, sessionRevision, isUser, baseDefRevision]
+          properties:
+            sessionId: { type: string }
+            source:
+              type: string
+              enum: [created, opened, imported]
+              description: "Which of the three session-opening methods produced this session."
+            definition:
+              $ref: '#/components/schemas/FixtureDefsDefinition'
+            sessionRevision: { type: integer }
+            isUser: { type: boolean }
+            baseDefRevision: { type: [integer, "null"] }
+
+  FixtureDefsSessionCloseRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixturedefs.session.close }
+        params:
+          type: object
+          required: [sessionId]
+          description: "Discards the session's working copy without saving (mirrors FixtureEditor::deleteEditor). Any unsaved edits are lost."
+          properties:
+            sessionId: { type: string }
+
+  FixtureDefsSessionCloseResponse:
+    payload:
+      oneOf:
+        - type: object
+          required: [type, id, ok, result]
+          properties:
+            type: { const: response }
+            id: { type: string }
+            ok: { const: true }
+            result:
+              type: object
+              required: [sessionId]
+              properties:
+                sessionId: { type: string }
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  FixtureDefsSessionClosedEvent:
+    payload:
+      type: object
+      required: [type, topic, data]
+      properties:
+        type: { const: event }
+        topic: { const: fixturedefs.session.closed }
+        originClientId: { type: [string, "null"] }
+        data:
+          type: object
+          required: [sessionId]
+          properties:
+            sessionId: { type: string }
+
+  FixtureDefsSessionListRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixturedefs.session.list }
+        params:
+          type: object
+          description: "Lists all currently open editing sessions from every connected client (mirrors FixtureEditor::editorsList)."
+
+  FixtureDefsSessionListResponse:
+    payload:
+      oneOf:
+        - type: object
+          required: [type, id, ok, result]
+          properties:
+            type: { const: response }
+            id: { type: string }
+            ok: { const: true }
+            result:
+              type: object
+              required: [sessions]
+              properties:
+                sessions:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/FixtureDefsSessionInfo'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  FixtureDefsSessionForkToUserRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixturedefs.session.forkToUser }
+        params:
+          type: object
+          required: [sessionId, baseRevision]
+          description: >
+            Turns a session opened from a system (bundled, read-only)
+            definition into a user-owned copy that can be saved (mirrors
+            EditorView::remapFilename). Required before fixturedefs.save on
+            a session whose isUser is currently false — see
+            FIXTUREDEFS_SYSTEM_READONLY in notes.
+          properties:
+            sessionId: { type: string }
+            baseRevision:
+              type: integer
+              description: "sessionRevision this client last observed for this session."
+
+  FixtureDefsSessionSetMetadataRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixturedefs.session.setMetadata }
+        params:
+          type: object
+          required: [sessionId, baseRevision]
+          description: "Partial update — any subset of manufacturer/model/type/author. Mirrors EditorView's manufacturer/model/productType/author setters."
+          properties:
+            sessionId: { type: string }
+            baseRevision: { type: integer }
+            manufacturer: { type: string }
+            model: { type: string }
+            type:
+              type: string
+              description: "One of QLCFixtureDef::FixtureType's names, e.g. MovingHead, ColorChanger, Scanner, Dimmer, LEDBarPixels, Other, ..."
+            author: { type: string }
+
+  FixtureDefsSessionSetPhysicalRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixturedefs.session.setPhysical }
+        params:
+          type: object
+          required: [sessionId, baseRevision, physical]
+          description: "Sets the definition's global physical properties (mirrors EditorView::globalPhysical). Per-mode overrides use fixturedefs.mode.setPhysical instead."
+          properties:
+            sessionId: { type: string }
+            baseRevision: { type: integer }
+            physical:
+              $ref: '#/components/schemas/FixtureDefsPhysical'
+
+  FixtureDefsSessionValidateRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixturedefs.session.validate }
+        params:
+          type: object
+          required: [sessionId]
+          description: "On-demand validation without saving (mirrors EditorView::checkFixture, run automatically as part of fixturedefs.save). Useful for a live 'ready to save' UI badge."
+          properties:
+            sessionId: { type: string }
+
+  FixtureDefsSessionValidateResponse:
+    payload:
+      oneOf:
+        - type: object
+          required: [type, id, ok, result]
+          properties:
+            type: { const: response }
+            id: { type: string }
+            ok: { const: true }
+            result:
+              type: object
+              required: [warnings]
+              properties:
+                warnings:
+                  type: array
+                  items: { type: string }
+                  description: "Non-blocking issues, e.g. 'No channels provided', 'Empty capability description in channel X', 'Mode Y has no channels defined', 'No modes provided'. These never block a save (see notes)."
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  # Shared ack response for every session mutation whose result is just
+  # 'it worked, here is the new sessionRevision' — see notes.md for the
+  # full list of send operations that receive this same message.
+  FixtureDefsSessionAckResponse:
+    payload:
+      oneOf:
+        - type: object
+          required: [type, id, ok, result]
+          properties:
+            type: { const: response }
+            id: { type: string }
+            ok: { const: true }
+            result:
+              type: object
+              required: [sessionId, sessionRevision]
+              properties:
+                sessionId: { type: string }
+                sessionRevision: { type: integer }
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  # Shared broadcast event fired after every successful session mutation
+  # (metadata, physical, channel/capability/mode/head/alias CRUD, fork).
+  # Carries the FULL updated definition snapshot rather than a JSON Patch —
+  # see notes.md for why (definitions are small documents).
+  FixtureDefsSessionChangedEvent:
+    payload:
+      type: object
+      required: [type, topic, data]
+      properties:
+        type: { const: event }
+        topic: { const: fixturedefs.session.changed }
+        originClientId: { type: [string, "null"] }
+        data:
+          type: object
+          required: [sessionId, sessionRevision, changeKind, definition]
+          properties:
+            sessionId: { type: string }
+            sessionRevision: { type: integer }
+            changeKind:
+              type: string
+              description: "What kind of mutation triggered this event, e.g. 'metadata', 'physical', 'channel.add', 'channel.update', 'channel.remove', 'capability.add', 'capability.update', 'capability.remove', 'capability.autoPatchColors', 'alias.add', 'alias.update', 'alias.remove', 'alias.applyToAllModes', 'mode.add', 'mode.update', 'mode.remove', 'mode.setChannels', 'mode.setPhysical', 'head.add', 'head.remove', 'forkToUser'."
+            definition:
+              $ref: '#/components/schemas/FixtureDefsDefinition'
+
+  FixtureDefsSaveRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixturedefs.save }
+        params:
+          type: object
+          required: [sessionId, baseDefRevision]
+          description: "Writes the session's working copy to disk and into the shared library/cache (mirrors EditorView::save + FixtureEditor::slotReloadFixture). The session stays open afterwards; edit and save again freely."
+          properties:
+            sessionId: { type: string }
+            baseDefRevision:
+              type: [integer, "null"]
+              description: "The defRevision this session was last opened/saved against (from session-opened or the previous save's result); null only for a session that has never been saved and has no library counterpart yet."
+
+  FixtureDefsSaveResponse:
+    payload:
+      oneOf:
+        - type: object
+          required: [type, id, ok, result]
+          properties:
+            type: { const: response }
+            id: { type: string }
+            ok: { const: true }
+            result:
+              type: object
+              required: [sessionId, manufacturer, model, defRevision, warnings]
+              properties:
+                sessionId: { type: string }
+                manufacturer: { type: string }
+                model: { type: string }
+                defRevision:
+                  type: integer
+                  description: "The new library revision for this manufacturer/model after this save."
+                warnings:
+                  type: array
+                  items: { type: string }
+                  description: "Same non-blocking checks as fixturedefs.session.validate. The save still succeeds even with warnings present, matching EditorView::save's current behavior."
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  FixtureDefsSavedEvent:
+    payload:
+      type: object
+      required: [type, topic, data]
+      properties:
+        type: { const: event }
+        topic: { const: fixturedefs.saved }
+        originClientId: { type: [string, "null"] }
+        data:
+          type: object
+          required: [sessionId, manufacturer, model, defRevision, definition, warnings]
+          properties:
+            sessionId: { type: string }
+            manufacturer: { type: string }
+            model: { type: string }
+            defRevision: { type: integer }
+            definition:
+              $ref: '#/components/schemas/FixtureDefsDefinition'
+            warnings:
+              type: array
+              items: { type: string }
+
+  # ======================================================================
+  # Channel CRUD (definition-level channel pool)
+  # ======================================================================
+
+  FixtureDefsChannelAddRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixturedefs.channel.add }
+        params:
+          type: object
+          required: [sessionId, baseRevision]
+          description: >
+            Adds a new channel to the definition's channel pool (not yet
+            assigned to any mode — see fixturedefs.mode.setChannels for
+            that). If `preset` is given, the server applies the same
+            shortcut as EditorView::addPresetChannel (auto group/colour and
+            a single auto-generated capability). Otherwise a blank channel
+            is created with one full-range (0-255), empty-name capability,
+            mirroring ChannelEdit's default-capability behavior.
+          properties:
+            sessionId: { type: string }
+            baseRevision: { type: integer }
+            name:
+              type: string
+              description: "Defaults to 'New channel N' if omitted."
+            group:
+              type: string
+              description: "One of QLCChannel::Group's names: Intensity, Colour, Gobo, Speed, Pan, Tilt, Shutter, Prism, Beam, Effect, Maintenance, Nothing."
+            colour:
+              type: string
+              description: "One of QLCChannel::PrimaryColour's names (NoColour, Red, Green, Blue, Cyan, Magenta, Yellow, Amber, White, UV, Lime, Indigo); only meaningful when group is Intensity."
+            preset:
+              type: string
+              description: "Optional shortcut preset name (e.g. IntensityRed, PositionPan, ColorMacro) that auto-populates group/colour/capabilities."
+
+  FixtureDefsChannelAddResponse:
+    payload:
+      oneOf:
+        - type: object
+          required: [type, id, ok, result]
+          properties:
+            type: { const: response }
+            id: { type: string }
+            ok: { const: true }
+            result:
+              type: object
+              required: [sessionId, sessionRevision, channelId]
+              properties:
+                sessionId: { type: string }
+                sessionRevision: { type: integer }
+                channelId:
+                  type: string
+                  description: "Server-assigned stable id — see notes.md for why this API uses synthetic ids for channels/modes instead of the engine's name-based lookup."
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  FixtureDefsChannelUpdateRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixturedefs.channel.update }
+        params:
+          type: object
+          required: [sessionId, baseRevision, channelId]
+          description: >
+            Partial update. Setting `preset` to anything other than Custom
+            replaces the channel's entire capability list with the preset's
+            auto-generated capability, mirroring ChannelEdit::setupPreset —
+            the resulting capabilities are visible in the following
+            fixturedefs.session.changed event.
+          properties:
+            sessionId: { type: string }
+            baseRevision: { type: integer }
+            channelId: { type: string }
+            name: { type: string }
+            group: { type: string }
+            colour: { type: string }
+            preset: { type: string }
+            defaultValue: { type: integer, minimum: 0, maximum: 255 }
+            controlByte: { type: string, enum: [MSB, LSB] }
+
+  FixtureDefsChannelRemoveRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixturedefs.channel.remove }
+        params:
+          type: object
+          required: [sessionId, baseRevision, channelIds]
+          description: "Batch remove (mirrors EditorView::deleteChannels). Cascades: also removed from every mode's channel list/heads, and any alias capabilities targeting a removed channel are dropped."
+          properties:
+            sessionId: { type: string }
+            baseRevision: { type: integer }
+            channelIds:
+              type: array
+              minItems: 1
+              items: { type: string }
+
+  # ======================================================================
+  # Capability CRUD (nested under a channel)
+  # ======================================================================
+
+  FixtureDefsCapabilityAddRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixturedefs.channel.capability.add }
+        params:
+          type: object
+          required: [sessionId, baseRevision, channelId]
+          description: "Mirrors ChannelEdit::addCapability/addNewCapability. If min/max are omitted, the server picks the next free range the same way the qmlui editor does (min = previous capability's max + 1, max = 255)."
+          properties:
+            sessionId: { type: string }
+            baseRevision: { type: integer }
+            channelId: { type: string }
+            min: { type: integer, minimum: 0, maximum: 255 }
+            max: { type: integer, minimum: 0, maximum: 255 }
+            name: { type: string }
+
+  FixtureDefsCapabilityAddResponse:
+    payload:
+      oneOf:
+        - type: object
+          required: [type, id, ok, result]
+          properties:
+            type: { const: response }
+            id: { type: string }
+            ok: { const: true }
+            result:
+              type: object
+              required: [sessionId, sessionRevision, capabilityIndex]
+              properties:
+                sessionId: { type: string }
+                sessionRevision: { type: integer }
+                capabilityIndex:
+                  type: integer
+                  description: "Position within the channel's capability list. Capabilities have no engine-level id — they are addressed positionally, exactly like ChannelEdit's own index-based API."
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  FixtureDefsCapabilityUpdateRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixturedefs.channel.capability.update }
+        params:
+          type: object
+          required: [sessionId, baseRevision, channelId, capabilityIndex]
+          description: >
+            Partial update of range/name/preset/resources. `resources` is
+            interpreted according to the resulting preset's presetType
+            (see FixtureDefsCapability schema): SingleColor/DoubleColor
+            expect 1-2 "#RRGGBB" hex strings, SingleValue/DoubleValue expect
+            1-2 numbers (Hz, or prism face count), Picture expects a single
+            resource-name string, all other presets ignore `resources`. The
+            `aliases` field is read-only here — mutate it via
+            fixturedefs.channel.capability.alias.*.
+          properties:
+            sessionId: { type: string }
+            baseRevision: { type: integer }
+            channelId: { type: string }
+            capabilityIndex: { type: integer }
+            min: { type: integer, minimum: 0, maximum: 255 }
+            max: { type: integer, minimum: 0, maximum: 255 }
+            name: { type: string }
+            preset: { type: string }
+            resources:
+              type: array
+              items:
+                oneOf:
+                  - type: string
+                  - type: number
+
+  FixtureDefsCapabilityRemoveRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixturedefs.channel.capability.remove }
+        params:
+          type: object
+          required: [sessionId, baseRevision, channelId, capabilityIndex]
+          properties:
+            sessionId: { type: string }
+            baseRevision: { type: integer }
+            channelId: { type: string }
+            capabilityIndex: { type: integer }
+
+  FixtureDefsCapabilityAutoPatchColorsRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixturedefs.channel.capability.autoPatchColors }
+        params:
+          type: object
+          required: [sessionId, baseRevision, channelId]
+          description: >
+            Bulk-authoring convenience, mirrors
+            ChannelEdit::autoPatchColorCapabilities: for a Colour-group
+            channel, title-cases any all-lowercase capability names and
+            auto-detects color names in each capability's name against the
+            bundled namedrgb color filter, setting ColorMacro/
+            ColorDoubleMacro preset + resources accordingly. No-op (but
+            still ok:true) if the channel isn't group=Colour or nothing
+            matched.
+          properties:
+            sessionId: { type: string }
+            baseRevision: { type: integer }
+            channelId: { type: string }
+
+  # ======================================================================
+  # Aliases (nested under a channel's Alias-preset capability)
+  # ======================================================================
+
+  FixtureDefsAliasAddRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixturedefs.channel.capability.alias.add }
+        params:
+          type: object
+          required: [sessionId, baseRevision, channelId, capabilityIndex, targetMode, targetChannel]
+          description: "Mirrors AliasEdit::addAlias. The capability at capabilityIndex must have preset Alias, and targetMode must be a mode that contains channelId (see FixtureDefsGetResponse/definition.modes to find applicableModes-equivalent). No-op if an identical alias already exists."
+          properties:
+            sessionId: { type: string }
+            baseRevision: { type: integer }
+            channelId: { type: string }
+            capabilityIndex: { type: integer }
+            targetMode:
+              type: string
+              description: "Name of the mode this substitution applies in."
+            targetChannel:
+              type: string
+              description: "Name of the channel that replaces this channel while the DMX value is in [min,max]."
+
+  FixtureDefsAliasAddResponse:
+    payload:
+      oneOf:
+        - type: object
+          required: [type, id, ok, result]
+          properties:
+            type: { const: response }
+            id: { type: string }
+            ok: { const: true }
+            result:
+              type: object
+              required: [sessionId, sessionRevision, aliasIndex]
+              properties:
+                sessionId: { type: string }
+                sessionRevision: { type: integer }
+                aliasIndex:
+                  type: integer
+                  description: "Position within this capability's alias list."
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  FixtureDefsAliasUpdateRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixturedefs.channel.capability.alias.update }
+        params:
+          type: object
+          required: [sessionId, baseRevision, channelId, capabilityIndex, aliasIndex]
+          description: "Mirrors AliasEdit::setAliasTarget / setAliasMode."
+          properties:
+            sessionId: { type: string }
+            baseRevision: { type: integer }
+            channelId: { type: string }
+            capabilityIndex: { type: integer }
+            aliasIndex: { type: integer }
+            targetMode: { type: string }
+            targetChannel: { type: string }
+
+  FixtureDefsAliasRemoveRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixturedefs.channel.capability.alias.remove }
+        params:
+          type: object
+          required: [sessionId, baseRevision, channelId, capabilityIndex, aliasIndex]
+          properties:
+            sessionId: { type: string }
+            baseRevision: { type: integer }
+            channelId: { type: string }
+            capabilityIndex: { type: integer }
+            aliasIndex: { type: integer }
+
+  FixtureDefsAliasApplyToAllModesRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixturedefs.channel.capability.alias.applyToAllModes }
+        params:
+          type: object
+          required: [sessionId, baseRevision, channelId, capabilityIndex]
+          description: "Mirrors AliasEdit::applyToAllModes: creates one alias per mode containing channelId that doesn't already have one, defaulting to targetChannel (or the first available channel if omitted)."
+          properties:
+            sessionId: { type: string }
+            baseRevision: { type: integer }
+            channelId: { type: string }
+            capabilityIndex: { type: integer }
+            targetChannel: { type: string }
+
+  FixtureDefsAliasApplyToAllModesResponse:
+    payload:
+      oneOf:
+        - type: object
+          required: [type, id, ok, result]
+          properties:
+            type: { const: response }
+            id: { type: string }
+            ok: { const: true }
+            result:
+              type: object
+              required: [sessionId, sessionRevision, addedCount]
+              properties:
+                sessionId: { type: string }
+                sessionRevision: { type: integer }
+                addedCount:
+                  type: integer
+                  description: "Number of aliases actually added (modes that already had one are skipped)."
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  # ======================================================================
+  # Mode CRUD
+  # ======================================================================
+
+  FixtureDefsModeAddRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixturedefs.mode.add }
+        params:
+          type: object
+          required: [sessionId, baseRevision]
+          description: "Adds a new, empty mode (mirrors EditorView::requestModeEditor's create-if-missing path). Assign channels with fixturedefs.mode.setChannels."
+          properties:
+            sessionId: { type: string }
+            baseRevision: { type: integer }
+            name:
+              type: string
+              description: "Defaults to 'New mode' if omitted."
+
+  FixtureDefsModeAddResponse:
+    payload:
+      oneOf:
+        - type: object
+          required: [type, id, ok, result]
+          properties:
+            type: { const: response }
+            id: { type: string }
+            ok: { const: true }
+            result:
+              type: object
+              required: [sessionId, sessionRevision, modeId]
+              properties:
+                sessionId: { type: string }
+                sessionRevision: { type: integer }
+                modeId: { type: string }
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  FixtureDefsModeUpdateRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixturedefs.mode.update }
+        params:
+          type: object
+          required: [sessionId, baseRevision, modeId, name]
+          description: "Renames a mode. A rename also re-validates/refreshes any aliases that reference this mode by name, mirroring EditorView::modeNameChanged."
+          properties:
+            sessionId: { type: string }
+            baseRevision: { type: integer }
+            modeId: { type: string }
+            name: { type: string }
+
+  FixtureDefsModeRemoveRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixturedefs.mode.remove }
+        params:
+          type: object
+          required: [sessionId, baseRevision, modeId]
+          properties:
+            sessionId: { type: string }
+            baseRevision: { type: integer }
+            modeId: { type: string }
+
+  FixtureDefsModeSetChannelsRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixturedefs.mode.setChannels }
+        params:
+          type: object
+          required: [sessionId, baseRevision, modeId, channels]
+          description: >
+            Replaces the mode's entire ordered channel slot list in one
+            call (array index = DMX offset within the mode). This
+            deliberately collapses ModeEdit's fine-grained
+            addChannel(index)/moveChannel(index)/deleteChannel/
+            setActsOnChannel C++ API into a single "set the whole list"
+            operation — see notes.md. Every channelId must already exist in
+            the definition's channel pool (fixturedefs.channel.add it
+            first if needed). A slot's actsOnChannelId cannot equal its own
+            channelId (INVALID_PARAMS / FIXTUREDEFS_ACTS_ON_SELF) — the
+            legacy editor only warns about this at save time, this API
+            rejects it immediately.
+          properties:
+            sessionId: { type: string }
+            baseRevision: { type: integer }
+            modeId: { type: string }
+            channels:
+              type: array
+              items:
+                $ref: '#/components/schemas/FixtureDefsModeChannelSlot'
+
+  FixtureDefsModeSetPhysicalRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixturedefs.mode.setPhysical }
+        params:
+          type: object
+          required: [sessionId, baseRevision, modeId, useGlobalPhysical]
+          description: "Mirrors ModeEdit's useGlobalPhysical/physical override. Set useGlobalPhysical:true (physical omitted) to mirror QLCFixtureMode::resetPhysical; set it false with a physical object to override."
+          properties:
+            sessionId: { type: string }
+            baseRevision: { type: integer }
+            modeId: { type: string }
+            useGlobalPhysical: { type: boolean }
+            physical:
+              $ref: '#/components/schemas/FixtureDefsPhysical'
+
+  # ======================================================================
+  # Heads (nested under a mode — multi-head/multi-beam channel grouping)
+  # ======================================================================
+
+  FixtureDefsHeadAddRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixturedefs.mode.head.add }
+        params:
+          type: object
+          required: [sessionId, baseRevision, modeId, channelIds]
+          description: "Mirrors ModeEdit::addHead. Every channelId must be one of this mode's assigned channels (see fixturedefs.mode.setChannels) — the API addresses head members by channelId rather than the engine's raw position index, so head membership survives channel-slot reordering."
+          properties:
+            sessionId: { type: string }
+            baseRevision: { type: integer }
+            modeId: { type: string }
+            channelIds:
+              type: array
+              minItems: 1
+              items: { type: string }
+
+  FixtureDefsHeadAddResponse:
+    payload:
+      oneOf:
+        - type: object
+          required: [type, id, ok, result]
+          properties:
+            type: { const: response }
+            id: { type: string }
+            ok: { const: true }
+            result:
+              type: object
+              required: [sessionId, sessionRevision, headIndex]
+              properties:
+                sessionId: { type: string }
+                sessionRevision: { type: integer }
+                headIndex:
+                  type: integer
+                  description: "Position within the mode's head list."
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  FixtureDefsHeadRemoveRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixturedefs.mode.head.remove }
+        params:
+          type: object
+          required: [sessionId, baseRevision, modeId, headIndexes]
+          description: "Batch remove by position, mirrors ModeEdit::deleteHeads."
+          properties:
+            sessionId: { type: string }
+            baseRevision: { type: integer }
+            modeId: { type: string }
+            headIndexes:
+              type: array
+              minItems: 1
+              items: { type: integer }
+
+schemas:
+
+  FixtureDefsPhysical:
+    type: object
+    description: "Maps to QLCPhysical. All fields optional here so this schema can double as a partial-update payload for fixturedefs.session.setPhysical / fixturedefs.mode.setPhysical; every field is always present in a definition snapshot."
+    properties:
+      bulbType: { type: string, example: "MSR 1200" }
+      bulbLumens: { type: integer }
+      bulbColorTemperature: { type: integer, description: "Kelvin" }
+      weight: { type: number, description: "kg" }
+      width: { type: integer, description: "mm" }
+      height: { type: integer, description: "mm" }
+      depth: { type: integer, description: "mm" }
+      lensType: { type: string, example: "PC" }
+      lensDegreesMin: { type: number }
+      lensDegreesMax: { type: number }
+      focusType: { type: string, example: "Mirror" }
+      focusPanMax: { type: integer, description: "Degrees, 0 = fixed" }
+      focusTiltMax: { type: integer, description: "Degrees, 0 = fixed" }
+      layoutWidth:
+        type: integer
+        description: "Head arrangement grid width, for matrix/pixel fixtures (QLCPhysical::layoutSize)."
+      layoutHeight:
+        type: integer
+        description: "Head arrangement grid height, for matrix/pixel fixtures."
+      powerConsumption: { type: integer, description: "Watts" }
+      dmxConnector: { type: string, example: "3-pin" }
+
+  FixtureDefsAlias:
+    type: object
+    required: [targetMode, targetChannel]
+    properties:
+      targetMode:
+        type: string
+        description: "Name of the mode this substitution applies in."
+      targetChannel:
+        type: string
+        description: "Name of the channel that replaces the owning channel while its DMX value is within the capability's [min,max]."
+
+  FixtureDefsCapability:
+    type: object
+    required: [min, max, name, preset, resources, aliases, warning]
+    properties:
+      min: { type: integer, minimum: 0, maximum: 255 }
+      max: { type: integer, minimum: 0, maximum: 255 }
+      name: { type: string }
+      preset:
+        type: string
+        description: "One of QLCCapability::Preset's names (Custom, ColorMacro, ColorDoubleMacro, StrobeFrequency, RotationClockwise, Alias, ...). Not enumerated exhaustively here — see qlccapability.h; server validates via QLCCapability::stringToPreset."
+      resources:
+        type: array
+        description: >
+          Interpretation depends on the preset's presetType: SingleColor
+          (ColorMacro) = one "#RRGGBB" string; DoubleColor
+          (ColorDoubleMacro) = two "#RRGGBB" strings; SingleValue
+          (StrobeFrequency, PulseFrequency, RampUp/DownFrequency,
+          PrismEffectOn) = one number (Hz, or face count for
+          PrismEffectOn); DoubleValue (the *FreqRange presets) = two
+          numbers [min,max] in Hz; Picture (GoboMacro, GoboShakeMacro,
+          GenericPicture) = one resource-name string. Empty for every other
+          preset.
+        items:
+          oneOf:
+            - type: string
+            - type: number
+      aliases:
+        type: array
+        description: "Read-only here; only non-empty when preset is Alias. Mutate via fixturedefs.channel.capability.alias.*."
+        items:
+          $ref: '#/components/schemas/FixtureDefsAlias'
+      warning:
+        type: string
+        enum: [None, EmptyName, Overlapping]
+        description: "Server-computed (QLCCapability::WarningType), mirrors ChannelEdit::checkCapabilities. Informational only, never blocks a mutation or save."
+
+  FixtureDefsChannel:
+    type: object
+    required: [channelId, name, group, colour, preset, defaultValue, controlByte, capabilities]
+    properties:
+      channelId:
+        type: string
+        description: "Server-assigned, stable for the lifetime of the session — see notes.md."
+      name: { type: string }
+      group:
+        type: string
+        enum: [Intensity, Colour, Gobo, Speed, Pan, Tilt, Shutter, Prism, Beam, Effect, Maintenance, Nothing]
+      colour:
+        type: string
+        enum: [NoColour, Red, Green, Blue, Cyan, Magenta, Yellow, Amber, White, UV, Lime, Indigo]
+        description: "Meaningful only when group is Intensity (an Intensity channel represents one primary color's dimmer)."
+      preset:
+        type: string
+        description: "One of QLCChannel::Preset's names (Custom, IntensityDimmer, PositionPan, ColorMacro, NoFunction, ...). Not enumerated exhaustively — see qlcchannel.h; server validates via QLCChannel::stringToPreset. Setting this to non-Custom via fixturedefs.channel.update replaces the capability list."
+      defaultValue: { type: integer, minimum: 0, maximum: 255 }
+      controlByte:
+        type: string
+        enum: [MSB, LSB]
+        description: "Role in a 16-bit (fine) channel pair."
+      capabilities:
+        type: array
+        items:
+          $ref: '#/components/schemas/FixtureDefsCapability'
+
+  FixtureDefsModeChannelSlot:
+    type: object
+    required: [channelId]
+    properties:
+      channelId: { type: string }
+      actsOnChannelId:
+        type: [string, "null"]
+        description: "For a fine/secondary channel, the channelId of the coarse channel it refines (mirrors QLCFixtureMode::channelActsOn/setChannelActsOn). Null if this slot doesn't act on another."
+
+  FixtureDefsHead:
+    type: object
+    required: [headIndex, channelIds]
+    properties:
+      headIndex:
+        type: integer
+        description: "Position within the mode's head list; informational on read, used to address removal."
+      channelIds:
+        type: array
+        items: { type: string }
+        description: "Channels (from this mode's channel slot list) that make up this head/beam, e.g. one head's Pan/Tilt/Colour/Gobo channels on a multi-head fixture."
+
+  FixtureDefsMode:
+    type: object
+    required: [modeId, name, channels, heads, useGlobalPhysical, physical]
+    properties:
+      modeId:
+        type: string
+        description: "Server-assigned, stable for the lifetime of the session."
+      name: { type: string }
+      channels:
+        type: array
+        description: "Ordered — array index is the DMX channel offset within this mode."
+        items:
+          $ref: '#/components/schemas/FixtureDefsModeChannelSlot'
+      heads:
+        type: array
+        items:
+          $ref: '#/components/schemas/FixtureDefsHead'
+      useGlobalPhysical: { type: boolean }
+      physical:
+        oneOf:
+          - $ref: '#/components/schemas/FixtureDefsPhysical'
+          - type: "null"
+        description: "Present only when useGlobalPhysical is false; null otherwise."
+
+  FixtureDefsDefinition:
+    type: object
+    required: [manufacturer, model, type, author, isUser, sourceFile, physical, channels, modes]
+    properties:
+      manufacturer: { type: string }
+      model: { type: string }
+      type:
+        type: string
+        enum: [ColorChanger, Dimmer, Effect, Fan, Flower, Hazer, Laser, LEDBarBeams, LEDBarPixels, MovingHead, Other, Scanner, Smoke, Strobe]
+      author: { type: string }
+      isUser:
+        type: boolean
+        description: "false for a bundled/system definition (read-only until forked — see fixturedefs.session.forkToUser)."
+      sourceFile:
+        type: [string, "null"]
+        description: "Absolute path this definition was loaded from / will be saved to; null for a session that has never been saved."
+      physical:
+        $ref: '#/components/schemas/FixtureDefsPhysical'
+      channels:
+        type: array
+        description: "The definition's unordered channel pool (QLCFixtureDef stores channels this way — order here carries no meaning; per-mode order lives in each mode's `channels`)."
+        items:
+          $ref: '#/components/schemas/FixtureDefsChannel'
+      modes:
+        type: array
+        items:
+          $ref: '#/components/schemas/FixtureDefsMode'
+
+  FixtureDefsLibraryEntry:
+    type: object
+    required: [manufacturer, model, type, author, isUser, channelCount, modeCount, defRevision]
+    description: "Lightweight summary row for fixturedefs.list — mirrors QLCFixtureDefCache::fixtureCache()."
+    properties:
+      manufacturer: { type: string }
+      model: { type: string }
+      type:
+        type: string
+        enum: [ColorChanger, Dimmer, Effect, Fan, Flower, Hazer, Laser, LEDBarBeams, LEDBarPixels, MovingHead, Other, Scanner, Smoke, Strobe]
+      author: { type: string }
+      isUser: { type: boolean }
+      channelCount: { type: integer }
+      modeCount: { type: integer }
+      defRevision: { type: integer }
+
+  FixtureDefsSessionInfo:
+    type: object
+    required: [sessionId, manufacturer, model, isUser, isModified, sessionRevision, baseDefRevision]
+    description: "Mirrors FixtureEditor::editorsList's entries, for fixturedefs.session.list."
+    properties:
+      sessionId: { type: string }
+      manufacturer: { type: string }
+      model: { type: string }
+      isUser: { type: boolean }
+      isModified:
+        type: boolean
+        description: "Mirrors EditorView::isModified — has this session diverged from what's on disk since it was opened/last saved."
+      sessionRevision: { type: integer }
+      baseDefRevision: { type: [integer, "null"] }
+
+operations:
+
+  # ---- Library browsing ----
+  sendFixtureDefsList:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsListRequest'
+  receiveFixtureDefsListResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsListResponse'
+
+  sendFixtureDefsGet:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsGetRequest'
+  receiveFixtureDefsGetResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsGetResponse'
+
+  sendFixtureDefsDelete:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsDeleteRequest'
+  receiveFixtureDefsDeleteResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsDeleteResponse'
+  receiveFixtureDefsDeletedEvent:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsDeletedEvent'
+
+  sendFixtureDefsExport:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsExportRequest'
+  receiveFixtureDefsExportResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsExportResponse'
+
+  # ---- Session lifecycle ----
+  sendFixtureDefsSessionCreate:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsSessionCreateRequest'
+  sendFixtureDefsSessionOpen:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsSessionOpenRequest'
+  sendFixtureDefsSessionImport:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsSessionImportRequest'
+  receiveFixtureDefsSessionOpenedResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsSessionOpenedResponse'
+  receiveFixtureDefsSessionOpenedEvent:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsSessionOpenedEvent'
+
+  sendFixtureDefsSessionClose:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsSessionCloseRequest'
+  receiveFixtureDefsSessionCloseResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsSessionCloseResponse'
+  receiveFixtureDefsSessionClosedEvent:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsSessionClosedEvent'
+
+  sendFixtureDefsSessionList:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsSessionListRequest'
+  receiveFixtureDefsSessionListResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsSessionListResponse'
+
+  sendFixtureDefsSessionValidate:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsSessionValidateRequest'
+  receiveFixtureDefsSessionValidateResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsSessionValidateResponse'
+
+  # ---- Session mutations that share the generic ack response + changed event ----
+  sendFixtureDefsSessionForkToUser:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsSessionForkToUserRequest'
+  sendFixtureDefsSessionSetMetadata:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsSessionSetMetadataRequest'
+  sendFixtureDefsSessionSetPhysical:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsSessionSetPhysicalRequest'
+  sendFixtureDefsChannelUpdate:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsChannelUpdateRequest'
+  sendFixtureDefsChannelRemove:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsChannelRemoveRequest'
+  sendFixtureDefsCapabilityUpdate:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsCapabilityUpdateRequest'
+  sendFixtureDefsCapabilityRemove:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsCapabilityRemoveRequest'
+  sendFixtureDefsCapabilityAutoPatchColors:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsCapabilityAutoPatchColorsRequest'
+  sendFixtureDefsAliasUpdate:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsAliasUpdateRequest'
+  sendFixtureDefsAliasRemove:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsAliasRemoveRequest'
+  sendFixtureDefsModeUpdate:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsModeUpdateRequest'
+  sendFixtureDefsModeRemove:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsModeRemoveRequest'
+  sendFixtureDefsModeSetChannels:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsModeSetChannelsRequest'
+  sendFixtureDefsModeSetPhysical:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsModeSetPhysicalRequest'
+  sendFixtureDefsHeadRemove:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsHeadRemoveRequest'
+
+  receiveFixtureDefsSessionAckResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    description: >
+      Shared response for every "sendFixtureDefs*" mutation above that
+      doesn't allocate a new id (ForkToUser, SetMetadata, SetPhysical,
+      ChannelUpdate, ChannelRemove, CapabilityUpdate, CapabilityRemove,
+      CapabilityAutoPatchColors, AliasUpdate, AliasRemove, ModeUpdate,
+      ModeRemove, ModeSetChannels, ModeSetPhysical, HeadRemove).
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsSessionAckResponse'
+
+  receiveFixtureDefsSessionChangedEvent:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    description: "Broadcast after every session mutation, including the id-allocating ones below."
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsSessionChangedEvent'
+
+  # ---- Session mutations that allocate a new id (bespoke responses) ----
+  sendFixtureDefsChannelAdd:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsChannelAddRequest'
+  receiveFixtureDefsChannelAddResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsChannelAddResponse'
+
+  sendFixtureDefsCapabilityAdd:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsCapabilityAddRequest'
+  receiveFixtureDefsCapabilityAddResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsCapabilityAddResponse'
+
+  sendFixtureDefsAliasAdd:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsAliasAddRequest'
+  receiveFixtureDefsAliasAddResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsAliasAddResponse'
+
+  sendFixtureDefsAliasApplyToAllModes:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsAliasApplyToAllModesRequest'
+  receiveFixtureDefsAliasApplyToAllModesResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsAliasApplyToAllModesResponse'
+
+  sendFixtureDefsModeAdd:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsModeAddRequest'
+  receiveFixtureDefsModeAddResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsModeAddResponse'
+
+  sendFixtureDefsHeadAdd:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsHeadAddRequest'
+  receiveFixtureDefsHeadAddResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsHeadAddResponse'
+
+  # ---- Save ----
+  sendFixtureDefsSave:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsSaveRequest'
+  receiveFixtureDefsSaveResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsSaveResponse'
+  receiveFixtureDefsSavedEvent:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsSavedEvent'
