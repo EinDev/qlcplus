@@ -197,6 +197,11 @@ public:
 
     void setItemRoleData(int itemID, QVariant value, int role);
 
+    /** Same as setItemRoleData(int itemID, ...) but for a Fixture Group's own
+     *  top-level tree/list row (path == the group's name, a root-level entry -
+     *  see FixtureManager::addFixtureGroupTreeNode), rather than a fixture. */
+    void setGroupItemRoleData(quint32 groupID, QVariant value, int role);
+
     static void addFixtureNode(Doc *doc, TreeModel *treeModel, Fixture *fixture, QString basePath, quint32 nodeSubID,
                                int &matchMask, QString searchFilter = QString(), int showFlags = ShowGroups | ShowLinked | ShowHeads,
                                QList<SceneValue> checkedChannels = QList<SceneValue>());

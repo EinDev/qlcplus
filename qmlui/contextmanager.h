@@ -155,6 +155,15 @@ public slots:
     bool isBatchSelection() const;
 
 private:
+    /** Recompute and push out, for every Fixture Group, whether all of its
+     *  fixtures are currently selected (see isGroupFullySelected()) - keeps
+     *  the group's own tree/list row in sync with the underlying per-fixture
+     *  selection, the same way individual fixture rows are already kept in
+     *  sync. Called after any fixture selection change (both the plain path
+     *  and the batch-completion path). */
+    void refreshGroupSelectionRoles();
+
+private:
     /** Reference to the QML view root */
     QQuickView *m_view;
     /** Reference to the project workspace */
