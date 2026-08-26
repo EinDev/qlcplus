@@ -18,10 +18,30 @@
 */
 
 #include <QtTest>
+#include <QQmlEngine>
+#include <QQmlContext>
 
 #include "treemodel_test.h"
 #include "treemodel.h"
 #include "treeflatmodel.h"
+
+// TreeModel::setData()/TreeFlatModel::slotSourceRoleChanged() both look up a
+// "contextManager" QML context property and call its isBatchSelection() slot
+// dynamically (via QMetaObject::invokeMethod(), see commit 5bf602c57 - it's
+// called this way specifically so these files don't need to #include
+// contextmanager.h). This stand-in lets tests actually flip that flag and
+// verify the suppression path fires, without any real ContextManager/
+// QQuickView/Doc involved. Deliberately NOT in the anonymous namespace below:
+// older moc has trouble with QObject-derived types declared inside one.
+class FakeContextManager : public QObject
+{
+    Q_OBJECT
+public:
+    Q_INVOKABLE bool isBatchSelection() const { return m_batch; }
+    void setBatchSelection(bool enable) { m_batch = enable; }
+private:
+    bool m_batch = false;
+};
 
 namespace
 {
@@ -216,4 +236,169 @@ void TreeModel_Test::groupRowRoleIsIndependentOfMemberRows()
     QCOMPARE(flat.data(flat.index(2), TreeFlatModel::IsSelectedRole).toBool(), true);
 }
 
-QTEST_APPLESS_MAIN(TreeModel_Test)
+// Pins down the actual suppression mechanism itself, using a real
+// isBatchSelection() call through QMetaObject::invokeMethod() rather than
+// just asserting on its downstream effects (as groupRowRoleIsIndependentOf-
+// MemberRows and the emptyPathBroadcast* tests above do, with no QML context
+// set up at all - qmlEngine(this) is simply null there, so the batch check
+// never engages and those tests exercise the non-batch broadcast path only).
+void TreeModel_Test::batchSelectionSuppressesDataChangedUntilFlagCleared()
+{
+    QQmlEngine engine;
+    FakeContextManager fakeCM;
+    engine.rootContext()->setContextProperty("contextManager", &fakeCM);
+
+    TreeModel tree;
+    tree.setColumnNames(QStringList() << "id");
+    tree.enableSorting(false);
+    tree.addItem("Fixture A", QVariantList() << 1);
+    tree.addItem("Fixture B", QVariantList() << 2);
+    QQmlEngine::setContextForObject(&tree, engine.rootContext());
+
+    QSignalSpy dataSpy(&tree, &TreeModel::dataChanged);
+
+    fakeCM.setBatchSelection(true);
+    tree.setItemRoleData("Fixture A", 2, TreeModel::IsSelectedRole);
+    QCOMPARE(dataSpy.count(), 0);
+    // the flag itself is still applied - setData() mutates state before it
+    // ever checks batch mode, only the dataChanged notify is suppressed.
+    QCOMPARE(tree.data(tree.index(0), TreeModel::IsSelectedRole).toBool(), true);
+
+    fakeCM.setBatchSelection(false);
+    tree.setItemRoleData("Fixture B", 2, TreeModel::IsSelectedRole);
+    QCOMPARE(dataSpy.count(), 1);
+    QCOMPARE(tree.data(tree.index(1), TreeModel::IsSelectedRole).toBool(), true);
+}
+
+// Same mechanism, one layer further out: TreeFlatModel::slotSourceRoleChanged()
+// does its own independent isBatchSelection() check (via qmlEngine(this) on
+// the flat model itself, not the source tree), so it suppresses its own
+// dataChanged regardless of whether the nested TreeModel that actually owns
+// "Fixture B" (see buildFixtureLikeTree()) has any QML context at all -
+// roleChanged() is emitted unconditionally before any batch check and always
+// bubbles up to the root tree TreeFlatModel is bound to.
+void TreeModel_Test::batchSelectionSuppressesFlatModelDataChanged()
+{
+    QQmlEngine engine;
+    FakeContextManager fakeCM;
+    engine.rootContext()->setContextProperty("contextManager", &fakeCM);
+
+    TreeModel tree;
+    buildFixtureLikeTree(tree);
+    tree.setItemRoleData("Group", true, TreeModel::IsExpandedRole);
+
+    TreeFlatModel flat;
+    flat.setSourceModel(&tree);
+    QQmlEngine::setContextForObject(&flat, engine.rootContext());
+    QCOMPARE(flat.rowCount(), 3); // Fixture A, Group, Fixture B
+
+    QString childPath = QString("Group") + TreeModel::separator() + "Fixture B";
+    QSignalSpy flatDataSpy(&flat, &TreeFlatModel::dataChanged);
+
+    fakeCM.setBatchSelection(true);
+    tree.setItemRoleData(childPath, 2, TreeModel::IsSelectedRole);
+    QCOMPARE(flatDataSpy.count(), 0);
+    QCOMPARE(flat.data(flat.index(2), TreeFlatModel::IsSelectedRole).toBool(), true);
+
+    fakeCM.setBatchSelection(false);
+    tree.setItemRoleData(childPath, 0, TreeModel::IsSelectedRole);
+    QCOMPARE(flatDataSpy.count(), 1);
+    QCOMPARE(flat.data(flat.index(2), TreeFlatModel::IsSelectedRole).toBool(), false);
+}
+
+// Structural changes (TreeModel::addItem()/removeItem()) are never gated by
+// the batch-selection flag at all - only setData()'s notify is. This pins
+// down that a structural change made *while* a mass selection change happens
+// to be in progress elsewhere still leaves the tree (and its flattened view)
+// fully consistent once the batch ends.
+void TreeModel_Test::structuralChangeDuringBatchSelectionStaysConsistent()
+{
+    QQmlEngine engine;
+    FakeContextManager fakeCM;
+    engine.rootContext()->setContextProperty("contextManager", &fakeCM);
+
+    TreeModel tree;
+    tree.setColumnNames(QStringList() << "id");
+    tree.enableSorting(false);
+    tree.addItem("Fixture A", QVariantList() << 1);
+    tree.addItem("Fixture B", QVariantList() << 2);
+    QQmlEngine::setContextForObject(&tree, engine.rootContext());
+
+    TreeFlatModel flat;
+    flat.setSourceModel(&tree);
+    QCOMPARE(flat.rowCount(), 2);
+
+    fakeCM.setBatchSelection(true);
+    tree.setItemRoleData("Fixture A", 2, TreeModel::IsSelectedRole);
+    tree.addItem("Fixture C", QVariantList() << 3);
+    tree.setItemRoleData("Fixture C", 2, TreeModel::IsSelectedRole);
+    QVERIFY(tree.removeItem("Fixture B"));
+    fakeCM.setBatchSelection(false);
+
+    QCOMPARE(tree.rowCount(), 2); // Fixture A, Fixture C
+    QCOMPARE(tree.data(tree.index(0), TreeModel::LabelRole).toString(), QString("Fixture A"));
+    QCOMPARE(tree.data(tree.index(1), TreeModel::LabelRole).toString(), QString("Fixture C"));
+    QCOMPARE(tree.data(tree.index(0), TreeModel::IsSelectedRole).toBool(), true);
+    QCOMPARE(tree.data(tree.index(1), TreeModel::IsSelectedRole).toBool(), true);
+
+    // the flat list rebuilds unconditionally on any structural change (see
+    // TreeFlatModel::slotSourceStructureChanged()), independent of the batch
+    // flag's state at the time - it must reflect the same final shape.
+    QCOMPARE(flat.rowCount(), 2);
+    QCOMPARE(flat.data(flat.index(0), TreeFlatModel::LabelRole).toString(), QString("Fixture A"));
+    QCOMPARE(flat.data(flat.index(1), TreeFlatModel::LabelRole).toString(), QString("Fixture C"));
+    QCOMPARE(flat.data(flat.index(0), TreeFlatModel::IsSelectedRole).toBool(), true);
+    QCOMPARE(flat.data(flat.index(1), TreeFlatModel::IsSelectedRole).toBool(), true);
+}
+
+// Mirrors the hazard behind commit 7f0183986 ("fix TreeFlatModel reading
+// freed TreeModelItems after tree rebuild"), for the role-changed
+// notification path specifically. removeItem() actually deletes the
+// TreeModelItem (see TreeModel::removeItem()).
+//
+// FINDING, deliberately not fixed here (a production-code change too risky
+// to make blind in a test-only pass - flagging for a deliberate follow-up
+// instead): removing an item nested inside an already-expanded group does
+// NOT currently make TreeFlatModel drop that row from m_indexOfItem/m_rows
+// the way a top-level removeItem() does (contrast with
+// structuralChangeDuringBatchSelectionStaysConsistent() above, which only
+// exercises the top-level case and passes cleanly) - m_indexOfItem still
+// maps the now-dangling item to its old row. What this test actually pins
+// down is that a stale IsSelectedRole notification for that dangling item
+// is at least memory-safe: slotSourceRoleChanged() returns immediately
+// after emitting a (stale-but-harmless) dataChanged for that role
+// (treeflatmodel.cpp:263-266) without ever dereferencing `item`. The same
+// path for IsExpandedRole (treeflatmodel.cpp:271, `item->hasChildren()`)
+// WOULD dereference the freed pointer - genuinely unsafe, not just stale -
+// but deliberately not exercised here, since triggering it for real is
+// exactly the crash it would cause; found by reading the code, not run.
+void TreeModel_Test::staleItemRoleChangeIsIgnoredSafely()
+{
+    TreeModel tree;
+    buildFixtureLikeTree(tree);
+    tree.setItemRoleData("Group", true, TreeModel::IsExpandedRole);
+
+    TreeFlatModel flat;
+    flat.setSourceModel(&tree);
+    QCOMPARE(flat.rowCount(), 3);
+
+    QString childPath = QString("Group") + TreeModel::separator() + "Fixture B";
+    TreeModelItem *childItem = tree.itemAtPath(childPath);
+    QVERIFY(childItem != nullptr);
+
+    QVERIFY(tree.removeItem(childPath));
+
+    // childItem is dangling at this point (removeItem() deleted it) - used
+    // here purely as a pointer value, exactly as slotSourceRoleChanged()'s
+    // own m_indexOfItem.value(item, -1) lookup does. Reaching the end of
+    // this test at all (no crash) is the actual assertion; see the FINDING
+    // above for why a stronger "no dataChanged at all" check would be false.
+    tree.roleChanged(childItem, TreeModel::IsSelectedRole, 1);
+}
+
+// QTEST_APPLESS_MAIN (no QCoreApplication at all) was enough for every test
+// above this point, but QQmlEngine - needed to actually exercise the
+// isBatchSelection() context-property lookup below - requires one to exist.
+// QTEST_GUILESS_MAIN still needs no window/display, just the event loop.
+QTEST_GUILESS_MAIN(TreeModel_Test)
+#include "treemodel_test.moc"
