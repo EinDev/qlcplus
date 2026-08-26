@@ -658,6 +658,20 @@ void FixtureManager::setItemRoleData(int itemID, QVariant value, int role)
     m_fixtureTree->setItemRoleData(path, value, role);
 }
 
+void FixtureManager::setGroupItemRoleData(quint32 groupID, QVariant value, int role)
+{
+    if (m_fixtureTree == nullptr)
+        return;
+
+    FixtureGroup *group = m_doc->fixtureGroup(groupID);
+    if (group == nullptr)
+        return;
+
+    // Fixture Group rows sit at the tree root, keyed by name alone
+    // (see addFixtureGroupTreeNode()'s treeModel->setPathData(group->name(), ...))
+    m_fixtureTree->setItemRoleData(group->name(), value, role);
+}
+
 bool FixtureManager::compareFixtures(const Fixture *left, const Fixture *right)
 {
     return *left < *right;

@@ -177,12 +177,26 @@ void ContextManager::setBatchSelection(bool enable)
         // force all QML trees to refresh their selection state at once
         if (m_fixtureManager->fixtureTree())
             m_fixtureManager->fixtureTree()->setItemRoleData("", 0, TreeModel::IsSelectedRole);
+
+        refreshGroupSelectionRoles();
     }
 }
 
 bool ContextManager::isBatchSelection() const
 {
     return m_batchSelection;
+}
+
+void ContextManager::refreshGroupSelectionRoles()
+{
+    for (FixtureGroup *group : m_doc->fixtureGroups())
+    {
+        if (group == nullptr)
+            continue;
+
+        m_fixtureManager->setGroupItemRoleData(group->id(), isGroupFullySelected(group->id()) ? 2 : 0,
+                                                TreeModel::IsSelectedRole);
+    }
 }
 
 void ContextManager::enableContext(QString name, bool enable, QQuickItem *item)
@@ -831,6 +845,8 @@ void ContextManager::setFixtureSelection(quint32 itemID, int headIndex, bool ena
         m_2DView->updateFixtureSelection(itemID, enable);
     if (m_3DView->isEnabled())
         m_3DView->updateFixtureSelection(itemID, enable);
+
+    refreshGroupSelectionRoles();
 
     QMultiHash<int, SceneValue> channels = m_fixtureManager->getFixtureCapabilities(itemID, headIndex, enable);
     if (channels.keys().isEmpty())
