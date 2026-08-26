@@ -2793,7 +2793,7 @@ quint32 MainView3D::itemIntersection(const QVector3D &rayOrigin, const QVector3D
     return pickedID;
 }
 
-void MainView3D::pickEntity(const float &aspect, const QVector2D &ndcMousePos, int modifiers) const
+bool MainView3D::pickEntity(const float &aspect, const QVector2D &ndcMousePos, int modifiers) const
 {
     // Step 1: Unproject mouse click to world ray
     QVector3D rayOrigin = m_cameraPosition;
@@ -2802,7 +2802,9 @@ void MainView3D::pickEntity(const float &aspect, const QVector2D &ndcMousePos, i
     quint32 pickedID = itemIntersection(rayOrigin, rayDir, modifiers, m_entitiesMap, false);
 
     if (pickedID == Fixture::invalidId())
-        itemIntersection(rayOrigin, rayDir, modifiers, m_genericMap, true);
+        pickedID = itemIntersection(rayOrigin, rayDir, modifiers, m_genericMap, true);
+
+    return pickedID != Fixture::invalidId();
 }
 
 /** *********************************************************************************
