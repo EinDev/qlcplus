@@ -37,26 +37,6 @@ Rectangle
     border.color: UISettings.bgStrong
     clip: true
 
-    /** The ID of the group currently highlighted in this bar, or -1 if none */
-    property int currentGroupID: -1
-
-    /** Flag raised while this bar is changing the fixture selection itself,
-      * to tell our own selection changes apart from the external ones */
-    property bool isSelecting: false
-
-    /** Drop the highlight as soon as the fixture selection is changed
-      * by other means (single fixture click, rubber band, empty space click) */
-    Connections
-    {
-        target: contextManager
-
-        function onSelectedFixturesChanged()
-        {
-            if (barRoot.isSelecting === false)
-                barRoot.currentGroupID = -1
-        }
-    }
-
     // don't let mouse events fall through to the view behind, otherwise
     // clicking on the bar empty space would reset the fixture selection
     // or zoom the view in/out
@@ -79,17 +59,25 @@ Rectangle
 
         model: fixtureGroupEditor ? fixtureGroupEditor.groupsListModel : null
 
-        // a group might have been deleted or renamed. Start over
-        onModelChanged: barRoot.currentGroupID = -1
-
         delegate:
             Rectangle
             {
                 id: groupButton
                 width: UISettings.bigItemHeight
                 height: groupsListView.height
-                color: barRoot.currentGroupID === modelData.mValue ? UISettings.highlight :
-                       (gMouseArea.containsMouse ? UISettings.bgLighter : UISettings.bgControl)
+                color:
+                {
+                    // referencing selectedFixturesCount here (its value is unused)
+                    // forces this binding to re-evaluate whenever the fixture
+                    // selection changes, since isGroupFullySelected() itself has
+                    // no NOTIFY signal of its own to bind against
+                    var dep = contextManager ? contextManager.selectedFixturesCount : 0
+
+                    if (dep >= 0 && contextManager && contextManager.isGroupFullySelected(modelData.mValue))
+                        return UISettings.highlight
+
+                    return gMouseArea.containsMouse ? UISettings.bgLighter : UISettings.bgControl
+                }
                 border.width: 1
                 border.color: UISettings.bgStrong
 
@@ -139,17 +127,13 @@ Rectangle
 
                     onClicked:
                     {
-                        // clicking the highlighted group again deselects it
-                        var deselect = barRoot.currentGroupID === modelData.mValue
+                        // clicking an already fully-selected group deselects it
+                        var deselect = contextManager.isGroupFullySelected(modelData.mValue)
 
-                        barRoot.isSelecting = true
                         contextManager.resetFixtureSelection()
 
                         if (deselect === false)
                             contextManager.setFixtureGroupSelection(modelData.mValue, true, false)
-
-                        barRoot.isSelecting = false
-                        barRoot.currentGroupID = deselect ? -1 : modelData.mValue
                     }
                 }
             }
