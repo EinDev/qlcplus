@@ -123,16 +123,26 @@ Item
                         // cleanup must be *scheduled* before calling Drag.drop(), not after -
                         // a statement placed after Drag.drop() in this same handler may never
                         // run at all if the delegate is destroyed while Drag.drop() is still
-                        // executing. Qt.callLater() itself only needs to be invoked, which
-                        // happens synchronously right here regardless of what Drag.drop()
-                        // does; the closure only touches the stable functionsListView/
-                        // fDragItem objects, not this delegate's own context.
+                        // executing.
+                        //
+                        // It's not enough for the closure to merely reference the stable
+                        // fDragItem/functionsListView *ids* though: an id lookup is resolved
+                        // through this delegate's own QML context every time the closure body
+                        // runs, and Qt.callLater() only runs it on the next event loop tick -
+                        // by which point Drag.drop() may already have destroyed this delegate
+                        // (and its context) on the call stack above. Capture plain JS
+                        // references to the target objects *now*, synchronously, before
+                        // Drag.drop() runs, so the deferred closure only ever touches those
+                        // captured variables instead of re-resolving ids through a context
+                        // that may no longer exist.
+                        var dragItem = fDragItem
+                        var listView = functionsListView
                         Qt.callLater(function()
                         {
-                            fDragItem.parent = functionsListView
-                            fDragItem.x = 0
-                            fDragItem.y = 0
-                            functionsListView.dragActive = false
+                            dragItem.parent = listView
+                            dragItem.x = 0
+                            dragItem.y = 0
+                            listView.dragActive = false
                         })
                         fDragItem.Drag.drop()
                     break;
