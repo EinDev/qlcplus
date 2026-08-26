@@ -52,8 +52,7 @@ void TreeFlatModel::setSourceModel(QObject *model)
         disconnect(m_sourceModel, &TreeModel::roleChanged, this, &TreeFlatModel::slotSourceRoleChanged);
         disconnect(m_sourceModel, &QAbstractItemModel::modelAboutToBeReset, this, &TreeFlatModel::slotSourceInvalidated);
         disconnect(m_sourceModel, &QAbstractItemModel::rowsAboutToBeRemoved, this, &TreeFlatModel::slotSourceInvalidated);
-        disconnect(m_sourceModel, &QAbstractItemModel::rowsInserted, this, &TreeFlatModel::slotSourceStructureChanged);
-        disconnect(m_sourceModel, &QAbstractItemModel::rowsRemoved, this, &TreeFlatModel::slotSourceStructureChanged);
+        disconnect(m_sourceModel, &TreeModel::structureChanged, this, &TreeFlatModel::slotSourceStructureChanged);
     }
 
     m_sourceModel = tree;
@@ -64,12 +63,15 @@ void TreeFlatModel::setSourceModel(QObject *model)
         connect(m_sourceModel, &QAbstractItemModel::modelAboutToBeReset, this, &TreeFlatModel::slotSourceInvalidated);
         connect(m_sourceModel, &QAbstractItemModel::rowsAboutToBeRemoved, this, &TreeFlatModel::slotSourceInvalidated);
         // TreeModel::addItem()/removeItem() (e.g. FunctionManager adding/deleting a single
-        // function) mutate the root tree directly with no accompanying "list changed"
-        // signal at all - without these, a single incremental add or remove at the root
-        // level would never be reflected here until some unrelated full rebuild happened to
-        // be triggered later.
-        connect(m_sourceModel, &QAbstractItemModel::rowsInserted, this, &TreeFlatModel::slotSourceStructureChanged);
-        connect(m_sourceModel, &QAbstractItemModel::rowsRemoved, this, &TreeFlatModel::slotSourceStructureChanged);
+        // function) mutate the tree directly with no accompanying "list changed" signal at
+        // all - without this, an incremental add or remove would never be reflected here
+        // until some unrelated full rebuild happened to be triggered later. structureChanged
+        // bubbles from every descendant tree up to the root (see TreeModel::addItem()), so
+        // this correctly catches a change at ANY depth, not just at the root's own level -
+        // unlike the QAbstractItemModel::rowsInserted/rowsRemoved signals previously used
+        // here, which only ever fire on the exact TreeModel instance they belong to and
+        // can't be observed this way from a root a nested change never touches directly.
+        connect(m_sourceModel, &TreeModel::structureChanged, this, &TreeFlatModel::slotSourceStructureChanged);
     }
 
     emit sourceModelChanged();

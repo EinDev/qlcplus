@@ -62,6 +62,7 @@ void TreeModel::clear()
     endRemoveRows();
     m_items.clear();
     m_itemsPathMap.clear();
+    emit structureChanged();
 }
 
 void TreeModel::setColumnNames(QStringList names)
@@ -128,6 +129,7 @@ TreeModelItem *TreeModel::addItem(QString label, QVariantList data, QString path
         beginInsertRows(QModelIndex(), addIndex, addIndex);
         m_items.insert(addIndex, item);
         endInsertRows();
+        emit structureChanged();
     }
     else
     {
@@ -146,6 +148,8 @@ TreeModelItem *TreeModel::addItem(QString label, QVariantList data, QString path
             {
                 connect(item->children(), SIGNAL(roleChanged(TreeModelItem*,int,const QVariant)),
                         this, SLOT(slotRoleChanged(TreeModelItem*,int,const QVariant&)));
+                connect(item->children(), &TreeModel::structureChanged,
+                        this, &TreeModel::structureChanged);
                 qDebug() << "Tree" << this << "connected to tree" << item->children();
             }
 
@@ -154,6 +158,7 @@ TreeModelItem *TreeModel::addItem(QString label, QVariantList data, QString path
             m_items.insert(addIndex, item);
             endInsertRows();
             m_itemsPathMap[pathList.at(0)] = item;
+            emit structureChanged();
         }
 
         if (pathList.count() == 1)
@@ -162,6 +167,8 @@ TreeModelItem *TreeModel::addItem(QString label, QVariantList data, QString path
             {
                 connect(item->children(), SIGNAL(roleChanged(TreeModelItem*,int,const QVariant&)),
                         this, SLOT(slotRoleChanged(TreeModelItem*,int,const QVariant&)));
+                connect(item->children(), &TreeModel::structureChanged,
+                        this, &TreeModel::structureChanged);
                 qDebug() << "Tree" << this << "connected to tree" << item->children();
             }
         }
@@ -172,6 +179,8 @@ TreeModelItem *TreeModel::addItem(QString label, QVariantList data, QString path
             {
                 connect(item->children(), SIGNAL(roleChanged(TreeModelItem*,int,const QVariant&)),
                         this, SLOT(slotRoleChanged(TreeModelItem*,int,const QVariant&)));
+                connect(item->children(), &TreeModel::structureChanged,
+                        this, &TreeModel::structureChanged);
                 qDebug() << "Tree" << this << "connected to tree" << item->children();
             }
         }
@@ -234,6 +243,7 @@ bool TreeModel::removeItem(const QString& path)
         delete m_items.at(index);
         m_items.removeAt(index);
         endRemoveRows();
+        emit structureChanged();
     }
     else
     {

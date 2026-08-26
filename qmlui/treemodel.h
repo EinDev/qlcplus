@@ -134,6 +134,13 @@ public:
 signals:
     void roleChanged(TreeModelItem *item, int role, const QVariant &value);
 
+    /** Emitted whenever this tree's own rows are inserted/removed/cleared.
+     *  Bubbles from every descendant tree up to the root (wired in addItem(),
+     *  mirroring how roleChanged already bubbles) so a structural change
+     *  anywhere in the tree - not just at the root level - can be observed
+     *  from the root alone. */
+    void structureChanged();
+
 protected slots:
     void slotRoleChanged(TreeModelItem *item, int role, const QVariant &value);
 

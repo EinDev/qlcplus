@@ -356,22 +356,29 @@ void TreeModel_Test::structuralChangeDuringBatchSelectionStaysConsistent()
 // notification path specifically. removeItem() actually deletes the
 // TreeModelItem (see TreeModel::removeItem()).
 //
-// FINDING, deliberately not fixed here (a production-code change too risky
-// to make blind in a test-only pass - flagging for a deliberate follow-up
-// instead): removing an item nested inside an already-expanded group does
-// NOT currently make TreeFlatModel drop that row from m_indexOfItem/m_rows
-// the way a top-level removeItem() does (contrast with
-// structuralChangeDuringBatchSelectionStaysConsistent() above, which only
-// exercises the top-level case and passes cleanly) - m_indexOfItem still
-// maps the now-dangling item to its old row. What this test actually pins
-// down is that a stale IsSelectedRole notification for that dangling item
-// is at least memory-safe: slotSourceRoleChanged() returns immediately
-// after emitting a (stale-but-harmless) dataChanged for that role
-// (treeflatmodel.cpp:263-266) without ever dereferencing `item`. The same
-// path for IsExpandedRole (treeflatmodel.cpp:271, `item->hasChildren()`)
-// WOULD dereference the freed pointer - genuinely unsafe, not just stale -
-// but deliberately not exercised here, since triggering it for real is
-// exactly the crash it would cause; found by reading the code, not run.
+// This used to be an open FINDING: removing an item nested inside an
+// already-expanded group did NOT make TreeFlatModel drop that row from
+// m_indexOfItem/m_rows, because TreeFlatModel only ever connected to the
+// ROOT TreeModel's own QAbstractItemModel::rowsInserted/rowsRemoved, and a
+// nested removeItem() fires those signals on the descendant TreeModel
+// instance that actually owns the item, not the root - so the root's
+// signals never fired, rebuild() never ran, and m_indexOfItem kept mapping
+// the now-dangling item to its old row. A stale IsSelectedRole notification
+// for that dangling item was merely harmless-but-stale (slotSourceRoleChanged
+// returns before dereferencing `item` for that role), but the same path for
+// IsExpandedRole (treeflatmodel.cpp, `item->hasChildren()`) would have
+// dereferenced the freed pointer - a genuine use-after-free.
+//
+// Fixed by adding TreeModel::structureChanged(), emitted by every tree level
+// whenever ITS OWN rows change and bubbled from every descendant up to the
+// root exactly the way roleChanged already bubbles (wired in addItem(), see
+// the structureChanged connect() calls alongside the existing roleChanged
+// ones). TreeFlatModel now connects to structureChanged instead of the raw
+// per-instance rowsInserted/rowsRemoved, so a nested removal correctly
+// triggers rebuild() and purges the dangling item from m_indexOfItem - this
+// test's rowCount() check below would have failed before the fix (the row
+// would still be there) and the two roleChanged emissions at the end are now
+// provably unreachable-but-still-checked-safe, rather than merely lucky.
 void TreeModel_Test::staleItemRoleChangeIsIgnoredSafely()
 {
     TreeModel tree;
@@ -388,12 +395,22 @@ void TreeModel_Test::staleItemRoleChangeIsIgnoredSafely()
 
     QVERIFY(tree.removeItem(childPath));
 
+    // The actual fix, pinned down: a nested-only removal now reaches
+    // TreeFlatModel (via structureChanged bubbling) and rebuilds, dropping
+    // the removed row. Before the fix this stayed at 3.
+    QCOMPARE(flat.rowCount(), 2);
+    QCOMPARE(flat.data(flat.index(0), TreeFlatModel::LabelRole).toString(), QString("Fixture A"));
+    QCOMPARE(flat.data(flat.index(1), TreeFlatModel::LabelRole).toString(), QString("Group"));
+
     // childItem is dangling at this point (removeItem() deleted it) - used
     // here purely as a pointer value, exactly as slotSourceRoleChanged()'s
-    // own m_indexOfItem.value(item, -1) lookup does. Reaching the end of
-    // this test at all (no crash) is the actual assertion; see the FINDING
-    // above for why a stronger "no dataChanged at all" check would be false.
+    // own m_indexOfItem.value(item, -1) lookup does. Since rebuild() already
+    // purged it above, that lookup now correctly misses for both roles -
+    // including IsExpandedRole, the one that used to be genuinely unsafe.
+    // Reaching the end of this test at all (no crash) is what would have
+    // failed before the fix for the IsExpandedRole line specifically.
     tree.roleChanged(childItem, TreeModel::IsSelectedRole, 1);
+    tree.roleChanged(childItem, TreeModel::IsExpandedRole, true);
 }
 
 // QTEST_APPLESS_MAIN (no QCoreApplication at all) was enough for every test
