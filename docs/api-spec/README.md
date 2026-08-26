@@ -2,8 +2,8 @@
 
 **`qlcplus-api.yaml`** is the deliverable: one AsyncAPI 3.0 document
 specifying a WebSocket JSON API for QLC+, scoped to let a future Electron UI
-fully replace the current Qt/QML UI (`qmlui/`). 729 messages, 112 schemas,
-615 operations, one bidirectional channel.
+fully replace the current Qt/QML UI (`qmlui/`). 712 messages, 112 schemas,
+599 operations, one bidirectional channel.
 
 ## Reading order
 

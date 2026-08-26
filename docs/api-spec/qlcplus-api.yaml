@@ -480,24 +480,6 @@ channels:
         $ref: '#/components/messages/FunctionsSceneSetMembersOkResponse'
       functionsSceneMembersChangedEvent:
         $ref: '#/components/messages/FunctionsSceneMembersChangedEvent'
-      functionsChaserAddStepRequest:
-        $ref: '#/components/messages/FunctionsChaserAddStepRequest'
-      functionsChaserAddStepResponse:
-        $ref: '#/components/messages/FunctionsChaserAddStepResponse'
-      functionsChaserRemoveStepRequest:
-        $ref: '#/components/messages/FunctionsChaserRemoveStepRequest'
-      functionsChaserRemoveStepResponse:
-        $ref: '#/components/messages/FunctionsChaserRemoveStepResponse'
-      functionsChaserReplaceStepRequest:
-        $ref: '#/components/messages/FunctionsChaserReplaceStepRequest'
-      functionsChaserReplaceStepResponse:
-        $ref: '#/components/messages/FunctionsChaserReplaceStepResponse'
-      functionsChaserMoveStepRequest:
-        $ref: '#/components/messages/FunctionsChaserMoveStepRequest'
-      functionsChaserMoveStepResponse:
-        $ref: '#/components/messages/FunctionsChaserMoveStepResponse'
-      functionsChaserStepsMutationOkResponse:
-        $ref: '#/components/messages/FunctionsChaserStepsMutationOkResponse'
       functionsChaserStepsChangedEvent:
         $ref: '#/components/messages/FunctionsChaserStepsChangedEvent'
       functionsChaserSetSpeedModesRequest:
@@ -564,28 +546,10 @@ channels:
         $ref: '#/components/messages/FunctionsSequenceSetBoundSceneOkResponse'
       functionsSequenceChangedEvent:
         $ref: '#/components/messages/FunctionsSequenceChangedEvent'
-      functionsSequenceAddStepRequest:
-        $ref: '#/components/messages/FunctionsSequenceAddStepRequest'
-      functionsSequenceAddStepResponse:
-        $ref: '#/components/messages/FunctionsSequenceAddStepResponse'
-      functionsSequenceRemoveStepRequest:
-        $ref: '#/components/messages/FunctionsSequenceRemoveStepRequest'
-      functionsSequenceRemoveStepResponse:
-        $ref: '#/components/messages/FunctionsSequenceRemoveStepResponse'
-      functionsSequenceReplaceStepRequest:
-        $ref: '#/components/messages/FunctionsSequenceReplaceStepRequest'
-      functionsSequenceReplaceStepResponse:
-        $ref: '#/components/messages/FunctionsSequenceReplaceStepResponse'
-      functionsSequenceMoveStepRequest:
-        $ref: '#/components/messages/FunctionsSequenceMoveStepRequest'
-      functionsSequenceMoveStepResponse:
-        $ref: '#/components/messages/FunctionsSequenceMoveStepResponse'
       functionsSequenceApplyDumpValuesRequest:
         $ref: '#/components/messages/FunctionsSequenceApplyDumpValuesRequest'
       functionsSequenceApplyDumpValuesResponse:
         $ref: '#/components/messages/FunctionsSequenceApplyDumpValuesResponse'
-      functionsSequenceStepsMutationOkResponse:
-        $ref: '#/components/messages/FunctionsSequenceStepsMutationOkResponse'
       functionsSequenceStepsChangedEvent:
         $ref: '#/components/messages/FunctionsSequenceStepsChangedEvent'
       functionsChannelsGroupListRequest:
@@ -640,6 +604,24 @@ channels:
         $ref: '#/components/messages/FunctionsChannelsGroupChangedOkResponse'
       functionsChannelsGroupChangedEvent:
         $ref: '#/components/messages/FunctionsChannelsGroupChangedEvent'
+      functionsStepsMutationOkResponse:
+        $ref: '#/components/messages/FunctionsStepsMutationOkResponse'
+      functionsStepsRemoveStepRequest:
+        $ref: '#/components/messages/FunctionsStepsRemoveStepRequest'
+      functionsStepsRemoveStepResponse:
+        $ref: '#/components/messages/FunctionsStepsRemoveStepResponse'
+      functionsStepsMoveStepRequest:
+        $ref: '#/components/messages/FunctionsStepsMoveStepRequest'
+      functionsStepsMoveStepResponse:
+        $ref: '#/components/messages/FunctionsStepsMoveStepResponse'
+      functionsStepsAddStepRequest:
+        $ref: '#/components/messages/FunctionsStepsAddStepRequest'
+      functionsStepsAddStepResponse:
+        $ref: '#/components/messages/FunctionsStepsAddStepResponse'
+      functionsStepsReplaceStepRequest:
+        $ref: '#/components/messages/FunctionsStepsReplaceStepRequest'
+      functionsStepsReplaceStepResponse:
+        $ref: '#/components/messages/FunctionsStepsReplaceStepResponse'
       functionsRgbMatrixListAlgorithmsRequest:
         $ref: '#/components/messages/FunctionsRgbMatrixListAlgorithmsRequest'
       functionsRgbMatrixListAlgorithmsResponse:
@@ -948,30 +930,6 @@ channels:
         $ref: '#/components/messages/IoUniverseSetMonitorResponse'
       ioUniverseMonitorChangedEvent:
         $ref: '#/components/messages/IoUniverseMonitorChangedEvent'
-      ioPatchOutputSetRequest:
-        $ref: '#/components/messages/IoPatchOutputSetRequest'
-      ioPatchOutputSetResponse:
-        $ref: '#/components/messages/IoPatchOutputSetResponse'
-      ioPatchOutputRemoveRequest:
-        $ref: '#/components/messages/IoPatchOutputRemoveRequest'
-      ioPatchOutputRemoveResponse:
-        $ref: '#/components/messages/IoPatchOutputRemoveResponse'
-      ioPatchInputSetRequest:
-        $ref: '#/components/messages/IoPatchInputSetRequest'
-      ioPatchInputSetResponse:
-        $ref: '#/components/messages/IoPatchInputSetResponse'
-      ioPatchInputRemoveRequest:
-        $ref: '#/components/messages/IoPatchInputRemoveRequest'
-      ioPatchInputRemoveResponse:
-        $ref: '#/components/messages/IoPatchInputRemoveResponse'
-      ioPatchFeedbackSetRequest:
-        $ref: '#/components/messages/IoPatchFeedbackSetRequest'
-      ioPatchFeedbackSetResponse:
-        $ref: '#/components/messages/IoPatchFeedbackSetResponse'
-      ioPatchFeedbackRemoveRequest:
-        $ref: '#/components/messages/IoPatchFeedbackRemoveRequest'
-      ioPatchFeedbackRemoveResponse:
-        $ref: '#/components/messages/IoPatchFeedbackRemoveResponse'
       ioPatchSetParametersRequest:
         $ref: '#/components/messages/IoPatchSetParametersRequest'
       ioPatchSetParametersResponse:
@@ -1122,6 +1080,14 @@ channels:
         $ref: '#/components/messages/IoSimpleDeskSendKeypadCommandOkResponse'
       ioSimpleDeskCommandHistoryChangedEvent:
         $ref: '#/components/messages/IoSimpleDeskCommandHistoryChangedEvent'
+      ioPatchRemoveRequest:
+        $ref: '#/components/messages/IoPatchRemoveRequest'
+      ioPatchRemoveResponse:
+        $ref: '#/components/messages/IoPatchRemoveResponse'
+      ioPatchSetRequest:
+        $ref: '#/components/messages/IoPatchSetRequest'
+      ioPatchSetResponse:
+        $ref: '#/components/messages/IoPatchSetResponse'
       vcDocRevisionOkResponse:
         $ref: '#/components/messages/VcDocRevisionOkResponse'
       vcPageListRequest:
@@ -2622,54 +2588,6 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/functionsSceneMembersChangedEvent'
-  sendFunctionsChaserAddStep:
-    action: send
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/functionsChaserAddStepRequest'
-  receiveFunctionsChaserAddStepResponse:
-    action: receive
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/functionsChaserAddStepResponse'
-  sendFunctionsChaserRemoveStep:
-    action: send
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/functionsChaserRemoveStepRequest'
-  receiveFunctionsChaserRemoveStepResponse:
-    action: receive
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/functionsChaserRemoveStepResponse'
-  sendFunctionsChaserReplaceStep:
-    action: send
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/functionsChaserReplaceStepRequest'
-  receiveFunctionsChaserReplaceStepResponse:
-    action: receive
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/functionsChaserReplaceStepResponse'
-  sendFunctionsChaserMoveStep:
-    action: send
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/functionsChaserMoveStepRequest'
-  receiveFunctionsChaserMoveStepResponse:
-    action: receive
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/functionsChaserMoveStepResponse'
   receiveFunctionsChaserStepsChanged:
     action: receive
     channel:
@@ -2838,54 +2756,6 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/functionsSequenceChangedEvent'
-  sendFunctionsSequenceAddStep:
-    action: send
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/functionsSequenceAddStepRequest'
-  receiveFunctionsSequenceAddStepResponse:
-    action: receive
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/functionsSequenceAddStepResponse'
-  sendFunctionsSequenceRemoveStep:
-    action: send
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/functionsSequenceRemoveStepRequest'
-  receiveFunctionsSequenceRemoveStepResponse:
-    action: receive
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/functionsSequenceRemoveStepResponse'
-  sendFunctionsSequenceReplaceStep:
-    action: send
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/functionsSequenceReplaceStepRequest'
-  receiveFunctionsSequenceReplaceStepResponse:
-    action: receive
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/functionsSequenceReplaceStepResponse'
-  sendFunctionsSequenceMoveStep:
-    action: send
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/functionsSequenceMoveStepRequest'
-  receiveFunctionsSequenceMoveStepResponse:
-    action: receive
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/functionsSequenceMoveStepResponse'
   sendFunctionsSequenceApplyDumpValues:
     action: send
     channel:
@@ -3024,6 +2894,54 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/functionsChannelsGroupChangedEvent'
+  sendFunctionsStepsRemoveStepRequest:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsStepsRemoveStepRequest'
+  receiveFunctionsStepsRemoveStepResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsStepsRemoveStepResponse'
+  sendFunctionsStepsMoveStepRequest:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsStepsMoveStepRequest'
+  receiveFunctionsStepsMoveStepResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsStepsMoveStepResponse'
+  sendFunctionsStepsAddStepRequest:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsStepsAddStepRequest'
+  receiveFunctionsStepsAddStepResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsStepsAddStepResponse'
+  sendFunctionsStepsReplaceStepRequest:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsStepsReplaceStepRequest'
+  receiveFunctionsStepsReplaceStepResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsStepsReplaceStepResponse'
   sendFunctionsRgbMatrixListAlgorithms:
     action: send
     channel:
@@ -3708,78 +3626,6 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/ioUniverseMonitorChangedEvent'
-  sendIoPatchOutputSet:
-    action: send
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/ioPatchOutputSetRequest'
-  receiveIoPatchOutputSetResponse:
-    action: receive
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/ioPatchOutputSetResponse'
-  sendIoPatchOutputRemove:
-    action: send
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/ioPatchOutputRemoveRequest'
-  receiveIoPatchOutputRemoveResponse:
-    action: receive
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/ioPatchOutputRemoveResponse'
-  sendIoPatchInputSet:
-    action: send
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/ioPatchInputSetRequest'
-  receiveIoPatchInputSetResponse:
-    action: receive
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/ioPatchInputSetResponse'
-  sendIoPatchInputRemove:
-    action: send
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/ioPatchInputRemoveRequest'
-  receiveIoPatchInputRemoveResponse:
-    action: receive
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/ioPatchInputRemoveResponse'
-  sendIoPatchFeedbackSet:
-    action: send
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/ioPatchFeedbackSetRequest'
-  receiveIoPatchFeedbackSetResponse:
-    action: receive
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/ioPatchFeedbackSetResponse'
-  sendIoPatchFeedbackRemove:
-    action: send
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/ioPatchFeedbackRemoveRequest'
-  receiveIoPatchFeedbackRemoveResponse:
-    action: receive
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/ioPatchFeedbackRemoveResponse'
   sendIoPatchSetParameters:
     action: send
     channel:
@@ -4160,6 +4006,30 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/ioSimpleDeskCommandHistoryChangedEvent'
+  sendIoPatchRemoveRequest:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/ioPatchRemoveRequest'
+  receiveIoPatchRemoveResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/ioPatchRemoveResponse'
+  sendIoPatchSetRequest:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/ioPatchSetRequest'
+  receiveIoPatchSetResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/ioPatchSetResponse'
   sendVcPageList:
     action: send
     channel:
@@ -10662,164 +10532,6 @@ components:
                   type: string
               docRevision:
                 type: integer
-    FunctionsChaserAddStepRequest:
-      payload:
-        type: object
-        required:
-        - type
-        - id
-        - method
-        - params
-        properties:
-          type:
-            const: request
-          id:
-            type: string
-          method:
-            const: functions.chaser.addStep
-          params:
-            type: object
-            required:
-            - functionId
-            - step
-            - baseRevision
-            properties:
-              functionId:
-                type: string
-              step:
-                $ref: '#/components/schemas/FunctionsChaserStep'
-              index:
-                type: integer
-                description: Insertion index; omit/-1 to append (Chaser::addStep).
-              baseRevision:
-                type: integer
-    FunctionsChaserAddStepResponse:
-      payload:
-        oneOf:
-        - $ref: '#/components/messages/FunctionsChaserStepsMutationOkResponse/payload'
-        - $ref: '#/components/messages/ErrorResponse/payload'
-    FunctionsChaserRemoveStepRequest:
-      payload:
-        type: object
-        required:
-        - type
-        - id
-        - method
-        - params
-        properties:
-          type:
-            const: request
-          id:
-            type: string
-          method:
-            const: functions.chaser.removeStep
-          params:
-            type: object
-            required:
-            - functionId
-            - index
-            - baseRevision
-            properties:
-              functionId:
-                type: string
-              index:
-                type: integer
-              baseRevision:
-                type: integer
-    FunctionsChaserRemoveStepResponse:
-      payload:
-        oneOf:
-        - $ref: '#/components/messages/FunctionsChaserStepsMutationOkResponse/payload'
-        - $ref: '#/components/messages/ErrorResponse/payload'
-    FunctionsChaserReplaceStepRequest:
-      payload:
-        type: object
-        required:
-        - type
-        - id
-        - method
-        - params
-        properties:
-          type:
-            const: request
-          id:
-            type: string
-          method:
-            const: functions.chaser.replaceStep
-          params:
-            type: object
-            required:
-            - functionId
-            - index
-            - step
-            - baseRevision
-            properties:
-              functionId:
-                type: string
-              index:
-                type: integer
-              step:
-                $ref: '#/components/schemas/FunctionsChaserStep'
-              baseRevision:
-                type: integer
-    FunctionsChaserReplaceStepResponse:
-      payload:
-        oneOf:
-        - $ref: '#/components/messages/FunctionsChaserStepsMutationOkResponse/payload'
-        - $ref: '#/components/messages/ErrorResponse/payload'
-    FunctionsChaserMoveStepRequest:
-      payload:
-        type: object
-        required:
-        - type
-        - id
-        - method
-        - params
-        properties:
-          type:
-            const: request
-          id:
-            type: string
-          method:
-            const: functions.chaser.moveStep
-          params:
-            type: object
-            required:
-            - functionId
-            - sourceIndex
-            - destIndex
-            - baseRevision
-            properties:
-              functionId:
-                type: string
-              sourceIndex:
-                type: integer
-              destIndex:
-                type: integer
-              baseRevision:
-                type: integer
-    FunctionsChaserMoveStepResponse:
-      payload:
-        oneOf:
-        - $ref: '#/components/messages/FunctionsChaserStepsMutationOkResponse/payload'
-        - $ref: '#/components/messages/ErrorResponse/payload'
-    FunctionsChaserStepsMutationOkResponse:
-      payload:
-        type: object
-        required:
-        - type
-        - id
-        - ok
-        - result
-        properties:
-          type:
-            const: response
-          id:
-            type: string
-          ok:
-            const: true
-          result:
-            $ref: '#/components/schemas/FunctionsDocRevisionResult'
     FunctionsChaserStepsChangedEvent:
       payload:
         type: object
@@ -11580,147 +11292,6 @@ components:
                 type: string
               docRevision:
                 type: integer
-    FunctionsSequenceAddStepRequest:
-      payload:
-        type: object
-        required:
-        - type
-        - id
-        - method
-        - params
-        properties:
-          type:
-            const: request
-          id:
-            type: string
-          method:
-            const: functions.sequence.addStep
-          params:
-            type: object
-            required:
-            - functionId
-            - step
-            - baseRevision
-            properties:
-              functionId:
-                type: string
-              step:
-                $ref: '#/components/schemas/FunctionsSequenceStep'
-              index:
-                type: integer
-                description: Insertion index; omit/-1 to append.
-              baseRevision:
-                type: integer
-    FunctionsSequenceAddStepResponse:
-      payload:
-        oneOf:
-        - $ref: '#/components/messages/FunctionsSequenceStepsMutationOkResponse/payload'
-        - $ref: '#/components/messages/ErrorResponse/payload'
-    FunctionsSequenceRemoveStepRequest:
-      payload:
-        type: object
-        required:
-        - type
-        - id
-        - method
-        - params
-        properties:
-          type:
-            const: request
-          id:
-            type: string
-          method:
-            const: functions.sequence.removeStep
-          params:
-            type: object
-            required:
-            - functionId
-            - index
-            - baseRevision
-            properties:
-              functionId:
-                type: string
-              index:
-                type: integer
-              baseRevision:
-                type: integer
-    FunctionsSequenceRemoveStepResponse:
-      payload:
-        oneOf:
-        - $ref: '#/components/messages/FunctionsSequenceStepsMutationOkResponse/payload'
-        - $ref: '#/components/messages/ErrorResponse/payload'
-    FunctionsSequenceReplaceStepRequest:
-      payload:
-        type: object
-        required:
-        - type
-        - id
-        - method
-        - params
-        properties:
-          type:
-            const: request
-          id:
-            type: string
-          method:
-            const: functions.sequence.replaceStep
-          params:
-            type: object
-            required:
-            - functionId
-            - index
-            - step
-            - baseRevision
-            properties:
-              functionId:
-                type: string
-              index:
-                type: integer
-              step:
-                $ref: '#/components/schemas/FunctionsSequenceStep'
-              baseRevision:
-                type: integer
-    FunctionsSequenceReplaceStepResponse:
-      payload:
-        oneOf:
-        - $ref: '#/components/messages/FunctionsSequenceStepsMutationOkResponse/payload'
-        - $ref: '#/components/messages/ErrorResponse/payload'
-    FunctionsSequenceMoveStepRequest:
-      payload:
-        type: object
-        required:
-        - type
-        - id
-        - method
-        - params
-        properties:
-          type:
-            const: request
-          id:
-            type: string
-          method:
-            const: functions.sequence.moveStep
-          params:
-            type: object
-            required:
-            - functionId
-            - sourceIndex
-            - destIndex
-            - baseRevision
-            properties:
-              functionId:
-                type: string
-              sourceIndex:
-                type: integer
-              destIndex:
-                type: integer
-              baseRevision:
-                type: integer
-    FunctionsSequenceMoveStepResponse:
-      payload:
-        oneOf:
-        - $ref: '#/components/messages/FunctionsSequenceStepsMutationOkResponse/payload'
-        - $ref: '#/components/messages/ErrorResponse/payload'
     FunctionsSequenceApplyDumpValuesRequest:
       payload:
         type: object
@@ -11758,25 +11329,8 @@ components:
     FunctionsSequenceApplyDumpValuesResponse:
       payload:
         oneOf:
-        - $ref: '#/components/messages/FunctionsSequenceStepsMutationOkResponse/payload'
+        - $ref: '#/components/messages/FunctionsStepsMutationOkResponse/payload'
         - $ref: '#/components/messages/ErrorResponse/payload'
-    FunctionsSequenceStepsMutationOkResponse:
-      payload:
-        type: object
-        required:
-        - type
-        - id
-        - ok
-        - result
-        properties:
-          type:
-            const: response
-          id:
-            type: string
-          ok:
-            const: true
-          result:
-            $ref: '#/components/schemas/FunctionsDocRevisionResult'
     FunctionsSequenceStepsChangedEvent:
       payload:
         type: object
@@ -12298,6 +11852,174 @@ components:
                 $ref: '#/components/schemas/FunctionsChannelsGroupDetail'
               docRevision:
                 type: integer
+    FunctionsStepsMutationOkResponse:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - ok
+        - result
+        properties:
+          type:
+            const: response
+          id:
+            type: string
+          ok:
+            const: true
+          result:
+            $ref: '#/components/schemas/FunctionsDocRevisionResult'
+    FunctionsStepsRemoveStepRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: functions.steps.removeStep
+          params:
+            type: object
+            required:
+            - functionId
+            - index
+            - baseRevision
+            properties:
+              functionId:
+                type: string
+              index:
+                type: integer
+              baseRevision:
+                type: integer
+    FunctionsStepsRemoveStepResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/FunctionsStepsMutationOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    FunctionsStepsMoveStepRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: functions.steps.moveStep
+          params:
+            type: object
+            required:
+            - functionId
+            - sourceIndex
+            - destIndex
+            - baseRevision
+            properties:
+              functionId:
+                type: string
+              sourceIndex:
+                type: integer
+              destIndex:
+                type: integer
+              baseRevision:
+                type: integer
+    FunctionsStepsMoveStepResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/FunctionsStepsMutationOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    FunctionsStepsAddStepRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: functions.steps.addStep
+          params:
+            type: object
+            required:
+            - functionId
+            - step
+            - baseRevision
+            description: params.step's shape is determined by the target function's own type (Chaser or
+              Sequence, looked up server-side from functionId, not a separate discriminator field here)
+              - see FunctionsChaserStep, FunctionsSequenceStep.
+            properties:
+              functionId:
+                type: string
+              step:
+                oneOf:
+                - $ref: '#/components/schemas/FunctionsChaserStep'
+                - $ref: '#/components/schemas/FunctionsSequenceStep'
+              index:
+                type: integer
+                description: Insertion index; omit/-1 to append (Chaser::addStep).
+              baseRevision:
+                type: integer
+    FunctionsStepsAddStepResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/FunctionsStepsMutationOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    FunctionsStepsReplaceStepRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: functions.steps.replaceStep
+          params:
+            type: object
+            required:
+            - functionId
+            - index
+            - step
+            - baseRevision
+            description: params.step's shape is determined by the target function's own type (Chaser or
+              Sequence, looked up server-side from functionId, not a separate discriminator field here)
+              - see FunctionsChaserStep, FunctionsSequenceStep.
+            properties:
+              functionId:
+                type: string
+              index:
+                type: integer
+              step:
+                oneOf:
+                - $ref: '#/components/schemas/FunctionsChaserStep'
+                - $ref: '#/components/schemas/FunctionsSequenceStep'
+              baseRevision:
+                type: integer
+    FunctionsStepsReplaceStepResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/FunctionsStepsMutationOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
     FunctionsRgbMatrixListAlgorithmsRequest:
       payload:
         type: object
@@ -15724,218 +15446,6 @@ components:
                 type: integer
               monitor:
                 type: boolean
-    IoPatchOutputSetRequest:
-      payload:
-        type: object
-        required:
-        - type
-        - id
-        - method
-        - params
-        properties:
-          type:
-            const: request
-          id:
-            type: string
-          method:
-            const: io.patch.output.set
-          params:
-            type: object
-            required:
-            - universeId
-            - pluginName
-            - output
-            - baseRevision
-            properties:
-              universeId:
-                type: integer
-              index:
-                type: integer
-                description: Output patch slot index. Omit (or pass outputPatchesCount) to append a new
-                  patch; pass an existing index to replace it.
-              pluginName:
-                type: string
-              output:
-                type: integer
-                description: Plugin output line index (see io.plugin.getLines).
-              baseRevision:
-                type: integer
-    IoPatchOutputSetResponse:
-      payload:
-        oneOf:
-        - $ref: '#/components/messages/IoPatchMutationOkResponse/payload'
-        - $ref: '#/components/messages/ErrorResponse/payload'
-    IoPatchOutputRemoveRequest:
-      payload:
-        type: object
-        required:
-        - type
-        - id
-        - method
-        - params
-        properties:
-          type:
-            const: request
-          id:
-            type: string
-          method:
-            const: io.patch.output.remove
-          params:
-            type: object
-            required:
-            - universeId
-            - index
-            - baseRevision
-            properties:
-              universeId:
-                type: integer
-              index:
-                type: integer
-              baseRevision:
-                type: integer
-    IoPatchOutputRemoveResponse:
-      payload:
-        oneOf:
-        - $ref: '#/components/messages/IoPatchMutationOkResponse/payload'
-        - $ref: '#/components/messages/ErrorResponse/payload'
-    IoPatchInputSetRequest:
-      payload:
-        type: object
-        required:
-        - type
-        - id
-        - method
-        - params
-        properties:
-          type:
-            const: request
-          id:
-            type: string
-          method:
-            const: io.patch.input.set
-          params:
-            type: object
-            required:
-            - universeId
-            - pluginName
-            - input
-            - baseRevision
-            properties:
-              universeId:
-                type: integer
-              pluginName:
-                type: string
-              input:
-                type: integer
-                description: Plugin input line index (see io.plugin.getLines).
-              profileName:
-                type: string
-                description: Input profile name to attach (see io.inputProfile.*). Omit/empty for none.
-              baseRevision:
-                type: integer
-    IoPatchInputSetResponse:
-      payload:
-        oneOf:
-        - $ref: '#/components/messages/IoPatchMutationOkResponse/payload'
-        - $ref: '#/components/messages/ErrorResponse/payload'
-    IoPatchInputRemoveRequest:
-      payload:
-        type: object
-        required:
-        - type
-        - id
-        - method
-        - params
-        properties:
-          type:
-            const: request
-          id:
-            type: string
-          method:
-            const: io.patch.input.remove
-          params:
-            type: object
-            required:
-            - universeId
-            - baseRevision
-            properties:
-              universeId:
-                type: integer
-              baseRevision:
-                type: integer
-    IoPatchInputRemoveResponse:
-      payload:
-        oneOf:
-        - $ref: '#/components/messages/IoPatchMutationOkResponse/payload'
-        - $ref: '#/components/messages/ErrorResponse/payload'
-    IoPatchFeedbackSetRequest:
-      payload:
-        type: object
-        required:
-        - type
-        - id
-        - method
-        - params
-        properties:
-          type:
-            const: request
-          id:
-            type: string
-          method:
-            const: io.patch.feedback.set
-          params:
-            type: object
-            required:
-            - universeId
-            - pluginName
-            - output
-            - baseRevision
-            properties:
-              universeId:
-                type: integer
-              pluginName:
-                type: string
-              output:
-                type: integer
-                description: Plugin output line index; the plugin must advertise the Feedback capability
-                  (see io.plugin.list).
-              baseRevision:
-                type: integer
-    IoPatchFeedbackSetResponse:
-      payload:
-        oneOf:
-        - $ref: '#/components/messages/IoPatchMutationOkResponse/payload'
-        - $ref: '#/components/messages/ErrorResponse/payload'
-    IoPatchFeedbackRemoveRequest:
-      payload:
-        type: object
-        required:
-        - type
-        - id
-        - method
-        - params
-        properties:
-          type:
-            const: request
-          id:
-            type: string
-          method:
-            const: io.patch.feedback.remove
-          params:
-            type: object
-            required:
-            - universeId
-            - baseRevision
-            properties:
-              universeId:
-                type: integer
-              baseRevision:
-                type: integer
-    IoPatchFeedbackRemoveResponse:
-      payload:
-        oneOf:
-        - $ref: '#/components/messages/IoPatchMutationOkResponse/payload'
-        - $ref: '#/components/messages/ErrorResponse/payload'
     IoPatchSetParametersRequest:
       payload:
         type: object
@@ -17315,6 +16825,103 @@ components:
                 type: array
                 items:
                   type: string
+    IoPatchRemoveRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: io.patch.remove
+          params:
+            type: object
+            required:
+            - universeId
+            - patchType
+            - baseRevision
+            description: 'Detaches a patch from a universe. patchType selects which one: input and feedback
+              are singleton per universe (index not used); output patches are an indexed array, so `index`
+              is required when patchType is ''output''.'
+            properties:
+              universeId:
+                type: integer
+              patchType:
+                enum:
+                - input
+                - output
+                - feedback
+              index:
+                type: integer
+                description: Output patch slot index; required when patchType='output', unused otherwise.
+              baseRevision:
+                type: integer
+    IoPatchRemoveResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/IoPatchMutationOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    IoPatchSetRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: io.patch.set
+          params:
+            type: object
+            required:
+            - universeId
+            - patchType
+            - pluginName
+            - line
+            - baseRevision
+            description: Attaches a plugin line to a universe's patch. patchType selects which one (input/output/feedback
+              - the plugin must advertise the Feedback capability for patchType='feedback', see io.plugin.list).
+              `line` is the plugin's line index either way (see io.plugin.getLines) - the input line for
+              patchType='input', the output line for 'output'/'feedback'.
+            properties:
+              universeId:
+                type: integer
+              patchType:
+                enum:
+                - input
+                - output
+                - feedback
+              pluginName:
+                type: string
+              line:
+                type: integer
+                description: Plugin input/output line index (see io.plugin.getLines).
+              index:
+                type: integer
+                description: Output patch slot index; only used when patchType='output'. Omit (or pass
+                  outputPatchesCount) to append a new patch; pass an existing index to replace it.
+              profileName:
+                type: string
+                description: Input profile name to attach (see io.inputProfile.*); only used when patchType='input'.
+                  Omit/empty for none.
+              baseRevision:
+                type: integer
+    IoPatchSetResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/IoPatchMutationOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
     VcDocRevisionOkResponse:
       payload:
         type: object
