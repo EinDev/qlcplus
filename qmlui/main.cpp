@@ -23,6 +23,11 @@
 #include <QCommandLineParser>
 #include <QQmlApplicationEngine>
 
+#include <condition_variable>
+#include <mutex>
+#include <queue>
+#include <thread>
+
 #include "app.h"
 #include "networkmanager.h"
 #include "apiserver.h"
@@ -30,6 +35,76 @@
 #include "qlcfile.h"
 
 QFile logFile;
+
+namespace {
+
+// qInstallMessageHandler only accepts a plain (captureless) function pointer,
+// so this state has to be file-scope rather than captured. The handler itself
+// just queues the message and returns - the actual (flushed, therefore
+// blocking) file/stderr I/O happens on this background thread instead, so a
+// busy debug session can't stall the calling (often UI/render) thread.
+std::mutex g_logMutex;
+std::condition_variable g_logCv;
+std::queue<QString> g_logQueue;
+std::thread g_logThread;
+bool g_logThreadRunning = false;
+
+void writeLogMessage(const QString &msg)
+{
+    QByteArray localMsg = msg.toLocal8Bit();
+
+    if (logFile.isOpen())
+    {
+        logFile.write(localMsg);
+        logFile.write((char *)"\n");
+        logFile.flush();
+    }
+
+    fprintf(stderr, "%s\n", localMsg.constData());
+    fflush(stderr);
+}
+
+void logWorkerLoop()
+{
+    std::unique_lock<std::mutex> lock(g_logMutex);
+    while (true)
+    {
+        g_logCv.wait(lock, [] { return !g_logQueue.empty() || !g_logThreadRunning; });
+
+        while (!g_logQueue.empty())
+        {
+            QString msg = g_logQueue.front();
+            g_logQueue.pop();
+
+            lock.unlock();
+            writeLogMessage(msg);
+            lock.lock();
+        }
+
+        if (!g_logThreadRunning)
+            break;
+    }
+}
+
+void startLogThread()
+{
+    g_logThreadRunning = true;
+    g_logThread = std::thread(logWorkerLoop);
+}
+
+// Safe to call even if startLogThread() was never called (non-debug runs).
+void stopLogThread()
+{
+    {
+        std::lock_guard<std::mutex> lock(g_logMutex);
+        g_logThreadRunning = false;
+    }
+    g_logCv.notify_one();
+    if (g_logThread.joinable())
+        g_logThread.join();
+}
+
+} // namespace
 
 /**
  * Prints the application version
@@ -182,22 +257,17 @@ int main(int argc, char *argv[])
 
     // logging option
     if (parser.isSet(debugOption))
+    {
+        startLogThread();
         qInstallMessageHandler(
             [](QtMsgType, const QMessageLogContext &, const QString &msg) {
-                QByteArray localMsg = msg.toLocal8Bit();
-                //if (type >= QtSystemMsg)
                 {
-                    if (logFile.isOpen())
-                    {
-                        logFile.write(localMsg);
-                        logFile.write((char *)"\n");
-                        logFile.flush();
-                    }
-
-                    fprintf(stderr, "%s\n", localMsg.constData());
-                    fflush(stderr);
+                    std::lock_guard<std::mutex> lock(g_logMutex);
+                    g_logQueue.push(msg);
                 }
+                g_logCv.notify_one();
         });
+    }
 
     // language settings
     QString locale = parser.value(localeOption);
@@ -277,5 +347,7 @@ int main(int argc, char *argv[])
     if (parser.isSet(fullscreenOption))
         qlcplusApp.toggleFullscreen();
 
-    return app.exec();
+    int result = app.exec();
+    stopLogThread();
+    return result;
 }
