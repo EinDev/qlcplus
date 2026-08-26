@@ -1022,164 +1022,6 @@ messages:
                 type: string
             docRevision:
               type: integer
-  FunctionsChaserAddStepRequest:
-    payload:
-      type: object
-      required:
-      - type
-      - id
-      - method
-      - params
-      properties:
-        type:
-          const: request
-        id:
-          type: string
-        method:
-          const: functions.chaser.addStep
-        params:
-          type: object
-          required:
-          - functionId
-          - step
-          - baseRevision
-          properties:
-            functionId:
-              type: string
-            step:
-              $ref: '#/components/schemas/FunctionsChaserStep'
-            index:
-              type: integer
-              description: Insertion index; omit/-1 to append (Chaser::addStep).
-            baseRevision:
-              type: integer
-  FunctionsChaserAddStepResponse:
-    payload:
-      oneOf:
-      - $ref: '#/components/messages/FunctionsChaserStepsMutationOkResponse/payload'
-      - $ref: '#/components/messages/ErrorResponse/payload'
-  FunctionsChaserRemoveStepRequest:
-    payload:
-      type: object
-      required:
-      - type
-      - id
-      - method
-      - params
-      properties:
-        type:
-          const: request
-        id:
-          type: string
-        method:
-          const: functions.chaser.removeStep
-        params:
-          type: object
-          required:
-          - functionId
-          - index
-          - baseRevision
-          properties:
-            functionId:
-              type: string
-            index:
-              type: integer
-            baseRevision:
-              type: integer
-  FunctionsChaserRemoveStepResponse:
-    payload:
-      oneOf:
-      - $ref: '#/components/messages/FunctionsChaserStepsMutationOkResponse/payload'
-      - $ref: '#/components/messages/ErrorResponse/payload'
-  FunctionsChaserReplaceStepRequest:
-    payload:
-      type: object
-      required:
-      - type
-      - id
-      - method
-      - params
-      properties:
-        type:
-          const: request
-        id:
-          type: string
-        method:
-          const: functions.chaser.replaceStep
-        params:
-          type: object
-          required:
-          - functionId
-          - index
-          - step
-          - baseRevision
-          properties:
-            functionId:
-              type: string
-            index:
-              type: integer
-            step:
-              $ref: '#/components/schemas/FunctionsChaserStep'
-            baseRevision:
-              type: integer
-  FunctionsChaserReplaceStepResponse:
-    payload:
-      oneOf:
-      - $ref: '#/components/messages/FunctionsChaserStepsMutationOkResponse/payload'
-      - $ref: '#/components/messages/ErrorResponse/payload'
-  FunctionsChaserMoveStepRequest:
-    payload:
-      type: object
-      required:
-      - type
-      - id
-      - method
-      - params
-      properties:
-        type:
-          const: request
-        id:
-          type: string
-        method:
-          const: functions.chaser.moveStep
-        params:
-          type: object
-          required:
-          - functionId
-          - sourceIndex
-          - destIndex
-          - baseRevision
-          properties:
-            functionId:
-              type: string
-            sourceIndex:
-              type: integer
-            destIndex:
-              type: integer
-            baseRevision:
-              type: integer
-  FunctionsChaserMoveStepResponse:
-    payload:
-      oneOf:
-      - $ref: '#/components/messages/FunctionsChaserStepsMutationOkResponse/payload'
-      - $ref: '#/components/messages/ErrorResponse/payload'
-  FunctionsChaserStepsMutationOkResponse:
-    payload:
-      type: object
-      required:
-      - type
-      - id
-      - ok
-      - result
-      properties:
-        type:
-          const: response
-        id:
-          type: string
-        ok:
-          const: true
-        result:
-          $ref: '#/components/schemas/FunctionsDocRevisionResult'
   FunctionsChaserStepsChangedEvent:
     payload:
       type: object
@@ -1944,147 +1786,6 @@ messages:
               type: string
             docRevision:
               type: integer
-  FunctionsSequenceAddStepRequest:
-    payload:
-      type: object
-      required:
-      - type
-      - id
-      - method
-      - params
-      properties:
-        type:
-          const: request
-        id:
-          type: string
-        method:
-          const: functions.sequence.addStep
-        params:
-          type: object
-          required:
-          - functionId
-          - step
-          - baseRevision
-          properties:
-            functionId:
-              type: string
-            step:
-              $ref: '#/components/schemas/FunctionsSequenceStep'
-            index:
-              type: integer
-              description: Insertion index; omit/-1 to append.
-            baseRevision:
-              type: integer
-  FunctionsSequenceAddStepResponse:
-    payload:
-      oneOf:
-      - $ref: '#/components/messages/FunctionsSequenceStepsMutationOkResponse/payload'
-      - $ref: '#/components/messages/ErrorResponse/payload'
-  FunctionsSequenceRemoveStepRequest:
-    payload:
-      type: object
-      required:
-      - type
-      - id
-      - method
-      - params
-      properties:
-        type:
-          const: request
-        id:
-          type: string
-        method:
-          const: functions.sequence.removeStep
-        params:
-          type: object
-          required:
-          - functionId
-          - index
-          - baseRevision
-          properties:
-            functionId:
-              type: string
-            index:
-              type: integer
-            baseRevision:
-              type: integer
-  FunctionsSequenceRemoveStepResponse:
-    payload:
-      oneOf:
-      - $ref: '#/components/messages/FunctionsSequenceStepsMutationOkResponse/payload'
-      - $ref: '#/components/messages/ErrorResponse/payload'
-  FunctionsSequenceReplaceStepRequest:
-    payload:
-      type: object
-      required:
-      - type
-      - id
-      - method
-      - params
-      properties:
-        type:
-          const: request
-        id:
-          type: string
-        method:
-          const: functions.sequence.replaceStep
-        params:
-          type: object
-          required:
-          - functionId
-          - index
-          - step
-          - baseRevision
-          properties:
-            functionId:
-              type: string
-            index:
-              type: integer
-            step:
-              $ref: '#/components/schemas/FunctionsSequenceStep'
-            baseRevision:
-              type: integer
-  FunctionsSequenceReplaceStepResponse:
-    payload:
-      oneOf:
-      - $ref: '#/components/messages/FunctionsSequenceStepsMutationOkResponse/payload'
-      - $ref: '#/components/messages/ErrorResponse/payload'
-  FunctionsSequenceMoveStepRequest:
-    payload:
-      type: object
-      required:
-      - type
-      - id
-      - method
-      - params
-      properties:
-        type:
-          const: request
-        id:
-          type: string
-        method:
-          const: functions.sequence.moveStep
-        params:
-          type: object
-          required:
-          - functionId
-          - sourceIndex
-          - destIndex
-          - baseRevision
-          properties:
-            functionId:
-              type: string
-            sourceIndex:
-              type: integer
-            destIndex:
-              type: integer
-            baseRevision:
-              type: integer
-  FunctionsSequenceMoveStepResponse:
-    payload:
-      oneOf:
-      - $ref: '#/components/messages/FunctionsSequenceStepsMutationOkResponse/payload'
-      - $ref: '#/components/messages/ErrorResponse/payload'
   FunctionsSequenceApplyDumpValuesRequest:
     payload:
       type: object
@@ -2124,25 +1825,8 @@ messages:
   FunctionsSequenceApplyDumpValuesResponse:
     payload:
       oneOf:
-      - $ref: '#/components/messages/FunctionsSequenceStepsMutationOkResponse/payload'
+      - $ref: '#/components/messages/FunctionsStepsMutationOkResponse/payload'
       - $ref: '#/components/messages/ErrorResponse/payload'
-  FunctionsSequenceStepsMutationOkResponse:
-    payload:
-      type: object
-      required:
-      - type
-      - id
-      - ok
-      - result
-      properties:
-        type:
-          const: response
-        id:
-          type: string
-        ok:
-          const: true
-        result:
-          $ref: '#/components/schemas/FunctionsDocRevisionResult'
   FunctionsSequenceStepsChangedEvent:
     payload:
       type: object
@@ -2668,6 +2352,174 @@ messages:
               $ref: '#/components/schemas/FunctionsChannelsGroupDetail'
             docRevision:
               type: integer
+  FunctionsStepsMutationOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          $ref: '#/components/schemas/FunctionsDocRevisionResult'
+  FunctionsStepsRemoveStepRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.steps.removeStep
+        params:
+          type: object
+          required:
+          - functionId
+          - index
+          - baseRevision
+          properties:
+            functionId:
+              type: string
+            index:
+              type: integer
+            baseRevision:
+              type: integer
+  FunctionsStepsRemoveStepResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsStepsMutationOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsStepsMoveStepRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.steps.moveStep
+        params:
+          type: object
+          required:
+          - functionId
+          - sourceIndex
+          - destIndex
+          - baseRevision
+          properties:
+            functionId:
+              type: string
+            sourceIndex:
+              type: integer
+            destIndex:
+              type: integer
+            baseRevision:
+              type: integer
+  FunctionsStepsMoveStepResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsStepsMutationOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsStepsAddStepRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.steps.addStep
+        params:
+          type: object
+          required:
+          - functionId
+          - step
+          - baseRevision
+          description: params.step's shape is determined by the target function's own type (Chaser or
+            Sequence, looked up server-side from functionId, not a separate discriminator field here)
+            - see FunctionsChaserStep, FunctionsSequenceStep.
+          properties:
+            functionId:
+              type: string
+            step:
+              oneOf:
+              - $ref: '#/components/schemas/FunctionsChaserStep'
+              - $ref: '#/components/schemas/FunctionsSequenceStep'
+            index:
+              type: integer
+              description: Insertion index; omit/-1 to append (Chaser::addStep).
+            baseRevision:
+              type: integer
+  FunctionsStepsAddStepResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsStepsMutationOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsStepsReplaceStepRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.steps.replaceStep
+        params:
+          type: object
+          required:
+          - functionId
+          - index
+          - step
+          - baseRevision
+          description: params.step's shape is determined by the target function's own type (Chaser or
+            Sequence, looked up server-side from functionId, not a separate discriminator field here)
+            - see FunctionsChaserStep, FunctionsSequenceStep.
+          properties:
+            functionId:
+              type: string
+            index:
+              type: integer
+            step:
+              oneOf:
+              - $ref: '#/components/schemas/FunctionsChaserStep'
+              - $ref: '#/components/schemas/FunctionsSequenceStep'
+            baseRevision:
+              type: integer
+  FunctionsStepsReplaceStepResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsStepsMutationOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
 schemas:
   FunctionsTypeEnum:
     type: string
@@ -3495,54 +3347,6 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/functionsSceneMembersChangedEvent'
-  sendFunctionsChaserAddStep:
-    action: send
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/functionsChaserAddStepRequest'
-  receiveFunctionsChaserAddStepResponse:
-    action: receive
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/functionsChaserAddStepResponse'
-  sendFunctionsChaserRemoveStep:
-    action: send
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/functionsChaserRemoveStepRequest'
-  receiveFunctionsChaserRemoveStepResponse:
-    action: receive
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/functionsChaserRemoveStepResponse'
-  sendFunctionsChaserReplaceStep:
-    action: send
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/functionsChaserReplaceStepRequest'
-  receiveFunctionsChaserReplaceStepResponse:
-    action: receive
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/functionsChaserReplaceStepResponse'
-  sendFunctionsChaserMoveStep:
-    action: send
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/functionsChaserMoveStepRequest'
-  receiveFunctionsChaserMoveStepResponse:
-    action: receive
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/functionsChaserMoveStepResponse'
   receiveFunctionsChaserStepsChanged:
     action: receive
     channel:
@@ -3711,54 +3515,6 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/functionsSequenceChangedEvent'
-  sendFunctionsSequenceAddStep:
-    action: send
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/functionsSequenceAddStepRequest'
-  receiveFunctionsSequenceAddStepResponse:
-    action: receive
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/functionsSequenceAddStepResponse'
-  sendFunctionsSequenceRemoveStep:
-    action: send
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/functionsSequenceRemoveStepRequest'
-  receiveFunctionsSequenceRemoveStepResponse:
-    action: receive
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/functionsSequenceRemoveStepResponse'
-  sendFunctionsSequenceReplaceStep:
-    action: send
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/functionsSequenceReplaceStepRequest'
-  receiveFunctionsSequenceReplaceStepResponse:
-    action: receive
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/functionsSequenceReplaceStepResponse'
-  sendFunctionsSequenceMoveStep:
-    action: send
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/functionsSequenceMoveStepRequest'
-  receiveFunctionsSequenceMoveStepResponse:
-    action: receive
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/functionsSequenceMoveStepResponse'
   sendFunctionsSequenceApplyDumpValues:
     action: send
     channel:
@@ -3897,3 +3653,51 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/functionsChannelsGroupChangedEvent'
+  sendFunctionsStepsRemoveStepRequest:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsStepsRemoveStepRequest'
+  receiveFunctionsStepsRemoveStepResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsStepsRemoveStepResponse'
+  sendFunctionsStepsMoveStepRequest:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsStepsMoveStepRequest'
+  receiveFunctionsStepsMoveStepResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsStepsMoveStepResponse'
+  sendFunctionsStepsAddStepRequest:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsStepsAddStepRequest'
+  receiveFunctionsStepsAddStepResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsStepsAddStepResponse'
+  sendFunctionsStepsReplaceStepRequest:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsStepsReplaceStepRequest'
+  receiveFunctionsStepsReplaceStepResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsStepsReplaceStepResponse'
