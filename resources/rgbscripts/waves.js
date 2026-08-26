@@ -39,6 +39,13 @@ function()
     algo.properties.push("name:direction|type:list|display:Direction|values:Right,Left,In,Out|write:setDirection|read:getDirection");
     algo.orientation = 0;
     algo.properties.push("name:orientation|type:list|display:Orientation|values:Horizontal,Vertical|write:setOrientation|read:getOrientation");
+    // Only meaningful for Right/Left: treats the span as a closed loop (e.g.
+    // fixtures physically arranged in a circle) instead of a line, so the
+    // tail wraps continuously from the last pixel back to the first instead
+    // of the whole pattern jump-cutting back to its start. Ignored for
+    // In/Out, which sweep from/to a center point and have no edge to wrap.
+    algo.circular = 0;
+    algo.properties.push("name:circular|type:list|display:Circular (Right/Left only)|values:No,Yes|write:setCircular|read:getCircular");
 
     algo.setTail = function(_tail)
     {
@@ -89,6 +96,18 @@ function()
     {
       if (algo.orientation === 1) { return "Vertical"; }
       else if (algo.orientation === 0) { return "Horizontal"; }
+    };
+
+    algo.setCircular = function(_circular)
+    {
+      if (_circular === "Yes") { algo.circular = 1; }
+      else if (_circular === "No") { algo.circular = 0; }
+    };
+
+    algo.getCircular = function()
+    {
+      if (algo.circular === 0) { return "No"; }
+      else if (algo.circular === 1) { return "Yes"; }
     };
 
     util.initialize = function()
@@ -148,12 +167,27 @@ function()
               }
               break;
           }
+          // How far "behind" the tail's head this pixel is (0 = head/brightest,
+          // tailSteps-1 = oldest/dimmest end of the tail). For the plain
+          // (non-circular) case this is just step - stepPos; circular mode
+          // recomputes it below as a wrapped distance instead.
+          var tailDist = step - stepPos;
           // Decide whether or not to fill the pixel
           switch (algo.direction)
           {
             case 0: // Right - no break
             case 1: // Left
-              fill = ((stepPos <= step) && (stepPos > (step - tailSteps)));
+              if (algo.circular === 1)
+              {
+                // Treat span as a closed loop: wrap the head-to-pixel
+                // distance around it instead of letting it run off the end.
+                tailDist = ((step - stepPos) % span + span) % span;
+                fill = (tailDist < tailSteps);
+              }
+              else
+              {
+                fill = ((stepPos <= step) && (stepPos > (step - tailSteps)));
+              }
             break;
             case 2: // In - no break
             case 3: // Out
@@ -172,7 +206,7 @@ function()
           var thisRgb = rgb;
           if (fill && (algo.tailfade === 1))
           {
-            var thisTailStep = Math.round(util.fadeSteps * (step - stepPos) / tailSteps);
+            var thisTailStep = Math.round(util.fadeSteps * tailDist / tailSteps);
             var r = Math.round(((rgb >> 16) & 0x00FF) * util.fadeObject[thisTailStep]);
             var g = Math.round(((rgb >> 8) & 0x00FF) * util.fadeObject[thisTailStep]);
             var b = Math.round((rgb & 0x00FF) * util.fadeObject[thisTailStep]);
@@ -192,7 +226,13 @@ function()
       var isEven = (span % 2 === 0);
       var tailSteps = Math.round(span * algo.taillength/100);
       if (tailSteps === 0) { tailSteps = 1; }
-      if ((algo.direction === 0) || (algo.direction === 1)) {
+      if (algo.circular === 1 && ((algo.direction === 0) || (algo.direction === 1))) {
+        // No extra steps needed for the tail to "exit" - it just wraps, so
+        // one full cycle is exactly one pass around the span. This also
+        // makes the pattern's period line up exactly with the step count,
+        // so the engine wrapping the step counter back to 0 is seamless.
+        return span;
+      } else if ((algo.direction === 0) || (algo.direction === 1)) {
         return (span + tailSteps - (isEven ? 0 : 1));
       } else if ((algo.direction === 2) || (algo.direction === 3)) {
         return Math.round(Math.floor((span + 1) / 2) + tailSteps - 1);
