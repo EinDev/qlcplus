@@ -816,6 +816,14 @@ Rectangle
                 {
                     id: frameGraph
                     camera: viewCamera
+                    // Only render continuously while this view is actually
+                    // visible. It stays instantiated (but hidden) when the
+                    // user switches to another top-level tab, and Qt3D's
+                    // Always policy would otherwise keep rendering forever
+                    // in the background - picking (the reason this is Always
+                    // rather than OnDemand, see git history) can't happen on
+                    // a hidden tab anyway, so this loses nothing.
+                    renderPolicy: scene3d.visible ? RenderSettings.Always : RenderSettings.OnDemand
                 },
                 InputSettings {}
             ]
