@@ -20,6 +20,10 @@ fully replace the current Qt/QML UI (`qmlui/`). 712 messages, 112 schemas,
    the way (see "Known gaps" below), things deliberately left out and why.
 4. **`MERGE-PLAN.md`** — what got consolidated during the merge and why,
    e.g. the `functions.<type>.get` → single `functions.get` fold.
+5. **`TODO.md`** — the standing to-do list for everything left: spec
+   cleanup, implementing the remaining domains, cross-cutting concerns
+   (auth, TLS, the `io.plugin.configure` engine gap, etc.), and the not-yet-
+   started Electron client. Point at a numbered item to work on it.
 
 ## How this was built
 
@@ -39,30 +43,16 @@ unresolved `$ref` before writing `qlcplus-api.yaml`). Needs PyYAML; on this
 repo's MSYS2 toolchain: `pacman -S mingw-w64-x86_64-python-yaml`, then run
 scripts via the MSYS2 `python3`, not Windows' python launcher.
 
-## Known gaps / follow-up work flagged during this pass
+## Known gaps / follow-up work
 
-Worth reading in full in the relevant notes file, summarized here:
-
-- **`io.plugin.configure` can't actually work remotely as designed** — it's
-  a thin passthrough to `InputOutputMap::configurePlugin()`, which pops a
-  **native Qt dialog server-side** on the current engine. `io.patch.
-  setParameters` (generic key-value) is the real remote-friendly path, but
-  full parity for plugins that need live hardware enumeration (`dmxusb`
-  notably, given this repo's FTDI D2XX dependency) likely needs engine-side
-  work, not just an API-spec decision. See `io-notes.md`.
-- **Scene/RGBMatrix palette and color-filter *definitions*** (as opposed to
-  referencing them by id) aren't covered by any of the seven domains as
-  scoped — a real gap for "100% of the functionality" if palettes/color
-  filters are meant to be user-editable via the API. See
-  `functions-core-notes.md`.
-- **Undo/redo under multi-client editing** (`core.*`) has a real, only
-  partially-resolved design question: what should "undo" mean once another
-  client has made changes since your last action? See `core-notes.md`.
-- **`vc.inputProfile.learn.signal`-style event broadcast scoping** — the
-  MIDI/OSC "learn" signal event in `io.yaml` currently has no
-  requester-scoping field, so as specified it'd broadcast to every
-  connected client instead of just the one doing the learn. Minor, flagged
-  in `io-notes.md`.
+Tracked as a checklist in **`TODO.md`** now (Phase 2), not duplicated here —
+that's the file to read for current status and the file to edit as items
+get resolved or new ones turn up. Briefly, the standouts: `io.plugin.configure`
+can't actually work remotely as designed (needs engine-side work, not just
+an API decision — `io-notes.md`), palette/color-filter *definitions* aren't
+covered by any domain yet, undo/redo under multi-client editing is an open
+design question, and `io.inputProfile.learn.signal` has a minor broadcast-
+scoping bug.
 
 ## Repo owner's standing guidance for future edits to this spec
 
