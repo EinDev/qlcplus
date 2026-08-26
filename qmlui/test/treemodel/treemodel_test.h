@@ -31,6 +31,7 @@ private slots:
     void singleSelectionDeselectsPreviousChoiceIncludingDescendants();
     void emptyPathBroadcastRefreshesEveryRow();
     void emptyPathBroadcastReachesFlattenedList();
+    void groupRowRoleIsIndependentOfMemberRows();
 };
 
 #endif

@@ -167,4 +167,53 @@ void TreeModel_Test::emptyPathBroadcastReachesFlattenedList()
     QCOMPARE(flat.data(flat.index(2), TreeFlatModel::IsSelectedRole).toBool(), true);
 }
 
+// ContextManager::refreshGroupSelectionRoles() (added to fix "selecting every
+// fixture of a group doesn't highlight the group in the Fixture Groups list")
+// pushes a Fixture Group's own derived "fully selected" state onto its
+// top-level tree row via FixtureManager::setGroupItemRoleData(), which is
+// just tree.setItemRoleData(group->name(), ..., IsSelectedRole) - a
+// root-level, single-segment path lookup that happens to target a row with
+// children. Pin down that this targets only the group's own row and never
+// touches its members' independently-tracked selection state, in either
+// direction, and that both are visible as distinct rows through
+// TreeFlatModel (which is what FixtureGroupFlatDelegate.qml actually binds
+// its "isSelected" to for every row, group and fixture alike).
+void TreeModel_Test::groupRowRoleIsIndependentOfMemberRows()
+{
+    TreeModel tree;
+    buildFixtureLikeTree(tree);
+
+    // The group's only member gets selected first (as ContextManager's
+    // per-fixture path already does via FixtureManager::setItemRoleData()).
+    QString childPath = QString("Group") + TreeModel::separator() + "Fixture B";
+    tree.setItemRoleData(childPath, 2, TreeModel::IsSelectedRole);
+
+    TreeFlatModel flat;
+    flat.setSourceModel(&tree);
+    tree.setItemRoleData("Group", true, TreeModel::IsExpandedRole);
+    QCOMPARE(flat.rowCount(), 3); // Fixture A, Group, Fixture B
+
+    // The group itself is now fully selected (its one and only member is) -
+    // this is refreshGroupSelectionRoles() pushing that derived state onto
+    // the group's own row.
+    tree.setItemRoleData("Group", 2, TreeModel::IsSelectedRole);
+
+    TreeModelItem *group = tree.itemAtPath("Group");
+    QVERIFY(group != nullptr);
+    QCOMPARE(tree.data(tree.index(1), TreeModel::IsSelectedRole).toBool(), true);
+    QCOMPARE(group->children()->data(group->children()->index(0), TreeModel::IsSelectedRole).toBool(), true);
+    QCOMPARE(flat.data(flat.index(1), TreeFlatModel::IsSelectedRole).toBool(), true); // Group row
+    QCOMPARE(flat.data(flat.index(2), TreeFlatModel::IsSelectedRole).toBool(), true); // Fixture B row
+
+    // Deselecting the group's row (e.g. some other, not-in-this-group fixture
+    // got selected too, so the group is no longer *fully* selected) must not
+    // reach down and deselect the member that's still actually selected.
+    tree.setItemRoleData("Group", 0, TreeModel::IsSelectedRole);
+
+    QCOMPARE(tree.data(tree.index(1), TreeModel::IsSelectedRole).toBool(), false);
+    QCOMPARE(group->children()->data(group->children()->index(0), TreeModel::IsSelectedRole).toBool(), true);
+    QCOMPARE(flat.data(flat.index(1), TreeFlatModel::IsSelectedRole).toBool(), false);
+    QCOMPARE(flat.data(flat.index(2), TreeFlatModel::IsSelectedRole).toBool(), true);
+}
+
 QTEST_APPLESS_MAIN(TreeModel_Test)
