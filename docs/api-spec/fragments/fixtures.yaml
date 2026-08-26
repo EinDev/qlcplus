@@ -1,0 +1,1580 @@
+# Fixtures domain fragment.
+#
+# Scope: browsing the fixture-definition library (read-only — authoring defs
+# themselves belongs to the "fixturedefs" domain), patching real fixtures
+# into universes, fixture groups (2D layout grid), and one-shot fixture
+# remapping. Grounded in engine/src/{qlcfixturedefcache,qlcfixturedef,
+# qlcfixturemode,qlcfixturehead,qlcchannel,qlccapability,fixture,doc,
+# fixturegroup,fixtureremapper}.h/.cpp and qmlui/{fixturemanager,
+# fixturebrowser,fixturegroupeditor,fixtureremapmanager,fixtureutils}.
+#
+# See fixtures-notes.md for open questions, scope cuts, lockable resources,
+# subscribe-gating and channel-message keys to add at merge time.
+
+messages:
+
+  # =====================================================================
+  # 1. Fixture definition library browsing (read-only)
+  # =====================================================================
+
+  FixturesDefsListManufacturersRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixtures.defs.listManufacturers }
+        params:
+          type: object
+          description: No parameters. Present for envelope symmetry.
+
+  FixturesDefsListManufacturersResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/FixturesDefsListManufacturersOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  FixturesDefsListManufacturersOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          type: object
+          required: [manufacturers]
+          properties:
+            manufacturers:
+              type: array
+              items: { type: string }
+              description: >
+                Sorted list of manufacturer names known to the fixture
+                definition cache (QLCFixtureDefCache::manufacturers()).
+
+  FixturesDefsListModelsRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixtures.defs.listModels }
+        params:
+          type: object
+          required: [manufacturer]
+          properties:
+            manufacturer: { type: string }
+
+  FixturesDefsListModelsResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/FixturesDefsListModelsOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  FixturesDefsListModelsOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          type: object
+          required: [models]
+          properties:
+            models:
+              type: array
+              description: QLCFixtureDefCache::fixtureCache()[manufacturer], as a list.
+              items:
+                type: object
+                required: [model, isUser]
+                properties:
+                  model: { type: string }
+                  isUser:
+                    type: boolean
+                    description: >
+                      true if this definition lives in the user's own
+                      fixture-definition folder rather than the system one
+                      (QLCFixtureDef::isUser()).
+
+  FixturesDefsGetModelRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixtures.defs.getModel }
+        params:
+          type: object
+          required: [manufacturer, model]
+          properties:
+            manufacturer: { type: string }
+            model: { type: string }
+
+  FixturesDefsGetModelResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/FixturesDefsGetModelOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  FixturesDefsGetModelOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          type: object
+          required: [manufacturer, model, fixtureType, author, isUser, modes]
+          properties:
+            manufacturer: { type: string }
+            model: { type: string }
+            fixtureType:
+              type: string
+              description: >
+                QLCFixtureDef::FixtureType as string via typeToString()
+                (e.g. "Moving Head", "Dimmer", "Color Changer", "Scanner"...).
+            author: { type: string }
+            isUser: { type: boolean }
+            modes:
+              type: array
+              description: Browsing-level mode list; use fixtures.defs.getMode for full detail.
+              items:
+                type: object
+                required: [name, channelCount]
+                properties:
+                  name: { type: string }
+                  channelCount: { type: integer }
+
+  FixturesDefsGetModeRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixtures.defs.getMode }
+        params:
+          type: object
+          required: [manufacturer, model, mode]
+          properties:
+            manufacturer: { type: string }
+            model: { type: string }
+            mode: { type: string }
+
+  FixturesDefsGetModeResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/FixturesDefsGetModeOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  FixturesDefsGetModeOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          type: object
+          required: [manufacturer, model, mode, channelCount, physical, channels, heads]
+          properties:
+            manufacturer: { type: string }
+            model: { type: string }
+            mode: { type: string }
+            channelCount: { type: integer }
+            masterIntensityChannel:
+              type: [integer, "null"]
+              description: QLCFixtureMode::masterIntensityChannel(), null if none auto-detected.
+            physical:
+              $ref: '#/components/schemas/FixturesPhysical'
+            useGlobalPhysical:
+              type: boolean
+              description: QLCFixtureMode::useGlobalPhysical() — whether "physical" above is the fixture's global one or a mode-specific override.
+            channels:
+              type: array
+              description: Ordered by DMX channel index within the mode (QLCFixtureMode::channels()).
+              items:
+                $ref: '#/components/schemas/FixturesModeChannel'
+            heads:
+              type: array
+              description: QLCFixtureMode::heads() — enough for a patch dialog to preview head layout.
+              items:
+                $ref: '#/components/schemas/FixturesModeHead'
+
+  # =====================================================================
+  # 2. Patching
+  # =====================================================================
+
+  FixturesListRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixtures.list }
+        params:
+          type: object
+          properties:
+            universe:
+              type: integer
+              description: Optional filter — only fixtures patched into this universe.
+
+  FixturesListResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/FixturesListOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  FixturesListOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          type: object
+          required: [fixtures]
+          properties:
+            fixtures:
+              type: array
+              items:
+                $ref: '#/components/schemas/FixturesPatchedFixture'
+
+  FixturesGetRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixtures.get }
+        params:
+          type: object
+          required: [fixtureId]
+          properties:
+            fixtureId: { type: string }
+
+  FixturesGetResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/FixturesGetOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  FixturesGetOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          $ref: '#/components/schemas/FixturesPatchedFixtureDetail'
+
+  FixturesFindAvailableAddressRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixtures.findAvailableAddress }
+        params:
+          type: object
+          required: [universe, channels, requestedAddress]
+          description: >
+            Mirrors FixtureBrowser::availableChannel() — used by a patch
+            dialog to default/validate the address field before submitting
+            fixtures.patch. Purely advisory: fixtures.patch still
+            authoritatively re-checks and can still return
+            FIXTURES_ADDRESS_OVERLAP if the address was taken between this
+            call and the patch request.
+          properties:
+            universe: { type: integer }
+            channels:
+              type: integer
+              description: Channel footprint of one fixture instance.
+            quantity: { type: integer, default: 1 }
+            gap: { type: integer, default: 0 }
+            requestedAddress: { type: integer, description: "0-based DMX address to try first." }
+            excludeFixtureId:
+              type: string
+              description: >
+                When checking whether a fixture can move to a new address,
+                pass its own id here so it doesn't conflict with itself
+                (mirrors the fixtureID overload of availableChannel()).
+
+  FixturesFindAvailableAddressResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/FixturesFindAvailableAddressOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  FixturesFindAvailableAddressOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          type: object
+          required: [available]
+          properties:
+            available:
+              type: boolean
+              description: false if no free block could be found anywhere in the universe.
+            address:
+              type: integer
+              description: >
+                The requested address if free, otherwise the first free
+                address found. Absent if available is false.
+
+  FixturesPatchRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixtures.patch }
+        params:
+          type: object
+          required: [universe, address, definition, baseRevision]
+          properties:
+            universe: { type: integer, description: "0-based universe index." }
+            address: { type: integer, description: "0-based DMX address (0-511) for the first fixture." }
+            definition:
+              $ref: '#/components/schemas/FixturesDefinitionRef'
+            name:
+              type: string
+              description: >
+                Base friendly name. When quantity > 1, the engine appends
+                " [<n>]" per instance (Fixture::setName(), see
+                FixtureManager::addFixture()) — mirror that suffixing
+                server-side for parity with the current UI.
+            quantity:
+              type: integer
+              default: 1
+              minimum: 1
+              description: Patch N identical fixtures in one call (bulk-patch, as the current Add Fixture dialog offers).
+            gap:
+              type: integer
+              default: 0
+              minimum: 0
+              description: Extra unused channels left between each fixture's footprint when quantity > 1.
+            baseRevision: { type: integer }
+        description: >
+          No "tags" field: Fixture (engine/src/fixture.h) has no tag concept,
+          only id/name/universe/address/channels/definition — see
+          fixtures-notes.md.
+
+  FixturesPatchResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/FixturesPatchOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  FixturesPatchOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          type: object
+          required: [docRevision, fixtureIds]
+          properties:
+            docRevision: { type: integer }
+            fixtureIds:
+              type: array
+              items: { type: string }
+              description: IDs of the fixture(s) created, in patch order (length == quantity).
+
+  FixturesPatchedEvent:
+    payload:
+      type: object
+      required: [type, topic, data]
+      properties:
+        type: { const: event }
+        topic: { const: fixtures.patched }
+        originClientId: { type: [string, "null"] }
+        data:
+          type: object
+          required: [docRevision, fixtures]
+          properties:
+            docRevision: { type: integer }
+            fixtures:
+              type: array
+              items:
+                $ref: '#/components/schemas/FixturesPatchedFixture'
+
+  FixturesUnpatchRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixtures.unpatch }
+        params:
+          type: object
+          required: [fixtureIds, baseRevision]
+          properties:
+            fixtureIds:
+              type: array
+              items: { type: string }
+              minItems: 1
+              description: >
+                Bulk-capable, mirrors FixtureManager::deleteFixtures(IDList).
+                Note: unpatching also silently deletes any fixture group left
+                empty by the removal (see engine issue #2063 workaround in
+                FixtureManager::deleteFixtures) — those deletions are
+                reported via fixtures.group.deleted events, not inline here.
+            baseRevision: { type: integer }
+
+  FixturesUnpatchResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/FixturesDocRevisionOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  FixturesUnpatchedEvent:
+    payload:
+      type: object
+      required: [type, topic, data]
+      properties:
+        type: { const: event }
+        topic: { const: fixtures.unpatched }
+        originClientId: { type: [string, "null"] }
+        data:
+          type: object
+          required: [fixtureIds, docRevision]
+          properties:
+            fixtureIds:
+              type: array
+              items: { type: string }
+            docRevision: { type: integer }
+
+  FixturesUpdateRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixtures.update }
+        params:
+          type: object
+          required: [fixtureId, baseRevision]
+          description: >
+            At least one of universe/address/name must be present. Moving
+            universe/address is FixtureManager::moveFixture() (address only)
+            extended to also cover universe, plus renameFixture(). The
+            underlying engine setters (Fixture::setAddress/setUniverse) do
+            NOT themselves reject overlaps — see fixtures-notes.md; the API
+            server must run the same overlap check fixtures.patch does.
+          properties:
+            fixtureId: { type: string }
+            universe: { type: integer }
+            address: { type: integer }
+            name: { type: string }
+            baseRevision: { type: integer }
+
+  FixturesUpdateResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/FixturesDocRevisionOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  FixturesUpdatedEvent:
+    payload:
+      type: object
+      required: [type, topic, data]
+      properties:
+        type: { const: event }
+        topic: { const: fixtures.updated }
+        originClientId: { type: [string, "null"] }
+        data:
+          type: object
+          required: [fixture, docRevision]
+          properties:
+            fixture:
+              $ref: '#/components/schemas/FixturesPatchedFixture'
+            docRevision: { type: integer }
+
+  # =====================================================================
+  # 3. Fixture groups
+  # =====================================================================
+
+  FixturesGroupListRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixtures.group.list }
+        params:
+          type: object
+
+  FixturesGroupListResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/FixturesGroupListOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  FixturesGroupListOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          type: object
+          required: [groups]
+          properties:
+            groups:
+              type: array
+              items:
+                type: object
+                required: [id, name, size, headCount]
+                properties:
+                  id: { type: string }
+                  name: { type: string }
+                  size:
+                    type: object
+                    required: [columns, rows]
+                    properties:
+                      columns: { type: integer }
+                      rows: { type: integer }
+                  headCount: { type: integer }
+
+  FixturesGroupGetRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixtures.group.get }
+        params:
+          type: object
+          required: [groupId]
+          properties:
+            groupId: { type: string }
+
+  FixturesGroupGetResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/FixturesGroupGetOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  FixturesGroupGetOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          $ref: '#/components/schemas/FixturesGroup'
+
+  FixturesGroupCreateRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixtures.group.create }
+        params:
+          type: object
+          required: [name, baseRevision]
+          properties:
+            name: { type: string }
+            columns: { type: integer, default: 1 }
+            rows: { type: integer, default: 1 }
+            baseRevision: { type: integer }
+
+  FixturesGroupCreateResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/FixturesGroupCreateOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  FixturesGroupCreateOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          type: object
+          required: [docRevision, groupId]
+          properties:
+            docRevision: { type: integer }
+            groupId: { type: string }
+
+  FixturesGroupCreatedEvent:
+    payload:
+      type: object
+      required: [type, topic, data]
+      properties:
+        type: { const: event }
+        topic: { const: fixtures.group.created }
+        originClientId: { type: [string, "null"] }
+        data:
+          type: object
+          required: [group, docRevision]
+          properties:
+            group: { $ref: '#/components/schemas/FixturesGroup' }
+            docRevision: { type: integer }
+
+  FixturesGroupRenameRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixtures.group.rename }
+        params:
+          type: object
+          required: [groupId, name, baseRevision]
+          properties:
+            groupId: { type: string }
+            name: { type: string }
+            baseRevision: { type: integer }
+
+  FixturesGroupRenameResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/FixturesDocRevisionOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  FixturesGroupRenamedEvent:
+    payload:
+      type: object
+      required: [type, topic, data]
+      properties:
+        type: { const: event }
+        topic: { const: fixtures.group.renamed }
+        originClientId: { type: [string, "null"] }
+        data:
+          type: object
+          required: [groupId, name, docRevision]
+          properties:
+            groupId: { type: string }
+            name: { type: string }
+            docRevision: { type: integer }
+
+  FixturesGroupDeleteRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixtures.group.delete }
+        params:
+          type: object
+          required: [groupId, baseRevision]
+          properties:
+            groupId: { type: string }
+            baseRevision: { type: integer }
+
+  FixturesGroupDeleteResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/FixturesDocRevisionOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  FixturesGroupDeletedEvent:
+    payload:
+      type: object
+      required: [type, topic, data]
+      properties:
+        type: { const: event }
+        topic: { const: fixtures.group.deleted }
+        originClientId: { type: [string, "null"] }
+        data:
+          type: object
+          required: [groupId, docRevision]
+          properties:
+            groupId: { type: string }
+            docRevision: { type: integer }
+
+  FixturesGroupSetSizeRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixtures.group.setSize }
+        params:
+          type: object
+          required: [groupId, columns, rows, baseRevision]
+          description: >
+            FixtureGroup::setSize(). Shrinking below the current extent does
+            not itself drop out-of-bounds heads (engine behaviour) — they
+            become unreachable via the grid but stay in headsMap() until
+            explicitly resigned. Note this UX wrinkle to the client.
+          properties:
+            groupId: { type: string }
+            columns: { type: integer, minimum: 1 }
+            rows: { type: integer, minimum: 1 }
+            baseRevision: { type: integer }
+
+  FixturesGroupSetSizeResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/FixturesDocRevisionOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  FixturesGroupAssignFixtureRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixtures.group.assignFixture }
+        params:
+          type: object
+          required: [groupId, fixtureId, baseRevision]
+          description: >
+            FixtureGroup::assignFixture() — places all of the fixture's
+            heads in consecutive cells starting at (x,y), wrapping to the
+            next row at the group's column count. Omit x/y to auto-place
+            each head in the next free cell instead (row-major scan).
+          properties:
+            groupId: { type: string }
+            fixtureId: { type: string }
+            x: { type: integer }
+            y: { type: integer }
+            baseRevision: { type: integer }
+
+  FixturesGroupAssignFixtureResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/FixturesDocRevisionOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  FixturesGroupAssignHeadRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixtures.group.assignHead }
+        params:
+          type: object
+          required: [groupId, fixtureId, headIndex, baseRevision]
+          description: >
+            FixtureGroup::assignHead(). If a head is already assigned
+            elsewhere in the group it is moved; if (x,y) is already occupied
+            by another head, the two heads swap places (see FixtureGroup
+            header comment). Omit x/y to auto-place in the next free cell.
+          properties:
+            groupId: { type: string }
+            fixtureId: { type: string }
+            headIndex: { type: integer, description: "0 for a dimmer/non-multi-head fixture." }
+            x: { type: integer }
+            y: { type: integer }
+            baseRevision: { type: integer }
+
+  FixturesGroupAssignHeadResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/FixturesDocRevisionOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  FixturesGroupUnassignHeadRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixtures.group.unassignHead }
+        params:
+          type: object
+          required: [groupId, x, y, baseRevision]
+          description: FixtureGroup::resignHead() — clears one grid cell.
+          properties:
+            groupId: { type: string }
+            x: { type: integer }
+            y: { type: integer }
+            baseRevision: { type: integer }
+
+  FixturesGroupUnassignHeadResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/FixturesDocRevisionOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  FixturesGroupUnassignFixtureRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixtures.group.unassignFixture }
+        params:
+          type: object
+          required: [groupId, fixtureId, baseRevision]
+          description: FixtureGroup::resignFixture() — removes every head belonging to a fixture from the group.
+          properties:
+            groupId: { type: string }
+            fixtureId: { type: string }
+            baseRevision: { type: integer }
+
+  FixturesGroupUnassignFixtureResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/FixturesDocRevisionOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  FixturesGroupSwapHeadsRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixtures.group.swapHeads }
+        params:
+          type: object
+          required: [groupId, ax, ay, bx, by, baseRevision]
+          description: FixtureGroup::swap() — exchanges (or moves, if one side is empty) the heads at two grid cells.
+          properties:
+            groupId: { type: string }
+            ax: { type: integer }
+            ay: { type: integer }
+            bx: { type: integer }
+            by: { type: integer }
+            baseRevision: { type: integer }
+
+  FixturesGroupSwapHeadsResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/FixturesDocRevisionOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  FixturesGroupResetRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixtures.group.reset }
+        params:
+          type: object
+          required: [groupId, baseRevision]
+          description: FixtureGroup::reset() — clears all head assignments, keeps size/name.
+          properties:
+            groupId: { type: string }
+            baseRevision: { type: integer }
+
+  FixturesGroupResetResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/FixturesDocRevisionOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  FixturesGroupUpdatedEvent:
+    payload:
+      type: object
+      required: [type, topic, data]
+      description: >
+        Shared broadcast for every head/size-affecting group mutation
+        (setSize, assignFixture, assignHead, unassignHead, unassignFixture,
+        swapHeads, reset) — carries the group's full resulting state so
+        clients never need to diff a heads map by hand.
+      properties:
+        type: { const: event }
+        topic: { const: fixtures.group.updated }
+        originClientId: { type: [string, "null"] }
+        data:
+          type: object
+          required: [group, docRevision]
+          properties:
+            group: { $ref: '#/components/schemas/FixturesGroup' }
+            docRevision: { type: integer }
+
+  # =====================================================================
+  # 4. Fixture remapping (one-shot batch operation)
+  # =====================================================================
+
+  FixturesRemapSuggestChannelMapRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixtures.remap.suggestChannelMap }
+        params:
+          type: object
+          required: [sourceFixtureId, target]
+          description: >
+            Read-only helper mirroring FixtureRemapper::autoConnectFixtures()'s
+            matching rules (1:1 index mapping when source and target share a
+            definition+mode or are both generic dimmers; otherwise per-channel
+            semantic matching by group/controlByte/colour) — computed against
+            a target mode's channel layout directly, since (unlike the engine
+            method) the target fixture need not exist yet. See
+            fixtures-notes.md.
+          properties:
+            sourceFixtureId: { type: string }
+            target:
+              $ref: '#/components/schemas/FixturesDefinitionRef'
+
+  FixturesRemapSuggestChannelMapResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/FixturesRemapSuggestChannelMapOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  FixturesRemapSuggestChannelMapOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          type: object
+          required: [channelMap]
+          properties:
+            channelMap:
+              type: array
+              items:
+                $ref: '#/components/schemas/FixturesChannelMapEntry'
+
+  FixturesRemapApplyRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixtures.remap.apply }
+        params:
+          type: object
+          required: [mappings, baseRevision]
+          description: >
+            One-shot batch commit, mirroring FixtureRemapper::applyRemap():
+            each mapping entry replaces one existing (source) fixture with a
+            newly-created (target) fixture at the given address, and the
+            supplied channelMap is used to carry forward every reference to
+            the old fixture/channel — fixture groups, channel groups, and
+            Scene/Sequence/EFX functions — onto the new one. Source fixtures
+            not mentioned in "mappings" and not listed in
+            "unmappedSourceFixtureIds" are left untouched. This is a single
+            atomic document-state mutation; there is no incremental/partial
+            variant. See fixtures-notes.md for the cross-domain fan-out
+            (functions/monitor) this causes.
+          properties:
+            mappings:
+              type: array
+              minItems: 1
+              items:
+                type: object
+                required: [sourceFixtureId, universe, address, definition, channelMap]
+                properties:
+                  sourceFixtureId: { type: string }
+                  universe: { type: integer }
+                  address: { type: integer }
+                  definition:
+                    $ref: '#/components/schemas/FixturesDefinitionRef'
+                  name: { type: string }
+                  channelMap:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FixturesChannelMapEntry'
+            unmappedSourceFixtureIds:
+              type: array
+              items: { type: string }
+              description: >
+                Source fixtures to delete outright as part of the same
+                commit (no replacement) — e.g. duplicates dropped during a
+                remap. Optional; defaults to none.
+            baseRevision: { type: integer }
+
+  FixturesRemapApplyResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/FixturesDocRevisionOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  FixturesRemapAppliedEvent:
+    payload:
+      type: object
+      required: [type, topic, data]
+      properties:
+        type: { const: event }
+        topic: { const: fixtures.remap.applied }
+        originClientId: { type: [string, "null"] }
+        data:
+          type: object
+          required: [fixtures, replacedFixtureIds, deletedFixtureIds, docRevision]
+          properties:
+            fixtures:
+              type: array
+              items: { $ref: '#/components/schemas/FixturesPatchedFixture' }
+              description: The newly-created target fixtures.
+            replacedFixtureIds:
+              type: array
+              items: { type: string }
+              description: Source fixture IDs that were replaced (no longer valid after this event).
+            deletedFixtureIds:
+              type: array
+              items: { type: string }
+              description: Source fixture IDs removed via unmappedSourceFixtureIds with no replacement.
+            docRevision: { type: integer }
+
+  # =====================================================================
+  # Shared response building blocks
+  # =====================================================================
+
+  FixturesDocRevisionOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          type: object
+          required: [docRevision]
+          properties:
+            docRevision: { type: integer }
+
+schemas:
+
+  FixturesPhysical:
+    type: object
+    description: QLCPhysical, flattened (bulb/lens/dimensions/focus/technical groups).
+    properties:
+      width: { type: integer }
+      height: { type: integer }
+      depth: { type: integer }
+      weight: { type: number }
+      powerConsumption: { type: integer, description: watts }
+      dmxConnector: { type: string }
+      bulbType: { type: string }
+      bulbLumens: { type: integer }
+      bulbColourTemperature: { type: integer }
+      lensName: { type: string }
+      lensDegreesMin: { type: number }
+      lensDegreesMax: { type: number }
+      focusType: { type: string }
+      focusPanMax: { type: integer }
+      focusTiltMax: { type: integer }
+
+  FixturesCapability:
+    type: object
+    description: QLCCapability — one DMX value sub-range of a channel.
+    required: [min, max, name]
+    properties:
+      min: { type: integer }
+      max: { type: integer }
+      name: { type: string }
+      preset:
+        type: string
+        description: QLCCapability::Preset as string via presetToString(), "Custom" if none.
+      presetType:
+        type: string
+        enum: [None, SingleColor, DoubleColor, SingleValue, DoubleValue, Picture]
+        description: QLCCapability::presetType() — hints the UI what extra control (color swatch, numeric field...) to render.
+      color1:
+        type: string
+        description: Primary resource color as hex, when presetType implies a color swatch (from resources()[0]).
+      color2:
+        type: string
+        description: Secondary resource color as hex, for DoubleColor presets (from resources()[1]).
+
+  FixturesModeChannel:
+    type: object
+    description: QLCChannel as arranged within one QLCFixtureMode.
+    required: [index, name, group, controlByte, defaultValue, capabilities]
+    properties:
+      index: { type: integer, description: "DMX channel number within the mode (0-based)." }
+      name: { type: string }
+      group:
+        type: string
+        description: QLCChannel::Group as string via groupToString() (Intensity, Colour, Gobo, Speed, Pan, Tilt, Shutter, Prism, Beam, Effect, Maintenance, Nothing).
+      preset:
+        type: string
+        description: QLCChannel::Preset as string via presetToString(), "Custom" if none (e.g. "IntensityRed", "PositionPan", "ShutterStrobeSlowFast"...).
+      colour:
+        type: string
+        description: QLCChannel::PrimaryColour as string, only meaningful for Intensity-group channels.
+      controlByte:
+        type: string
+        enum: [MSB, LSB]
+      defaultValue: { type: integer, minimum: 0, maximum: 255 }
+      capabilities:
+        type: array
+        items: { $ref: '#/components/schemas/FixturesCapability' }
+
+  FixturesModeHead:
+    type: object
+    required: [index, channels]
+    properties:
+      index: { type: integer }
+      channels:
+        type: array
+        items: { type: integer }
+        description: Channel indices (within the mode) that belong to this head.
+
+  FixturesDefinitionRef:
+    type: object
+    description: >
+      Identifies what to patch/remap-to: either a real library definition
+      (manufacturer+model+mode) or a generic dimmer with no real definition
+      (Fixture::genericDimmerDef()/genericDimmerMode(), used when
+      manufacturer/model/mode are absent). Exactly one of
+      {manufacturer+model+mode, generic} must be given — INVALID_PARAMS
+      otherwise.
+    properties:
+      manufacturer: { type: string }
+      model: { type: string }
+      mode: { type: string }
+      generic:
+        type: object
+        required: [channels]
+        properties:
+          channels:
+            type: integer
+            minimum: 1
+            description: Fixture::setChannels() — only valid for a generic dimmer.
+
+  FixturesPatchedFixture:
+    type: object
+    description: One patched Fixture instance (engine/src/fixture.h), as used in lists and change events.
+    required: [id, name, universe, address, channels, fixtureType, isGeneric]
+    properties:
+      id: { type: string }
+      name: { type: string }
+      universe: { type: integer }
+      address: { type: integer, description: "0-based DMX start address within its universe." }
+      channels: { type: integer, description: Fixture::channels() — the instance's channel footprint. }
+      fixtureType:
+        type: string
+        description: QLCFixtureDef::FixtureType as string, or "Generic Dimmer" when isGeneric is true.
+      manufacturer: { type: string }
+      model: { type: string }
+      mode: { type: string }
+      isGeneric:
+        type: boolean
+        description: true if this fixture has no real QLCFixtureDef (Fixture::fixtureDef() == null), i.e. a generic dimmer.
+      crossUniverse:
+        type: boolean
+        description: Fixture::crossUniverse().
+
+  FixturesPatchedFixtureDetail:
+    allOf:
+      - $ref: '#/components/schemas/FixturesPatchedFixture'
+      - type: object
+        required: [channelList]
+        properties:
+          channelList:
+            type: array
+            description: >
+              Fixture's channels resolved to absolute DMX addresses
+              (Fixture::channelAddress()) — enough for a UI to show "this
+              fixture's Red channel is Universe 2, DMX 145" without the
+              client re-deriving universe*512+address+index itself.
+            items:
+              type: object
+              required: [index, name, group, absoluteAddress]
+              properties:
+                index: { type: integer }
+                name: { type: string }
+                group: { type: string }
+                colour: { type: string }
+                absoluteAddress:
+                  type: integer
+                  description: universe*512 + address + index (Fixture::channelAddress()).
+
+  FixturesGroupHeadEntry:
+    type: object
+    required: [x, y, fixtureId, headIndex]
+    properties:
+      x: { type: integer }
+      y: { type: integer }
+      fixtureId: { type: string }
+      headIndex: { type: integer }
+
+  FixturesGroup:
+    type: object
+    description: FixtureGroup (engine/src/fixturegroup.h) — a named 2D layout grid of fixture heads.
+    required: [id, name, size, heads]
+    properties:
+      id: { type: string }
+      name: { type: string }
+      size:
+        type: object
+        required: [columns, rows]
+        properties:
+          columns: { type: integer }
+          rows: { type: integer }
+      heads:
+        type: array
+        items: { $ref: '#/components/schemas/FixturesGroupHeadEntry' }
+
+  FixturesChannelMapEntry:
+    type: object
+    required: [sourceChannel, targetChannel]
+    properties:
+      sourceChannel: { type: integer }
+      targetChannel: { type: integer }
+
+operations:
+
+  # --- defs browsing ---
+
+  sendFixturesDefsListManufacturers:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesDefsListManufacturersRequest'
+  receiveFixturesDefsListManufacturersResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesDefsListManufacturersResponse'
+
+  sendFixturesDefsListModels:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesDefsListModelsRequest'
+  receiveFixturesDefsListModelsResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesDefsListModelsResponse'
+
+  sendFixturesDefsGetModel:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesDefsGetModelRequest'
+  receiveFixturesDefsGetModelResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesDefsGetModelResponse'
+
+  sendFixturesDefsGetMode:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesDefsGetModeRequest'
+  receiveFixturesDefsGetModeResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesDefsGetModeResponse'
+
+  # --- patched fixtures: reads ---
+
+  sendFixturesList:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesListRequest'
+  receiveFixturesListResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesListResponse'
+
+  sendFixturesGet:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesGetRequest'
+  receiveFixturesGetResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesGetResponse'
+
+  sendFixturesFindAvailableAddress:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesFindAvailableAddressRequest'
+  receiveFixturesFindAvailableAddressResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesFindAvailableAddressResponse'
+
+  # --- patching: mutations ---
+
+  sendFixturesPatch:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesPatchRequest'
+  receiveFixturesPatchResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesPatchResponse'
+  receiveFixturesPatched:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesPatchedEvent'
+
+  sendFixturesUnpatch:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesUnpatchRequest'
+  receiveFixturesUnpatchResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesUnpatchResponse'
+  receiveFixturesUnpatched:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesUnpatchedEvent'
+
+  sendFixturesUpdate:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesUpdateRequest'
+  receiveFixturesUpdateResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesUpdateResponse'
+  receiveFixturesUpdated:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesUpdatedEvent'
+
+  # --- fixture groups ---
+
+  sendFixturesGroupList:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesGroupListRequest'
+  receiveFixturesGroupListResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesGroupListResponse'
+
+  sendFixturesGroupGet:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesGroupGetRequest'
+  receiveFixturesGroupGetResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesGroupGetResponse'
+
+  sendFixturesGroupCreate:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesGroupCreateRequest'
+  receiveFixturesGroupCreateResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesGroupCreateResponse'
+  receiveFixturesGroupCreated:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesGroupCreatedEvent'
+
+  sendFixturesGroupRename:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesGroupRenameRequest'
+  receiveFixturesGroupRenameResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesGroupRenameResponse'
+  receiveFixturesGroupRenamed:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesGroupRenamedEvent'
+
+  sendFixturesGroupDelete:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesGroupDeleteRequest'
+  receiveFixturesGroupDeleteResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesGroupDeleteResponse'
+  receiveFixturesGroupDeleted:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesGroupDeletedEvent'
+
+  sendFixturesGroupSetSize:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesGroupSetSizeRequest'
+  receiveFixturesGroupSetSizeResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesGroupSetSizeResponse'
+
+  sendFixturesGroupAssignFixture:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesGroupAssignFixtureRequest'
+  receiveFixturesGroupAssignFixtureResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesGroupAssignFixtureResponse'
+
+  sendFixturesGroupAssignHead:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesGroupAssignHeadRequest'
+  receiveFixturesGroupAssignHeadResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesGroupAssignHeadResponse'
+
+  sendFixturesGroupUnassignHead:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesGroupUnassignHeadRequest'
+  receiveFixturesGroupUnassignHeadResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesGroupUnassignHeadResponse'
+
+  sendFixturesGroupUnassignFixture:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesGroupUnassignFixtureRequest'
+  receiveFixturesGroupUnassignFixtureResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesGroupUnassignFixtureResponse'
+
+  sendFixturesGroupSwapHeads:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesGroupSwapHeadsRequest'
+  receiveFixturesGroupSwapHeadsResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesGroupSwapHeadsResponse'
+
+  sendFixturesGroupReset:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesGroupResetRequest'
+  receiveFixturesGroupResetResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesGroupResetResponse'
+
+  receiveFixturesGroupUpdated:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    description: >
+      Broadcast after any of setSize/assignFixture/assignHead/unassignHead/
+      unassignFixture/swapHeads/reset succeeds.
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesGroupUpdatedEvent'
+
+  # --- remapping ---
+
+  sendFixturesRemapSuggestChannelMap:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesRemapSuggestChannelMapRequest'
+  receiveFixturesRemapSuggestChannelMapResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesRemapSuggestChannelMapResponse'
+
+  sendFixturesRemapApply:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesRemapApplyRequest'
+  receiveFixturesRemapApplyResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesRemapApplyResponse'
+  receiveFixturesRemapApplied:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesRemapAppliedEvent'

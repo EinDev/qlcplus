@@ -1,0 +1,232 @@
+# Top-level skeleton for the merged spec. Domain fragments do NOT edit this
+# file or redeclare anything in it. This is here so you can see the whole
+# shape you're plugging into, and copy the generic message patterns
+# (hello/welcome, subscribe, locks.*, Error) if useful.
+#
+# Merge process (done by the coordinator, not domain agents): concatenate
+# every fragments/<domain>.yaml's `messages` into components.messages below,
+# `schemas` into components.schemas, and `operations` into the top-level
+# operations map.
+
+asyncapi: 3.0.0
+
+info:
+  title: QLC+ Control API
+  version: 1.0.0
+  description: >
+    WebSocket control API for QLC+, designed to let a client (e.g. a future
+    Electron UI) fully replace the built-in qmlui application: patch
+    fixtures, author fixture definitions, build and run every function type,
+    build and drive the Virtual Console, configure I/O and plugins, and
+    observe live engine/DMX state. See docs/api-spec/00-conventions.md for
+    the full protocol contract (envelope, concurrency model, subscriptions,
+    locking, errors).
+
+defaultContentType: application/json
+
+servers:
+  local:
+    host: localhost:9999
+    pathname: /qlcplusapi
+    protocol: ws
+
+channels:
+  qlcplus:
+    address: /qlcplusapi
+    description: >
+      Single bidirectional channel. Every frame is a request, response, or
+      event per the envelope in 00-conventions.md §2. Message list below is
+      the generic/session set; every domain fragment adds its own request,
+      response, and event messages to this same channel at merge time.
+    messages:
+      helloRequest:
+        $ref: '#/components/messages/HelloRequest'
+      welcomeResponse:
+        $ref: '#/components/messages/WelcomeResponse'
+      subscribeRequest:
+        $ref: '#/components/messages/SubscribeRequest'
+      unsubscribeRequest:
+        $ref: '#/components/messages/UnsubscribeRequest'
+      genericAckResponse:
+        $ref: '#/components/messages/GenericAckResponse'
+      errorResponse:
+        $ref: '#/components/messages/ErrorResponse'
+      locksAcquireRequest:
+        $ref: '#/components/messages/LocksAcquireRequest'
+      locksReleaseRequest:
+        $ref: '#/components/messages/LocksReleaseRequest'
+      locksChangedEvent:
+        $ref: '#/components/messages/LocksChangedEvent'
+      # <-- every domain fragment's message keys get merged in here -->
+
+operations:
+  sendHello:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/helloRequest'
+  receiveWelcome:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/welcomeResponse'
+  sendSubscribe:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/subscribeRequest'
+      - $ref: '#/channels/qlcplus/messages/unsubscribeRequest'
+  sendLocks:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/locksAcquireRequest'
+      - $ref: '#/channels/qlcplus/messages/locksReleaseRequest'
+  receiveLocksChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/locksChangedEvent'
+  # <-- every domain fragment's operations get merged in here -->
+
+components:
+  messages:
+    HelloRequest:
+      payload:
+        type: object
+        required: [type, id, method, params]
+        properties:
+          type: { const: request }
+          id: { type: string }
+          method: { const: hello }
+          params:
+            type: object
+            required: [apiVersion, clientName]
+            properties:
+              apiVersion: { type: string, example: "1.0.0" }
+              clientName: { type: string, example: "QLC+ Electron UI" }
+              authToken: { type: string }
+
+    WelcomeResponse:
+      payload:
+        type: object
+        required: [type, id, ok, result]
+        properties:
+          type: { const: response }
+          id: { type: string }
+          ok: { const: true }
+          result:
+            type: object
+            required: [clientId, docRevision, serverVersion]
+            properties:
+              clientId: { type: string }
+              docRevision: { type: integer }
+              serverVersion: { type: string }
+
+    SubscribeRequest:
+      payload:
+        type: object
+        required: [type, id, method, params]
+        properties:
+          type: { const: request }
+          id: { type: string }
+          method: { const: subscribe }
+          params:
+            type: object
+            required: [topics]
+            properties:
+              topics: { type: array, items: { type: string } }
+
+    UnsubscribeRequest:
+      payload:
+        type: object
+        required: [type, id, method, params]
+        properties:
+          type: { const: request }
+          id: { type: string }
+          method: { const: unsubscribe }
+          params:
+            type: object
+            required: [topics]
+            properties:
+              topics: { type: array, items: { type: string } }
+
+    GenericAckResponse:
+      payload:
+        type: object
+        required: [type, id, ok, result]
+        properties:
+          type: { const: response }
+          id: { type: string }
+          ok: { const: true }
+          result: { type: object }
+
+    ErrorResponse:
+      payload:
+        type: object
+        required: [type, id, ok, error]
+        properties:
+          type: { const: response }
+          id: { type: string }
+          ok: { const: false }
+          error:
+            type: object
+            required: [code, message]
+            properties:
+              code: { type: string, example: "CONFLICT" }
+              message: { type: string }
+              details: { type: object }
+
+    LocksAcquireRequest:
+      payload:
+        type: object
+        required: [type, id, method, params]
+        properties:
+          type: { const: request }
+          id: { type: string }
+          method: { const: locks.acquire }
+          params:
+            type: object
+            required: [resourceType, resourceId]
+            properties:
+              resourceType: { type: string, example: "function" }
+              resourceId: { type: string }
+
+    LocksReleaseRequest:
+      payload:
+        type: object
+        required: [type, id, method, params]
+        properties:
+          type: { const: request }
+          id: { type: string }
+          method: { const: locks.release }
+          params:
+            type: object
+            required: [resourceType, resourceId]
+            properties:
+              resourceType: { type: string }
+              resourceId: { type: string }
+
+    LocksChangedEvent:
+      payload:
+        type: object
+        required: [type, topic, data]
+        properties:
+          type: { const: event }
+          topic: { const: locks.changed }
+          originClientId: { type: [string, "null"] }
+          data:
+            type: object
+            required: [resourceType, resourceId, holderClientId]
+            properties:
+              resourceType: { type: string }
+              resourceId: { type: string }
+              holderClientId: { type: [string, "null"], description: "null means released" }
+
+  schemas: {}
+    # <-- every domain fragment's schemas get merged in here -->

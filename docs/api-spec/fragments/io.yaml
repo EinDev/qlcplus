@@ -1,0 +1,2002 @@
+# IO domain fragment: universes, input/output patching, plugin discovery &
+# configuration, input profiles, Grand Master, Blackout, DMX live monitoring,
+# and Simple Desk. See io-notes.md for rationale, open questions, and the
+# list of subscribe-gated topics / lockable resource types.
+#
+# Component key prefix: "Io". Method/topic prefix: "io.".
+
+messages:
+
+  # =========================================================================
+  # 1. Universes (document-state, §4a — baseRevision is the shared docRevision)
+  # =========================================================================
+
+  IoUniverseListRequest:
+    payload:
+      type: object
+      required: [type, id, method]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: io.universe.list }
+        params: { type: object }
+
+  IoUniverseListResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/IoUniverseListOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  IoUniverseListOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          type: object
+          required: [universes, docRevision]
+          properties:
+            universes:
+              type: array
+              items: { $ref: '#/components/schemas/IoUniverseSummary' }
+            docRevision: { type: integer }
+
+  IoUniverseGetRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: io.universe.get }
+        params:
+          type: object
+          required: [universeId]
+          properties:
+            universeId: { type: integer }
+
+  IoUniverseGetResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/IoUniverseGetOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  IoUniverseGetOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result: { $ref: '#/components/schemas/IoUniverseDetail' }
+
+  IoUniverseCreateRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: io.universe.create }
+        params:
+          type: object
+          required: [baseRevision]
+          properties:
+            name:
+              type: string
+              description: "Optional friendly name; engine assigns a default (e.g. 'Universe N') if omitted."
+            baseRevision: { type: integer }
+
+  IoUniverseCreateResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/IoUniverseCreateOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  IoUniverseCreateOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          type: object
+          required: [universeId, docRevision]
+          properties:
+            universeId: { type: integer }
+            docRevision: { type: integer }
+
+  IoUniverseCreatedEvent:
+    payload:
+      type: object
+      required: [type, topic, data]
+      properties:
+        type: { const: event }
+        topic: { const: io.universe.created }
+        originClientId: { type: [string, "null"] }
+        data:
+          type: object
+          required: [universe, docRevision]
+          properties:
+            universe: { $ref: '#/components/schemas/IoUniverseDetail' }
+            docRevision: { type: integer }
+
+  IoUniverseDeleteRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: io.universe.delete }
+        params:
+          type: object
+          required: [universeId, baseRevision]
+          properties:
+            universeId: { type: integer }
+            baseRevision: { type: integer }
+
+  IoUniverseDeleteResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/IoUniverseDeleteOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  IoUniverseDeleteOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          type: object
+          required: [docRevision]
+          properties:
+            docRevision: { type: integer }
+
+  IoUniverseDeletedEvent:
+    payload:
+      type: object
+      required: [type, topic, data]
+      properties:
+        type: { const: event }
+        topic: { const: io.universe.deleted }
+        originClientId: { type: [string, "null"] }
+        data:
+          type: object
+          required: [universeId, docRevision]
+          properties:
+            universeId: { type: integer }
+            docRevision: { type: integer }
+
+  IoUniverseUpdateRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: io.universe.update }
+        params:
+          type: object
+          required: [universeId, baseRevision]
+          description: >
+            Partial update of the universe's persisted (document-state)
+            properties. Omit a field to leave it unchanged.
+          properties:
+            universeId: { type: integer }
+            name: { type: string }
+            passthrough:
+              type: boolean
+              description: "Universe::setPassthrough — merges the input patch's live values onto this universe's output."
+            baseRevision: { type: integer }
+
+  IoUniverseUpdateResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/IoUniverseUpdateOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  IoUniverseUpdateOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          type: object
+          required: [docRevision]
+          properties:
+            docRevision: { type: integer }
+
+  IoUniverseChangedEvent:
+    payload:
+      type: object
+      required: [type, topic, data]
+      properties:
+        type: { const: event }
+        topic: { const: io.universe.changed }
+        originClientId: { type: [string, "null"] }
+        data:
+          type: object
+          required: [universe, docRevision]
+          description: >
+            Broadcast for io.universe.update AND for any patch mutation
+            (io.patch.*) — always carries the full new IoUniverseDetail so
+            clients never need to re-fetch after a patch change.
+          properties:
+            universe: { $ref: '#/components/schemas/IoUniverseDetail' }
+            docRevision: { type: integer }
+
+  IoUniverseSetMonitorRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: io.universe.setMonitor }
+        params:
+          type: object
+          required: [universeId, monitor]
+          description: >
+            Live/runtime only (Universe::setMonitor is never persisted to the
+            .qxw — see io-notes.md). No baseRevision.
+          properties:
+            universeId: { type: integer }
+            monitor: { type: boolean }
+
+  IoUniverseSetMonitorResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/GenericAckResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  IoUniverseMonitorChangedEvent:
+    payload:
+      type: object
+      required: [type, topic, data]
+      properties:
+        type: { const: event }
+        topic: { const: io.universe.monitorChanged }
+        originClientId: { type: [string, "null"] }
+        data:
+          type: object
+          required: [universeId, monitor]
+          properties:
+            universeId: { type: integer }
+            monitor: { type: boolean }
+
+  # =========================================================================
+  # 2. Output/Input/Feedback patching (document-state, §4a)
+  # =========================================================================
+
+  IoPatchOutputSetRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: io.patch.output.set }
+        params:
+          type: object
+          required: [universeId, pluginName, output, baseRevision]
+          properties:
+            universeId: { type: integer }
+            index:
+              type: integer
+              description: "Output patch slot index. Omit (or pass outputPatchesCount) to append a new patch; pass an existing index to replace it."
+            pluginName: { type: string }
+            output:
+              type: integer
+              description: "Plugin output line index (see io.plugin.getLines)."
+            baseRevision: { type: integer }
+
+  IoPatchOutputSetResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/IoPatchMutationOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  IoPatchOutputRemoveRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: io.patch.output.remove }
+        params:
+          type: object
+          required: [universeId, index, baseRevision]
+          properties:
+            universeId: { type: integer }
+            index: { type: integer }
+            baseRevision: { type: integer }
+
+  IoPatchOutputRemoveResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/IoPatchMutationOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  IoPatchInputSetRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: io.patch.input.set }
+        params:
+          type: object
+          required: [universeId, pluginName, input, baseRevision]
+          properties:
+            universeId: { type: integer }
+            pluginName: { type: string }
+            input:
+              type: integer
+              description: "Plugin input line index (see io.plugin.getLines)."
+            profileName:
+              type: string
+              description: "Input profile name to attach (see io.inputProfile.*). Omit/empty for none."
+            baseRevision: { type: integer }
+
+  IoPatchInputSetResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/IoPatchMutationOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  IoPatchInputRemoveRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: io.patch.input.remove }
+        params:
+          type: object
+          required: [universeId, baseRevision]
+          properties:
+            universeId: { type: integer }
+            baseRevision: { type: integer }
+
+  IoPatchInputRemoveResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/IoPatchMutationOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  IoPatchFeedbackSetRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: io.patch.feedback.set }
+        params:
+          type: object
+          required: [universeId, pluginName, output, baseRevision]
+          properties:
+            universeId: { type: integer }
+            pluginName: { type: string }
+            output:
+              type: integer
+              description: "Plugin output line index; the plugin must advertise the Feedback capability (see io.plugin.list)."
+            baseRevision: { type: integer }
+
+  IoPatchFeedbackSetResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/IoPatchMutationOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  IoPatchFeedbackRemoveRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: io.patch.feedback.remove }
+        params:
+          type: object
+          required: [universeId, baseRevision]
+          properties:
+            universeId: { type: integer }
+            baseRevision: { type: integer }
+
+  IoPatchFeedbackRemoveResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/IoPatchMutationOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  IoPatchSetParametersRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: io.patch.setParameters }
+        params:
+          type: object
+          required: [universeId, patchType, parameters, baseRevision]
+          description: >
+            Generic per-line plugin parameter set (QLCIOPlugin::setParameter /
+            getParameters — e.g. ArtNet's outputIP/outputUni/transmitMode, OSC's
+            inputPort/feedbackIP/feedbackPort). A parameter value of null
+            reverts that key to the plugin's default (QLCIOPlugin::unSetParameter).
+          properties:
+            universeId: { type: integer }
+            patchType: { enum: [input, output, feedback] }
+            index:
+              type: integer
+              default: 0
+              description: "Output patch slot index; ignored for input/feedback (each universe has at most one of those)."
+            parameters: { $ref: '#/components/schemas/IoPluginParameters' }
+            baseRevision: { type: integer }
+
+  IoPatchSetParametersResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/IoPatchMutationOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  IoPatchMutationOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          type: object
+          required: [docRevision]
+          properties:
+            docRevision: { type: integer }
+
+  IoPatchOutputSetStateRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: io.patch.output.setState }
+        params:
+          type: object
+          required: [universeId, index]
+          description: >
+            Live/runtime only (OutputPatch::paused/blackout are not persisted
+            to the .qxw). No baseRevision. Omit a field to leave it unchanged.
+          properties:
+            universeId: { type: integer }
+            index: { type: integer }
+            paused: { type: boolean }
+            blackout: { type: boolean }
+
+  IoPatchOutputSetStateResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/GenericAckResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  IoPatchOutputStateChangedEvent:
+    payload:
+      type: object
+      required: [type, topic, data]
+      properties:
+        type: { const: event }
+        topic: { const: io.patch.output.stateChanged }
+        originClientId: { type: [string, "null"] }
+        data:
+          type: object
+          required: [universeId, index, paused, blackout]
+          properties:
+            universeId: { type: integer }
+            index: { type: integer }
+            paused: { type: boolean }
+            blackout: { type: boolean }
+
+  # =========================================================================
+  # 3. Plugin discovery & generic configuration
+  # =========================================================================
+
+  IoPluginListRequest:
+    payload:
+      type: object
+      required: [type, id, method]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: io.plugin.list }
+        params: { type: object }
+
+  IoPluginListResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/IoPluginListOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  IoPluginListOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          type: object
+          required: [plugins]
+          properties:
+            plugins:
+              type: array
+              items: { $ref: '#/components/schemas/IoPluginSummary' }
+
+  IoPluginGetLinesRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: io.plugin.getLines }
+        params:
+          type: object
+          required: [pluginName]
+          properties:
+            pluginName: { type: string }
+
+  IoPluginGetLinesResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/IoPluginGetLinesOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  IoPluginGetLinesOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          type: object
+          required: [inputs, outputs]
+          properties:
+            inputs:
+              type: array
+              items: { $ref: '#/components/schemas/IoPluginLine' }
+            outputs:
+              type: array
+              items: { $ref: '#/components/schemas/IoPluginLine' }
+
+  IoPluginRescanRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: io.plugin.rescan }
+        params:
+          type: object
+          required: [pluginName]
+          description: >
+            Ask a hotplug-style plugin (DMXUSB, HID, ...) to re-enumerate its
+            hardware (DMXUSB::rescanWidgets() and equivalents). Not every
+            plugin supports this — see io-notes.md.
+          properties:
+            pluginName: { type: string }
+
+  IoPluginRescanResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/GenericAckResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  IoPluginLinesChangedEvent:
+    payload:
+      type: object
+      required: [type, topic, data]
+      properties:
+        type: { const: event }
+        topic: { const: io.plugin.linesChanged }
+        originClientId: { type: [string, "null"] }
+        data:
+          type: object
+          required: [pluginName, inputs, outputs]
+          description: "Mirrors QLCIOPlugin::configurationChanged() — a line appeared/disappeared (rescan or hotplug)."
+          properties:
+            pluginName: { type: string }
+            inputs:
+              type: array
+              items: { $ref: '#/components/schemas/IoPluginLine' }
+            outputs:
+              type: array
+              items: { $ref: '#/components/schemas/IoPluginLine' }
+
+  IoPluginConfigureRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: io.plugin.configure }
+        params:
+          type: object
+          required: [pluginName]
+          description: >
+            Thin passthrough to InputOutputMap::configurePlugin(). Kept for
+            parity with the engine's existing interface, but on today's
+            engine build this pops a native Qt dialog server-side and is NOT
+            usable from a remote Electron client — see io-notes.md for the
+            recommended replacement (io.patch.setParameters).
+          properties:
+            pluginName: { type: string }
+
+  IoPluginConfigureResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/GenericAckResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  # =========================================================================
+  # 4. Input profiles (own revision scheme — reusable library resource, see
+  #    io-notes.md; NOT gated by the shared docRevision)
+  # =========================================================================
+
+  IoInputProfileListRequest:
+    payload:
+      type: object
+      required: [type, id, method]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: io.inputProfile.list }
+        params: { type: object }
+
+  IoInputProfileListResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/IoInputProfileListOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  IoInputProfileListOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          type: object
+          required: [profiles, profilesRevision]
+          properties:
+            profiles:
+              type: array
+              items:
+                type: object
+                required: [name, manufacturer, model, type]
+                properties:
+                  name: { type: string, description: "manufacturer - model" }
+                  manufacturer: { type: string }
+                  model: { type: string }
+                  type: { $ref: '#/components/schemas/IoInputProfileType' }
+            profilesRevision: { type: integer }
+
+  IoInputProfileGetRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: io.inputProfile.get }
+        params:
+          type: object
+          required: [name]
+          properties:
+            name: { type: string }
+
+  IoInputProfileGetResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/IoInputProfileGetOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  IoInputProfileGetOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          type: object
+          required: [profile, profilesRevision]
+          properties:
+            profile: { $ref: '#/components/schemas/IoInputProfile' }
+            profilesRevision: { type: integer }
+
+  IoInputProfileSaveRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: io.inputProfile.save }
+        params:
+          type: object
+          required: [profile, baseRevision]
+          description: >
+            Whole-document upsert: creates a new profile, or replaces an
+            existing one whose (manufacturer, model) matches. See io-notes.md
+            for why this is a single whole-object save rather than
+            fine-grained per-channel mutations.
+          properties:
+            profile: { $ref: '#/components/schemas/IoInputProfile' }
+            baseRevision:
+              type: integer
+              description: "profilesRevision this client last observed."
+
+  IoInputProfileSaveResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/IoInputProfileSaveOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  IoInputProfileSaveOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          type: object
+          required: [profilesRevision]
+          properties:
+            profilesRevision: { type: integer }
+
+  IoInputProfileChangedEvent:
+    payload:
+      type: object
+      required: [type, topic, data]
+      properties:
+        type: { const: event }
+        topic: { const: io.inputProfile.changed }
+        originClientId: { type: [string, "null"] }
+        data:
+          type: object
+          required: [profile, profilesRevision]
+          properties:
+            profile: { $ref: '#/components/schemas/IoInputProfile' }
+            profilesRevision: { type: integer }
+
+  IoInputProfileDeleteRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: io.inputProfile.delete }
+        params:
+          type: object
+          required: [name, baseRevision]
+          properties:
+            name: { type: string }
+            baseRevision: { type: integer }
+
+  IoInputProfileDeleteResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/IoInputProfileDeleteOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  IoInputProfileDeleteOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          type: object
+          required: [profilesRevision]
+          properties:
+            profilesRevision: { type: integer }
+
+  IoInputProfileDeletedEvent:
+    payload:
+      type: object
+      required: [type, topic, data]
+      properties:
+        type: { const: event }
+        topic: { const: io.inputProfile.deleted }
+        originClientId: { type: [string, "null"] }
+        data:
+          type: object
+          required: [name, profilesRevision]
+          properties:
+            name: { type: string }
+            profilesRevision: { type: integer }
+
+  IoInputProfileLearnStartRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: io.inputProfile.learn.start }
+        params:
+          type: object
+          required: [universeId]
+          description: >
+            Puts the engine into MIDI/OSC-learn mode: raw input signals on
+            this (already patched) input universe are reported via
+            io.inputProfile.learn.signal instead of being consumed normally,
+            mirroring InputProfileEditor::toggleDetection(). Live, no
+            baseRevision — this is editor-session state, not saved.
+          properties:
+            universeId: { type: integer }
+
+  IoInputProfileLearnStartResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/GenericAckResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  IoInputProfileLearnStopRequest:
+    payload:
+      type: object
+      required: [type, id, method]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: io.inputProfile.learn.stop }
+        params: { type: object }
+
+  IoInputProfileLearnStopResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/GenericAckResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  IoInputProfileLearnSignalEvent:
+    payload:
+      type: object
+      required: [type, topic, data]
+      properties:
+        type: { const: event }
+        topic: { const: io.inputProfile.learn.signal }
+        originClientId: { type: [string, "null"] }
+        data:
+          type: object
+          required: [channelNumber, alreadyMapped]
+          properties:
+            channelNumber: { type: integer }
+            alreadyMapped: { type: boolean }
+
+  # =========================================================================
+  # 5. Grand Master (live/runtime, §4b)
+  # =========================================================================
+
+  IoGrandMasterGetRequest:
+    payload:
+      type: object
+      required: [type, id, method]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: io.grandMaster.get }
+        params: { type: object }
+
+  IoGrandMasterGetResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/IoGrandMasterGetOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  IoGrandMasterGetOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result: { $ref: '#/components/schemas/IoGrandMasterState' }
+
+  IoGrandMasterSetValueRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: io.grandMaster.setValue }
+        params:
+          type: object
+          required: [value]
+          properties:
+            value: { type: integer, minimum: 0, maximum: 255 }
+
+  IoGrandMasterSetValueResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/GenericAckResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  IoGrandMasterSetModeRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: io.grandMaster.setMode }
+        params:
+          type: object
+          description: "Omit a field to leave it unchanged."
+          properties:
+            channelMode: { $ref: '#/components/schemas/IoGrandMasterChannelMode' }
+            valueMode: { $ref: '#/components/schemas/IoGrandMasterValueMode' }
+
+  IoGrandMasterSetModeResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/GenericAckResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  IoGrandMasterChangedEvent:
+    payload:
+      type: object
+      required: [type, topic, data]
+      properties:
+        type: { const: event }
+        topic: { const: io.grandMaster.changed }
+        originClientId: { type: [string, "null"] }
+        data: { $ref: '#/components/schemas/IoGrandMasterState' }
+
+  # =========================================================================
+  # 6. Blackout (live/runtime, §4b)
+  # =========================================================================
+
+  IoBlackoutGetRequest:
+    payload:
+      type: object
+      required: [type, id, method]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: io.blackout.get }
+        params: { type: object }
+
+  IoBlackoutGetResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/IoBlackoutGetOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  IoBlackoutGetOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          type: object
+          required: [blackout]
+          properties:
+            blackout: { type: boolean }
+
+  IoBlackoutSetRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: io.blackout.set }
+        params:
+          type: object
+          required: [blackout]
+          properties:
+            blackout: { type: boolean }
+
+  IoBlackoutSetResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/GenericAckResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  IoBlackoutToggleRequest:
+    payload:
+      type: object
+      required: [type, id, method]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: io.blackout.toggle }
+        params: { type: object }
+
+  IoBlackoutToggleResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/IoBlackoutToggleOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  IoBlackoutToggleOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          type: object
+          required: [blackout]
+          properties:
+            blackout: { type: boolean }
+
+  IoBlackoutChangedEvent:
+    payload:
+      type: object
+      required: [type, topic, data]
+      properties:
+        type: { const: event }
+        topic: { const: io.blackout.changed }
+        originClientId: { type: [string, "null"] }
+        data:
+          type: object
+          required: [blackout]
+          properties:
+            blackout: { type: boolean }
+
+  # =========================================================================
+  # 7. DMX live monitoring (live/runtime, §4b — subscribe-gated, see notes)
+  # =========================================================================
+
+  IoDmxUniverseGetRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: io.dmx.universe.get }
+        params:
+          type: object
+          required: [universeId]
+          description: >
+            One-shot full-frame snapshot, used to seed the baseline before/
+            after subscribing to the delta event topic below. Values are
+            post-Grand-Master (Universe::postGMValues() — what's actually
+            transmitted), matching what mainviewdmx.cpp displays.
+          properties:
+            universeId: { type: integer }
+
+  IoDmxUniverseGetResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/IoDmxUniverseGetOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  IoDmxUniverseGetOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          type: object
+          required: [universeId, values]
+          properties:
+            universeId: { type: integer }
+            values:
+              type: array
+              description: "512 post-GM channel values (0-255), index 0 = DMX address 1."
+              items: { type: integer, minimum: 0, maximum: 255 }
+              minItems: 512
+              maxItems: 512
+
+  IoDmxUniverseChangedEvent:
+    payload:
+      type: object
+      required: [type, topic, data]
+      properties:
+        type: { const: event }
+        topic:
+          type: string
+          pattern: "^io\\.dmx\\.universe\\.[0-9]+\\.changed$"
+          description: "e.g. io.dmx.universe.1.changed — one topic per universe, see io-notes.md §5 for the subscribe key."
+        originClientId: { type: [string, "null"] }
+        data:
+          type: object
+          required: [universeId, changes]
+          description: >
+            Delta only (changed channels since the last tick that had any
+            change), not a full 512-byte frame — see io-notes.md for why.
+            Call io.dmx.universe.get for the baseline snapshot.
+          properties:
+            universeId: { type: integer }
+            changes:
+              type: array
+              items:
+                type: object
+                required: [channel, value]
+                properties:
+                  channel: { type: integer, minimum: 0, maximum: 511 }
+                  value: { type: integer, minimum: 0, maximum: 255 }
+
+  # =========================================================================
+  # 8. Simple Desk (live/runtime, §4b — operator scratch console, not saved)
+  # =========================================================================
+
+  IoSimpleDeskGetRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: io.simpleDesk.get }
+        params:
+          type: object
+          required: [universeId]
+          properties:
+            universeId: { type: integer }
+
+  IoSimpleDeskGetResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/IoSimpleDeskGetOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  IoSimpleDeskGetOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          type: object
+          required: [universeId, channels, slidersNumber, currentPage]
+          properties:
+            universeId: { type: integer }
+            channels:
+              type: array
+              items: { $ref: '#/components/schemas/IoSimpleDeskChannel' }
+            slidersNumber: { type: integer }
+            currentPage: { type: integer }
+
+  IoSimpleDeskSetChannelRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: io.simpleDesk.setChannel }
+        params:
+          type: object
+          required: [address, value]
+          properties:
+            address:
+              type: integer
+              description: "Absolute address across all universes: (universeId << 9) + channel, 0-based (SimpleDesk::setAbsoluteChannelValue)."
+            value: { type: integer, minimum: 0, maximum: 255 }
+
+  IoSimpleDeskSetChannelResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/GenericAckResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  IoSimpleDeskChannelChangedEvent:
+    payload:
+      type: object
+      required: [type, topic, data]
+      properties:
+        type: { const: event }
+        topic: { const: io.simpleDesk.channelChanged }
+        originClientId: { type: [string, "null"] }
+        data:
+          type: object
+          required: [address, value, overridden]
+          properties:
+            address: { type: integer }
+            value: { type: integer, minimum: 0, maximum: 255 }
+            overridden:
+              type: boolean
+              description: "false when the event is reporting a reset back to the underlying (non-SimpleDesk) value."
+
+  IoSimpleDeskResetChannelRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: io.simpleDesk.resetChannel }
+        params:
+          type: object
+          required: [address]
+          properties:
+            address: { type: integer }
+
+  IoSimpleDeskResetChannelResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/GenericAckResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  IoSimpleDeskResetUniverseRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: io.simpleDesk.resetUniverse }
+        params:
+          type: object
+          required: [universeId]
+          properties:
+            universeId: { type: integer }
+
+  IoSimpleDeskResetUniverseResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/GenericAckResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  IoSimpleDeskUniverseResetEvent:
+    payload:
+      type: object
+      required: [type, topic, data]
+      properties:
+        type: { const: event }
+        topic: { const: io.simpleDesk.universeReset }
+        originClientId: { type: [string, "null"] }
+        data:
+          type: object
+          required: [universeId]
+          properties:
+            universeId: { type: integer }
+
+  IoSimpleDeskSetUniverseFilterRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: io.simpleDesk.setUniverseFilter }
+        params:
+          type: object
+          required: [universeId]
+          description: >
+            Sets which universe Simple Desk's channel view currently targets
+            (PreviewContext::setUniverseFilter). This is global engine state
+            shared by every connected client, consistent with the
+            single-operator-app assumption in 00-conventions.md §8.
+          properties:
+            universeId: { type: integer }
+
+  IoSimpleDeskSetUniverseFilterResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/GenericAckResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  IoSimpleDeskUniverseFilterChangedEvent:
+    payload:
+      type: object
+      required: [type, topic, data]
+      properties:
+        type: { const: event }
+        topic: { const: io.simpleDesk.universeFilterChanged }
+        originClientId: { type: [string, "null"] }
+        data:
+          type: object
+          required: [universeId]
+          properties:
+            universeId: { type: integer }
+
+  IoSimpleDeskSendKeypadCommandRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: io.simpleDesk.sendKeypadCommand }
+        params:
+          type: object
+          required: [command]
+          description: >
+            Console-style keypad syntax (e.g. "1 THRU 10 @ 50 ENTER"), see
+            SimpleDesk::sendKeypadCommand / KeyPadParser. Side effects arrive
+            as ordinary io.simpleDesk.channelChanged events, one per affected
+            channel.
+          properties:
+            command: { type: string }
+
+  IoSimpleDeskSendKeypadCommandResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/IoSimpleDeskSendKeypadCommandOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  IoSimpleDeskSendKeypadCommandOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          type: object
+          required: [accepted]
+          properties:
+            accepted:
+              type: boolean
+              description: "false if the command string was not syntactically valid; see error.details for the parser's message if ok:false was used instead."
+
+  IoSimpleDeskCommandHistoryChangedEvent:
+    payload:
+      type: object
+      required: [type, topic, data]
+      properties:
+        type: { const: event }
+        topic: { const: io.simpleDesk.commandHistoryChanged }
+        originClientId: { type: [string, "null"] }
+        data:
+          type: object
+          required: [history]
+          properties:
+            history:
+              type: array
+              items: { type: string }
+
+schemas:
+
+  IoUniverseSummary:
+    type: object
+    required: [id, name, passthrough, monitor, usedChannels, totalChannels,
+               isPatched, inputPatched, outputPatchesCount, hasFeedback]
+    properties:
+      id: { type: integer }
+      name: { type: string }
+      passthrough: { type: boolean }
+      monitor: { type: boolean }
+      usedChannels: { type: integer, minimum: 0, maximum: 512 }
+      totalChannels: { type: integer, minimum: 0, maximum: 512 }
+      isPatched: { type: boolean }
+      inputPatched: { type: boolean }
+      outputPatchesCount: { type: integer }
+      hasFeedback: { type: boolean }
+
+  IoUniverseDetail:
+    description: "IoUniverseSummary plus the resolved patches, returned by io.universe.get and embedded in every structural universe/patch event."
+    allOf:
+      - $ref: '#/components/schemas/IoUniverseSummary'
+      - type: object
+        required: [inputPatch, outputPatches, feedbackPatch]
+        properties:
+          inputPatch:
+            oneOf:
+              - $ref: '#/components/schemas/IoInputPatchRef'
+              - type: "null"
+          outputPatches:
+            type: array
+            items: { $ref: '#/components/schemas/IoOutputPatchRef' }
+          feedbackPatch:
+            oneOf:
+              - $ref: '#/components/schemas/IoOutputPatchRef'
+              - type: "null"
+
+  IoInputPatchRef:
+    type: object
+    required: [pluginName, input, inputUID, inputName, profileName, parameters]
+    properties:
+      pluginName: { type: string }
+      input: { type: integer, description: "Plugin input line index." }
+      inputUID: { type: string, description: "Stable line UID (InputPatch::inputUID)." }
+      inputName: { type: string }
+      profileName: { type: [string, "null"] }
+      parameters: { $ref: '#/components/schemas/IoPluginParameters' }
+
+  IoOutputPatchRef:
+    type: object
+    required: [index, pluginName, output, outputUID, outputName, parameters, paused, blackout]
+    properties:
+      index: { type: integer, description: "Slot index within Universe::outputPatch(index); 0 for the sole feedback patch." }
+      pluginName: { type: string }
+      output: { type: integer, description: "Plugin output line index." }
+      outputUID: { type: string, description: "Stable line UID (OutputPatch::outputUID)." }
+      outputName: { type: string }
+      parameters: { $ref: '#/components/schemas/IoPluginParameters' }
+      paused: { type: boolean, description: "Live-only, see io.patch.output.setState." }
+      blackout: { type: boolean, description: "Live-only, see io.patch.output.setState." }
+
+  IoPluginParameters:
+    type: object
+    description: "Generic key-value plugin/line parameter bag (QVariant values on the C++ side)."
+    additionalProperties:
+      anyOf:
+        - { type: string }
+        - { type: number }
+        - { type: boolean }
+        - { type: "null" }
+
+  IoPluginSummary:
+    type: object
+    required: [name, capabilities, description, canConfigure, supportsFeedback]
+    properties:
+      name: { type: string }
+      capabilities:
+        type: array
+        description: "QLCIOPlugin::Capability bitmask, expanded to strings."
+        items: { enum: [Output, Input, Feedback, Infinite, RDM, Beats] }
+      description: { type: string, description: "QLCIOPlugin::pluginInfo() (HTML)." }
+      canConfigure:
+        type: boolean
+        description: "QLCIOPlugin::canConfigure() — see io-notes.md on why io.plugin.configure alone doesn't fully replace this."
+      supportsFeedback: { type: boolean }
+
+  IoPluginLine:
+    type: object
+    required: [line, name, uid]
+    properties:
+      line: { type: integer, description: "Index passed to io.patch.*.set as input/output." }
+      name: { type: string }
+      uid: { type: string, description: "Stable UID (QLCIOPlugin::inputsUID()/outputsUID())." }
+
+  IoInputProfileType:
+    type: string
+    enum: [MIDI, OS2L, OSC, HID, DMX, Enttec]
+
+  IoInputProfile:
+    type: object
+    required: [manufacturer, model, type, midiSendNoteOff, channels, colorTable, midiChannelTable]
+    properties:
+      manufacturer: { type: string }
+      model: { type: string }
+      type: { $ref: '#/components/schemas/IoInputProfileType' }
+      midiSendNoteOff:
+        type: boolean
+        description: "MIDI-only: send Note-On velocity 0 instead of Note-Off (QLCInputProfile::midiSendNoteOff)."
+      channels:
+        type: array
+        items: { $ref: '#/components/schemas/IoInputChannel' }
+      colorTable:
+        type: array
+        description: "Optional RGB LED feedback color table (QLCInputProfile::colorTable)."
+        items:
+          type: object
+          required: [value, label, color]
+          properties:
+            value: { type: integer, minimum: 0, maximum: 255 }
+            label: { type: string }
+            color: { type: string, description: "#rrggbb" }
+      midiChannelTable:
+        type: array
+        description: "Optional per-MIDI-channel labels (QLCInputProfile::midiChannelTable)."
+        items:
+          type: object
+          required: [channel, label]
+          properties:
+            channel: { type: integer, minimum: 0, maximum: 15 }
+            label: { type: string }
+
+  IoInputChannel:
+    type: object
+    required: [number, name, type, movementType, movementSensitivity,
+               sendExtraPress, lowerValue, upperValue]
+    properties:
+      number: { type: integer, description: "Channel number/key within the profile's channel map." }
+      name: { type: string }
+      type:
+        enum: [Slider, Knob, Encoder, Button, NextPage, PrevPage, PageSet, NoType]
+      movementType:
+        enum: [Absolute, Relative]
+        description: "Slider/Knob only."
+      movementSensitivity: { type: integer }
+      sendExtraPress: { type: boolean, description: "Button only." }
+      lowerValue: { type: integer, minimum: 0, maximum: 255 }
+      upperValue: { type: integer, minimum: 0, maximum: 255 }
+      lowerChannel:
+        type: integer
+        description: "Extended/14-bit range support; -1 or omitted if unused."
+      upperChannel:
+        type: integer
+        description: "Extended/14-bit range support; -1 or omitted if unused."
+
+  IoGrandMasterChannelMode:
+    type: string
+    enum: [Intensity, AllChannels]
+    description: "GrandMaster::ChannelMode — Intensity: GM scales only Intensity-group channels; AllChannels: GM scales every channel."
+
+  IoGrandMasterValueMode:
+    type: string
+    enum: [Limit, Reduce]
+    description: "GrandMaster::ValueMode — Limit: clamps channel values to the GM value; Reduce: scales channel values by the GM fraction."
+
+  IoGrandMasterState:
+    type: object
+    required: [value, channelMode, valueMode]
+    properties:
+      value: { type: integer, minimum: 0, maximum: 255 }
+      channelMode: { $ref: '#/components/schemas/IoGrandMasterChannelMode' }
+      valueMode: { $ref: '#/components/schemas/IoGrandMasterValueMode' }
+
+  IoSimpleDeskChannel:
+    type: object
+    required: [address, universeId, channel, value, group, fixtureId, overridden]
+    properties:
+      address: { type: integer, description: "Absolute address, (universeId << 9) + channel." }
+      universeId: { type: integer }
+      channel: { type: integer, minimum: 0, maximum: 511, description: "Address relative to the universe." }
+      value: { type: integer, minimum: 0, maximum: 255 }
+      group:
+        type: [string, "null"]
+        description: "QLCChannel::Group name (e.g. Intensity, Pan) if this address falls inside a patched fixture, else null."
+      fixtureId: { type: [integer, "null"] }
+      overridden:
+        type: boolean
+        description: "true if Simple Desk currently holds this channel (SimpleDesk::hasChannel)."
+
+operations:
+
+  # --- Universes ---
+  sendIoUniverseList:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioUniverseListRequest' } ]
+  receiveIoUniverseListResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioUniverseListResponse' } ]
+
+  sendIoUniverseGet:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioUniverseGetRequest' } ]
+  receiveIoUniverseGetResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioUniverseGetResponse' } ]
+
+  sendIoUniverseCreate:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioUniverseCreateRequest' } ]
+  receiveIoUniverseCreateResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioUniverseCreateResponse' } ]
+  receiveIoUniverseCreated:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioUniverseCreatedEvent' } ]
+
+  sendIoUniverseDelete:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioUniverseDeleteRequest' } ]
+  receiveIoUniverseDeleteResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioUniverseDeleteResponse' } ]
+  receiveIoUniverseDeleted:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioUniverseDeletedEvent' } ]
+
+  sendIoUniverseUpdate:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioUniverseUpdateRequest' } ]
+  receiveIoUniverseUpdateResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioUniverseUpdateResponse' } ]
+  receiveIoUniverseChanged:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioUniverseChangedEvent' } ]
+
+  sendIoUniverseSetMonitor:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioUniverseSetMonitorRequest' } ]
+  receiveIoUniverseSetMonitorResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioUniverseSetMonitorResponse' } ]
+  receiveIoUniverseMonitorChanged:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioUniverseMonitorChangedEvent' } ]
+
+  # --- Patches ---
+  sendIoPatchOutputSet:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioPatchOutputSetRequest' } ]
+  receiveIoPatchOutputSetResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioPatchOutputSetResponse' } ]
+
+  sendIoPatchOutputRemove:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioPatchOutputRemoveRequest' } ]
+  receiveIoPatchOutputRemoveResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioPatchOutputRemoveResponse' } ]
+
+  sendIoPatchInputSet:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioPatchInputSetRequest' } ]
+  receiveIoPatchInputSetResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioPatchInputSetResponse' } ]
+
+  sendIoPatchInputRemove:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioPatchInputRemoveRequest' } ]
+  receiveIoPatchInputRemoveResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioPatchInputRemoveResponse' } ]
+
+  sendIoPatchFeedbackSet:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioPatchFeedbackSetRequest' } ]
+  receiveIoPatchFeedbackSetResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioPatchFeedbackSetResponse' } ]
+
+  sendIoPatchFeedbackRemove:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioPatchFeedbackRemoveRequest' } ]
+  receiveIoPatchFeedbackRemoveResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioPatchFeedbackRemoveResponse' } ]
+
+  sendIoPatchSetParameters:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioPatchSetParametersRequest' } ]
+  receiveIoPatchSetParametersResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioPatchSetParametersResponse' } ]
+
+  receiveIoUniverseChangedFromPatch:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    description: "Same io.universe.changed event as io.universe.update — see IoUniverseChangedEvent; listed again here since every io.patch.* mutation above broadcasts it too."
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioUniverseChangedEvent' } ]
+
+  sendIoPatchOutputSetState:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioPatchOutputSetStateRequest' } ]
+  receiveIoPatchOutputSetStateResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioPatchOutputSetStateResponse' } ]
+  receiveIoPatchOutputStateChanged:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioPatchOutputStateChangedEvent' } ]
+
+  # --- Plugins ---
+  sendIoPluginList:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioPluginListRequest' } ]
+  receiveIoPluginListResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioPluginListResponse' } ]
+
+  sendIoPluginGetLines:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioPluginGetLinesRequest' } ]
+  receiveIoPluginGetLinesResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioPluginGetLinesResponse' } ]
+
+  sendIoPluginRescan:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioPluginRescanRequest' } ]
+  receiveIoPluginRescanResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioPluginRescanResponse' } ]
+  receiveIoPluginLinesChanged:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioPluginLinesChangedEvent' } ]
+
+  sendIoPluginConfigure:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioPluginConfigureRequest' } ]
+  receiveIoPluginConfigureResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioPluginConfigureResponse' } ]
+
+  # --- Input profiles ---
+  sendIoInputProfileList:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioInputProfileListRequest' } ]
+  receiveIoInputProfileListResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioInputProfileListResponse' } ]
+
+  sendIoInputProfileGet:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioInputProfileGetRequest' } ]
+  receiveIoInputProfileGetResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioInputProfileGetResponse' } ]
+
+  sendIoInputProfileSave:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioInputProfileSaveRequest' } ]
+  receiveIoInputProfileSaveResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioInputProfileSaveResponse' } ]
+  receiveIoInputProfileChanged:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioInputProfileChangedEvent' } ]
+
+  sendIoInputProfileDelete:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioInputProfileDeleteRequest' } ]
+  receiveIoInputProfileDeleteResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioInputProfileDeleteResponse' } ]
+  receiveIoInputProfileDeleted:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioInputProfileDeletedEvent' } ]
+
+  sendIoInputProfileLearnStart:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioInputProfileLearnStartRequest' } ]
+  receiveIoInputProfileLearnStartResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioInputProfileLearnStartResponse' } ]
+
+  sendIoInputProfileLearnStop:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioInputProfileLearnStopRequest' } ]
+  receiveIoInputProfileLearnStopResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioInputProfileLearnStopResponse' } ]
+
+  receiveIoInputProfileLearnSignal:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioInputProfileLearnSignalEvent' } ]
+
+  # --- Grand Master ---
+  sendIoGrandMasterGet:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioGrandMasterGetRequest' } ]
+  receiveIoGrandMasterGetResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioGrandMasterGetResponse' } ]
+
+  sendIoGrandMasterSetValue:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioGrandMasterSetValueRequest' } ]
+  receiveIoGrandMasterSetValueResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioGrandMasterSetValueResponse' } ]
+
+  sendIoGrandMasterSetMode:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioGrandMasterSetModeRequest' } ]
+  receiveIoGrandMasterSetModeResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioGrandMasterSetModeResponse' } ]
+
+  receiveIoGrandMasterChanged:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioGrandMasterChangedEvent' } ]
+
+  # --- Blackout ---
+  sendIoBlackoutGet:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioBlackoutGetRequest' } ]
+  receiveIoBlackoutGetResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioBlackoutGetResponse' } ]
+
+  sendIoBlackoutSet:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioBlackoutSetRequest' } ]
+  receiveIoBlackoutSetResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioBlackoutSetResponse' } ]
+
+  sendIoBlackoutToggle:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioBlackoutToggleRequest' } ]
+  receiveIoBlackoutToggleResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioBlackoutToggleResponse' } ]
+
+  receiveIoBlackoutChanged:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioBlackoutChangedEvent' } ]
+
+  # --- DMX live monitoring ---
+  sendIoDmxUniverseGet:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioDmxUniverseGetRequest' } ]
+  receiveIoDmxUniverseGetResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioDmxUniverseGetResponse' } ]
+
+  receiveIoDmxUniverseChanged:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioDmxUniverseChangedEvent' } ]
+
+  # --- Simple Desk ---
+  sendIoSimpleDeskGet:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioSimpleDeskGetRequest' } ]
+  receiveIoSimpleDeskGetResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioSimpleDeskGetResponse' } ]
+
+  sendIoSimpleDeskSetChannel:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioSimpleDeskSetChannelRequest' } ]
+  receiveIoSimpleDeskSetChannelResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioSimpleDeskSetChannelResponse' } ]
+  receiveIoSimpleDeskChannelChanged:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioSimpleDeskChannelChangedEvent' } ]
+
+  sendIoSimpleDeskResetChannel:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioSimpleDeskResetChannelRequest' } ]
+  receiveIoSimpleDeskResetChannelResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioSimpleDeskResetChannelResponse' } ]
+
+  sendIoSimpleDeskResetUniverse:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioSimpleDeskResetUniverseRequest' } ]
+  receiveIoSimpleDeskResetUniverseResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioSimpleDeskResetUniverseResponse' } ]
+  receiveIoSimpleDeskUniverseReset:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioSimpleDeskUniverseResetEvent' } ]
+
+  sendIoSimpleDeskSetUniverseFilter:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioSimpleDeskSetUniverseFilterRequest' } ]
+  receiveIoSimpleDeskSetUniverseFilterResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioSimpleDeskSetUniverseFilterResponse' } ]
+  receiveIoSimpleDeskUniverseFilterChanged:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioSimpleDeskUniverseFilterChangedEvent' } ]
+
+  sendIoSimpleDeskSendKeypadCommand:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioSimpleDeskSendKeypadCommandRequest' } ]
+  receiveIoSimpleDeskSendKeypadCommandResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioSimpleDeskSendKeypadCommandResponse' } ]
+  receiveIoSimpleDeskCommandHistoryChanged:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages: [ { $ref: '#/channels/qlcplus/messages/ioSimpleDeskCommandHistoryChangedEvent' } ]

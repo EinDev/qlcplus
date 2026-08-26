@@ -1,0 +1,1107 @@
+# "core" domain fragment: project/session lifecycle, undo/redo, engine mode,
+# global engine settings, and the generic log/error event stream.
+#
+# Grounded in: engine/src/doc.h, engine/src/doc.cpp, qmlui/app.h, qmlui/app.cpp,
+# qmlui/tardis/tardis.h, qmlui/tardis/tardis.cpp, qmlui/main.cpp,
+# engine/src/qlcfile.cpp, engine/src/mastertimer.cpp, webaccess/src/webaccess.cpp.
+# See core-notes.md for the reasoning behind every non-obvious choice below.
+
+messages:
+
+  # -----------------------------------------------------------------------
+  # Project (Doc) lifecycle
+  # -----------------------------------------------------------------------
+
+  CoreProjectNewRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: core.project.new }
+        params:
+          type: object
+          description: >
+            Discards the current document (unsaved changes are lost) and
+            replaces it with a blank, never-saved project. Mirrors
+            App::newWorkspace(). Deliberately carries no baseRevision: this
+            is a full-document replace, not an incremental structural edit,
+            so there is nothing to rebase against (see core-notes.md).
+          properties: {}
+
+  CoreProjectNewResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/CoreProjectNewOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  CoreProjectNewOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          type: object
+          required: [docRevision]
+          properties:
+            docRevision:
+              type: integer
+              description: "Revision of the new blank document (see CoreProjectLoadedEvent for full state)."
+
+  CoreProjectOpenRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: core.project.open }
+        params:
+          type: object
+          required: [source]
+          description: >
+            Two supported transfer modes, see core-notes.md for the
+            assumption behind this split: "path" asks the engine to read a
+            .qxw file that already exists on the machine the engine process
+            runs on (e.g. a headless-server deployment where the operator
+            picks from a server-side project library); "upload" carries the
+            whole XML file inline, base64-encoded, for the case where the
+            file lives only on the Electron client's machine. Exactly one of
+            (path) / (contentBase64) must be supplied, matching the chosen
+            source. No baseRevision: this discards the current document
+            entirely, same reasoning as core.project.new.
+          properties:
+            source:
+              type: string
+              enum: [path, upload]
+            path:
+              type: string
+              description: "Server-local filesystem path to a .qxw file. Required when source=path."
+            fileName:
+              type: string
+              description: "Original file name (with .qxw extension), used for the recent-files list and Save. Required when source=upload."
+            contentBase64:
+              type: string
+              description: "Base64-encoded UTF-8 XML content of the .qxw file. Required when source=upload."
+
+  CoreProjectOpenResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/CoreProjectOpenOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  CoreProjectOpenOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          type: object
+          required: [docRevision]
+          properties:
+            docRevision: { type: integer }
+            warningsHtml:
+              type: [string, "null"]
+              description: >
+                Non-fatal problems found while parsing the file (missing
+                fixture definitions, out-of-bounds addresses, missing
+                audio/video files, etc. - see Doc::appendToErrorLog() call
+                sites). HTML-formatted (as produced by the engine today),
+                null if the load was clean. The same lines are also emitted
+                individually as core.log warning events, see core-notes.md.
+
+  CoreProjectCloseRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: core.project.close }
+        params:
+          type: object
+          description: >
+            The engine always has *a* document open (Doc is never null), so
+            "close" is defined as: discard the current document and replace
+            it with a blank one, exactly like core.project.new. Exposed as
+            a distinct method for UI-affordance clarity (a client's "Close
+            Project" menu item shouldn't have to call something literally
+            named "new"), see core-notes.md.
+          properties: {}
+
+  CoreProjectCloseResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/CoreProjectCloseOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  CoreProjectCloseOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          type: object
+          required: [docRevision]
+          properties:
+            docRevision: { type: integer }
+
+  CoreProjectLoadedEvent:
+    payload:
+      type: object
+      required: [type, topic, data]
+      properties:
+        type: { const: event }
+        topic: { const: core.project.loaded }
+        originClientId: { type: [string, "null"] }
+        data:
+          type: object
+          required: [reason, project]
+          description: >
+            Broadcast after core.project.new, core.project.open or
+            core.project.close - all three fully replace the document, this
+            is the one place clients should refresh all their domain state
+            from (fixtures, functions, VC, I/O patches, everything), rather
+            than trying to diff against what they had before.
+          properties:
+            reason:
+              type: string
+              enum: [new, opened, closed]
+            project:
+              $ref: '#/components/schemas/CoreProjectMetadata'
+
+  CoreProjectSaveRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: core.project.save }
+        params:
+          type: object
+          description: >
+            Saves to the file the document was last opened/saved-as from.
+            No baseRevision: saving serializes current state to disk, it
+            does not mutate document content, so there is nothing to
+            conflict with (see core-notes.md §"why save has no baseRevision").
+          properties: {}
+
+  CoreProjectSaveResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/CoreProjectSaveOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  CoreProjectSaveOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          type: object
+          required: [docRevision, filePath]
+          properties:
+            docRevision:
+              type: integer
+              description: "Unchanged by a save; included for convenience so the client can confirm what was saved."
+            filePath: { type: string }
+
+  CoreProjectSaveAsRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: core.project.saveAs }
+        params:
+          type: object
+          required: [target]
+          description: >
+            Mirror of core.project.open's two-mode split. "serverPath"
+            writes the file on the engine machine's filesystem at (path)
+            and that becomes the project's file for subsequent
+            core.project.save calls. "download" does not touch the server
+            filesystem at all - it serializes the document and hands the
+            bytes back in the response for the Electron client to write
+            wherever the user picked via its own native Save dialog; the
+            engine's own notion of "current file" is left untouched in this
+            case (see core-notes.md).
+          properties:
+            target:
+              type: string
+              enum: [serverPath, download]
+            path:
+              type: string
+              description: "Target path on the engine's filesystem. Required when target=serverPath. .qxw is appended if missing."
+
+  CoreProjectSaveAsResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/CoreProjectSaveAsOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  CoreProjectSaveAsOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          type: object
+          required: [docRevision]
+          properties:
+            docRevision: { type: integer }
+            filePath:
+              type: [string, "null"]
+              description: "Set when target=serverPath, null when target=download."
+            fileName:
+              type: [string, "null"]
+              description: "Set when target=download (suggested file name for the client to save as), null when target=serverPath."
+            contentBase64:
+              type: [string, "null"]
+              description: "Set when target=download: the full .qxw XML content, base64-encoded. Null when target=serverPath."
+
+  CoreProjectSavedEvent:
+    payload:
+      type: object
+      required: [type, topic, data]
+      properties:
+        type: { const: event }
+        topic: { const: core.project.saved }
+        originClientId: { type: [string, "null"] }
+        data:
+          type: object
+          required: [docRevision, filePath, fileName]
+          description: >
+            Broadcast after a successful core.project.save or
+            core.project.saveAs with target=serverPath. NOT broadcast for
+            saveAs with target=download, since that mode doesn't change the
+            engine's own "current file" state (see core-notes.md) - only
+            the requester's response carries those bytes.
+          properties:
+            docRevision:
+              type: integer
+              description: "Also serves as the client's 'clean' marker: isModified == (docRevision !== docRevisionAtLastSave from CoreProjectMetadata)."
+            filePath: { type: string }
+            fileName: { type: string }
+
+  CoreProjectGetRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: core.project.get }
+        params:
+          type: object
+          properties: {}
+
+  CoreProjectGetResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/CoreProjectGetOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  CoreProjectGetOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          $ref: '#/components/schemas/CoreProjectMetadata'
+
+  CoreProjectRecentFilesRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: core.project.recentFiles }
+        params:
+          type: object
+          properties: {}
+
+  CoreProjectRecentFilesResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/CoreProjectRecentFilesOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  CoreProjectRecentFilesOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          type: object
+          required: [files]
+          properties:
+            files:
+              type: array
+              description: "Most-recently-opened first, capped at 10 entries (matches App::MAX_RECENT_FILES)."
+              items:
+                $ref: '#/components/schemas/CoreRecentFileEntry'
+
+  CoreProjectRecentFilesChangedEvent:
+    payload:
+      type: object
+      required: [type, topic, data]
+      properties:
+        type: { const: event }
+        topic: { const: core.project.recentFilesChanged }
+        originClientId: { type: [string, "null"] }
+        data:
+          type: object
+          required: [files]
+          description: >
+            Broadcast whenever the recent-files list changes (after a
+            successful open, or a save/saveAs to a new path). This list is
+            global engine/app state persisted outside the document (QSettings,
+            not the .qxw file) - it is not part of docRevision.
+          properties:
+            files:
+              type: array
+              items:
+                $ref: '#/components/schemas/CoreRecentFileEntry'
+
+  # -----------------------------------------------------------------------
+  # Engine mode (Doc::Mode - Design / Operate)
+  # -----------------------------------------------------------------------
+
+  CoreModeGetRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: core.mode.get }
+        params:
+          type: object
+          properties: {}
+
+  CoreModeGetResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/CoreModeGetOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  CoreModeGetOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          type: object
+          required: [mode]
+          properties:
+            mode:
+              type: string
+              enum: [design, operate]
+
+  CoreModeSetRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: core.mode.set }
+        params:
+          type: object
+          required: [mode]
+          description: >
+            Live/runtime state (tier §4b) - Doc::Mode is never written to
+            the .qxw file (see core-notes.md), so no baseRevision. Maps
+            1:1 to Doc::Mode: design=Doc::Design(0), operate=Doc::Operate(1).
+            Switching to "operate" auto-starts the project's startup
+            function if one is set (Doc::setMode's real side effect, see
+            core-notes.md); switching away from "operate" has no automatic
+            side effect - running functions keep running.
+          properties:
+            mode:
+              type: string
+              enum: [design, operate]
+
+  CoreModeSetResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/GenericAckResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  CoreModeChangedEvent:
+    payload:
+      type: object
+      required: [type, topic, data]
+      properties:
+        type: { const: event }
+        topic: { const: core.mode.changed }
+        originClientId: { type: [string, "null"] }
+        data:
+          type: object
+          required: [mode]
+          properties:
+            mode:
+              type: string
+              enum: [design, operate]
+
+  # -----------------------------------------------------------------------
+  # Undo / Redo (Tardis)
+  # -----------------------------------------------------------------------
+
+  CoreHistoryGetRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: core.history.get }
+        params:
+          type: object
+          description: >
+            Lists the shared undo/redo stack (one Tardis instance for the
+            whole engine, not per client - see core-notes.md for what that
+            means for multi-client undo). Reset to empty by
+            core.project.new/open/close (Tardis::resetHistory(), called
+            from App::clearDocument()).
+          properties:
+            limit:
+              type: integer
+              description: "Max entries to return, most recent first. Optional, server may cap regardless."
+
+  CoreHistoryGetResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/CoreHistoryGetOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  CoreHistoryGetOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          type: object
+          required: [entries, canUndo, canRedo]
+          properties:
+            entries:
+              type: array
+              items:
+                $ref: '#/components/schemas/CoreHistoryEntry'
+            canUndo: { type: boolean }
+            canRedo: { type: boolean }
+
+  CoreUndoRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: core.undo }
+        params:
+          type: object
+          description: >
+            Undoes the last (or last N) recorded action batch(es), global
+            to the engine regardless of which client originally made the
+            change - see core-notes.md, "what undo means with multiple
+            clients", for the reasoning and tradeoff. No baseRevision: you
+            are asking "undo whatever is on top of the stack right now",
+            not applying a diff against a known base.
+          properties:
+            steps:
+              type: integer
+              minimum: 1
+              default: 1
+              description: "Number of action batches to undo (Tardis groups actions fired within 150ms of each other into one undo step)."
+
+  CoreUndoResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/CoreUndoOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  CoreUndoOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          type: object
+          required: [docRevision, stepsApplied, canUndo, canRedo]
+          properties:
+            docRevision:
+              type: integer
+              description: "Only changes if at least one undone action was structural; unchanged if the undone step(s) were purely live/runtime actions."
+            stepsApplied:
+              type: integer
+              description: "May be less than requested steps if history ran out."
+            canUndo: { type: boolean }
+            canRedo: { type: boolean }
+
+  CoreRedoRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: core.redo }
+        params:
+          type: object
+          properties:
+            steps:
+              type: integer
+              minimum: 1
+              default: 1
+
+  CoreRedoResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/CoreRedoOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  CoreRedoOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          type: object
+          required: [docRevision, stepsApplied, canUndo, canRedo]
+          properties:
+            docRevision: { type: integer }
+            stepsApplied: { type: integer }
+            canUndo: { type: boolean }
+            canRedo: { type: boolean }
+
+  CoreHistoryChangedEvent:
+    payload:
+      type: object
+      required: [type, topic, data]
+      properties:
+        type: { const: event }
+        topic: { const: core.history.changed }
+        originClientId: { type: [string, "null"] }
+        data:
+          type: object
+          required: [direction, stepsApplied, docRevision, canUndo, canRedo]
+          description: >
+            Broadcast after a successful core.undo or core.redo. This is a
+            meta/catch-all notification for the history stack itself
+            (docRevision + undo/redo availability) - it deliberately does
+            NOT try to describe what changed. Applying a reverted
+            TardisAction re-invokes the same underlying engine setters a
+            normal request would (Scene::setChannelValue,
+            Function::setName, VCWidget geometry, ...), so the affected
+            domain's own normal structural-change event(s) are expected to
+            fire alongside this one. See core-notes.md, this is flagged as
+            an open coordination point for the other domain fragments.
+          properties:
+            direction:
+              type: string
+              enum: [undo, redo]
+            stepsApplied: { type: integer }
+            docRevision: { type: integer }
+            canUndo: { type: boolean }
+            canRedo: { type: boolean }
+
+  # -----------------------------------------------------------------------
+  # General engine-level settings (not per-project)
+  # -----------------------------------------------------------------------
+
+  CoreSettingsGetRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: core.settings.get }
+        params:
+          type: object
+          properties: {}
+
+  CoreSettingsGetResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/CoreSettingsGetOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  CoreSettingsGetOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          $ref: '#/components/schemas/CoreSettings'
+
+  CoreSettingsSetRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: core.settings.set }
+        params:
+          type: object
+          minProperties: 1
+          description: >
+            Partial update - only include the fields being changed.
+            Persisted immediately (QSettings-backed, same as today); see
+            core-notes.md for which of these apply live vs. only after the
+            engine process restarts (masterTimerFrequencyHz is read once at
+            MasterTimer construction today).
+          properties:
+            locale:
+              type: [string, "null"]
+              description: "e.g. \"en_US\", \"de_DE\". Governs only the language of engine-generated log/error strings (Doc::appendToErrorLog, qWarning/qDebug tr() text) - NOT client UI chrome, see core-notes.md exclusions."
+            defaultWorkingPath:
+              type: [string, "null"]
+              description: "Default directory the engine uses to resolve/browse relative file operations (project files, imports, fixture resources). Maps to App::workingPath / SETTINGS_WORKINGPATH."
+            masterTimerFrequencyHz:
+              type: integer
+              description: "DMX/function output tick rate. Maps to MasterTimer's MASTERTIMER_FREQUENCY QSetting. Takes effect on next engine start, not live (see core-notes.md)."
+
+  CoreSettingsSetResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/CoreSettingsSetOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  CoreSettingsSetOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          $ref: '#/components/schemas/CoreSettings'
+
+  CoreSettingsChangedEvent:
+    payload:
+      type: object
+      required: [type, topic, data]
+      properties:
+        type: { const: event }
+        topic: { const: core.settings.changed }
+        originClientId: { type: [string, "null"] }
+        data:
+          $ref: '#/components/schemas/CoreSettings'
+
+  # -----------------------------------------------------------------------
+  # Log / error event stream
+  # -----------------------------------------------------------------------
+
+  CoreLogEvent:
+    payload:
+      type: object
+      required: [type, topic, data]
+      description: >
+        Structured equivalent of QLC+'s own message handler (see
+        qmlui/main.cpp's qInstallMessageHandler, only installed today under
+        -d). The server is expected to install a process-wide Qt message
+        handler and republish every qDebug/qWarning/qCritical/qFatal call
+        engine-wide through this event, so an Electron UI gets an error
+        console with parity to what -d currently dumps to stderr - not
+        just core-domain messages, this is the generic sink for the whole
+        engine process. Subscribe-gated (see core-notes.md): pick the
+        single "core.log" topic for a firehose, or one of the per-level
+        topics to filter volume.
+      properties:
+        type: { const: event }
+        topic:
+          type: string
+          enum: [core.log, core.log.debug, core.log.info, core.log.warning, core.log.critical]
+        originClientId:
+          type: "null"
+          description: "Always null - these originate from engine-internal logging, never from a specific client's request."
+        data:
+          type: object
+          required: [level, message, timestampMs]
+          properties:
+            level:
+              type: string
+              enum: [debug, info, warning, critical, fatal]
+              description: "fatal messages are also published on the core.log.critical topic (there is no separate core.log.fatal topic, see core-notes.md)."
+            message: { type: string }
+            timestampMs:
+              type: integer
+              description: "Wall-clock epoch milliseconds. (Tardis's own internal timestamps are process-uptime-relative, not wall-clock - the server must convert, see core-notes.md.)"
+            file:
+              type: [string, "null"]
+              description: "Source file, from QMessageLogContext, when available."
+            line:
+              type: [integer, "null"]
+            function:
+              type: [string, "null"]
+
+schemas:
+
+  CoreProjectMetadata:
+    type: object
+    required: [filePath, fileName, isModified, docRevision, docRevisionAtLastSave, creator]
+    properties:
+      filePath:
+        type: [string, "null"]
+        description: "Full path on the engine's filesystem. Null for a never-saved project, or one opened via source=upload that hasn't been saved yet."
+      fileName:
+        type: [string, "null"]
+        description: "Basename of filePath, for display. Null under the same conditions as filePath."
+      isModified:
+        type: boolean
+        description: "Mirrors Doc::isModified()."
+      docRevision:
+        type: integer
+      docRevisionAtLastSave:
+        type: [integer, "null"]
+        description: "docRevision at the moment of the last successful save (or saveAs with target=serverPath) this session. Null if never saved this session. Equivalent way to derive isModified: docRevision !== docRevisionAtLastSave."
+      creator:
+        type: [object, "null"]
+        description: >
+          Informational only, read-only via this API - the engine has no
+          concept of an editable project title/author/notes field (see
+          core-notes.md, "what Doc actually tracks"). Null for a brand-new
+          unsaved project. Reflects the <Creator> block of the last
+          loaded/saved file; QLC+ currently always rewrites author to the
+          OS user name at save time regardless of what was loaded, this API
+          surfaces that behavior as-is rather than inventing a settable field.
+        properties:
+          name: { type: [string, "null"] }
+          version: { type: [string, "null"] }
+          author: { type: [string, "null"] }
+
+  CoreRecentFileEntry:
+    type: object
+    required: [filePath, fileName]
+    properties:
+      filePath: { type: string }
+      fileName: { type: string }
+
+  CoreHistoryEntry:
+    type: object
+    required: [index, actionCode, actionName, tier, timestampMs]
+    properties:
+      index:
+        type: integer
+        description: "Position in the history stack, 0-based."
+      actionCode:
+        type: integer
+        description: "Raw Tardis::ActionCodes value."
+      actionName:
+        type: string
+        description: "Symbolic name, e.g. \"FunctionSetName\", \"VCWidgetGeometry\" (Tardis::actionToString())."
+      tier:
+        type: string
+        enum: [structural, live]
+        description: "structural = actionCode < 0xF000 (LIVE_ACTIONS_START_CODE), i.e. it bumps docRevision/isModified. live = a runtime action (fader move, button press, function start/stop, ...) - see core-notes.md for why the shared undo stack mixes both."
+      timestampMs:
+        type: integer
+        description: "Wall-clock epoch milliseconds (converted from Tardis's internal process-uptime-relative timestamp, see core-notes.md)."
+
+  CoreSettings:
+    type: object
+    required: [locale, defaultWorkingPath, masterTimerFrequencyHz]
+    properties:
+      locale:
+        type: [string, "null"]
+      defaultWorkingPath:
+        type: [string, "null"]
+      masterTimerFrequencyHz:
+        type: integer
+
+operations:
+
+  sendCoreProjectNew:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/coreProjectNewRequest'
+
+  receiveCoreProjectNewResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/coreProjectNewResponse'
+
+  sendCoreProjectOpen:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/coreProjectOpenRequest'
+
+  receiveCoreProjectOpenResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/coreProjectOpenResponse'
+
+  sendCoreProjectClose:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/coreProjectCloseRequest'
+
+  receiveCoreProjectCloseResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/coreProjectCloseResponse'
+
+  receiveCoreProjectLoaded:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/coreProjectLoadedEvent'
+
+  sendCoreProjectSave:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/coreProjectSaveRequest'
+
+  receiveCoreProjectSaveResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/coreProjectSaveResponse'
+
+  sendCoreProjectSaveAs:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/coreProjectSaveAsRequest'
+
+  receiveCoreProjectSaveAsResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/coreProjectSaveAsResponse'
+
+  receiveCoreProjectSaved:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/coreProjectSavedEvent'
+
+  sendCoreProjectGet:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/coreProjectGetRequest'
+
+  receiveCoreProjectGetResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/coreProjectGetResponse'
+
+  sendCoreProjectRecentFiles:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/coreProjectRecentFilesRequest'
+
+  receiveCoreProjectRecentFilesResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/coreProjectRecentFilesResponse'
+
+  receiveCoreProjectRecentFilesChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/coreProjectRecentFilesChangedEvent'
+
+  sendCoreModeGet:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/coreModeGetRequest'
+
+  receiveCoreModeGetResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/coreModeGetResponse'
+
+  sendCoreModeSet:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/coreModeSetRequest'
+
+  receiveCoreModeSetResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/coreModeSetResponse'
+
+  receiveCoreModeChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/coreModeChangedEvent'
+
+  sendCoreHistoryGet:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/coreHistoryGetRequest'
+
+  receiveCoreHistoryGetResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/coreHistoryGetResponse'
+
+  sendCoreUndo:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/coreUndoRequest'
+
+  receiveCoreUndoResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/coreUndoResponse'
+
+  sendCoreRedo:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/coreRedoRequest'
+
+  receiveCoreRedoResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/coreRedoResponse'
+
+  receiveCoreHistoryChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/coreHistoryChangedEvent'
+
+  sendCoreSettingsGet:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/coreSettingsGetRequest'
+
+  receiveCoreSettingsGetResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/coreSettingsGetResponse'
+
+  sendCoreSettingsSet:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/coreSettingsSetRequest'
+
+  receiveCoreSettingsSetResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/coreSettingsSetResponse'
+
+  receiveCoreSettingsChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/coreSettingsChangedEvent'
+
+  receiveCoreLog:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/coreLogEvent'
+
+# Note: at merge time, each message key defined above also needs a matching
+# lowerCamelCase entry added under channels.qlcplus.messages (e.g.
+# `coreProjectNewRequest: { $ref: '#/components/messages/CoreProjectNewRequest' }`)
+# for the operations' $refs above to resolve. Full list is in core-notes.md.

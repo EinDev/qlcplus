@@ -1,0 +1,3899 @@
+messages:
+  FunctionsListRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.list
+        params:
+          type: object
+          properties:
+            typeFilter:
+              type: array
+              description: Optional list of Function::Type strings to filter by. Omit/empty for all types.
+              items:
+                $ref: '#/components/schemas/FunctionsTypeEnum'
+            pathFilter:
+              type: string
+              description: Optional folder path prefix filter (see Function::path).
+  FunctionsListResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsListOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsListOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - functions
+          properties:
+            functions:
+              type: array
+              items:
+                $ref: '#/components/schemas/FunctionsSummary'
+  FunctionsGetRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.get
+        params:
+          type: object
+          required:
+          - functionId
+          properties:
+            functionId:
+              type: string
+  FunctionsGetResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsGetOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsGetOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          $ref: '#/components/schemas/FunctionsDetail'
+  FunctionsCreateRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.create
+        params:
+          type: object
+          required:
+          - type
+          - baseRevision
+          properties:
+            type:
+              $ref: '#/components/schemas/FunctionsTypeEnum'
+            name:
+              type: string
+              description: Defaults to a generated name (e.g. 'New Scene') if omitted.
+            path:
+              type: string
+              description: Folder path to create the function under. Defaults to root.
+            fixtures:
+              type: array
+              description: 'Optional fixture IDs to seed the new function with (e.g. a new Scene is pre-populated
+                with all channels of these fixtures, an EFX gets these fixtures added as participants).
+                Ignored by types that don''t take fixtures at creation time.
+
+                '
+              items:
+                type: string
+            baseRevision:
+              type: integer
+  FunctionsCreateResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsCreateOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsCreateOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          $ref: '#/components/schemas/FunctionsCreateResult'
+  FunctionsCreatedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.created
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - function
+          - docRevision
+          properties:
+            function:
+              $ref: '#/components/schemas/FunctionsSummary'
+            docRevision:
+              type: integer
+  FunctionsDeleteRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.delete
+        params:
+          type: object
+          required:
+          - functionId
+          - baseRevision
+          properties:
+            functionId:
+              type: string
+            baseRevision:
+              type: integer
+  FunctionsDeleteResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsDeleteOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsDeleteOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          $ref: '#/components/schemas/FunctionsDocRevisionResult'
+  FunctionsDeletedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.deleted
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - functionId
+          - docRevision
+          properties:
+            functionId:
+              type: string
+            docRevision:
+              type: integer
+  FunctionsRenameRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.rename
+        params:
+          type: object
+          required:
+          - functionId
+          - name
+          - baseRevision
+          properties:
+            functionId:
+              type: string
+            name:
+              type: string
+            baseRevision:
+              type: integer
+  FunctionsRenameResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsRenameOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsRenameOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          $ref: '#/components/schemas/FunctionsDocRevisionResult'
+  FunctionsRenamedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.renamed
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - functionId
+          - name
+          - docRevision
+          properties:
+            functionId:
+              type: string
+            name:
+              type: string
+            docRevision:
+              type: integer
+  FunctionsMoveRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.move
+        params:
+          type: object
+          required:
+          - functionIds
+          - path
+          - baseRevision
+          properties:
+            functionIds:
+              type: array
+              description: One or more function IDs to move together (matches FunctionManager's multi-select
+                move).
+              items:
+                type: string
+            path:
+              type: string
+              description: New folder path (see Function::setPath).
+            baseRevision:
+              type: integer
+  FunctionsMoveResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsMoveOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsMoveOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          $ref: '#/components/schemas/FunctionsDocRevisionResult'
+  FunctionsMovedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.moved
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - functionIds
+          - path
+          - docRevision
+          properties:
+            functionIds:
+              type: array
+              items:
+                type: string
+            path:
+              type: string
+            docRevision:
+              type: integer
+  FunctionsSetCommonAttributesRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.setCommonAttributes
+        params:
+          type: object
+          required:
+          - functionId
+          - baseRevision
+          description: All properties besides functionId/baseRevision are optional partial updates.
+          properties:
+            functionId:
+              type: string
+            runOrder:
+              $ref: '#/components/schemas/FunctionsRunOrderEnum'
+            direction:
+              $ref: '#/components/schemas/FunctionsDirectionEnum'
+            tempoType:
+              $ref: '#/components/schemas/FunctionsTempoTypeEnum'
+            fadeInSpeed:
+              type: integer
+              minimum: 0
+              description: Milliseconds, or beats if tempoType is Beats.
+            fadeOutSpeed:
+              type: integer
+              minimum: 0
+            duration:
+              type: integer
+              minimum: 0
+            blendMode:
+              $ref: '#/components/schemas/FunctionsBlendModeEnum'
+            baseRevision:
+              type: integer
+  FunctionsSetCommonAttributesResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsSetCommonAttributesOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsSetCommonAttributesOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          $ref: '#/components/schemas/FunctionsDocRevisionResult'
+  FunctionsCommonAttributesChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.commonAttributesChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - functionId
+          - docRevision
+          properties:
+            functionId:
+              type: string
+            runOrder:
+              $ref: '#/components/schemas/FunctionsRunOrderEnum'
+            direction:
+              $ref: '#/components/schemas/FunctionsDirectionEnum'
+            tempoType:
+              $ref: '#/components/schemas/FunctionsTempoTypeEnum'
+            fadeInSpeed:
+              type: integer
+            fadeOutSpeed:
+              type: integer
+            duration:
+              type: integer
+            blendMode:
+              $ref: '#/components/schemas/FunctionsBlendModeEnum'
+            docRevision:
+              type: integer
+  FunctionsStartRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.start
+        params:
+          type: object
+          required:
+          - functionId
+          properties:
+            functionId:
+              type: string
+            overrideFadeIn:
+              type: integer
+              description: Optional one-shot fade-in override in ms, not persisted.
+            overrideFadeOut:
+              type: integer
+            overrideDuration:
+              type: integer
+            overrideTempoType:
+              $ref: '#/components/schemas/FunctionsTempoTypeEnum'
+  FunctionsStartResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/GenericAckResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsStopRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.stop
+        params:
+          type: object
+          required:
+          - functionId
+          properties:
+            functionId:
+              type: string
+            preserveAttributes:
+              type: boolean
+              default: false
+              description: See Function::stop(preserveAttributes) - keep attribute overrides applied after
+                stopping.
+  FunctionsStopResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/GenericAckResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsSetPauseRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.setPause
+        params:
+          type: object
+          required:
+          - functionId
+          - paused
+          properties:
+            functionId:
+              type: string
+            paused:
+              type: boolean
+  FunctionsSetPauseResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/GenericAckResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsTapRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.tap
+        params:
+          type: object
+          required:
+          - functionId
+          properties:
+            functionId:
+              type: string
+              description: See Function::tap() - tap-tempo, meaningful mainly for a running Chaser/Sequence.
+  FunctionsTapResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/GenericAckResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsAdjustAttributeRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.adjustAttribute
+        params:
+          type: object
+          required:
+          - functionId
+          - value
+          properties:
+            functionId:
+              type: string
+            attributeIndex:
+              type: integer
+              description: Index from FunctionsDetail.attributes (0 = Intensity). Either this or attributeName
+                is required.
+            attributeName:
+              type: string
+            value:
+              type: number
+              minimum: 0
+              maximum: 1
+  FunctionsAdjustAttributeResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/GenericAckResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsStatusChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.status.changed
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          $ref: '#/components/schemas/FunctionsStatusData'
+  FunctionsSceneSetValuesRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.scene.setValues
+        params:
+          type: object
+          required:
+          - functionId
+          - values
+          - baseRevision
+          properties:
+            functionId:
+              type: string
+            values:
+              $ref: '#/components/schemas/FunctionsSceneValues'
+              description: Full replacement of the Scene's value list (Scene::setValue per entry after
+                Scene::clear()).
+            baseRevision:
+              type: integer
+  FunctionsSceneSetValuesResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsSceneSetValuesOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsSceneSetValuesOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          $ref: '#/components/schemas/FunctionsDocRevisionResult'
+  FunctionsSceneSetValueRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.scene.setValue
+        params:
+          type: object
+          required:
+          - functionId
+          - fixture
+          - channel
+          - value
+          - baseRevision
+          properties:
+            functionId:
+              type: string
+            fixture:
+              type: string
+            channel:
+              type: integer
+              minimum: 0
+            value:
+              type: integer
+              minimum: 0
+              maximum: 255
+            baseRevision:
+              type: integer
+  FunctionsSceneSetValueResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsSceneSetValueOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsSceneSetValueOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          $ref: '#/components/schemas/FunctionsDocRevisionResult'
+  FunctionsSceneUnsetValueRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.scene.unsetValue
+        params:
+          type: object
+          required:
+          - functionId
+          - fixture
+          - channel
+          - baseRevision
+          properties:
+            functionId:
+              type: string
+            fixture:
+              type: string
+            channel:
+              type: integer
+              minimum: 0
+            baseRevision:
+              type: integer
+  FunctionsSceneUnsetValueResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsSceneUnsetValueOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsSceneUnsetValueOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          $ref: '#/components/schemas/FunctionsDocRevisionResult'
+  FunctionsSceneValuesChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.scene.valuesChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - functionId
+          - patch
+          - docRevision
+          properties:
+            functionId:
+              type: string
+            patch:
+              type: array
+              description: 'RFC 6902 JSON Patch ops against the FunctionsSceneDetail.values map (see 00-conventions.md
+                §4a). setValues emits one "replace" op at path "/values"; setValue emits "add"/"replace"
+                at "/values/<fixtureId>.<channel>"; unsetValue emits "remove" at the same path.
+
+                '
+              items:
+                $ref: '#/components/schemas/FunctionsPatchOp'
+            docRevision:
+              type: integer
+  FunctionsSceneSetMembersRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.scene.setMembers
+        params:
+          type: object
+          required:
+          - functionId
+          - baseRevision
+          description: 'Full replacement of the Scene''s non-value membership lists (Scene::fixtures/fixtureGroups/channelGroups/palettes).
+            Omitted properties are left unchanged.
+
+            '
+          properties:
+            functionId:
+              type: string
+            fixtures:
+              type: array
+              items:
+                type: string
+            fixtureGroups:
+              type: array
+              items:
+                type: string
+            channelGroups:
+              type: array
+              items:
+                $ref: '#/components/schemas/FunctionsSceneChannelGroupRef'
+            palettes:
+              type: array
+              items:
+                type: string
+            baseRevision:
+              type: integer
+  FunctionsSceneSetMembersResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsSceneSetMembersOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsSceneSetMembersOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          $ref: '#/components/schemas/FunctionsDocRevisionResult'
+  FunctionsSceneMembersChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.scene.membersChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - functionId
+          - docRevision
+          properties:
+            functionId:
+              type: string
+            fixtures:
+              type: array
+              items:
+                type: string
+            fixtureGroups:
+              type: array
+              items:
+                type: string
+            channelGroups:
+              type: array
+              items:
+                $ref: '#/components/schemas/FunctionsSceneChannelGroupRef'
+            palettes:
+              type: array
+              items:
+                type: string
+            docRevision:
+              type: integer
+  FunctionsChaserAddStepRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.chaser.addStep
+        params:
+          type: object
+          required:
+          - functionId
+          - step
+          - baseRevision
+          properties:
+            functionId:
+              type: string
+            step:
+              $ref: '#/components/schemas/FunctionsChaserStep'
+            index:
+              type: integer
+              description: Insertion index; omit/-1 to append (Chaser::addStep).
+            baseRevision:
+              type: integer
+  FunctionsChaserAddStepResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsChaserStepsMutationOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsChaserRemoveStepRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.chaser.removeStep
+        params:
+          type: object
+          required:
+          - functionId
+          - index
+          - baseRevision
+          properties:
+            functionId:
+              type: string
+            index:
+              type: integer
+            baseRevision:
+              type: integer
+  FunctionsChaserRemoveStepResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsChaserStepsMutationOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsChaserReplaceStepRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.chaser.replaceStep
+        params:
+          type: object
+          required:
+          - functionId
+          - index
+          - step
+          - baseRevision
+          properties:
+            functionId:
+              type: string
+            index:
+              type: integer
+            step:
+              $ref: '#/components/schemas/FunctionsChaserStep'
+            baseRevision:
+              type: integer
+  FunctionsChaserReplaceStepResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsChaserStepsMutationOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsChaserMoveStepRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.chaser.moveStep
+        params:
+          type: object
+          required:
+          - functionId
+          - sourceIndex
+          - destIndex
+          - baseRevision
+          properties:
+            functionId:
+              type: string
+            sourceIndex:
+              type: integer
+            destIndex:
+              type: integer
+            baseRevision:
+              type: integer
+  FunctionsChaserMoveStepResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsChaserStepsMutationOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsChaserStepsMutationOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          $ref: '#/components/schemas/FunctionsDocRevisionResult'
+  FunctionsChaserStepsChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.chaser.stepsChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - functionId
+          - patch
+          - docRevision
+          properties:
+            functionId:
+              type: string
+            patch:
+              type: array
+              description: 'RFC 6902 JSON Patch ops against the FunctionsChaserDetail.steps array (add/remove/replace/move
+                at "/steps/<index>"), emitted by addStep/removeStep/replaceStep/moveStep.
+
+                '
+              items:
+                $ref: '#/components/schemas/FunctionsPatchOp'
+            docRevision:
+              type: integer
+  FunctionsChaserSetSpeedModesRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.chaser.setSpeedModes
+        params:
+          type: object
+          required:
+          - functionId
+          - baseRevision
+          properties:
+            functionId:
+              type: string
+            fadeInMode:
+              $ref: '#/components/schemas/FunctionsSpeedModeEnum'
+            fadeOutMode:
+              $ref: '#/components/schemas/FunctionsSpeedModeEnum'
+            durationMode:
+              $ref: '#/components/schemas/FunctionsSpeedModeEnum'
+            baseRevision:
+              type: integer
+  FunctionsChaserSetSpeedModesResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsChaserSetSpeedModesOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsChaserSetSpeedModesOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          $ref: '#/components/schemas/FunctionsDocRevisionResult'
+  FunctionsChaserChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.chaser.changed
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - functionId
+          - docRevision
+          properties:
+            functionId:
+              type: string
+            fadeInMode:
+              $ref: '#/components/schemas/FunctionsSpeedModeEnum'
+            fadeOutMode:
+              $ref: '#/components/schemas/FunctionsSpeedModeEnum'
+            durationMode:
+              $ref: '#/components/schemas/FunctionsSpeedModeEnum'
+            docRevision:
+              type: integer
+  FunctionsChaserSetActionRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.chaser.setAction
+        params:
+          type: object
+          required:
+          - functionId
+          - action
+          description: 'Live playback control (4b, no baseRevision). Also used to drive a running Sequence,
+            which shares Chaser''s runner. See ChaserAction.
+
+            '
+          properties:
+            functionId:
+              type: string
+            action:
+              type: string
+              enum:
+              - nextStep
+              - previousStep
+              - setStepIndex
+              - stopStep
+              - pause
+            stepIndex:
+              type: integer
+              description: Required when action is setStepIndex.
+            masterIntensity:
+              type: number
+              minimum: 0
+              maximum: 1
+            stepIntensity:
+              type: number
+              minimum: 0
+              maximum: 1
+            fadeMode:
+              $ref: '#/components/schemas/FunctionsFadeControlModeEnum'
+  FunctionsChaserSetActionResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/GenericAckResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsEfxSetParametersRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.efx.setParameters
+        params:
+          type: object
+          required:
+          - functionId
+          - baseRevision
+          description: Partial update of pattern/geometry parameters; omitted properties are left unchanged.
+          properties:
+            functionId:
+              type: string
+            algorithm:
+              $ref: '#/components/schemas/FunctionsEfxAlgorithmEnum'
+            propagationMode:
+              $ref: '#/components/schemas/FunctionsEfxPropagationModeEnum'
+            width:
+              type: integer
+              minimum: 0
+              maximum: 255
+            height:
+              type: integer
+              minimum: 0
+              maximum: 255
+            rotation:
+              type: integer
+              minimum: 0
+              maximum: 359
+            startOffset:
+              type: integer
+              minimum: 0
+              maximum: 359
+            isRelative:
+              type: boolean
+            xOffset:
+              type: integer
+              minimum: 0
+              maximum: 255
+            yOffset:
+              type: integer
+              minimum: 0
+              maximum: 255
+            xFrequency:
+              type: integer
+              minimum: 0
+              maximum: 5
+            yFrequency:
+              type: integer
+              minimum: 0
+              maximum: 5
+            xPhase:
+              type: integer
+              minimum: 0
+              maximum: 359
+            yPhase:
+              type: integer
+              minimum: 0
+              maximum: 359
+            dimmerControlEnabled:
+              type: boolean
+            baseRevision:
+              type: integer
+  FunctionsEfxSetParametersResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsEfxSetParametersOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsEfxSetParametersOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          $ref: '#/components/schemas/FunctionsDocRevisionResult'
+  FunctionsEfxChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.efx.changed
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - functionId
+          - docRevision
+          description: Carries the full new EFX parameter set (small, fixed shape - no patch needed).
+          properties:
+            functionId:
+              type: string
+            algorithm:
+              $ref: '#/components/schemas/FunctionsEfxAlgorithmEnum'
+            propagationMode:
+              $ref: '#/components/schemas/FunctionsEfxPropagationModeEnum'
+            width:
+              type: integer
+            height:
+              type: integer
+            rotation:
+              type: integer
+            startOffset:
+              type: integer
+            isRelative:
+              type: boolean
+            xOffset:
+              type: integer
+            yOffset:
+              type: integer
+            xFrequency:
+              type: integer
+            yFrequency:
+              type: integer
+            xPhase:
+              type: integer
+            yPhase:
+              type: integer
+            dimmerControlEnabled:
+              type: boolean
+            docRevision:
+              type: integer
+  FunctionsEfxAddFixtureRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.efx.addFixture
+        params:
+          type: object
+          required:
+          - functionId
+          - fixture
+          - baseRevision
+          properties:
+            functionId:
+              type: string
+            fixture:
+              type: string
+            head:
+              type: integer
+              default: 0
+              description: Fixture head index (see GroupHead).
+            baseRevision:
+              type: integer
+  FunctionsEfxAddFixtureResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsEfxFixturesMutationOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsEfxRemoveFixtureRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.efx.removeFixture
+        params:
+          type: object
+          required:
+          - functionId
+          - fixture
+          - head
+          - baseRevision
+          properties:
+            functionId:
+              type: string
+            fixture:
+              type: string
+            head:
+              type: integer
+            baseRevision:
+              type: integer
+  FunctionsEfxRemoveFixtureResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsEfxFixturesMutationOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsEfxSetFixtureParametersRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.efx.setFixtureParameters
+        params:
+          type: object
+          required:
+          - functionId
+          - fixture
+          - head
+          - baseRevision
+          properties:
+            functionId:
+              type: string
+            fixture:
+              type: string
+            head:
+              type: integer
+            direction:
+              $ref: '#/components/schemas/FunctionsDirectionEnum'
+            startOffset:
+              type: integer
+            mode:
+              $ref: '#/components/schemas/FunctionsEfxFixtureModeEnum'
+            baseRevision:
+              type: integer
+  FunctionsEfxSetFixtureParametersResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsEfxFixturesMutationOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsEfxReorderFixtureRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.efx.reorderFixture
+        params:
+          type: object
+          required:
+          - functionId
+          - fixture
+          - head
+          - move
+          - baseRevision
+          description: Only meaningful with Serial propagation mode (EFX::raiseFixture/lowerFixture).
+          properties:
+            functionId:
+              type: string
+            fixture:
+              type: string
+            head:
+              type: integer
+            move:
+              type: string
+              enum:
+              - raise
+              - lower
+            baseRevision:
+              type: integer
+  FunctionsEfxReorderFixtureResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsEfxFixturesMutationOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsEfxFixturesMutationOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          $ref: '#/components/schemas/FunctionsDocRevisionResult'
+  FunctionsEfxFixturesChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.efx.fixturesChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - functionId
+          - fixtures
+          - docRevision
+          description: Full replacement fixtures list (an EFX typically has few participants, so patching
+            isn't worth it).
+          properties:
+            functionId:
+              type: string
+            fixtures:
+              type: array
+              items:
+                $ref: '#/components/schemas/FunctionsEfxFixture'
+            docRevision:
+              type: integer
+  FunctionsCollectionSetMembersRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.collection.setMembers
+        params:
+          type: object
+          required:
+          - functionId
+          - functions
+          - baseRevision
+          properties:
+            functionId:
+              type: string
+            functions:
+              type: array
+              description: Full replacement of the Collection's member function ID list, in run order.
+              items:
+                type: string
+            baseRevision:
+              type: integer
+  FunctionsCollectionSetMembersResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsCollectionMembersMutationOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsCollectionAddFunctionRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.collection.addFunction
+        params:
+          type: object
+          required:
+          - functionId
+          - memberFunctionId
+          - baseRevision
+          properties:
+            functionId:
+              type: string
+            memberFunctionId:
+              type: string
+            index:
+              type: integer
+              description: Insertion index; omit/-1 to append.
+            baseRevision:
+              type: integer
+  FunctionsCollectionAddFunctionResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsCollectionMembersMutationOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsCollectionRemoveFunctionRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.collection.removeFunction
+        params:
+          type: object
+          required:
+          - functionId
+          - memberFunctionId
+          - baseRevision
+          properties:
+            functionId:
+              type: string
+            memberFunctionId:
+              type: string
+            baseRevision:
+              type: integer
+  FunctionsCollectionRemoveFunctionResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsCollectionMembersMutationOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsCollectionMembersMutationOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          $ref: '#/components/schemas/FunctionsDocRevisionResult'
+  FunctionsCollectionMembersChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.collection.membersChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - functionId
+          - functions
+          - docRevision
+          properties:
+            functionId:
+              type: string
+            functions:
+              type: array
+              items:
+                type: string
+            docRevision:
+              type: integer
+  FunctionsSequenceSetBoundSceneRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.sequence.setBoundScene
+        params:
+          type: object
+          required:
+          - functionId
+          - sceneId
+          - baseRevision
+          properties:
+            functionId:
+              type: string
+            sceneId:
+              type: string
+            baseRevision:
+              type: integer
+  FunctionsSequenceSetBoundSceneResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsSequenceSetBoundSceneOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsSequenceSetBoundSceneOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          $ref: '#/components/schemas/FunctionsDocRevisionResult'
+  FunctionsSequenceChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.sequence.changed
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - functionId
+          - boundSceneId
+          - docRevision
+          properties:
+            functionId:
+              type: string
+            boundSceneId:
+              type: string
+            docRevision:
+              type: integer
+  FunctionsSequenceAddStepRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.sequence.addStep
+        params:
+          type: object
+          required:
+          - functionId
+          - step
+          - baseRevision
+          properties:
+            functionId:
+              type: string
+            step:
+              $ref: '#/components/schemas/FunctionsSequenceStep'
+            index:
+              type: integer
+              description: Insertion index; omit/-1 to append.
+            baseRevision:
+              type: integer
+  FunctionsSequenceAddStepResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsSequenceStepsMutationOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsSequenceRemoveStepRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.sequence.removeStep
+        params:
+          type: object
+          required:
+          - functionId
+          - index
+          - baseRevision
+          properties:
+            functionId:
+              type: string
+            index:
+              type: integer
+            baseRevision:
+              type: integer
+  FunctionsSequenceRemoveStepResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsSequenceStepsMutationOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsSequenceReplaceStepRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.sequence.replaceStep
+        params:
+          type: object
+          required:
+          - functionId
+          - index
+          - step
+          - baseRevision
+          properties:
+            functionId:
+              type: string
+            index:
+              type: integer
+            step:
+              $ref: '#/components/schemas/FunctionsSequenceStep'
+            baseRevision:
+              type: integer
+  FunctionsSequenceReplaceStepResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsSequenceStepsMutationOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsSequenceMoveStepRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.sequence.moveStep
+        params:
+          type: object
+          required:
+          - functionId
+          - sourceIndex
+          - destIndex
+          - baseRevision
+          properties:
+            functionId:
+              type: string
+            sourceIndex:
+              type: integer
+            destIndex:
+              type: integer
+            baseRevision:
+              type: integer
+  FunctionsSequenceMoveStepResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsSequenceStepsMutationOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsSequenceApplyDumpValuesRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.sequence.applyDumpValues
+        params:
+          type: object
+          required:
+          - functionId
+          - values
+          - baseRevision
+          description: 'Captures a set of live DMX values into a step (Sequence:: applyDumpValues) - the
+            typical "record current state as a cue" operation. Values are normalized against the bound
+            Scene''s channel set (missing channels default to 0).
+
+            '
+          properties:
+            functionId:
+              type: string
+            values:
+              $ref: '#/components/schemas/FunctionsSceneValues'
+            targetStepIndex:
+              type: integer
+              description: Omit to append a new step.
+            baseRevision:
+              type: integer
+  FunctionsSequenceApplyDumpValuesResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsSequenceStepsMutationOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsSequenceStepsMutationOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          $ref: '#/components/schemas/FunctionsDocRevisionResult'
+  FunctionsSequenceStepsChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.sequence.stepsChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - functionId
+          - patch
+          - docRevision
+          properties:
+            functionId:
+              type: string
+            patch:
+              type: array
+              description: 'RFC 6902 JSON Patch ops against FunctionsSequenceDetail.steps, emitted by
+                addStep/removeStep/replaceStep/moveStep/ applyDumpValues (the latter patches a single
+                step''s "/values" or appends a step, same as Chaser step patches).
+
+                '
+              items:
+                $ref: '#/components/schemas/FunctionsPatchOp'
+            docRevision:
+              type: integer
+  FunctionsChannelsGroupListRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.channelsgroup.list
+        params:
+          type: object
+  FunctionsChannelsGroupListResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsChannelsGroupListOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsChannelsGroupListOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - channelsGroups
+          properties:
+            channelsGroups:
+              type: array
+              items:
+                $ref: '#/components/schemas/FunctionsChannelsGroupSummary'
+  FunctionsChannelsGroupGetRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.channelsgroup.get
+        params:
+          type: object
+          required:
+          - channelsGroupId
+          properties:
+            channelsGroupId:
+              type: string
+  FunctionsChannelsGroupGetResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsChannelsGroupGetOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsChannelsGroupGetOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          $ref: '#/components/schemas/FunctionsChannelsGroupDetail'
+  FunctionsChannelsGroupCreateRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.channelsgroup.create
+        params:
+          type: object
+          required:
+          - baseRevision
+          properties:
+            name:
+              type: string
+              description: Defaults to 'New Group' if omitted.
+            channels:
+              type: array
+              items:
+                $ref: '#/components/schemas/FunctionsChannelsGroupChannelRef'
+            baseRevision:
+              type: integer
+  FunctionsChannelsGroupCreateResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsChannelsGroupCreateOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsChannelsGroupCreateOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - channelsGroupId
+          - docRevision
+          properties:
+            channelsGroupId:
+              type: string
+            docRevision:
+              type: integer
+  FunctionsChannelsGroupCreatedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.channelsgroup.created
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - channelsGroup
+          - docRevision
+          properties:
+            channelsGroup:
+              $ref: '#/components/schemas/FunctionsChannelsGroupDetail'
+            docRevision:
+              type: integer
+  FunctionsChannelsGroupRenameRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.channelsgroup.rename
+        params:
+          type: object
+          required:
+          - channelsGroupId
+          - name
+          - baseRevision
+          properties:
+            channelsGroupId:
+              type: string
+            name:
+              type: string
+            baseRevision:
+              type: integer
+  FunctionsChannelsGroupRenameResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsChannelsGroupRenameOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsChannelsGroupRenameOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          $ref: '#/components/schemas/FunctionsDocRevisionResult'
+  FunctionsChannelsGroupRenamedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.channelsgroup.renamed
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - channelsGroupId
+          - name
+          - docRevision
+          properties:
+            channelsGroupId:
+              type: string
+            name:
+              type: string
+            docRevision:
+              type: integer
+  FunctionsChannelsGroupDeleteRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.channelsgroup.delete
+        params:
+          type: object
+          required:
+          - channelsGroupId
+          - baseRevision
+          properties:
+            channelsGroupId:
+              type: string
+            baseRevision:
+              type: integer
+  FunctionsChannelsGroupDeleteResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsChannelsGroupDeleteOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsChannelsGroupDeleteOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          $ref: '#/components/schemas/FunctionsDocRevisionResult'
+  FunctionsChannelsGroupDeletedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.channelsgroup.deleted
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - channelsGroupId
+          - docRevision
+          properties:
+            channelsGroupId:
+              type: string
+            docRevision:
+              type: integer
+  FunctionsChannelsGroupSetChannelsRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.channelsgroup.setChannels
+        params:
+          type: object
+          required:
+          - channelsGroupId
+          - channels
+          - baseRevision
+          properties:
+            channelsGroupId:
+              type: string
+            channels:
+              type: array
+              description: Full replacement (ChannelsGroup::resetChannels + addChannel per entry).
+              items:
+                $ref: '#/components/schemas/FunctionsChannelsGroupChannelRef'
+            baseRevision:
+              type: integer
+  FunctionsChannelsGroupSetChannelsResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsChannelsGroupChangedOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsChannelsGroupSetLevelRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.channelsgroup.setLevel
+        params:
+          type: object
+          required:
+          - channelsGroupId
+          - level
+          - baseRevision
+          description: 'The group''s master level is saved into the show file (see KXMLQLCChannelsGroupValue),
+            so it is modeled as document state here - see functions-core-notes.md for the tradeoff vs.
+            treating fader drags as 4b live updates.
+
+            '
+          properties:
+            channelsGroupId:
+              type: string
+            level:
+              type: integer
+              minimum: 0
+              maximum: 255
+            baseRevision:
+              type: integer
+  FunctionsChannelsGroupSetLevelResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsChannelsGroupChangedOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsChannelsGroupSetInputSourceRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.channelsgroup.setInputSource
+        params:
+          type: object
+          required:
+          - channelsGroupId
+          - baseRevision
+          properties:
+            channelsGroupId:
+              type: string
+            inputSource:
+              type:
+              - object
+              - 'null'
+              description: null clears the external input assignment. Shape mirrors QLCInputSource (universe/channel),
+                owned in full by the I/O domain fragment.
+              properties:
+                universe:
+                  type: integer
+                channel:
+                  type: integer
+            baseRevision:
+              type: integer
+  FunctionsChannelsGroupSetInputSourceResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsChannelsGroupChangedOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsChannelsGroupChangedOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          $ref: '#/components/schemas/FunctionsDocRevisionResult'
+  FunctionsChannelsGroupChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.channelsgroup.changed
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - channelsGroup
+          - docRevision
+          description: Emitted by setChannels/setLevel/setInputSource; carries the full new detail (a
+            ChannelsGroup is small).
+          properties:
+            channelsGroup:
+              $ref: '#/components/schemas/FunctionsChannelsGroupDetail'
+            docRevision:
+              type: integer
+schemas:
+  FunctionsTypeEnum:
+    type: string
+    enum:
+    - Scene
+    - Chaser
+    - EFX
+    - Collection
+    - Script
+    - RGBMatrix
+    - Show
+    - Sequence
+    - Audio
+    - Video
+    description: Function::Type bitmask enum, stringified (function.cpp typeToString).
+  FunctionsRunOrderEnum:
+    type: string
+    enum:
+    - Loop
+    - SingleShot
+    - PingPong
+    - Random
+  FunctionsDirectionEnum:
+    type: string
+    enum:
+    - Forward
+    - Backward
+  FunctionsTempoTypeEnum:
+    type: string
+    enum:
+    - Time
+    - Beats
+    - Original
+    description: 'Time/Beats are the two persistable tempo types (Function::TempoType). Original is a
+      sentinel only valid as an override param on functions.start, meaning "don''t override, use the function''s
+      own tempoType".
+
+      '
+  FunctionsBlendModeEnum:
+    type: string
+    enum:
+    - Normal
+    - Mask
+    - Additive
+    - Subtractive
+    description: Universe::BlendMode. Only meaningfully settable on some types (e.g. RGBMatrix, owned
+      by functions-advanced) but is a Function-level concept.
+  FunctionsSpeedModeEnum:
+    type: string
+    enum:
+    - Default
+    - Common
+    - PerStep
+    description: Chaser::SpeedMode - also used by Sequence, which subclasses Chaser.
+  FunctionsFadeControlModeEnum:
+    type: string
+    enum:
+    - FromFunction
+    - Blended
+    - Crossfade
+    - BlendedCrossfade
+    description: Chaser::FadeControlMode, used by functions.chaser.setAction's fadeMode.
+  FunctionsEfxAlgorithmEnum:
+    type: string
+    enum:
+    - Circle
+    - Eight
+    - Line
+    - Line2
+    - Diamond
+    - Square
+    - SquareChoppy
+    - SquareTrue
+    - Leaf
+    - Lissajous
+  FunctionsEfxPropagationModeEnum:
+    type: string
+    enum:
+    - Parallel
+    - Serial
+    - Asymmetric
+  FunctionsEfxFixtureModeEnum:
+    type: string
+    enum:
+    - PanTilt
+    - Dimmer
+    - RGB
+    description: EFXFixture::Mode - which parameter(s) this fixture's participation animates.
+  FunctionsDocRevisionResult:
+    type: object
+    required:
+    - docRevision
+    properties:
+      docRevision:
+        type: integer
+  FunctionsCreateResult:
+    type: object
+    required:
+    - functionId
+    - docRevision
+    properties:
+      functionId:
+        type: string
+      docRevision:
+        type: integer
+  FunctionsPatchOp:
+    type: object
+    required:
+    - op
+    - path
+    description: One RFC 6902 JSON Patch operation.
+    properties:
+      op:
+        type: string
+        enum:
+        - add
+        - remove
+        - replace
+        - move
+      path:
+        type: string
+      from:
+        type: string
+        description: Only present when op is move.
+      value: {}
+  FunctionsAttribute:
+    type: object
+    required:
+    - index
+    - name
+    - value
+    - min
+    - max
+    description: Function::Attribute (registerAttribute/attributes()). Index 0 is always Intensity.
+    properties:
+      index:
+        type: integer
+      name:
+        type: string
+      value:
+        type: number
+      min:
+        type: number
+      max:
+        type: number
+      overridden:
+        type: boolean
+      overrideValue:
+        type: number
+  FunctionsSummary:
+    type: object
+    required:
+    - id
+    - name
+    - type
+    - path
+    - hidden
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+      type:
+        $ref: '#/components/schemas/FunctionsTypeEnum'
+      path:
+        type: string
+        description: Folder path, Function::path().
+      hidden:
+        type: boolean
+        description: Function::isVisible() negated.
+  FunctionsDetail:
+    type: object
+    required:
+    - id
+    - name
+    - type
+    - path
+    - hidden
+    - runOrder
+    - direction
+    - tempoType
+    - fadeInSpeed
+    - fadeOutSpeed
+    - duration
+    - totalDuration
+    - blendMode
+    - attributes
+    description: Generic Function base detail, valid for all 10 types. Type-specific detail (values/steps/geometry/members)
+      comes from the matching functions.<type>.get call.
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+      type:
+        $ref: '#/components/schemas/FunctionsTypeEnum'
+      path:
+        type: string
+      hidden:
+        type: boolean
+      runOrder:
+        $ref: '#/components/schemas/FunctionsRunOrderEnum'
+      direction:
+        $ref: '#/components/schemas/FunctionsDirectionEnum'
+      tempoType:
+        $ref: '#/components/schemas/FunctionsTempoTypeEnum'
+      fadeInSpeed:
+        type: integer
+      fadeOutSpeed:
+        type: integer
+      duration:
+        type: integer
+      totalDuration:
+        type: integer
+        description: Function::totalDuration() - considers steps/stretch, may differ from duration.
+      blendMode:
+        $ref: '#/components/schemas/FunctionsBlendModeEnum'
+      attributes:
+        type: array
+        items:
+          $ref: '#/components/schemas/FunctionsAttribute'
+      typeDetail:
+        description: Type-specific detail, discriminated by `type` above. Replaces the old per-type functions.<type>.get
+          round-trip - this single functions.get call now returns everything. Each branch still carries
+          its own functionId/docRevision fields as originally authored (redundant with .id / the show's
+          docRevision - left as-is by the consolidation pass rather than risk editing field semantics;
+          a cosmetic follow-up, not a correctness issue).
+        oneOf:
+        - $ref: '#/components/schemas/FunctionsAudioDetail'
+        - $ref: '#/components/schemas/FunctionsChaserDetail'
+        - $ref: '#/components/schemas/FunctionsCollectionDetail'
+        - $ref: '#/components/schemas/FunctionsEfxDetail'
+        - $ref: '#/components/schemas/FunctionsRgbMatrixDetail'
+        - $ref: '#/components/schemas/FunctionsSceneDetail'
+        - $ref: '#/components/schemas/FunctionsScriptDetail'
+        - $ref: '#/components/schemas/FunctionsSequenceDetail'
+        - $ref: '#/components/schemas/FunctionsShowDetail'
+        - $ref: '#/components/schemas/FunctionsVideoDetail'
+  FunctionsStatusData:
+    type: object
+    required:
+    - functionId
+    - running
+    - paused
+    - elapsed
+    description: 4b live/runtime status - see 00-conventions.md §4b, not revision-gated.
+    properties:
+      functionId:
+        type: string
+      running:
+        type: boolean
+      paused:
+        type: boolean
+      elapsed:
+        type: integer
+        description: Milliseconds since start (Function::elapsed()).
+      elapsedBeats:
+        type: integer
+        description: Present when tempoType is Beats (Function::elapsedBeats()).
+      attributes:
+        type: array
+        description: Current effective (possibly overridden) attribute values, same shape as FunctionsDetail.attributes.
+        items:
+          $ref: '#/components/schemas/FunctionsAttribute'
+      currentStepIndex:
+        type: integer
+        description: Present for a running Chaser/Sequence (Chaser::currentStepIndex()).
+      runningStepsNumber:
+        type: integer
+        description: Present for a running Chaser/Sequence - number of steps currently crossfading (Chaser::runningStepsNumber()).
+  FunctionsSceneValues:
+    type: object
+    description: 'A Scene''s channel value list, keyed by "<fixtureId>.<channel>" (channel is relative
+      to the fixture, per SceneValue) mapping to a 0-255 value. Modeled as a map rather than an array
+      (mirroring the engine''s own QMap<SceneValue, uchar> storage in Scene::m_values) specifically so
+      single-channel JSON Patch ops can address one entry by key instead of by fragile array index - see
+      functions-core-notes.md.
+
+      '
+    additionalProperties:
+      type: integer
+      minimum: 0
+      maximum: 255
+  FunctionsSceneChannelGroupRef:
+    type: object
+    required:
+    - id
+    - level
+    properties:
+      id:
+        type: string
+        description: ChannelsGroup id (Scene::addChannelGroup).
+      level:
+        type: integer
+        minimum: 0
+        maximum: 255
+  FunctionsSceneDetail:
+    type: object
+    required:
+    - functionId
+    - values
+    - fixtures
+    - fixtureGroups
+    - channelGroups
+    - palettes
+    properties:
+      functionId:
+        type: string
+      values:
+        $ref: '#/components/schemas/FunctionsSceneValues'
+      fixtures:
+        type: array
+        items:
+          type: string
+        description: Scene::fixtures() - whole fixtures participating (as opposed to individual channel
+          values).
+      fixtureGroups:
+        type: array
+        items:
+          type: string
+      channelGroups:
+        type: array
+        items:
+          $ref: '#/components/schemas/FunctionsSceneChannelGroupRef'
+      palettes:
+        type: array
+        items:
+          type: string
+        description: Referenced Palette ids (Scene::palettes()). Palette/color-filter definitions themselves
+          are out of scope for this fragment - see notes.md.
+      blendFunctionId:
+        type:
+        - string
+        - 'null'
+        description: Scene::blendFunctionID() - function to blend from when preparing this Scene's faders.
+  FunctionsChaserStep:
+    type: object
+    required:
+    - targetFunctionId
+    - fadeIn
+    - hold
+    - fadeOut
+    - duration
+    description: ChaserStep, without the .values field (that's Sequence-only, see FunctionsSequenceStep).
+    properties:
+      targetFunctionId:
+        type: string
+        description: ChaserStep::fid - the Function this step runs.
+      fadeIn:
+        type: integer
+        minimum: 0
+      hold:
+        type: integer
+        minimum: 0
+      fadeOut:
+        type: integer
+        minimum: 0
+      duration:
+        type: integer
+        minimum: 0
+      note:
+        type: string
+  FunctionsChaserDetail:
+    type: object
+    required:
+    - functionId
+    - steps
+    - fadeInMode
+    - fadeOutMode
+    - durationMode
+    properties:
+      functionId:
+        type: string
+      steps:
+        type: array
+        items:
+          $ref: '#/components/schemas/FunctionsChaserStep'
+      fadeInMode:
+        $ref: '#/components/schemas/FunctionsSpeedModeEnum'
+      fadeOutMode:
+        $ref: '#/components/schemas/FunctionsSpeedModeEnum'
+      durationMode:
+        $ref: '#/components/schemas/FunctionsSpeedModeEnum'
+  FunctionsSequenceStep:
+    type: object
+    required:
+    - fadeIn
+    - hold
+    - fadeOut
+    - duration
+    - values
+    description: 'A Sequence step (ChaserStep in sequence mode). Unlike a Chaser step it has no targetFunctionId
+      of its own - every step implicitly targets the Sequence''s boundSceneId, and instead carries its
+      own value overrides.
+
+      '
+    properties:
+      fadeIn:
+        type: integer
+        minimum: 0
+      hold:
+        type: integer
+        minimum: 0
+      fadeOut:
+        type: integer
+        minimum: 0
+      duration:
+        type: integer
+        minimum: 0
+      note:
+        type: string
+      values:
+        $ref: '#/components/schemas/FunctionsSceneValues'
+  FunctionsSequenceDetail:
+    type: object
+    required:
+    - functionId
+    - boundSceneId
+    - steps
+    - fadeInMode
+    - fadeOutMode
+    - durationMode
+    properties:
+      functionId:
+        type: string
+      boundSceneId:
+        type: string
+        description: Sequence::boundSceneID().
+      steps:
+        type: array
+        items:
+          $ref: '#/components/schemas/FunctionsSequenceStep'
+      fadeInMode:
+        $ref: '#/components/schemas/FunctionsSpeedModeEnum'
+      fadeOutMode:
+        $ref: '#/components/schemas/FunctionsSpeedModeEnum'
+      durationMode:
+        $ref: '#/components/schemas/FunctionsSpeedModeEnum'
+  FunctionsEfxFixture:
+    type: object
+    required:
+    - fixture
+    - head
+    - direction
+    - startOffset
+    - mode
+    description: EFXFixture - one fixture (head)'s participation in an EFX.
+    properties:
+      fixture:
+        type: string
+      head:
+        type: integer
+      direction:
+        $ref: '#/components/schemas/FunctionsDirectionEnum'
+      startOffset:
+        type: integer
+        description: Phase offset in degrees, used by Serial/Asymmetric propagation.
+      mode:
+        $ref: '#/components/schemas/FunctionsEfxFixtureModeEnum'
+  FunctionsEfxDetail:
+    type: object
+    required:
+    - functionId
+    - algorithm
+    - propagationMode
+    - width
+    - height
+    - rotation
+    - startOffset
+    - isRelative
+    - xOffset
+    - yOffset
+    - xFrequency
+    - yFrequency
+    - xPhase
+    - yPhase
+    - dimmerControlEnabled
+    - fixtures
+    properties:
+      functionId:
+        type: string
+      algorithm:
+        $ref: '#/components/schemas/FunctionsEfxAlgorithmEnum'
+      propagationMode:
+        $ref: '#/components/schemas/FunctionsEfxPropagationModeEnum'
+      width:
+        type: integer
+      height:
+        type: integer
+      rotation:
+        type: integer
+      startOffset:
+        type: integer
+      isRelative:
+        type: boolean
+      xOffset:
+        type: integer
+      yOffset:
+        type: integer
+      xFrequency:
+        type: integer
+        description: Lissajous X frequency (0-5).
+      yFrequency:
+        type: integer
+      xPhase:
+        type: integer
+      yPhase:
+        type: integer
+      dimmerControlEnabled:
+        type: boolean
+      fixtures:
+        type: array
+        items:
+          $ref: '#/components/schemas/FunctionsEfxFixture'
+  FunctionsCollectionDetail:
+    type: object
+    required:
+    - functionId
+    - functions
+    properties:
+      functionId:
+        type: string
+      functions:
+        type: array
+        items:
+          type: string
+        description: Collection::functions() - member function ids, run together on start.
+  FunctionsChannelsGroupChannelRef:
+    type: object
+    required:
+    - fixture
+    - channel
+    properties:
+      fixture:
+        type: string
+      channel:
+        type: integer
+        minimum: 0
+  FunctionsChannelsGroupSummary:
+    type: object
+    required:
+    - id
+    - name
+    - channelCount
+    - level
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+      channelCount:
+        type: integer
+      level:
+        type: integer
+        minimum: 0
+        maximum: 255
+  FunctionsChannelsGroupDetail:
+    type: object
+    required:
+    - id
+    - name
+    - channels
+    - level
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+      channels:
+        type: array
+        items:
+          $ref: '#/components/schemas/FunctionsChannelsGroupChannelRef'
+      level:
+        type: integer
+        minimum: 0
+        maximum: 255
+        description: ChannelsGroup's master value, persisted to XML.
+      inputSource:
+        type:
+        - object
+        - 'null'
+        properties:
+          universe:
+            type: integer
+          channel:
+            type: integer
+operations:
+  sendFunctionsList:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsListRequest'
+  receiveFunctionsListResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsListResponse'
+  sendFunctionsGet:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsGetRequest'
+  receiveFunctionsGetResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsGetResponse'
+  sendFunctionsCreate:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsCreateRequest'
+  receiveFunctionsCreateResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsCreateResponse'
+  receiveFunctionsCreated:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsCreatedEvent'
+  sendFunctionsDelete:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsDeleteRequest'
+  receiveFunctionsDeleteResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsDeleteResponse'
+  receiveFunctionsDeleted:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsDeletedEvent'
+  sendFunctionsRename:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsRenameRequest'
+  receiveFunctionsRenameResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsRenameResponse'
+  receiveFunctionsRenamed:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsRenamedEvent'
+  sendFunctionsMove:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsMoveRequest'
+  receiveFunctionsMoveResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsMoveResponse'
+  receiveFunctionsMoved:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsMovedEvent'
+  sendFunctionsSetCommonAttributes:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsSetCommonAttributesRequest'
+  receiveFunctionsSetCommonAttributesResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsSetCommonAttributesResponse'
+  receiveFunctionsCommonAttributesChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsCommonAttributesChangedEvent'
+  sendFunctionsStart:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsStartRequest'
+  receiveFunctionsStartResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsStartResponse'
+  sendFunctionsStop:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsStopRequest'
+  receiveFunctionsStopResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsStopResponse'
+  sendFunctionsSetPause:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsSetPauseRequest'
+  receiveFunctionsSetPauseResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsSetPauseResponse'
+  sendFunctionsTap:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsTapRequest'
+  receiveFunctionsTapResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsTapResponse'
+  sendFunctionsAdjustAttribute:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsAdjustAttributeRequest'
+  receiveFunctionsAdjustAttributeResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsAdjustAttributeResponse'
+  receiveFunctionsStatusChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsStatusChangedEvent'
+  sendFunctionsSceneSetValues:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsSceneSetValuesRequest'
+  receiveFunctionsSceneSetValuesResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsSceneSetValuesResponse'
+  sendFunctionsSceneSetValue:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsSceneSetValueRequest'
+  receiveFunctionsSceneSetValueResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsSceneSetValueResponse'
+  sendFunctionsSceneUnsetValue:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsSceneUnsetValueRequest'
+  receiveFunctionsSceneUnsetValueResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsSceneUnsetValueResponse'
+  receiveFunctionsSceneValuesChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsSceneValuesChangedEvent'
+  sendFunctionsSceneSetMembers:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsSceneSetMembersRequest'
+  receiveFunctionsSceneSetMembersResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsSceneSetMembersResponse'
+  receiveFunctionsSceneMembersChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsSceneMembersChangedEvent'
+  sendFunctionsChaserAddStep:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsChaserAddStepRequest'
+  receiveFunctionsChaserAddStepResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsChaserAddStepResponse'
+  sendFunctionsChaserRemoveStep:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsChaserRemoveStepRequest'
+  receiveFunctionsChaserRemoveStepResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsChaserRemoveStepResponse'
+  sendFunctionsChaserReplaceStep:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsChaserReplaceStepRequest'
+  receiveFunctionsChaserReplaceStepResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsChaserReplaceStepResponse'
+  sendFunctionsChaserMoveStep:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsChaserMoveStepRequest'
+  receiveFunctionsChaserMoveStepResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsChaserMoveStepResponse'
+  receiveFunctionsChaserStepsChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsChaserStepsChangedEvent'
+  sendFunctionsChaserSetSpeedModes:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsChaserSetSpeedModesRequest'
+  receiveFunctionsChaserSetSpeedModesResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsChaserSetSpeedModesResponse'
+  receiveFunctionsChaserChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsChaserChangedEvent'
+  sendFunctionsChaserSetAction:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsChaserSetActionRequest'
+  receiveFunctionsChaserSetActionResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsChaserSetActionResponse'
+  sendFunctionsEfxSetParameters:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsEfxSetParametersRequest'
+  receiveFunctionsEfxSetParametersResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsEfxSetParametersResponse'
+  receiveFunctionsEfxChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsEfxChangedEvent'
+  sendFunctionsEfxAddFixture:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsEfxAddFixtureRequest'
+  receiveFunctionsEfxAddFixtureResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsEfxAddFixtureResponse'
+  sendFunctionsEfxRemoveFixture:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsEfxRemoveFixtureRequest'
+  receiveFunctionsEfxRemoveFixtureResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsEfxRemoveFixtureResponse'
+  sendFunctionsEfxSetFixtureParameters:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsEfxSetFixtureParametersRequest'
+  receiveFunctionsEfxSetFixtureParametersResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsEfxSetFixtureParametersResponse'
+  sendFunctionsEfxReorderFixture:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsEfxReorderFixtureRequest'
+  receiveFunctionsEfxReorderFixtureResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsEfxReorderFixtureResponse'
+  receiveFunctionsEfxFixturesChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsEfxFixturesChangedEvent'
+  sendFunctionsCollectionSetMembers:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsCollectionSetMembersRequest'
+  receiveFunctionsCollectionSetMembersResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsCollectionSetMembersResponse'
+  sendFunctionsCollectionAddFunction:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsCollectionAddFunctionRequest'
+  receiveFunctionsCollectionAddFunctionResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsCollectionAddFunctionResponse'
+  sendFunctionsCollectionRemoveFunction:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsCollectionRemoveFunctionRequest'
+  receiveFunctionsCollectionRemoveFunctionResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsCollectionRemoveFunctionResponse'
+  receiveFunctionsCollectionMembersChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsCollectionMembersChangedEvent'
+  sendFunctionsSequenceSetBoundScene:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsSequenceSetBoundSceneRequest'
+  receiveFunctionsSequenceSetBoundSceneResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsSequenceSetBoundSceneResponse'
+  receiveFunctionsSequenceChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsSequenceChangedEvent'
+  sendFunctionsSequenceAddStep:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsSequenceAddStepRequest'
+  receiveFunctionsSequenceAddStepResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsSequenceAddStepResponse'
+  sendFunctionsSequenceRemoveStep:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsSequenceRemoveStepRequest'
+  receiveFunctionsSequenceRemoveStepResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsSequenceRemoveStepResponse'
+  sendFunctionsSequenceReplaceStep:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsSequenceReplaceStepRequest'
+  receiveFunctionsSequenceReplaceStepResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsSequenceReplaceStepResponse'
+  sendFunctionsSequenceMoveStep:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsSequenceMoveStepRequest'
+  receiveFunctionsSequenceMoveStepResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsSequenceMoveStepResponse'
+  sendFunctionsSequenceApplyDumpValues:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsSequenceApplyDumpValuesRequest'
+  receiveFunctionsSequenceApplyDumpValuesResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsSequenceApplyDumpValuesResponse'
+  receiveFunctionsSequenceStepsChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsSequenceStepsChangedEvent'
+  sendFunctionsChannelsGroupList:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsChannelsGroupListRequest'
+  receiveFunctionsChannelsGroupListResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsChannelsGroupListResponse'
+  sendFunctionsChannelsGroupGet:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsChannelsGroupGetRequest'
+  receiveFunctionsChannelsGroupGetResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsChannelsGroupGetResponse'
+  sendFunctionsChannelsGroupCreate:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsChannelsGroupCreateRequest'
+  receiveFunctionsChannelsGroupCreateResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsChannelsGroupCreateResponse'
+  receiveFunctionsChannelsGroupCreated:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsChannelsGroupCreatedEvent'
+  sendFunctionsChannelsGroupRename:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsChannelsGroupRenameRequest'
+  receiveFunctionsChannelsGroupRenameResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsChannelsGroupRenameResponse'
+  receiveFunctionsChannelsGroupRenamed:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsChannelsGroupRenamedEvent'
+  sendFunctionsChannelsGroupDelete:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsChannelsGroupDeleteRequest'
+  receiveFunctionsChannelsGroupDeleteResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsChannelsGroupDeleteResponse'
+  receiveFunctionsChannelsGroupDeleted:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsChannelsGroupDeletedEvent'
+  sendFunctionsChannelsGroupSetChannels:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsChannelsGroupSetChannelsRequest'
+  receiveFunctionsChannelsGroupSetChannelsResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsChannelsGroupSetChannelsResponse'
+  sendFunctionsChannelsGroupSetLevel:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsChannelsGroupSetLevelRequest'
+  receiveFunctionsChannelsGroupSetLevelResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsChannelsGroupSetLevelResponse'
+  sendFunctionsChannelsGroupSetInputSource:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsChannelsGroupSetInputSourceRequest'
+  receiveFunctionsChannelsGroupSetInputSourceResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsChannelsGroupSetInputSourceResponse'
+  receiveFunctionsChannelsGroupChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsChannelsGroupChangedEvent'
