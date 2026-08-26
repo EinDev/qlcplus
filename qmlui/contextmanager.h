@@ -371,6 +371,12 @@ private:
     /** Returns the average position (mm) of the currently selected fixtures */
     QVector3D selectedFixturesCentroid() const;
 
+    /** Returns the currently selected Fixture item IDs sorted by DMX order
+     *  (universe/address, then head/linked index), rather than the order
+     *  they were selected in. Used by the arrangeFixturesIn*() methods so
+     *  a shape follows patch order rather than click order. */
+    QList<quint32> sortedSelectedFixtures() const;
+
 private:
     /** The list of the currently selected Fixture item IDs */
     QList<quint32> m_selectedFixtures;

@@ -21,6 +21,7 @@
 #include <QQuickItem>
 #include <QDebug>
 #include <QtMath>
+#include <algorithm>
 
 #include "contextmanager.h"
 #include "monitorproperties.h"
@@ -146,8 +147,17 @@ void ContextManager::setBatchSelection(bool enable)
 
     m_batchSelection = enable;
 
-    if (m_batchSelection == false)
+    if (m_batchSelection)
     {
+        m_fixtureManager->setDeferCapabilityCounters(true);
+    }
+    else
+    {
+        // apply all the capability-counter QML updates accumulated during
+        // the batch in one shot, instead of one QML property write (with
+        // binding re-evaluation) per fixture that was processed
+        m_fixtureManager->flushCapabilityCounters();
+
         emit dumpValuesCountChanged();
         emit selectedFixturesChanged();
         emit selectedDimmersCountChanged();
@@ -1374,9 +1384,36 @@ QVector3D ContextManager::selectedFixturesCentroid() const
     return sum / m_selectedFixtures.count();
 }
 
+QList<quint32> ContextManager::sortedSelectedFixtures() const
+{
+    QList<quint32> sorted = m_selectedFixtures;
+
+    std::sort(sorted.begin(), sorted.end(), [this] (quint32 left, quint32 right)
+    {
+        Fixture *leftFixture = m_doc->fixture(FixtureUtils::itemFixtureID(left));
+        Fixture *rightFixture = m_doc->fixture(FixtureUtils::itemFixtureID(right));
+
+        if (leftFixture == nullptr || rightFixture == nullptr)
+            return false;
+
+        if (leftFixture != rightFixture)
+            return *leftFixture < *rightFixture;
+
+        quint16 leftHead = FixtureUtils::itemHeadIndex(left);
+        quint16 rightHead = FixtureUtils::itemHeadIndex(right);
+        if (leftHead != rightHead)
+            return leftHead < rightHead;
+
+        return FixtureUtils::itemLinkedIndex(left) < FixtureUtils::itemLinkedIndex(right);
+    });
+
+    return sorted;
+}
+
 void ContextManager::arrangeFixturesInCircle(qreal diameter)
 {
-    int count = m_selectedFixtures.count();
+    QList<quint32> fixtures = sortedSelectedFixtures();
+    int count = fixtures.count();
     if (count == 0)
         return;
 
@@ -1388,7 +1425,7 @@ void ContextManager::arrangeFixturesInCircle(qreal diameter)
 
     for (int i = 0; i < count; i++)
     {
-        quint32 itemID = m_selectedFixtures.at(i);
+        quint32 itemID = fixtures.at(i);
         quint32 fxID = FixtureUtils::itemFixtureID(itemID);
         quint16 headIndex = FixtureUtils::itemHeadIndex(itemID);
         quint16 linkedIndex = FixtureUtils::itemLinkedIndex(itemID);
@@ -1417,7 +1454,8 @@ void ContextManager::arrangeFixturesInCircle(qreal diameter)
 
 void ContextManager::arrangeFixturesInGrid(qreal width, qreal height, int columns, qreal angleDegrees)
 {
-    int count = m_selectedFixtures.count();
+    QList<quint32> fixtures = sortedSelectedFixtures();
+    int count = fixtures.count();
     if (count == 0)
         return;
 
@@ -1436,7 +1474,7 @@ void ContextManager::arrangeFixturesInGrid(qreal width, qreal height, int column
 
     for (int i = 0; i < count; i++)
     {
-        quint32 itemID = m_selectedFixtures.at(i);
+        quint32 itemID = fixtures.at(i);
         quint32 fxID = FixtureUtils::itemFixtureID(itemID);
         quint16 headIndex = FixtureUtils::itemHeadIndex(itemID);
         quint16 linkedIndex = FixtureUtils::itemLinkedIndex(itemID);
@@ -1472,7 +1510,8 @@ void ContextManager::arrangeFixturesInGrid(qreal width, qreal height, int column
 
 void ContextManager::arrangeFixturesInLine(qreal length, qreal angleDegrees)
 {
-    int count = m_selectedFixtures.count();
+    QList<quint32> fixtures = sortedSelectedFixtures();
+    int count = fixtures.count();
     if (count == 0)
         return;
 
@@ -1487,7 +1526,7 @@ void ContextManager::arrangeFixturesInLine(qreal length, qreal angleDegrees)
 
     for (int i = 0; i < count; i++)
     {
-        quint32 itemID = m_selectedFixtures.at(i);
+        quint32 itemID = fixtures.at(i);
         quint32 fxID = FixtureUtils::itemFixtureID(itemID);
         quint16 headIndex = FixtureUtils::itemHeadIndex(itemID);
         quint16 linkedIndex = FixtureUtils::itemLinkedIndex(itemID);
