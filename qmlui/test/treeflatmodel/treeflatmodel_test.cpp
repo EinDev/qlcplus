@@ -163,4 +163,43 @@ void TreeFlatModel_Test::rebuildAfterClearReflectsNewData()
     QCOMPARE(flat.data(flat.index(0), TreeFlatModel::IdRole).toInt(), 42);
 }
 
+void TreeFlatModel_Test::incrementalAddItemIsReflectedWithoutExplicitRebuild()
+{
+    TreeModel tree;
+    buildSampleTree(tree);
+
+    TreeFlatModel flat;
+    flat.setSourceModel(&tree);
+    QCOMPARE(flat.rowCount(), 2);
+
+    // This is exactly what FunctionManager::addFunctionTreeItem() does when a single new
+    // function is created while the panel is open: TreeModel::addItem() directly, with no
+    // "list changed"-style signal emitted at all. TreeFlatModel must pick this up on its
+    // own via the source model's own rowsInserted, without any explicit rebuild() call.
+    tree.addItem("Leaf B", QVariantList() << 2);
+
+    QCOMPARE(flat.rowCount(), 3);
+    QCOMPARE(flat.data(flat.index(2), TreeFlatModel::LabelRole).toString(), QString("Leaf B"));
+}
+
+void TreeFlatModel_Test::incrementalRemoveItemIsReflectedWithoutExplicitRebuild()
+{
+    TreeModel tree;
+    buildSampleTree(tree);
+
+    TreeFlatModel flat;
+    flat.setSourceModel(&tree);
+    QCOMPARE(flat.rowCount(), 2);
+
+    // Mirrors FunctionManager::deleteFunction(), which calls TreeModel::removeItem()
+    // directly with no accompanying signal. Without reacting to the source's own
+    // rowsRemoved, the earlier rowsAboutToBeRemoved-triggered safety-empty (see
+    // clearInvalidatesRowsImmediately) would leave the flat model permanently empty
+    // instead of settling back to the correct, smaller row count.
+    tree.removeItem("Leaf A");
+
+    QCOMPARE(flat.rowCount(), 1);
+    QCOMPARE(flat.data(flat.index(0), TreeFlatModel::LabelRole).toString(), QString("Folder"));
+}
+
 QTEST_APPLESS_MAIN(TreeFlatModel_Test)

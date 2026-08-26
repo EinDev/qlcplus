@@ -120,10 +120,19 @@ private slots:
      *  change: TreeModel::clear()/removeItem(), or a future modelReset-style change).
      *  Drop every row referencing that model immediately and synchronously, before any
      *  deletion can happen, so data()/setData() can never dereference a just-freed
-     *  TreeModelItem in the window between the deletion and whatever higher-level "tree
-     *  changed" signal (groupsTreeModelChanged, functionsListChanged, ...) eventually
-     *  calls rebuild() to repopulate. */
+     *  TreeModelItem in the window before rebuild() gets called again (via
+     *  slotSourceStructureChanged() below, or a screen's own higher-level "tree changed"
+     *  signal such as groupsTreeModelChanged/functionsListChanged). */
     void slotSourceInvalidated();
+
+    /** The source model's own row count just changed (TreeModel::addItem()/removeItem()
+     *  called directly, not through a full clear()+repopulate - e.g. FunctionManager adds
+     *  a single new function via TreeModel::addItem() with no accompanying
+     *  functionsListChanged emission at all). Screens only reliably tell us about *coarse*
+     *  tree replacements via their own "tree changed" signal; without also reacting to the
+     *  source's own rowsInserted/rowsRemoved directly, a single incremental add or remove
+     *  at the root level would never be reflected here. */
+    void slotSourceStructureChanged();
 
 private:
     struct FlatRow
