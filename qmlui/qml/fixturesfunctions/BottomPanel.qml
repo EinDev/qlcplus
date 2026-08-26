@@ -153,7 +153,7 @@ Rectangle
                 faSource: FontAwesome.fa_sliders
                 faColor: UISettings.fgMain
                 checkable: true
-                checked: sceneEditor ? sceneEditor.externalControlEnabled : false
+                checked: (typeof sceneEditor !== "undefined" && sceneEditor) ? sceneEditor.externalControlEnabled : false
                 tooltip: qsTr("Control the channels with an external controller. The Virtual Console will not receive input signals")
                 onToggled: if (sceneEditor) sceneEditor.externalControlEnabled = checked
             }
@@ -166,7 +166,7 @@ Rectangle
                 height: UISettings.iconSizeDefault
                 imgSource: "qrc:/position.svg"
                 checkable: true
-                checked: sceneEditor ? sceneEditor.panTiltMode : false
+                checked: (typeof sceneEditor !== "undefined" && sceneEditor) ? sceneEditor.panTiltMode : false
                 tooltip: qsTr("Toggle Pan & Tilt mode. The faders will control pan, pan fine, tilt and tilt fine of one fixture")
                 onToggled: if (sceneEditor) sceneEditor.panTiltMode = checked
             }
@@ -179,7 +179,7 @@ Rectangle
                 height: UISettings.iconSizeDefault
                 faSource: FontAwesome.fa_angle_left
                 faColor: UISettings.fgMain
-                enabled: sceneEditor ? sceneEditor.externalPage > 0 : false
+                enabled: (typeof sceneEditor !== "undefined" && sceneEditor) ? sceneEditor.externalPage > 0 : false
                 tooltip: qsTr("Shift the faders mapping backward")
                 onClicked: if (sceneEditor) sceneEditor.changeExternalPage(-1)
             }
@@ -192,7 +192,7 @@ Rectangle
                 height: UISettings.iconSizeDefault
                 faSource: FontAwesome.fa_angle_right
                 faColor: UISettings.fgMain
-                enabled: sceneEditor ? sceneEditor.externalPage < sceneEditor.externalPageCount - 1 : false
+                enabled: (typeof sceneEditor !== "undefined" && sceneEditor) ? sceneEditor.externalPage < sceneEditor.externalPageCount - 1 : false
                 tooltip: qsTr("Shift the faders mapping forward")
                 onClicked: if (sceneEditor) sceneEditor.changeExternalPage(1)
             }
@@ -213,7 +213,7 @@ Rectangle
                 faSource: FontAwesome.fa_copy
                 faColor: UISettings.fgMain
                 tooltip: qsTr("Copy the selected channel values to all the fixtures of the same type")
-                enabled: isOpen && sceneEditor.selectedChannelCount > 0 ? true : false
+                enabled: isOpen && (typeof sceneEditor !== "undefined" && sceneEditor) && sceneEditor.selectedChannelCount > 0
                 onClicked: if (sceneEditor) sceneEditor.pasteToAllFixtureSameType()
             }
 
