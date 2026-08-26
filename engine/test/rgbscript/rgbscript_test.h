@@ -43,6 +43,8 @@ private slots:
     void rgbMapColorArray();
     void rgbMap();
     void runScripts();
+    void malformedProperties();
+    void wavesCircularOption();
 
 private:
     Doc * m_doc;

@@ -546,4 +546,115 @@ void RGBScript_Test::runScripts()
     }
 }
 
+void RGBScript_Test::malformedProperties()
+{
+    // A synthetic apiVersion:2 script whose "properties" array is deliberately
+    // malformed, to check loadProperties() (engine/src/rgbscriptv4.cpp) skips
+    // bad entries instead of corrupting state or crashing. Per that function:
+    // a "key:value" pair needs a colon to be parsed at all, and an entry is
+    // only kept if it ends up with both a non-empty name AND a recognised
+    // type - so a bare string, a name with no type, and a name with an
+    // unrecognised type should all be silently dropped, while a recognised
+    // type with a malformed "values" (a range with only one number) should
+    // still be kept, just with its min/max left at their default of 0.
+    QString code(
+        "(function() {"
+        "  var algo = new Object;"
+        "  algo.apiVersion = 2;"
+        "  algo.name = 'MalformedPropsTest';"
+        "  algo.author = 'test';"
+        "  algo.properties = new Array();"
+        "  algo.properties.push('noColonHere');"
+        "  algo.properties.push('name:onlyName');"
+        "  algo.properties.push('name:badType|type:bogus|write:w|read:r');"
+        "  algo.properties.push('name:badRange|type:range|values:5|write:w|read:r');"
+        "  algo.w = function(v) {};"
+        "  algo.r = function() { return 0; };"
+        "  algo.rgbMap = function(width, height, rgb, step) { return [[0]]; };"
+        "  algo.rgbMapStepCount = function(width, height) { return 1; };"
+        "  return algo;"
+        "})()");
+
+    RGBScript s(m_doc);
+    s.m_fileName = "malformed_test.js";
+    s.m_contents = code;
+    // evaluate() calls loadProperties() internally for apiVersion >= 2 and
+    // returns its result - malformed entries are warned about and skipped,
+    // never treated as a fatal parse error.
+    QCOMPARE(s.evaluate(), true);
+
+    QList<RGBScriptProperty> props = s.properties();
+    QCOMPARE(props.size(), 1);
+    QCOMPARE(props.first().m_name, QString("badRange"));
+    QCOMPARE(props.first().m_type, RGBScriptProperty::Range);
+    // "values:5" has no comma, so the min/max assignment is skipped entirely
+    // and both stay at the RGBScriptProperty default of 0.
+    QCOMPARE(props.first().m_rangeMinValue, 0);
+    QCOMPARE(props.first().m_rangeMaxValue, 0);
+}
+
+void RGBScript_Test::wavesCircularOption()
+{
+    // Hand-verified regression test for the Circular option added to Waves
+    // in commit a47a5c9df. Uses width=10 (span), taillength=30% (-> 3 tail
+    // pixels), direction=Right, orientation=Horizontal, tailfade=No (so a
+    // filled pixel is exactly $color and an unfilled one is exactly 0, no
+    // rounding to account for).
+    RGBScript *s = m_doc->rgbScriptsCache()->script("Waves");
+    QVERIFY(s->fileName().endsWith("waves.js"));
+
+    s->setProperty("orientation", "Horizontal");
+    s->setProperty("direction", "Right");
+    s->setProperty("tailfade", "No");
+    s->setProperty("taillength", "30");
+    QSize size(10, 1);
+    uint color = 0x00ff0000;
+
+    // --- circular OFF (default): unchanged pre-session behaviour ---
+    QCOMPARE(s->property("circular"), QString("No"));
+    // span(10) + tailSteps(3) - (isEven ? 0 : 1) = 13
+    QCOMPARE(s->rgbMapStepCount(size), 13);
+
+    // One step before the old step count wraps back to 0, the 3-pixel tail
+    // has fully slid off the right edge (pos 9 max, needs pos > 12-3=9) -
+    // a completely blank frame just before the whole pattern jump-cuts back
+    // to its start. This blank gap is exactly the bug the Circular option
+    // fixes.
+    RGBMap blankMap;
+    s->rgbMap(size, color, 12, blankMap);
+    for (int x = 0; x < size.width(); x++)
+        QCOMPARE(blankMap[0][x], uint(0));
+
+    // --- circular ON ---
+    s->setProperty("circular", "Yes");
+    QCOMPARE(s->property("circular"), QString("Yes"));
+    // No exit steps needed any more - one pass around the span is one cycle.
+    QCOMPARE(s->rgbMapStepCount(size), 10);
+
+    // Last step of the cycle: tail wrapped-distance from each pos to step=9
+    // is < 3 only for pos 7,8,9.
+    RGBMap lastStepMap;
+    s->rgbMap(size, color, 9, lastStepMap);
+    for (int x = 0; x < size.width(); x++)
+    {
+        bool expectLit = (x == 7 || x == 8 || x == 9);
+        QCOMPARE(lastStepMap[0][x], expectLit ? color : uint(0));
+    }
+
+    // First step of the next cycle: the wrapped distance from pos to step=0
+    // is < 3 for pos 8,9 (still trailing off from the previous cycle's head)
+    // and pos 0 (the new head) - i.e. the tail continues moving forward
+    // (8,9 -> 9,0) across the wrap with no blank frame and no jump, unlike
+    // the non-circular case checked above.
+    RGBMap firstStepMap;
+    s->rgbMap(size, color, 0, firstStepMap);
+    for (int x = 0; x < size.width(); x++)
+    {
+        bool expectLit = (x == 8 || x == 9 || x == 0);
+        QCOMPARE(firstStepMap[0][x], expectLit ? color : uint(0));
+    }
+
+    delete s;
+}
+
 QTEST_MAIN(RGBScript_Test)
