@@ -52,6 +52,60 @@ concurrently shouldn't conflict; they would more often if forced through
 one coarse "replace the whole config" method). The target for consolidation
 is redundant **reads of the same conceptual object**, not writes.
 
+## Confirmed consolidation #2: three VC widget types' "named preset list" -> `vc.widget.preset.*`
+
+**Finding** (verified by reading `virtualconsole.yaml` directly, field-by-
+field, before touching anything - see the earlier ChannelsGroup near-miss in
+consolidation #1's execution for why that discipline matters): VcXyPad,
+VcSpeedDial, and VcAnimation each independently built their own preset-list
+CRUD (`vc.<type>.preset.add/remove`, `vc.<type>.applyPreset`,
+`vc.<type>.presetsChanged`/`activePresetChanged`). Checked each operation's
+actual payload rather than assuming from the name match:
+
+- `preset.remove` - **identical** `{widgetId, presetId, baseRevision}` across
+  all three, and all three already reused the shared `VcDocRevisionOkResponse`
+  rather than defining their own OkResponse. Collapsed to one
+  `vc.widget.preset.remove`.
+- `applyPreset` (§4b live, no baseRevision) - **identical**
+  `{widgetId, presetId}` across all three, all reusing `GenericAckResponse`.
+  Collapsed to one `vc.widget.preset.apply`.
+- `preset.add` - genuinely **different** payload per type (xyPad: `presetType`
+  enum + function/fixtureGroup/head refs; speedDial: `name`+`valueMs`;
+  animation: `presetType` enum + color/text/algorithm fields) - real
+  variation, not superficial. Collapsed to one `vc.widget.preset.add` using
+  the same discriminated-union pattern as consolidation #1
+  (`params.preset: oneOf[VcXyPadPresetData, VcSpeedDialPresetData,
+  VcAnimationPresetData]`), three new small schemas holding each type's own
+  fields. Along the way, found that speedDial's and animation's
+  `PresetAddResponse` were already (buggily) pointing at
+  `VcXyPadPresetAddOkResponse` instead of having their own - harmless in
+  practice since the OkResponse shape (`{docRevision, presetId}`) really was
+  identical, but confirms this collapse was the right level of abstraction
+  rather than an invented one.
+
+**Explicitly not merged** (checked and found genuinely asymmetric, not just
+differently-named): `preset.move`/`preset.rename` (xyPad only, no
+equivalent on the other two), `preset.update` (speedDial only). Forcing
+these into a shared method would require the API to expose operations two
+of the three widget types don't actually support.
+
+Net: virtualconsole.yaml 190 -> 178 messages (-19 removed, +7 added, +3 new
+schemas). Script: `_tools/consolidate_vc_presets.py`.
+
+**Flagged, not fixed**: `VcXyPadPresetsChangedEvent`'s and
+`VcAnimationPresetsChangedEvent`'s `data` didn't include `docRevision` in
+their `required` list, while `VcSpeedDialPresetsChangedEvent`'s did - since
+`preset.add`/`preset.remove` are §4a mutations (`baseRevision` required),
+the resulting `presetsChanged` broadcast should probably always carry the
+new `docRevision` the same way every other structural event in this spec
+does. Left as-is rather than risk a rushed fix at the end of this pass -
+worth a real look before implementing this domain, not blocking the spec.
+Also left the three types' event *topic names* distinct
+(`vc.xyPad.presetsChanged` etc.) rather than unifying to one
+`vc.widget.presetsChanged` - lower payoff (1 message each vs. 2-3 for
+request/response) and topic distinctness is arguably more readable for a
+human filtering logs/subscriptions, so didn't force it.
+
 ## Still to check once all fragments are in
 
 - **Virtual Console** (pending the retry agent): 11 widget types is the

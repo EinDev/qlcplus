@@ -2202,115 +2202,6 @@ messages:
                 $ref: '#/components/schemas/VcXyPadFixtureEntry'
             docRevision:
               type: integer
-  VcXyPadPresetAddRequest:
-    payload:
-      type: object
-      required:
-      - type
-      - id
-      - method
-      - params
-      properties:
-        type:
-          const: request
-        id:
-          type: string
-        method:
-          const: vc.xyPad.preset.add
-        params:
-          type: object
-          required:
-          - widgetId
-          - presetType
-          - baseRevision
-          description: 'Covers addPositionPreset/addFunctionPreset/ addFixtureGroupPreset/addFixtureGroupHeadPreset.
-            $functionID required when presetType=function; $fixtureGroupId required when presetType=fixtureGroup;
-            $fixtureId+$headIndex required when presetType=fixtureGroupHead.
-
-            '
-          properties:
-            widgetId:
-              type: string
-            presetType:
-              type: string
-              enum:
-              - position
-              - function
-              - fixtureGroup
-              - fixtureGroupHead
-            functionID:
-              type: string
-            fixtureGroupId:
-              type: string
-            fixtureId:
-              type: string
-            headIndex:
-              type: integer
-            baseRevision:
-              type: integer
-  VcXyPadPresetAddResponse:
-    payload:
-      oneOf:
-      - $ref: '#/components/messages/VcXyPadPresetAddOkResponse/payload'
-      - $ref: '#/components/messages/ErrorResponse/payload'
-  VcXyPadPresetAddOkResponse:
-    payload:
-      type: object
-      required:
-      - type
-      - id
-      - ok
-      - result
-      properties:
-        type:
-          const: response
-        id:
-          type: string
-        ok:
-          const: true
-        result:
-          type: object
-          required:
-          - docRevision
-          - presetId
-          properties:
-            docRevision:
-              type: integer
-            presetId:
-              type: integer
-  VcXyPadPresetRemoveRequest:
-    payload:
-      type: object
-      required:
-      - type
-      - id
-      - method
-      - params
-      properties:
-        type:
-          const: request
-        id:
-          type: string
-        method:
-          const: vc.xyPad.preset.remove
-        params:
-          type: object
-          required:
-          - widgetId
-          - presetId
-          - baseRevision
-          properties:
-            widgetId:
-              type: string
-            presetId:
-              type: integer
-            baseRevision:
-              type: integer
-  VcXyPadPresetRemoveResponse:
-    payload:
-      oneOf:
-      - $ref: '#/components/messages/VcDocRevisionOkResponse/payload'
-      - $ref: '#/components/messages/ErrorResponse/payload'
   VcXyPadPresetMoveRequest:
     payload:
       type: object
@@ -2420,38 +2311,6 @@ messages:
                 $ref: '#/components/schemas/VcXyPadPreset'
             docRevision:
               type: integer
-  VcXyPadApplyPresetRequest:
-    payload:
-      type: object
-      required:
-      - type
-      - id
-      - method
-      - params
-      properties:
-        type:
-          const: request
-        id:
-          type: string
-        method:
-          const: vc.xyPad.applyPreset
-        params:
-          type: object
-          required:
-          - widgetId
-          - presetId
-          description: VCXYPad::applyPreset() - live activation (moves the cursor and, for an EFX/Scene
-            preset, starts the underlying Function fitted to the pad's range window).
-          properties:
-            widgetId:
-              type: string
-            presetId:
-              type: integer
-  VcXyPadApplyPresetResponse:
-    payload:
-      oneOf:
-      - $ref: '#/components/messages/GenericAckResponse/payload'
-      - $ref: '#/components/messages/ErrorResponse/payload'
   VcXyPadActivePresetChangedEvent:
     payload:
       type: object
@@ -3365,42 +3224,6 @@ messages:
               description: Computed BPM.
             currentTimeMs:
               type: integer
-  VcSpeedDialPresetAddRequest:
-    payload:
-      type: object
-      required:
-      - type
-      - id
-      - method
-      - params
-      properties:
-        type:
-          const: request
-        id:
-          type: string
-        method:
-          const: vc.speedDial.preset.add
-        params:
-          type: object
-          required:
-          - widgetId
-          - name
-          - valueMs
-          - baseRevision
-          properties:
-            widgetId:
-              type: string
-            name:
-              type: string
-            valueMs:
-              type: integer
-            baseRevision:
-              type: integer
-  VcSpeedDialPresetAddResponse:
-    payload:
-      oneOf:
-      - $ref: '#/components/messages/VcXyPadPresetAddOkResponse/payload'
-      - $ref: '#/components/messages/ErrorResponse/payload'
   VcSpeedDialPresetUpdateRequest:
     payload:
       type: object
@@ -3438,39 +3261,6 @@ messages:
       oneOf:
       - $ref: '#/components/messages/VcDocRevisionOkResponse/payload'
       - $ref: '#/components/messages/ErrorResponse/payload'
-  VcSpeedDialPresetRemoveRequest:
-    payload:
-      type: object
-      required:
-      - type
-      - id
-      - method
-      - params
-      properties:
-        type:
-          const: request
-        id:
-          type: string
-        method:
-          const: vc.speedDial.preset.remove
-        params:
-          type: object
-          required:
-          - widgetId
-          - presetId
-          - baseRevision
-          properties:
-            widgetId:
-              type: string
-            presetId:
-              type: integer
-            baseRevision:
-              type: integer
-  VcSpeedDialPresetRemoveResponse:
-    payload:
-      oneOf:
-      - $ref: '#/components/messages/VcDocRevisionOkResponse/payload'
-      - $ref: '#/components/messages/ErrorResponse/payload'
   VcSpeedDialPresetsChangedEvent:
     payload:
       type: object
@@ -3502,38 +3292,6 @@ messages:
                 $ref: '#/components/schemas/VcSpeedDialPreset'
             docRevision:
               type: integer
-  VcSpeedDialApplyPresetRequest:
-    payload:
-      type: object
-      required:
-      - type
-      - id
-      - method
-      - params
-      properties:
-        type:
-          const: request
-        id:
-          type: string
-        method:
-          const: vc.speedDial.applyPreset
-        params:
-          type: object
-          required:
-          - widgetId
-          - presetId
-          description: Sets currentTime instantly from a stored preset value (live, does not itself call
-            applyFunctionsTime).
-          properties:
-            widgetId:
-              type: string
-            presetId:
-              type: integer
-  VcSpeedDialApplyPresetResponse:
-    payload:
-      oneOf:
-      - $ref: '#/components/messages/GenericAckResponse/payload'
-      - $ref: '#/components/messages/ErrorResponse/payload'
   VcAnimationSetFaderLevelRequest:
     payload:
       type: object
@@ -3593,97 +3351,6 @@ messages:
               type: string
             level:
               type: integer
-  VcAnimationPresetAddRequest:
-    payload:
-      type: object
-      required:
-      - type
-      - id
-      - method
-      - params
-      properties:
-        type:
-          const: request
-        id:
-          type: string
-        method:
-          const: vc.animation.preset.add
-        params:
-          type: object
-          required:
-          - widgetId
-          - presetType
-          - baseRevision
-          description: 'Covers addColorPreset/addColorKnobsPreset/addTextPreset/ addAlgorithmPreset. $colorIndex
-            (0-4) required for color/colorKnobs; $text required for text; $algorithmName (+optional $algorithmProperties)
-            required for algorithm.
-
-            '
-          properties:
-            widgetId:
-              type: string
-            presetType:
-              type: string
-              enum:
-              - color
-              - colorKnobs
-              - text
-              - algorithm
-            colorIndex:
-              type: integer
-              minimum: 0
-              maximum: 4
-            color:
-              type: string
-              description: Hex, for presetType=color.
-            text:
-              type: string
-            algorithmName:
-              type: string
-            algorithmProperties:
-              type: object
-              additionalProperties:
-                type: string
-            baseRevision:
-              type: integer
-  VcAnimationPresetAddResponse:
-    payload:
-      oneOf:
-      - $ref: '#/components/messages/VcXyPadPresetAddOkResponse/payload'
-      - $ref: '#/components/messages/ErrorResponse/payload'
-  VcAnimationPresetRemoveRequest:
-    payload:
-      type: object
-      required:
-      - type
-      - id
-      - method
-      - params
-      properties:
-        type:
-          const: request
-        id:
-          type: string
-        method:
-          const: vc.animation.preset.remove
-        params:
-          type: object
-          required:
-          - widgetId
-          - presetId
-          - baseRevision
-          properties:
-            widgetId:
-              type: string
-            presetId:
-              type: integer
-            baseRevision:
-              type: integer
-  VcAnimationPresetRemoveResponse:
-    payload:
-      oneOf:
-      - $ref: '#/components/messages/VcDocRevisionOkResponse/payload'
-      - $ref: '#/components/messages/ErrorResponse/payload'
   VcAnimationPresetMoveRequest:
     payload:
       type: object
@@ -3756,38 +3423,6 @@ messages:
                 $ref: '#/components/schemas/VcAnimationPreset'
             docRevision:
               type: integer
-  VcAnimationApplyPresetRequest:
-    payload:
-      type: object
-      required:
-      - type
-      - id
-      - method
-      - params
-      properties:
-        type:
-          const: request
-        id:
-          type: string
-        method:
-          const: vc.animation.applyPreset
-        params:
-          type: object
-          required:
-          - widgetId
-          - presetId
-          description: VCAnimation::applyPreset() - live activation of a stored preset's color/text/algorithm
-            onto the running RGBMatrix.
-          properties:
-            widgetId:
-              type: string
-            presetId:
-              type: integer
-  VcAnimationApplyPresetResponse:
-    payload:
-      oneOf:
-      - $ref: '#/components/messages/GenericAckResponse/payload'
-      - $ref: '#/components/messages/ErrorResponse/payload'
   VcAnimationSetPresetKnobValueRequest:
     payload:
       type: object
@@ -4051,6 +3686,135 @@ messages:
               items:
                 $ref: '#/components/schemas/VcAudioTriggersBar'
             docRevision:
+              type: integer
+  VcWidgetPresetRemoveRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.widget.preset.remove
+        params:
+          type: object
+          required:
+          - widgetId
+          - presetId
+          - baseRevision
+          properties:
+            widgetId:
+              type: string
+            presetId:
+              type: integer
+            baseRevision:
+              type: integer
+  VcWidgetPresetRemoveResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcDocRevisionOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcWidgetPresetApplyRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.widget.preset.apply
+        params:
+          type: object
+          required:
+          - widgetId
+          - presetId
+          description: VCXYPad::applyPreset() - live activation (moves the cursor and, for an EFX/Scene
+            preset, starts the underlying Function fitted to the pad's range window).
+          properties:
+            widgetId:
+              type: string
+            presetId:
+              type: integer
+  VcWidgetPresetApplyResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/GenericAckResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcWidgetPresetAddRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.widget.preset.add
+        params:
+          type: object
+          required:
+          - widgetId
+          - baseRevision
+          - preset
+          description: Adds a preset to widgetId's preset list. `preset`'s shape is determined by the
+            widget's own type (looked up server-side from widgetId, not a separate discriminator field
+            here) - see VcXyPadPresetData, VcSpeedDialPresetData, VcAnimationPresetData.
+          properties:
+            widgetId:
+              type: string
+            baseRevision:
+              type: integer
+            preset:
+              oneOf:
+              - $ref: '#/components/schemas/VcXyPadPresetData'
+              - $ref: '#/components/schemas/VcSpeedDialPresetData'
+              - $ref: '#/components/schemas/VcAnimationPresetData'
+  VcWidgetPresetAddResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcWidgetPresetAddOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcWidgetPresetAddOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - docRevision
+          - presetId
+          properties:
+            docRevision:
+              type: integer
+            presetId:
               type: integer
 schemas:
   VcWidgetType:
@@ -4748,6 +4512,73 @@ schemas:
               type: string
             channel:
               type: integer
+  VcXyPadPresetData:
+    type: object
+    required:
+    - presetType
+    properties:
+      presetType:
+        type: string
+        enum:
+        - position
+        - function
+        - fixtureGroup
+        - fixtureGroupHead
+      functionID:
+        type: string
+      fixtureGroupId:
+        type: string
+      fixtureId:
+        type: string
+      headIndex:
+        type: integer
+    description: 'Covers addPositionPreset/addFunctionPreset/ addFixtureGroupPreset/addFixtureGroupHeadPreset.
+      $functionID required when presetType=function; $fixtureGroupId required when presetType=fixtureGroup;
+      $fixtureId+$headIndex required when presetType=fixtureGroupHead.
+
+      '
+  VcSpeedDialPresetData:
+    type: object
+    required:
+    - name
+    - valueMs
+    properties:
+      name:
+        type: string
+      valueMs:
+        type: integer
+  VcAnimationPresetData:
+    type: object
+    required:
+    - presetType
+    properties:
+      presetType:
+        type: string
+        enum:
+        - color
+        - colorKnobs
+        - text
+        - algorithm
+      colorIndex:
+        type: integer
+        minimum: 0
+        maximum: 4
+      color:
+        type: string
+        description: Hex, for presetType=color.
+      text:
+        type: string
+      algorithmName:
+        type: string
+      algorithmProperties:
+        type: object
+        additionalProperties:
+          type: string
+    description: 'Covers addColorPreset/addColorKnobsPreset/addTextPreset/ addAlgorithmPreset. $colorIndex
+      (0-4) required for color/colorKnobs; $text required for text; $algorithmName (+optional $algorithmProperties)
+      required for algorithm.
+
+      '
 operations:
   sendVcPageList:
     action: send
@@ -5298,30 +5129,6 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/vcXyPadFixturesChangedEvent'
-  sendVcXyPadPresetAdd:
-    action: send
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/vcXyPadPresetAddRequest'
-  receiveVcXyPadPresetAddResponse:
-    action: receive
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/vcXyPadPresetAddResponse'
-  sendVcXyPadPresetRemove:
-    action: send
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/vcXyPadPresetRemoveRequest'
-  receiveVcXyPadPresetRemoveResponse:
-    action: receive
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/vcXyPadPresetRemoveResponse'
   sendVcXyPadPresetMove:
     action: send
     channel:
@@ -5352,18 +5159,6 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/vcXyPadPresetsChangedEvent'
-  sendVcXyPadApplyPreset:
-    action: send
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/vcXyPadApplyPresetRequest'
-  receiveVcXyPadApplyPresetResponse:
-    action: receive
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/vcXyPadApplyPresetResponse'
   receiveVcXyPadActivePresetChanged:
     action: receive
     channel:
@@ -5658,18 +5453,6 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/vcSpeedDialTapChangedEvent'
-  sendVcSpeedDialPresetAdd:
-    action: send
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/vcSpeedDialPresetAddRequest'
-  receiveVcSpeedDialPresetAddResponse:
-    action: receive
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/vcSpeedDialPresetAddResponse'
   sendVcSpeedDialPresetUpdate:
     action: send
     channel:
@@ -5682,36 +5465,12 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/vcSpeedDialPresetUpdateResponse'
-  sendVcSpeedDialPresetRemove:
-    action: send
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/vcSpeedDialPresetRemoveRequest'
-  receiveVcSpeedDialPresetRemoveResponse:
-    action: receive
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/vcSpeedDialPresetRemoveResponse'
   receiveVcSpeedDialPresetsChanged:
     action: receive
     channel:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/vcSpeedDialPresetsChangedEvent'
-  sendVcSpeedDialApplyPreset:
-    action: send
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/vcSpeedDialApplyPresetRequest'
-  receiveVcSpeedDialApplyPresetResponse:
-    action: receive
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/vcSpeedDialApplyPresetResponse'
   sendVcAnimationSetFaderLevel:
     action: send
     channel:
@@ -5730,30 +5489,6 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/vcAnimationFaderLevelChangedEvent'
-  sendVcAnimationPresetAdd:
-    action: send
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/vcAnimationPresetAddRequest'
-  receiveVcAnimationPresetAddResponse:
-    action: receive
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/vcAnimationPresetAddResponse'
-  sendVcAnimationPresetRemove:
-    action: send
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/vcAnimationPresetRemoveRequest'
-  receiveVcAnimationPresetRemoveResponse:
-    action: receive
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/vcAnimationPresetRemoveResponse'
   sendVcAnimationPresetMove:
     action: send
     channel:
@@ -5772,18 +5507,6 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/vcAnimationPresetsChangedEvent'
-  sendVcAnimationApplyPreset:
-    action: send
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/vcAnimationApplyPresetRequest'
-  receiveVcAnimationApplyPresetResponse:
-    action: receive
-    channel:
-      $ref: '#/channels/qlcplus'
-    messages:
-    - $ref: '#/channels/qlcplus/messages/vcAnimationApplyPresetResponse'
   sendVcAnimationSetPresetKnobValue:
     action: send
     channel:
@@ -5844,3 +5567,39 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/vcAudioTriggersBarsChangedEvent'
+  sendVcWidgetPresetRemoveRequest:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetPresetRemoveRequest'
+  receiveVcWidgetPresetRemoveResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetPresetRemoveResponse'
+  sendVcWidgetPresetApplyRequest:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetPresetApplyRequest'
+  receiveVcWidgetPresetApplyResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetPresetApplyResponse'
+  sendVcWidgetPresetAddRequest:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetPresetAddRequest'
+  receiveVcWidgetPresetAddResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetPresetAddResponse'
