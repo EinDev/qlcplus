@@ -116,11 +116,21 @@ Item
                         functionsListView.dragActive = true
                     break;
                     case App.DragFinished:
+                        // Drag.drop() can synchronously trigger a tree rebuild (e.g.
+                        // dropping onto a function calls functionManager.moveFunctions(),
+                        // which rebuilds the model and destroys every delegate - including
+                        // this one, mid-handler). Anything after it here would silently
+                        // never run. Defer the cleanup so it always executes, against the
+                        // stable functionsListView/fDragItem objects rather than this
+                        // delegate's own (possibly about to be destroyed) context.
                         fDragItem.Drag.drop()
-                        fDragItem.parent = functionsListView
-                        fDragItem.x = 0
-                        fDragItem.y = 0
-                        functionsListView.dragActive = false
+                        Qt.callLater(function()
+                        {
+                            fDragItem.parent = functionsListView
+                            fDragItem.x = 0
+                            fDragItem.y = 0
+                            functionsListView.dragActive = false
+                        })
                     break;
                 }
             }
