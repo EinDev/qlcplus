@@ -425,6 +425,18 @@ public:
     /** Reset any previously elapsed capability */
     void resetCapabilities();
 
+    /** While enabled, getFixtureCapabilities() accumulates capability-counter
+     *  deltas instead of pushing each one straight to its (QML) counter item.
+     *  Used during a mass selection change (e.g. rectangle-select) so hundreds
+     *  of fixtures don't each trigger their own QML property write/binding
+     *  re-evaluation - call flushCapabilityCounters() to apply the total. */
+    void setDeferCapabilityCounters(bool defer);
+
+    /** Apply, in one shot, any capability-counter deltas accumulated while
+     *  deferral (see setDeferCapabilityCounters()) was enabled, and turn
+     *  deferral back off. */
+    void flushCapabilityCounters();
+
     /** Returns a list of SceneValues containing the requested position
      *  information for the specified Fixture with $fxID and $type (Pan/Tilt).
      *  This works on degrees because it considers 16-bit modes as well as
@@ -532,6 +544,13 @@ private:
 
     /** A map of the currently available colors and their counters */
     QMap<int, int> m_colorCounters;
+
+    /** See setDeferCapabilityCounters() */
+    bool m_deferCapabilityCounters = false;
+
+    /** Capability-counter deltas accumulated while m_deferCapabilityCounters
+     *  is true, keyed by the same capName used by updateCapabilityCounter() */
+    QHash<QString, int> m_pendingCapabilityDelta;
 
     /*********************************************************************
      * Channel modifiers
