@@ -23,6 +23,7 @@
 #include <QQmlListProperty>
 #include <QQuickView>
 #include <QMultiHash>
+#include <QPointer>
 #include <QObject>
 #include <QList>
 #include <QDir>
@@ -497,9 +498,17 @@ private:
     void updateCapabilityCounter(bool update, QString capName, int delta);
     void setCapabilityCounter(QString capName, int value);
 
+    /** Look up a capability counter QML item by object name, caching the
+     *  result so repeated selection changes don't re-walk the whole QML
+     *  tree from the root (m_view->rootObject()->findChild) every time */
+    QQuickItem *capabilityCounterItem(const QString &capName);
+
 private:
     /** Keep a map of references to the available preset channels and a related Fixture ID */
     QMap<const QLCChannel *, quint32>m_presetsCache;
+
+    /** Cache of capability counter QML items, keyed by object name (see capabilityCounterItem) */
+    QHash<QString, QPointer<QQuickItem>> m_capabilityCounterItems;
 
     /** Variables to hold the maximum Pan/Tilt degrees discovered
      *  when enabling the position capability for the selected Fixtures */

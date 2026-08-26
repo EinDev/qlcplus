@@ -2053,12 +2053,21 @@ void FixtureManager::setPresetValue(quint32 fixtureID, int chIndex, quint8 value
     emit presetChanged(ch, value);
 }
 
+QQuickItem *FixtureManager::capabilityCounterItem(const QString &capName)
+{
+    QPointer<QQuickItem> &cached = m_capabilityCounterItems[capName];
+    if (cached.isNull())
+        cached = qobject_cast<QQuickItem*>(m_view->rootObject()->findChild<QObject *>(capName));
+
+    return cached;
+}
+
 void FixtureManager::updateCapabilityCounter(bool update, QString capName, int delta)
 {
     if (update == false)
         return;
 
-    QQuickItem *capItem = qobject_cast<QQuickItem*>(m_view->rootObject()->findChild<QObject *>(capName));
+    QQuickItem *capItem = capabilityCounterItem(capName);
     if (capItem != nullptr)
     {
         int count = capItem->property("counter").toInt() + delta;
@@ -2084,7 +2093,7 @@ void FixtureManager::updateCapabilityCounter(bool update, QString capName, int d
 
 void FixtureManager::setCapabilityCounter(QString capName, int value)
 {
-    QQuickItem *capItem = qobject_cast<QQuickItem*>(m_view->rootObject()->findChild<QObject *>(capName));
+    QQuickItem *capItem = capabilityCounterItem(capName);
     if (capItem)
         capItem->setProperty("counter", value);
 }
