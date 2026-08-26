@@ -1415,7 +1415,7 @@ void ContextManager::arrangeFixturesInCircle(qreal diameter)
     emit fixturesPositionChanged();
 }
 
-void ContextManager::arrangeFixturesInGrid(qreal width, qreal height, int columns)
+void ContextManager::arrangeFixturesInGrid(qreal width, qreal height, int columns, qreal angleDegrees)
 {
     int count = m_selectedFixtures.count();
     if (count == 0)
@@ -1432,6 +1432,7 @@ void ContextManager::arrangeFixturesInGrid(qreal width, qreal height, int column
 
     qreal colStep = columns > 1 ? width / (columns - 1) : 0;
     qreal rowStep = rows > 1 ? height / (rows - 1) : 0;
+    qreal angleRad = qDegreesToRadians(angleDegrees);
 
     for (int i = 0; i < count; i++)
     {
@@ -1448,9 +1449,12 @@ void ContextManager::arrangeFixturesInGrid(qreal width, qreal height, int column
         qreal h = -width / 2.0 + col * colStep;
         qreal v = -height / 2.0 + row * rowStep;
 
+        qreal rh = h * qCos(angleRad) - v * qSin(angleRad);
+        qreal rv = h * qSin(angleRad) + v * qCos(angleRad);
+
         QVector3D newPos = centroid;
-        setVecAxis(newPos, hAxis, vecAxis(centroid, hAxis) + h);
-        setVecAxis(newPos, vAxis, vecAxis(centroid, vAxis) + v);
+        setVecAxis(newPos, hAxis, vecAxis(centroid, hAxis) + rh);
+        setVecAxis(newPos, vAxis, vecAxis(centroid, vAxis) + rv);
 
         QVector3D currPos = m_monProps->fixturePosition(fxID, headIndex, linkedIndex);
         Tardis::instance()->enqueueAction(Tardis::FixtureSetPosition, itemID, QVariant(currPos), QVariant(newPos));

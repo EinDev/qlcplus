@@ -282,9 +282,9 @@ public:
     Q_INVOKABLE void arrangeFixturesInCircle(qreal diameter);
 
     /** Arrange the currently selected Fixtures in a grid spanning $width x $height
-     *  (mm), centered on their current centroid. $columns <= 0 auto-picks a
-     *  near-square column count from the selection size */
-    Q_INVOKABLE void arrangeFixturesInGrid(qreal width, qreal height, int columns);
+     *  (mm), centered on their current centroid and rotated by $angleDegrees.
+     *  $columns <= 0 auto-picks a near-square column count from the selection size */
+    Q_INVOKABLE void arrangeFixturesInGrid(qreal width, qreal height, int columns, qreal angleDegrees);
 
     /** Arrange the currently selected Fixtures evenly along a line of the given
      *  $length (mm) and $angleDegrees orientation, centered on their current centroid */
