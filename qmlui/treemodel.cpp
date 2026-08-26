@@ -20,10 +20,10 @@
 #include <QDebug>
 #include <QQmlEngine>
 #include <QQmlContext>
+#include <QMetaObject>
 
 #include "treemodel.h"
 #include "treemodelitem.h"
-#include "contextmanager.h"
 
 TreeModel::TreeModel(QObject *parent)
     : QAbstractListModel(parent)
@@ -448,8 +448,10 @@ bool TreeModel::setData(const QModelIndex &index, const QVariant &value, int rol
         QQmlContext *ctx = engine->rootContext();
         if (ctx)
         {
-            ContextManager *cm = qobject_cast<ContextManager *>(ctx->contextProperty("contextManager").value<QObject *>());
-            if (cm && cm->isBatchSelection())
+            QObject *cm = ctx->contextProperty("contextManager").value<QObject *>();
+            bool batchSelection = false;
+            if (cm && QMetaObject::invokeMethod(cm, "isBatchSelection", Qt::DirectConnection,
+                                                 Q_RETURN_ARG(bool, batchSelection)) && batchSelection)
                 return true;
         }
     }
