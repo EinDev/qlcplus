@@ -455,6 +455,32 @@ Rectangle
                             onClicked: contextManager.setFixturesDistribution(Qt.Vertical)
                         }
                     }
+
+                    // row 6
+                    RobotoText
+                    {
+                        height: UISettings.listItemHeight;
+                        label: qsTr("Arrange")
+                    }
+
+                    Row
+                    {
+                        Layout.fillWidth: true
+
+                        IconButton
+                        {
+                            id: arrangeFixturesBtn
+                            width: UISettings.iconSizeDefault
+                            height: width
+                            bgColor: UISettings.bgLighter
+                            faSource: FontAwesome.fa_shapes
+                            faColor: "white"
+                            tooltip: qsTr("Arrange the selected items in a circle, grid or line")
+                            onClicked: arrangeFixturesPopup.open()
+
+                            PopupArrangeFixtures { id: arrangeFixturesPopup }
+                        }
+                    }
                 } // GridLayout
         } // SectionBox
     } // Column

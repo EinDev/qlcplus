@@ -393,6 +393,31 @@ Rectangle
                             value: currentPosition.z
                             onValueModified: updatePosition(xPosSpin.value, yPosSpin.value, value)
                         }
+
+                        // row 4
+                        RobotoText
+                        {
+                            height: UISettings.listItemHeight
+                            label: qsTr("Arrange")
+                        }
+                        Row
+                        {
+                            Layout.fillWidth: true
+
+                            IconButton
+                            {
+                                id: arrangeFixturesBtn3D
+                                width: UISettings.iconSizeDefault
+                                height: width
+                                bgColor: UISettings.bgLighter
+                                faSource: FontAwesome.fa_shapes
+                                faColor: "white"
+                                tooltip: qsTr("Arrange the selected items in a circle, grid or line")
+                                onClicked: arrangeFixturesPopup3D.open()
+
+                                PopupArrangeFixtures { id: arrangeFixturesPopup3D }
+                            }
+                        }
                     } // GridLayout
             } // SectionBox - Position
 
