@@ -31,6 +31,7 @@ private slots:
     void itemIDRoundTripAtBitBoundaries();
     void alignTopViewMovesOnlyTheAlignedAxis();
     void alignLeftViewMovesOnlyTheAlignedAxis();
+    void dmxOrderSortWithHeadTiebreak();
 };
 
 #endif
