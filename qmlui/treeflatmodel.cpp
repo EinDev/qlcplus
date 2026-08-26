@@ -17,8 +17,14 @@
   limitations under the License.
 */
 
+#include <QElapsedTimer>
+#include <QDebug>
+#include <QQmlEngine>
+#include <QQmlContext>
+
 #include "treeflatmodel.h"
 #include "treemodelitem.h"
+#include "contextmanager.h"
 
 TreeFlatModel::TreeFlatModel(QObject *parent)
     : QAbstractListModel(parent)
@@ -158,17 +164,27 @@ QVariant TreeFlatModel::data(const QModelIndex &index, int role) const
 
     const FlatRow &row = m_rows.at(index.row());
 
+    QVariant result;
     if (role == DepthRole)
-        return row.depth;
+        result = row.depth;
+    else if (role >= TreeModel::LabelRole && role < TreeModel::FixedRolesEnd)
+    {
+        int ownerRow = row.owner->items().indexOf(row.item);
+        if (ownerRow >= 0)
+            result = row.owner->data(row.owner->index(ownerRow), role);
+    }
+    else
+    {
+        int ownerRole = m_customRoleToOwnerRole.value(role, -1);
+        if (ownerRole >= 0)
+        {
+            int ownerRow = row.owner->items().indexOf(row.item);
+            if (ownerRow >= 0)
+                result = row.owner->data(row.owner->index(ownerRow), ownerRole);
+        }
+    }
 
-    if (role >= TreeModel::LabelRole && role < TreeModel::FixedRolesEnd)
-        return row.owner->data(row.owner->index(row.owner->items().indexOf(row.item)), role);
-
-    int ownerRole = m_customRoleToOwnerRole.value(role, -1);
-    if (ownerRole < 0)
-        return QVariant();
-
-    return row.owner->data(row.owner->index(row.owner->items().indexOf(row.item)), ownerRole);
+    return result;
 }
 
 bool TreeFlatModel::setData(const QModelIndex &index, const QVariant &value, int role)
@@ -220,9 +236,27 @@ QHash<int, QByteArray> TreeFlatModel::roleNames() const
 
 void TreeFlatModel::slotSourceRoleChanged(TreeModelItem *item, int role, const QVariant &value)
 {
+    if (item == nullptr)
+    {
+        emit dataChanged(index(0), index(rowCount() - 1));
+        return;
+    }
+
     int row = m_indexOfItem.value(item, -1);
     if (row < 0)
         return;
+
+    QQmlEngine *engine = qmlEngine(this);
+    if (engine)
+    {
+        QQmlContext *ctx = engine->rootContext();
+        if (ctx)
+        {
+            ContextManager *cm = qobject_cast<ContextManager *>(ctx->contextProperty("contextManager").value<QObject *>());
+            if (cm && cm->isBatchSelection())
+                return;
+        }
+    }
 
     emit dataChanged(index(row), index(row));
 

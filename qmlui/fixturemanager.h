@@ -183,6 +183,9 @@ public:
     /** Returns the data model to display a tree of Fixture Groups/Fixtures */
     QVariant groupsTreeModel();
 
+    /** Returns the TreeModel pointer for the fixtures/groups tree */
+    TreeModel *fixtureTree();
+
     /** Enable/Disable the fixture/channel properties editing mode */
     bool propertyEditEnabled();
     void setPropertyEditEnabled(bool enable);

@@ -146,6 +146,14 @@ public slots:
     /** Handle a key release from a QQuickView context */
     void handleKeyRelease(QKeyEvent *e);
 
+    /** Perform mass selection/deselection of fixtures.
+     *  While in batch mode, views update and signals are suppressed.
+     *  Mass signals are emitted only when $enable is false */
+    void setBatchSelection(bool enable);
+
+    /** Returns true if we're currently in a batch selection */
+    bool isBatchSelection() const;
+
 private:
     /** Reference to the QML view root */
     QQuickView *m_view;
@@ -177,6 +185,8 @@ private:
     bool m_multipleSelection;
     /** Flag that indicates if a position picking is active */
     bool m_positionPicking;
+    /** Flag to indicate if we're performing a mass fixture selection */
+    bool m_batchSelection;
     /** Flag that indicates if the fixture groups bar is visible in the 2D/3D views */
     bool m_showFixtureGroups;
     /** Last 3D point picked in the scene (in monitor coordinates) */
@@ -223,6 +233,9 @@ public:
 
     /** Select the fixtures that intersects the provided rectangle coordinates in a 2D environment */
     Q_INVOKABLE void setRectangleSelection(qreal x, qreal y, qreal width, qreal height, int keyModifiers);
+
+    /** Select every even/odd fixture of the currently selected ones */
+    Q_INVOKABLE void selectEvenOdd(bool even);
 
     /** Returns a list of the selected fixture addresses */
     Q_INVOKABLE QVariantList selectedFixtureAddress();

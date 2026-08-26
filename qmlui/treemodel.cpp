@@ -19,9 +19,11 @@
 
 #include <QDebug>
 #include <QQmlEngine>
+#include <QQmlContext>
 
 #include "treemodel.h"
 #include "treemodelitem.h"
+#include "contextmanager.h"
 
 TreeModel::TreeModel(QObject *parent)
     : QAbstractListModel(parent)
@@ -79,7 +81,6 @@ void TreeModel::setCheckable(bool enable)
 
 void TreeModel::setSingleSelection(TreeModelItem *item)
 {
-    //bool parentSignalSent = false;
     //qDebug() << "Set single selection" << this;
     for (int i = 0; i < m_items.count(); i++)
     {
@@ -89,16 +90,12 @@ void TreeModel::setSingleSelection(TreeModelItem *item)
         {
             QModelIndex index = createIndex(i, 0, &i);
             target->setFlag(Selected, false);
+            emit roleChanged(target, IsSelectedRole, 0);
             emit dataChanged(index, index, QVector<int>(1, IsSelectedRole));
         }
 
         if (target->hasChildren())
-        {
-            // if this slot has been called from self or a parent node,
-            // then walk down the children path
-            if (sender() != target->children())
-                target->children()->setSingleSelection(item);
-        }
+            target->children()->setSingleSelection(item);
     }
 }
 
@@ -254,7 +251,11 @@ bool TreeModel::removeItem(const QString& path)
 void TreeModel::setItemRoleData(QString path, const QVariant &value, int role)
 {
     if (path.isEmpty())
+    {
+        emit roleChanged(nullptr, role, value);
+        emit dataChanged(index(0), index(rowCount() - 1));
         return;
+    }
 
     //qDebug() << "Looking for item with path:" << path;
 
@@ -440,6 +441,19 @@ bool TreeModel::setData(const QModelIndex &index, const QVariant &value, int rol
     }
 
     emit roleChanged(item, role, value);
+
+    QQmlEngine *engine = qmlEngine(this);
+    if (engine)
+    {
+        QQmlContext *ctx = engine->rootContext();
+        if (ctx)
+        {
+            ContextManager *cm = qobject_cast<ContextManager *>(ctx->contextProperty("contextManager").value<QObject *>());
+            if (cm && cm->isBatchSelection())
+                return true;
+        }
+    }
+
     emit dataChanged(index, index, QVector<int>(1, role));
 
     return true;

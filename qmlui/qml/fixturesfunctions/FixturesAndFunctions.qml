@@ -275,6 +275,26 @@ Rectangle
                     faSource: FontAwesome.fa_bars
                     onToggled: previewLoader.item.showSettings(checked)
                 }
+
+                IconButton
+                {
+                    id: evenFixturesButton
+                    implicitHeight: viewToolbar.height - 2
+                    tooltip: qsTr("Select every even fixture of the current selection")
+                    faColor: "white"
+                    faSource: FontAwesome.fa_list_ol
+                    onClicked: contextManager.selectEvenOdd(true)
+                }
+
+                IconButton
+                {
+                    id: oddFixturesButton
+                    implicitHeight: viewToolbar.height - 2
+                    tooltip: qsTr("Select every odd fixture of the current selection")
+                    faColor: "white"
+                    faSource: FontAwesome.fa_list_ul
+                    onClicked: contextManager.selectEvenOdd(false)
+                }
             }
         }
 
