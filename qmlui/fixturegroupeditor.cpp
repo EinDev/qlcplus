@@ -18,6 +18,7 @@
 */
 
 #include <qmath.h>
+#include <algorithm>
 #include <QImage>
 #include <QDebug>
 #include <QQmlContext>
@@ -78,6 +79,57 @@ void FixtureGroupEditor::resetGroup()
 
     m_editGroup->reset();
     updateGroupMap();
+}
+
+void FixtureGroupEditor::regenerateFromDmxOrder(int rows)
+{
+    if (m_editGroup == nullptr)
+        return;
+
+    QList<quint32> fixtureIDs = m_editGroup->fixtureList();
+    if (fixtureIDs.isEmpty())
+        return;
+
+    std::sort(fixtureIDs.begin(), fixtureIDs.end(), [this] (quint32 left, quint32 right)
+    {
+        Fixture *leftFixture = m_doc->fixture(left);
+        Fixture *rightFixture = m_doc->fixture(right);
+
+        if (leftFixture == nullptr || rightFixture == nullptr)
+            return false;
+
+        return *leftFixture < *rightFixture;
+    });
+
+    int totalHeads = 0;
+    for (quint32 fxID : std::as_const(fixtureIDs))
+    {
+        Fixture *fixture = m_doc->fixture(fxID);
+        if (fixture != nullptr)
+            totalHeads += qMax(1, fixture->heads());
+    }
+
+    int columns = rows > 0 ? qCeil(qreal(totalHeads) / rows) : qCeil(qSqrt(qreal(totalHeads)));
+    if (columns <= 0)
+        columns = 1;
+
+    m_editGroup->setSize(QSize(columns, qCeil(qreal(totalHeads) / columns)));
+    m_editGroup->reset();
+
+    int cellIndex = 0;
+    for (quint32 fxID : std::as_const(fixtureIDs))
+    {
+        Fixture *fixture = m_doc->fixture(fxID);
+        if (fixture == nullptr)
+            continue;
+
+        m_editGroup->assignFixture(fxID, QLCPoint(cellIndex % columns, cellIndex / columns));
+        cellIndex += qMax(1, fixture->heads());
+    }
+
+    m_groupSelection.clear();
+    updateGroupMap();
+    emit groupSizeChanged();
 }
 
 void FixtureGroupEditor::slotDocLoaded()

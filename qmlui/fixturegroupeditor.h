@@ -52,6 +52,12 @@ public:
     /** Empty the Fixture Group currently being edited */
     Q_INVOKABLE void resetGroup();
 
+    /** Clear the Fixture Group currently being edited and reassign all of its
+     *  fixtures into a fresh grid in DMX order (universe/address, then head
+     *  index), row-major. $rows <= 0 picks a near-square grid automatically;
+     *  otherwise the column count is derived from the given row count. */
+    Q_INVOKABLE void regenerateFromDmxOrder(int rows);
+
 public slots:
     /** Slot called whenever a new workspace has been loaded */
     void slotDocLoaded();

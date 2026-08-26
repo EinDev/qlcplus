@@ -119,10 +119,62 @@ Rectangle
 
             IconButton
             {
+                faSource: FontAwesome.fa_sort
+                tooltip: qsTr("Regenerate the whole grid in DMX order")
+                onClicked: dmxOrderMenu.open()
+            }
+
+            IconButton
+            {
                 faSource: FontAwesome.fa_trash_can
                 faColor: "darkred"
                 tooltip: qsTr("Reset the entire group")
                 onClicked: fixtureGroupEditor.resetGroup()
+            }
+        }
+    }
+
+    Popup
+    {
+        id: dmxOrderMenu
+        x: posButton.x - width + viewMargin
+        padding: viewMargin
+
+        property int rows: 0
+
+        background:
+            Rectangle
+            {
+                color: UISettings.bgStrong
+                border.color: UISettings.bgStronger
+            }
+
+        Column
+        {
+            spacing: viewMargin
+
+            RobotoText
+            {
+                label: qsTr("Rows (0 = auto): ") + dmxRowsSpin.value
+            }
+            CustomSpinBox
+            {
+                id: dmxRowsSpin
+                width: 160
+                from: 0
+                to: 32
+                value: dmxOrderMenu.rows
+                onValueModified: dmxOrderMenu.rows = value
+            }
+            ContextMenuEntry
+            {
+                entryText: qsTr("Regenerate")
+                onClicked:
+                {
+                    fixtureGroupEditor.regenerateFromDmxOrder(dmxOrderMenu.rows)
+                    groupGrid.setSelectionData(fixtureGroupEditor.selectionData)
+                    dmxOrderMenu.close()
+                }
             }
         }
     }
