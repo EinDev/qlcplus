@@ -478,6 +478,13 @@ QVariant FixtureManager::groupsTreeModel()
     return QVariant::fromValue(m_fixtureTree);
 }
 
+TreeModel *FixtureManager::fixtureTree()
+{
+    if (m_fixtureTree == nullptr)
+        groupsTreeModel();
+    return m_fixtureTree;
+}
+
 bool FixtureManager::propertyEditEnabled()
 {
     return m_propertyEditEnabled;
@@ -2057,7 +2064,9 @@ QQuickItem *FixtureManager::capabilityCounterItem(const QString &capName)
 {
     QPointer<QQuickItem> &cached = m_capabilityCounterItems[capName];
     if (cached.isNull())
+    {
         cached = qobject_cast<QQuickItem*>(m_view->rootObject()->findChild<QObject *>(capName));
+    }
 
     return cached;
 }

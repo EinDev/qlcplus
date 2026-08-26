@@ -52,6 +52,7 @@ ContextManager::ContextManager(QQuickView *view, Doc *doc,
     , m_currentSubContext("2D")
     , m_multipleSelection(false)
     , m_positionPicking(false)
+    , m_batchSelection(false)
     , m_showFixtureGroups(false)
     , m_lastPickedPoint(QVector3D())
     , m_lastClickedType(App::NoDragItem)
@@ -136,6 +137,42 @@ void ContextManager::unregisterContext(QString name)
                this, SLOT(handleKeyPress(QKeyEvent*)));
     disconnect(context, SIGNAL(keyReleased(QKeyEvent*)),
                this, SLOT(handleKeyRelease(QKeyEvent*)));
+}
+
+void ContextManager::setBatchSelection(bool enable)
+{
+    if (m_batchSelection == enable)
+        return;
+
+    m_batchSelection = enable;
+
+    if (m_batchSelection == false)
+    {
+        emit dumpValuesCountChanged();
+        emit selectedFixturesChanged();
+        emit selectedDimmersCountChanged();
+        emit fixturesPositionChanged();
+        emit fixturesRotationChanged();
+
+        if (m_DMXView->isEnabled())
+            m_DMXView->updateFixtureSelection(m_selectedFixtures);
+        if (m_2DView->isEnabled())
+            m_2DView->updateFixtureSelection(m_selectedFixtures);
+        if (m_3DView->isEnabled())
+            m_3DView->updateFixtureSelection(m_selectedFixtures);
+
+        if (m_selectedFixtures.isEmpty())
+            m_fixtureManager->resetCapabilities();
+
+        // force all QML trees to refresh their selection state at once
+        if (m_fixtureManager->fixtureTree())
+            m_fixtureManager->fixtureTree()->setItemRoleData("", 0, TreeModel::IsSelectedRole);
+    }
+}
+
+bool ContextManager::isBatchSelection() const
+{
+    return m_batchSelection;
 }
 
 void ContextManager::enableContext(QString name, bool enable, QQuickItem *item)
@@ -702,7 +739,10 @@ void ContextManager::setFixtureSelection(quint32 itemID, int headIndex, bool ena
     int headIdx = FixtureUtils::itemHeadIndex(itemID);
 
     if (enable)
-        qDebug() << "Selected itemID" << itemID << ", fixture ID" << fixtureID << ", head from item" << headIdx << "head passed" << headIndex;
+    {
+        if (m_batchSelection == false)
+            qDebug() << "Selected itemID" << itemID << ", fixture ID" << fixtureID << ", head from item" << headIdx << "head passed" << headIndex;
+    }
 
     Fixture *fixture = m_doc->fixture(fixtureID);
     if (fixture == nullptr)
@@ -719,7 +759,8 @@ void ContextManager::setFixtureSelection(quint32 itemID, int headIndex, bool ena
         if (type == QLCFixtureDef::Dimmer && m_selectedDimmersCount > 0)
         {
             m_selectedDimmersCount--;
-            emit selectedDimmersCountChanged();
+            if (m_batchSelection == false)
+                emit selectedDimmersCountChanged();
         }
     }
     else
@@ -738,11 +779,35 @@ void ContextManager::setFixtureSelection(quint32 itemID, int headIndex, bool ena
             if (type == QLCFixtureDef::Dimmer)
             {
                 m_selectedDimmersCount++;
-                emit selectedDimmersCountChanged();
+                if (m_batchSelection == false)
+                    emit selectedDimmersCountChanged();
             }
         }
         else
             return;
+    }
+
+    if (m_batchSelection)
+    {
+        if (headIndex == -1)
+            m_fixtureManager->setItemRoleData(itemID, enable ? 2 : 0, TreeModel::IsSelectedRole);
+
+        QMultiHash<int, SceneValue> channels = m_fixtureManager->getFixtureCapabilities(itemID, headIndex, enable);
+        if (channels.keys().isEmpty())
+            return;
+
+        QMultiHashIterator<int, SceneValue> it(channels);
+        while (it.hasNext())
+        {
+            it.next();
+            quint32 chType = it.key();
+            SceneValue sv = it.value();
+            if (enable)
+                m_channelsMap.insert(chType, sv);
+            else
+                m_channelsMap.remove(chType, sv);
+        }
+        return;
     }
 
     emit dumpValuesCountChanged();
@@ -805,8 +870,10 @@ void ContextManager::resetFixtureSelection()
 {
     QList<quint32> tmpList = m_selectedFixtures;
 
+    setBatchSelection(true);
     for (quint32 &itemID : tmpList)
         setFixtureSelection(itemID, -1, false);
+    setBatchSelection(false);
 
     m_selectedFixtures.clear();
     m_channelsMap.clear();
@@ -832,6 +899,7 @@ void ContextManager::toggleFixturesSelection()
     if (m_selectedFixtures.count() == visibleCount)
         selectAll = false;
 
+    setBatchSelection(true);
     for (Fixture *fixture : m_doc->fixtures()) // C++11
     {
         if (fixture == nullptr)
@@ -845,6 +913,7 @@ void ContextManager::toggleFixturesSelection()
             setFixtureSelection(itemID, -1, selectAll);
         }
     }
+    setBatchSelection(false);
 }
 
 void ContextManager::setRectangleSelection(qreal x, qreal y, qreal width, qreal height, int keyModifiers)
@@ -857,10 +926,33 @@ void ContextManager::setRectangleSelection(qreal x, qreal y, qreal width, qreal 
     if (m_2DView->isEnabled())
         fxIDList = m_2DView->selectFixturesRect(QRectF(x, y, width, height));
 
+    setBatchSelection(true);
     for (quint32 itemID : std::as_const(fxIDList))
         setFixtureSelection(itemID, -1, true);
+    setBatchSelection(false);
+}
 
-    emit selectedFixturesChanged();
+void ContextManager::selectEvenOdd(bool even)
+{
+    QList<quint32> toRemove;
+    for (int i = 0; i < m_selectedFixtures.count(); i++)
+    {
+        if (even)
+        {
+            if (i % 2 == 0) // Odd index in 1-based (1, 3, 5...)
+                toRemove.append(m_selectedFixtures.at(i));
+        }
+        else
+        {
+            if (i % 2 != 0) // Even index in 1-based (2, 4, 6...)
+                toRemove.append(m_selectedFixtures.at(i));
+        }
+    }
+
+    setBatchSelection(true);
+    for (quint32 itemID : toRemove)
+        setFixtureSelection(itemID, -1, false);
+    setBatchSelection(false);
 }
 
 QVariantList ContextManager::selectedFixtureAddress()
@@ -1530,6 +1622,7 @@ void ContextManager::setFixtureRotation(quint32 itemID, QVector3D degrees)
 
 void ContextManager::setFixtureGroupSelection(quint32 id, bool enable, bool isUniverse)
 {
+    setBatchSelection(true);
     if (isUniverse)
     {
         for (Fixture *fixture : m_doc->fixtures())
@@ -1550,7 +1643,10 @@ void ContextManager::setFixtureGroupSelection(quint32 id, bool enable, bool isUn
     {
         FixtureGroup *group = m_doc->fixtureGroup(id);
         if (group == nullptr)
+        {
+            setBatchSelection(false);
             return;
+        }
 
         for (quint32 &fxID : group->fixtureList())
         {
@@ -1567,6 +1663,7 @@ void ContextManager::setFixtureGroupSelection(quint32 id, bool enable, bool isUn
             }
         }
     }
+    setBatchSelection(false);
 }
 
 void ContextManager::selectNextFixtureGroup()
