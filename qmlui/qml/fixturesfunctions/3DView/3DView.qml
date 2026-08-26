@@ -399,7 +399,9 @@ Rectangle
                     //console.log("Mouse x: " + mouse.x + ", y: " + mouse.y)
                     //console.log("NDC x: " + ndcX + ", y: " + ndcY)
 
-                    View3D.pickEntity(viewCamera.aspectRatio, Qt.vector2d(ndcX, ndcY), mouse.modifiers)
+                    var hit = View3D.pickEntity(viewCamera.aspectRatio, Qt.vector2d(ndcX, ndcY), mouse.modifiers)
+                    if (!hit)
+                        contextManager.resetFixtureSelection()
                 }
 
                 onPositionChanged: (mouse) =>

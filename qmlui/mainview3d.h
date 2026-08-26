@@ -491,7 +491,10 @@ public:
     float smokeAmount() const;
     void setSmokeAmount(float smokeAmount);
 
-    Q_INVOKABLE void pickEntity(const float &aspect, const QVector2D &ndcMousePos, int modifiers) const;
+    /** Cast a ray from the camera through the given NDC mouse position and select
+     *  whatever fixture/generic item it hits. Returns false if it hit nothing,
+     *  so the caller can deselect everything on an empty-space click. */
+    Q_INVOKABLE bool pickEntity(const float &aspect, const QVector2D &ndcMousePos, int modifiers) const;
 
 protected:
     void createStage();
