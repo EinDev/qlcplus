@@ -32,6 +32,10 @@ private slots:
     void emptyPathBroadcastRefreshesEveryRow();
     void emptyPathBroadcastReachesFlattenedList();
     void groupRowRoleIsIndependentOfMemberRows();
+    void batchSelectionSuppressesDataChangedUntilFlagCleared();
+    void batchSelectionSuppressesFlatModelDataChanged();
+    void structuralChangeDuringBatchSelectionStaysConsistent();
+    void staleItemRoleChangeIsIgnoredSafely();
 };
 
 #endif
