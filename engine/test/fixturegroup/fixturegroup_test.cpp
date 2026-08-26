@@ -21,6 +21,8 @@
 #include <QtTest>
 #include <QXmlStreamReader>
 #include <QXmlStreamWriter>
+#include <QtMath>
+#include <algorithm>
 
 #include "fixturegroup_test.h"
 #include "qlcfixturehead.h"
@@ -904,6 +906,102 @@ void FixtureGroup_Test::save()
     QCOMPARE(size, 1);
     QCOMPARE(name, 1);
     QCOMPARE(fixture, 32);
+}
+
+// Reimplements FixtureGroupEditor::regenerateFromDmxOrder() (qmlui/fixturegroupeditor.cpp,
+// commit 59179fd53) against real Fixture/FixtureGroup objects. FixtureGroupEditor itself can't
+// be constructed in a headless test (it requires a live QQuickView*), so this mirrors the exact
+// algorithm - sort the group's fixtures by DMX address (Fixture::operator<), then re-populate
+// the grid row-major with an auto-or-given row count - to protect the rule it depends on.
+static void regenerateFromDmxOrder(Doc *doc, FixtureGroup *group, int rows)
+{
+    QList<quint32> fixtureIDs = group->fixtureList();
+    if (fixtureIDs.isEmpty())
+        return;
+
+    std::sort(fixtureIDs.begin(), fixtureIDs.end(), [doc] (quint32 left, quint32 right)
+    {
+        Fixture *leftFixture = doc->fixture(left);
+        Fixture *rightFixture = doc->fixture(right);
+
+        if (leftFixture == nullptr || rightFixture == nullptr)
+            return false;
+
+        return *leftFixture < *rightFixture;
+    });
+
+    int totalHeads = 0;
+    for (quint32 fxID : std::as_const(fixtureIDs))
+    {
+        Fixture *fixture = doc->fixture(fxID);
+        if (fixture != nullptr)
+            totalHeads += qMax(1, fixture->heads());
+    }
+
+    int columns = rows > 0 ? qCeil(qreal(totalHeads) / rows) : qCeil(qSqrt(qreal(totalHeads)));
+    if (columns <= 0)
+        columns = 1;
+
+    group->setSize(QSize(columns, qCeil(qreal(totalHeads) / columns)));
+    group->reset();
+
+    int cellIndex = 0;
+    for (quint32 fxID : std::as_const(fixtureIDs))
+    {
+        Fixture *fixture = doc->fixture(fxID);
+        if (fixture == nullptr)
+            continue;
+
+        group->assignFixture(fxID, QLCPoint(cellIndex % columns, cellIndex / columns));
+        cellIndex += qMax(1, fixture->heads());
+    }
+}
+
+void FixtureGroup_Test::dmxOrderGridRegeneration()
+{
+    // Four single-head fixtures, added to the Doc/group in scrambled order so
+    // creation order and DMX-address order actually differ.
+    quint32 fx20 = 0, fx5 = 0, fx40 = 0, fx10 = 0;
+
+    Fixture *f;
+    f = new Fixture(m_doc); f->setChannels(1); f->setAddress(20); m_doc->addFixture(f); fx20 = f->id();
+    f = new Fixture(m_doc); f->setChannels(1); f->setAddress(5);  m_doc->addFixture(f); fx5 = f->id();
+    f = new Fixture(m_doc); f->setChannels(1); f->setAddress(40); m_doc->addFixture(f); fx40 = f->id();
+    f = new Fixture(m_doc); f->setChannels(1); f->setAddress(10); m_doc->addFixture(f); fx10 = f->id();
+
+    FixtureGroup grp(m_doc);
+    // Assign them into the group in the same scrambled (non-DMX) order, at
+    // arbitrary positions - regenerateFromDmxOrder() ignores current layout,
+    // it only reads which fixtures belong to the group.
+    grp.assignFixture(fx20, QLCPoint(0, 0));
+    grp.assignFixture(fx5,  QLCPoint(3, 3));
+    grp.assignFixture(fx40, QLCPoint(1, 2));
+    grp.assignFixture(fx10, QLCPoint(2, 1));
+
+    // Auto rows (rows <= 0): 4 fixtures -> near-square 2x2 grid, DMX-ascending
+    // row-major: address 5, 10, 20, 40.
+    regenerateFromDmxOrder(m_doc, &grp, 0);
+    QCOMPARE(grp.size(), QSize(2, 2));
+    QVERIFY(grp.head(QLCPoint(0, 0)) == GroupHead(fx5, 0));
+    QVERIFY(grp.head(QLCPoint(1, 0)) == GroupHead(fx10, 0));
+    QVERIFY(grp.head(QLCPoint(0, 1)) == GroupHead(fx20, 0));
+    QVERIFY(grp.head(QLCPoint(1, 1)) == GroupHead(fx40, 0));
+
+    // Explicit rows = 1: a single row of 4, still DMX-ascending left to right.
+    regenerateFromDmxOrder(m_doc, &grp, 1);
+    QCOMPARE(grp.size(), QSize(4, 1));
+    QVERIFY(grp.head(QLCPoint(0, 0)) == GroupHead(fx5, 0));
+    QVERIFY(grp.head(QLCPoint(1, 0)) == GroupHead(fx10, 0));
+    QVERIFY(grp.head(QLCPoint(2, 0)) == GroupHead(fx20, 0));
+    QVERIFY(grp.head(QLCPoint(3, 0)) == GroupHead(fx40, 0));
+
+    // Explicit rows = 4: a single column of 4, top to bottom DMX-ascending.
+    regenerateFromDmxOrder(m_doc, &grp, 4);
+    QCOMPARE(grp.size(), QSize(1, 4));
+    QVERIFY(grp.head(QLCPoint(0, 0)) == GroupHead(fx5, 0));
+    QVERIFY(grp.head(QLCPoint(0, 1)) == GroupHead(fx10, 0));
+    QVERIFY(grp.head(QLCPoint(0, 2)) == GroupHead(fx20, 0));
+    QVERIFY(grp.head(QLCPoint(0, 3)) == GroupHead(fx40, 0));
 }
 
 QTEST_APPLESS_MAIN(FixtureGroup_Test)
