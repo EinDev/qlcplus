@@ -1410,6 +1410,64 @@ QList<quint32> ContextManager::sortedSelectedFixtures() const
     return sorted;
 }
 
+QList<quint32> ContextManager::groupOrSortedSelectedFixtures() const
+{
+    if (m_selectedFixtures.isEmpty())
+        return sortedSelectedFixtures();
+
+    // Find a single FixtureGroup that contains every selected fixture
+    FixtureGroup *commonGroup = nullptr;
+    for (quint32 itemID : m_selectedFixtures)
+    {
+        quint32 fxID = FixtureUtils::itemFixtureID(itemID);
+        FixtureGroup *fxGroup = nullptr;
+
+        for (FixtureGroup *group : m_doc->fixtureGroups())
+        {
+            if (group->fixtureList().contains(fxID))
+            {
+                fxGroup = group;
+                break;
+            }
+        }
+
+        if (fxGroup == nullptr)
+            return sortedSelectedFixtures();
+
+        if (commonGroup == nullptr)
+            commonGroup = fxGroup;
+        else if (commonGroup != fxGroup)
+            return sortedSelectedFixtures();
+    }
+
+    // Order the selection by the group's own grid. QLCPoint::operator< sorts
+    // row-major (y then x), and headsMap() is a QMap keyed by QLCPoint, so
+    // iterating it already yields top-left to bottom-right order.
+    QSet<quint32> selectedSet(m_selectedFixtures.begin(), m_selectedFixtures.end());
+    QList<quint32> ordered;
+
+    QMapIterator<QLCPoint, GroupHead> it(commonGroup->headsMap());
+    while (it.hasNext())
+    {
+        it.next();
+        GroupHead gh = it.value();
+        if (gh.isValid() == false)
+            continue;
+
+        quint32 itemID = FixtureUtils::fixtureItemID(gh.fxi, gh.head >= 0 ? gh.head : 0, 0);
+        if (selectedSet.contains(itemID))
+            ordered.append(itemID);
+    }
+
+    // Safety net: if the group's heads don't reconstruct the full selection
+    // (e.g. a head/linked-index mismatch), fall back rather than silently
+    // dropping fixtures from the arrangement.
+    if (ordered.count() != m_selectedFixtures.count())
+        return sortedSelectedFixtures();
+
+    return ordered;
+}
+
 void ContextManager::arrangeFixturesInCircle(qreal diameter)
 {
     QList<quint32> fixtures = sortedSelectedFixtures();
@@ -1454,7 +1512,9 @@ void ContextManager::arrangeFixturesInCircle(qreal diameter)
 
 void ContextManager::arrangeFixturesInGrid(qreal width, qreal height, int columns, qreal angleDegrees)
 {
-    QList<quint32> fixtures = sortedSelectedFixtures();
+    // Prefer the selection's own Fixture Group grid order (what RGB Matrix
+    // effects actually run on) over plain DMX order, when applicable.
+    QList<quint32> fixtures = groupOrSortedSelectedFixtures();
     int count = fixtures.count();
     if (count == 0)
         return;
@@ -1895,6 +1955,28 @@ void ContextManager::setFixtureGroupSelection(quint32 id, bool enable, bool isUn
         }
     }
     setBatchSelection(false);
+}
+
+bool ContextManager::isGroupFullySelected(quint32 id) const
+{
+    FixtureGroup *group = m_doc->fixtureGroup(id);
+    if (group == nullptr || group->fixtureList().isEmpty())
+        return false;
+
+    for (quint32 &fxID : group->fixtureList())
+    {
+        for (quint32 &subID : m_monProps->fixtureIDList(fxID))
+        {
+            quint16 headIndex = m_monProps->fixtureHeadIndex(subID);
+            quint16 linkedIndex = m_monProps->fixtureLinkedIndex(subID);
+            quint32 itemID = FixtureUtils::fixtureItemID(fxID, headIndex, linkedIndex);
+
+            if (m_selectedFixtures.contains(itemID) == false)
+                return false;
+        }
+    }
+
+    return true;
 }
 
 void ContextManager::selectNextFixtureGroup()
