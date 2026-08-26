@@ -33,6 +33,8 @@ private slots:
     void customRoleRoundTrip();
     void clearInvalidatesRowsImmediately();
     void rebuildAfterClearReflectsNewData();
+    void incrementalAddItemIsReflectedWithoutExplicitRebuild();
+    void incrementalRemoveItemIsReflectedWithoutExplicitRebuild();
 };
 
 #endif

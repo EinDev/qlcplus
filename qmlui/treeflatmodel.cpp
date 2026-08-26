@@ -46,6 +46,8 @@ void TreeFlatModel::setSourceModel(QObject *model)
         disconnect(m_sourceModel, &TreeModel::roleChanged, this, &TreeFlatModel::slotSourceRoleChanged);
         disconnect(m_sourceModel, &QAbstractItemModel::modelAboutToBeReset, this, &TreeFlatModel::slotSourceInvalidated);
         disconnect(m_sourceModel, &QAbstractItemModel::rowsAboutToBeRemoved, this, &TreeFlatModel::slotSourceInvalidated);
+        disconnect(m_sourceModel, &QAbstractItemModel::rowsInserted, this, &TreeFlatModel::slotSourceStructureChanged);
+        disconnect(m_sourceModel, &QAbstractItemModel::rowsRemoved, this, &TreeFlatModel::slotSourceStructureChanged);
     }
 
     m_sourceModel = tree;
@@ -55,6 +57,13 @@ void TreeFlatModel::setSourceModel(QObject *model)
         connect(m_sourceModel, &TreeModel::roleChanged, this, &TreeFlatModel::slotSourceRoleChanged);
         connect(m_sourceModel, &QAbstractItemModel::modelAboutToBeReset, this, &TreeFlatModel::slotSourceInvalidated);
         connect(m_sourceModel, &QAbstractItemModel::rowsAboutToBeRemoved, this, &TreeFlatModel::slotSourceInvalidated);
+        // TreeModel::addItem()/removeItem() (e.g. FunctionManager adding/deleting a single
+        // function) mutate the root tree directly with no accompanying "list changed"
+        // signal at all - without these, a single incremental add or remove at the root
+        // level would never be reflected here until some unrelated full rebuild happened to
+        // be triggered later.
+        connect(m_sourceModel, &QAbstractItemModel::rowsInserted, this, &TreeFlatModel::slotSourceStructureChanged);
+        connect(m_sourceModel, &QAbstractItemModel::rowsRemoved, this, &TreeFlatModel::slotSourceStructureChanged);
     }
 
     emit sourceModelChanged();
@@ -70,6 +79,11 @@ void TreeFlatModel::slotSourceInvalidated()
     m_rows.clear();
     m_indexOfItem.clear();
     endResetModel();
+}
+
+void TreeFlatModel::slotSourceStructureChanged()
+{
+    rebuild();
 }
 
 void TreeFlatModel::appendSubtree(TreeModel *tree, int depth, QVector<FlatRow> &out)
