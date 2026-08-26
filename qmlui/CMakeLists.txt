@@ -19,6 +19,7 @@ set(QML_IMPORT_PATH ".")
 set(SRC_FILES
     ../plugins/interfaces/utils.h
     app.cpp app.h
+    asynclogwriter.cpp asynclogwriter.h
     audioeditor.cpp audioeditor.h
     chasereditor.cpp chasereditor.h
     collectioneditor.cpp collectioneditor.h
