@@ -43,6 +43,7 @@ class FixtureRemapManager;
 class InputOutputManager;
 class ImportManager;
 class NetworkManager;
+class ApiServer;
 class VideoProvider;
 class FixtureEditor;
 class StageWizard;
@@ -243,6 +244,7 @@ private:
     ActionManager *m_actionManager;
     VideoProvider *m_videoProvider;
     NetworkManager *m_networkManager;
+    ApiServer *m_apiServer;
     UiManager *m_uiManager;
     StageWizard *m_stageWizard;
     Tardis *m_tardis;
@@ -262,6 +264,9 @@ public:
 
     /** Return the network manager instance */
     NetworkManager *networkManager() const;
+
+    /** Return the WebSocket control API server instance (docs/api-spec/) */
+    ApiServer *apiServer() const;
 
     /** Return if the current Doc instance has been loaded */
     bool docLoaded();

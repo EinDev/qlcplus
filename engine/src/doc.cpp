@@ -70,6 +70,7 @@ Doc::Doc(QObject* parent, int universes)
     , m_mode(Design)
     , m_kiosk(false)
     , m_loadStatus(Cleared)
+    , m_docRevision(0)
     , m_clipboard(new QLCClipboard(this))
     , m_fixturesListCacheUpToDate(false)
     , m_latestFixtureId(0)
@@ -89,6 +90,15 @@ Doc::Doc(QObject* parent, int universes)
     m_autosaveTimer.setSingleShot(true);
 
     connect(&m_autosaveTimer, SIGNAL(timeout()), this, SIGNAL(needAutosave()));
+
+    // Universe add/remove is structural (saved to the show) but InputOutputMap
+    // never calls Doc::setModified() on its own - relay it, same pattern as
+    // the Function change/name relays below (this also fixes a pre-existing
+    // gap: adding/removing a universe didn't mark the doc as needing a save).
+    // Deliberately NOT relaying blackoutChanged/grandMasterValueChanged:
+    // those are live/runtime state and must never affect docRevision.
+    connect(m_ioMap, &InputOutputMap::universeAdded, this, &Doc::setModified);
+    connect(m_ioMap, &InputOutputMap::universeRemoved, this, &Doc::setModified);
 }
 
 Doc::~Doc()
@@ -316,6 +326,7 @@ void Doc::setModified()
     m_modified = true;
     m_autosaveTimer.start();
     emit modified(true);
+    bumpRevision();
 }
 
 void Doc::resetModified()
@@ -323,6 +334,17 @@ void Doc::resetModified()
     m_modified = false;
     m_autosaveTimer.stop();
     emit modified(false);
+}
+
+quint32 Doc::docRevision() const
+{
+    return m_docRevision;
+}
+
+void Doc::bumpRevision()
+{
+    m_docRevision++;
+    emit docRevisionChanged(m_docRevision);
 }
 
 /*****************************************************************************

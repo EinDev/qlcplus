@@ -221,15 +221,34 @@ public:
     /** Reset Doc's modified state (i.e. it is no longer in need of saving) */
     void resetModified();
 
+    /** Monotonic counter bumped every time setModified() is called, i.e. on
+     *  every structural (document-state) change - fixtures, functions,
+     *  groups, palettes, I/O patches/universes, Virtual Console layout (all
+     *  of these already call setModified() throughout the codebase). Used by
+     *  the WebSocket control API (controlapi/) for optimistic-concurrency
+     *  conflict detection; not touched by live/runtime state changes (DMX
+     *  values, Grand Master, Blackout, running status - none of which call
+     *  setModified() today, and must not start doing so for this purpose). */
+    quint32 docRevision() const;
+
 signals:
     /** Signal that this Doc has been modified (or unmodified) */
     void modified(bool state);
     void needAutosave();
 
+    /** Emitted every time docRevision() changes */
+    void docRevisionChanged(quint32 revision);
+
 protected:
+    /** Bump docRevision() by one and emit docRevisionChanged(). Called from
+     *  setModified() itself, so every existing setModified() call site gets
+     *  this for free. */
+    void bumpRevision();
+
     /** The current Doc load status */
     LoadStatus m_loadStatus;
     bool m_modified;
+    quint32 m_docRevision;
     QTimer m_autosaveTimer;
 
     /*********************************************************************
