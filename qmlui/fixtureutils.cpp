@@ -46,6 +46,21 @@
 #define MIN_GOBO_SPEED      500 // ms
 #define MAX_GOBO_SPEED      5000 // ms
 
+#define RAW_16BIT_MAX 65535 // 0xFFFF - full accumulated MSB+LSB range
+#define RAW_16BIT_MID 32768 // 0x8000 - DMX mid-range, the rest/zero point
+
+// Half of MonitorProperties' default 3D floor grid width/depth
+// (GRID_DEFAULT_WIDTH = GRID_DEFAULT_DEPTH = 5m, monitorproperties.cpp) -
+// see FixtureUtils::positionDeltaFromRaw() for the reasoning.
+#define POSITION_DELTA_RANGE 2.5 // meters
+
+// Matches the "540 Degrees" rotation channels documented for the user's own
+// "Mobile Truss" fixture profile - see FixtureUtils::rotationDeltaFromRaw().
+#define ROTATION_DELTA_RANGE 270 // degrees (half of 540)
+
+#define SCALE_FACTOR_MIN 0.1
+#define SCALE_FACTOR_MAX 3.0
+
 QString FixtureUtils::fixtureLightResource(const Fixture *fixture)
 {
     if (fixture == nullptr)
@@ -480,6 +495,47 @@ void FixtureUtils::positionTimings(const QLCChannel *ch, uchar value, int &panDu
         default:
         break;
     }
+}
+
+int FixtureUtils::accumulateChannelGroupValue(const QLCChannel *ch, uchar value, int currentAccumulator)
+{
+    if (ch->controlByte() == QLCChannel::MSB)
+        return currentAccumulator + (value << 8);
+
+    return currentAccumulator + value;
+}
+
+float FixtureUtils::positionDeltaFromRaw(int raw)
+{
+    return ((float(raw) - RAW_16BIT_MID) / RAW_16BIT_MID) * POSITION_DELTA_RANGE;
+}
+
+int FixtureUtils::positionRawFromDelta(float delta)
+{
+    int raw = RAW_16BIT_MID + qRound((delta / POSITION_DELTA_RANGE) * RAW_16BIT_MID);
+    return qBound(0, raw, RAW_16BIT_MAX);
+}
+
+float FixtureUtils::rotationDeltaFromRaw(int raw)
+{
+    return ((float(raw) - RAW_16BIT_MID) / RAW_16BIT_MID) * ROTATION_DELTA_RANGE;
+}
+
+int FixtureUtils::rotationRawFromDelta(float degrees)
+{
+    int raw = RAW_16BIT_MID + qRound((degrees / ROTATION_DELTA_RANGE) * RAW_16BIT_MID);
+    return qBound(0, raw, RAW_16BIT_MAX);
+}
+
+float FixtureUtils::scaleFactorFromRaw(int raw)
+{
+    return SCALE(float(raw), 0, RAW_16BIT_MAX, SCALE_FACTOR_MIN, SCALE_FACTOR_MAX);
+}
+
+int FixtureUtils::scaleRawFromFactor(float factor)
+{
+    int raw = qRound(SCALE(factor, SCALE_FACTOR_MIN, SCALE_FACTOR_MAX, 0, RAW_16BIT_MAX));
+    return qBound(0, raw, RAW_16BIT_MAX);
 }
 
 bool FixtureUtils::goboTiming(const QLCCapability *cap, uchar value, int &speed)
