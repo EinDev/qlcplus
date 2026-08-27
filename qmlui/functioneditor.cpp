@@ -47,6 +47,8 @@ void FunctionEditor::setFunctionID(quint32 ID)
         wasRunning = true;
         m_function->stop(FunctionParent::master());
     }
+    if (m_function != nullptr)
+        disconnect(m_function, qOverload<quint32>(&Function::stopped), this, &FunctionEditor::slotFunctionStopped);
 
     m_functionID = ID;
     m_function = m_doc->function(ID);
@@ -54,7 +56,11 @@ void FunctionEditor::setFunctionID(quint32 ID)
         m_functionType = m_function->type();
 
     if (wasRunning)
+    {
         m_function->start(m_doc->masterTimer(), FunctionParent::master());
+        if (m_previewEnabled)
+            connect(m_function, qOverload<quint32>(&Function::stopped), this, &FunctionEditor::slotFunctionStopped, Qt::UniqueConnection);
+    }
 }
 
 quint32 FunctionEditor::functionID() const
@@ -86,13 +92,33 @@ void FunctionEditor::setPreviewEnabled(bool enable)
     {
         if (m_function->isRunning() == false)
             m_function->start(m_doc->masterTimer(), FunctionParent::master());
+        // a VC widget (or anything else using a Master/ManualVCWidget source)
+        // can force-stop this Function regardless of our own preview source.
+        // Notice it so previewEnabled doesn't keep reporting a stale "on"
+        // state once that happens.
+        connect(m_function, qOverload<quint32>(&Function::stopped), this, &FunctionEditor::slotFunctionStopped, Qt::UniqueConnection);
     }
     else
     {
+        disconnect(m_function, qOverload<quint32>(&Function::stopped), this, &FunctionEditor::slotFunctionStopped);
         if (m_function->isRunning())
             m_function->stop(FunctionParent::master());
     }
     emit previewEnabledChanged(enable);
+}
+
+void FunctionEditor::slotFunctionStopped(quint32 id)
+{
+    if (m_function == nullptr || id != m_function->id())
+        return;
+
+    disconnect(m_function, qOverload<quint32>(&Function::stopped), this, &FunctionEditor::slotFunctionStopped);
+
+    if (m_previewEnabled == false)
+        return;
+
+    m_previewEnabled = false;
+    emit previewEnabledChanged(false);
 }
 
 QString FunctionEditor::functionName() const

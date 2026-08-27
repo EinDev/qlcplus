@@ -89,6 +89,13 @@ signals:
     void previousIDChanged(int previousID);
     void previewEnabledChanged(bool enabled);
 
+private slots:
+    /** Invoked when the previewed Function stops running for a reason
+     *  other than us disabling the preview here (e.g. a VC widget
+     *  force-stopping it), so previewEnabled doesn't keep reporting a
+     *  stale "on" state */
+    void slotFunctionStopped(quint32 id);
+
 protected:
     /** Reference of the QML view */
     QQuickView *m_view;

@@ -244,6 +244,13 @@ public slots:
     void slotDocLoaded();
     void slotFunctionAdded(quint32 fid);
 
+private slots:
+    /** Invoked when a Function being previewed (list-preview, i.e. no
+     *  editor open) stops running for a reason other than us disabling
+     *  the preview here (e.g. a VC widget force-stopping it), so the
+     *  previewEnabled property doesn't keep reporting a stale "on" state */
+    void slotPreviewFunctionStopped(quint32 id);
+
 private:
     /** Reference of the QML view */
     QQuickView *m_view;
