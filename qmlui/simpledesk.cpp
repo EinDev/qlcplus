@@ -762,16 +762,22 @@ void SimpleDesk::writeDMX(MasterTimer *timer, QList<Universe *> ua)
             }
             else if (command.first == ResetChannel)
             {
-                quint32 channel = command.second;
-                quint32 universe = channel >> 9;
+                quint32 address = command.second;
+                quint32 universe = address >> 9;
                 QSharedPointer<GenericFader> fader = m_fadersMap.value(universe, QSharedPointer<GenericFader>());
                 if (!fader.isNull())
                 {
-                    FadeChannel fc(m_doc, Fixture::invalidId(), channel);
-                    Fixture *fixture = m_doc->fixture(fc.fixture());
-                    quint32 chIndex = fc.channel() & 0x01FF;
+                    // Build the same (fixture, channel) key used when this channel's
+                    // FadeChannel was added in the hasChanged() block above, otherwise
+                    // GenericFader::remove()'s hash lookup misses and the stale entry
+                    // is left latching its last value into the universe forever.
+                    quint32 fxID = m_doc->fixtureForAddress(address);
+                    Fixture *fixture = m_doc->fixture(fxID);
+                    quint32 chIndex = fixture != nullptr ? address - fixture->address() : address;
+
+                    FadeChannel fc(m_doc, fxID, chIndex);
                     fader->remove(&fc);
-                    ua[universe]->reset(channel & 0x01FF, 1);
+                    ua[universe]->reset(address & 0x01FF, 1);
                     if (fixture != NULL)
                     {
                         const QLCChannel *ch = fixture->channel(chIndex);
@@ -779,12 +785,12 @@ void SimpleDesk::writeDMX(MasterTimer *timer, QList<Universe *> ua)
                         {
                             qDebug() << "Restoring default value of fixture" << fixture->id()
                                      << "channel" << chIndex << "value" << ch->defaultValue();
-                            ua[universe]->setChannelDefaultValue(channel & 0x01FF, ch->defaultValue());
+                            ua[universe]->setChannelDefaultValue(address & 0x01FF, ch->defaultValue());
                         }
                     }
 
                     // remove the override flag from the displayed channel
-                    QModelIndex mIndex = m_channelList->index(int(channel & 0x01FF), 0, QModelIndex());
+                    QModelIndex mIndex = m_channelList->index(int(address & 0x01FF), 0, QModelIndex());
                     m_channelList->setData(mIndex, false, UserRoleChannelOverride);
                 }
             }
