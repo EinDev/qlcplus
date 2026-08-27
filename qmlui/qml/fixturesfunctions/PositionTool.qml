@@ -319,31 +319,29 @@ Rectangle
         {
             anchors.fill: parent
 
-            property int initialXPos
-            property int initialYPos
+            property int lastXPos
+            property int lastYPos
 
             onPressed: (mouse) =>
             {
-                // initialize local variables to determine the selection orientation
-                initialXPos = mouse.x
-                initialYPos = mouse.y
+                lastXPos = mouse.x
+                lastYPos = mouse.y
             }
             onPositionChanged: (mouse) =>
             {
-                if (Math.abs(mouse.x - initialXPos) > Math.abs(mouse.y - initialYPos))
-                {
-                    if (mouse.x < initialXPos)
-                        panDegrees += panPow
-                    else
-                        panDegrees -= panPow
-                }
+                // scale the change by how far the mouse actually moved since the
+                // last event, so the result tracks real mouse motion instead of
+                // a fixed step per (possibly coalesced) move event
+                var deltaX = mouse.x - lastXPos
+                var deltaY = mouse.y - lastYPos
+
+                if (Math.abs(deltaX) > Math.abs(deltaY))
+                    panDegrees -= deltaX * panPow
                 else
-                {
-                    if (mouse.y < initialYPos)
-                        tiltDegrees += tiltPow
-                    else
-                        tiltDegrees -= tiltPow
-                }
+                    tiltDegrees -= deltaY * tiltPow
+
+                lastXPos = mouse.x
+                lastYPos = mouse.y
             }
         }
     }
