@@ -657,4 +657,92 @@ void RGBScript_Test::wavesCircularOption()
     delete s;
 }
 
+void RGBScript_Test::wavesInOutDirections()
+{
+    // Hand-verified regression test for Waves' "In"/"Out" directions, which
+    // sweep two tails from both edges toward a center point (In) or from the
+    // center outward to both edges (Out) - unlike Right/Left's single
+    // edge-to-edge sweep. These have never been directly verified before,
+    // only exercised generically by runScripts()'s crash/range smoke test.
+    //
+    // width=8 (span), taillength=25% -> tailSteps = round(8*0.25) = 2.
+    // center = floor((8+1)/2) - 1 = 3, isEven = true.
+    // Per waves.js's rgbMap(): for In, stepPos(pos) = pos for pos<=3, else
+    // (7-pos); for Out, stepPos(pos) = (3-pos) for pos<=3, else (pos-3-1).
+    // That gives stepPos-by-position arrays of:
+    //   In:  pos 0..7 -> [0,1,2,3,3,2,1,0]
+    //   Out: pos 0..7 -> [3,2,1,0,0,1,2,3]
+    // A pixel is lit when stepPos<=step && stepPos>step-tailSteps. tailfade
+    // is set to No so a lit pixel is exactly $color and unlit is exactly 0,
+    // no fade blending to account for.
+    RGBScript *s = m_doc->rgbScriptsCache()->script("Waves");
+    QVERIFY(s->fileName().endsWith("waves.js"));
+
+    s->setProperty("orientation", "Horizontal");
+    s->setProperty("tailfade", "No");
+    s->setProperty("taillength", "25");
+    QSize size(8, 1);
+    uint color = 0x00ff0000;
+
+    struct StepCase { int step; QVector<int> lit; };
+
+    // --- In: two tails from pos 0 and pos 7 converge on the center, meeting
+    // (and vanishing - there's no further step) on the last step. ---
+    s->setProperty("direction", "In");
+    // stepCount for In/Out uses a different formula than Right/Left:
+    // round(floor((span+1)/2) + tailSteps - 1) = round(4 + 2 - 1) = 5.
+    QCOMPARE(s->rgbMapStepCount(size), 5);
+
+    const QVector<StepCase> inCases = {
+        {0, {0, 7}},
+        {1, {0, 1, 6, 7}},
+        {2, {1, 2, 5, 6}},
+        {3, {2, 3, 4, 5}},
+        {4, {3, 4}},
+    };
+    for (const StepCase &c : inCases)
+    {
+        RGBMap map;
+        s->rgbMap(size, color, c.step, map);
+        for (int x = 0; x < size.width(); x++)
+            QCOMPARE(map[0][x], c.lit.contains(x) ? color : uint(0));
+    }
+
+    // Circular is documented (waves.js) and scoped to affect only Right/Left,
+    // since In/Out sweep to/from a center point with no edge to wrap - confirm
+    // In's output is byte-identical whether Circular is Yes or No.
+    s->setProperty("circular", "Yes");
+    QCOMPARE(s->rgbMapStepCount(size), 5);
+    for (const StepCase &c : inCases)
+    {
+        RGBMap map;
+        s->rgbMap(size, color, c.step, map);
+        for (int x = 0; x < size.width(); x++)
+            QCOMPARE(map[0][x], c.lit.contains(x) ? color : uint(0));
+    }
+    s->setProperty("circular", "No");
+
+    // --- Out: the exact time-reverse of In - starts lit at the center
+    // (pos 3,4) and both tails sweep outward to the edges by the last step. ---
+    s->setProperty("direction", "Out");
+    QCOMPARE(s->rgbMapStepCount(size), 5);
+
+    const QVector<StepCase> outCases = {
+        {0, {3, 4}},
+        {1, {2, 3, 4, 5}},
+        {2, {1, 2, 5, 6}},
+        {3, {0, 1, 6, 7}},
+        {4, {0, 7}},
+    };
+    for (const StepCase &c : outCases)
+    {
+        RGBMap map;
+        s->rgbMap(size, color, c.step, map);
+        for (int x = 0; x < size.width(); x++)
+            QCOMPARE(map[0][x], c.lit.contains(x) ? color : uint(0));
+    }
+
+    delete s;
+}
+
 QTEST_MAIN(RGBScript_Test)

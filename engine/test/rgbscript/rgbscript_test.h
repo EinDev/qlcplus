@@ -45,6 +45,7 @@ private slots:
     void runScripts();
     void malformedProperties();
     void wavesCircularOption();
+    void wavesInOutDirections();
 
 private:
     Doc * m_doc;
