@@ -18,6 +18,7 @@
 */
 
 #include <QQmlContext>
+#include <QTextStream>
 
 #include "simpledesk.h"
 #include "keypadparser.h"
@@ -29,6 +30,8 @@
 #include "tardis.h"
 #include "app.h"
 #include "doc.h"
+#include "function.h"
+#include "qlcchannel.h"
 
 #define UserRoleClassReference  (Qt::UserRole + 1)
 #define UserRoleChannelIndex    (Qt::UserRole + 2)
@@ -253,6 +256,134 @@ bool SimpleDesk::hasChannel(uint channel)
     QMutexLocker locker(&m_mutex);
     quint32 start = (m_universeFilter * 512);
     return m_values.contains(start + channel);
+}
+
+static QString fadeChannelFlagsToString(int flags)
+{
+    QStringList list;
+    if (flags & FadeChannel::HTP) list << "HTP";
+    if (flags & FadeChannel::LTP) list << "LTP";
+    if (flags & FadeChannel::Fine) list << "Fine";
+    if (flags & FadeChannel::Intensity) list << "Intensity";
+    if (flags & FadeChannel::CanFade) list << "CanFade";
+    if (flags & FadeChannel::Flashing) list << "Flashing";
+    if (flags & FadeChannel::Relative) list << "Relative";
+    if (flags & FadeChannel::Override) list << "Override";
+    if (flags & FadeChannel::SetTarget) list << "SetTarget";
+    if (flags & FadeChannel::AutoRemove) list << "AutoRemove";
+    if (flags & FadeChannel::CrossFade) list << "CrossFade";
+    if (flags & FadeChannel::ForceLTP) list << "ForceLTP";
+
+    return list.isEmpty() ? QStringLiteral("none") : list.join("|");
+}
+
+QString SimpleDesk::debugChannelInfo(int channel) const
+{
+    QMutexLocker locker(&m_mutex);
+    quint32 start = (m_universeFilter * 512);
+    quint32 address = start + quint32(channel);
+
+    quint32 fxID = m_doc->fixtureForAddress(address);
+    Fixture *fixture = m_doc->fixture(fxID);
+    quint32 relChannel = fixture != nullptr ? address - fixture->address() : address;
+
+    QString info;
+    QTextStream out(&info);
+
+    out << "===== Simple Desk channel debug =====\n";
+    out << "Universe " << m_universeFilter << ", channel " << channel
+        << " (absolute address " << address << ")\n";
+
+    if (fixture != nullptr)
+    {
+        const QLCChannel *ch = fixture->channel(relChannel);
+        out << "Fixture: " << fixture->name() << " (ID " << fixture->id()
+            << "), relative channel " << relChannel;
+        if (ch != nullptr)
+            out << " \"" << ch->name() << "\" [" << QLCChannel::groupToString(ch->group()) << "]";
+        out << "\n";
+    }
+    else
+    {
+        out << "No fixture at this address\n";
+    }
+
+    bool overridden = m_values.contains(address);
+    out << "Simple Desk override: " << (overridden ? "YES" : "no");
+    if (overridden)
+        out << ", value = " << int(m_values.value(address));
+    out << "\n";
+
+    bool dumped = false;
+    for (const SceneValue &scv : m_dumpValues)
+    {
+        if (scv.fxi == fxID && scv.channel == relChannel)
+        {
+            out << "Queued for Scene dump: value = " << int(scv.value) << "\n";
+            dumped = true;
+            break;
+        }
+    }
+    if (dumped == false)
+        out << "Queued for Scene dump: no\n";
+
+    QList<Universe *> ua = m_doc->inputOutputMap()->claimUniverses();
+    if (int(m_universeFilter) < ua.count())
+    {
+        Universe *uni = ua.at(int(m_universeFilter));
+        out << "Universe pre-GM value: " << int(uni->preGMValue(channel)) << "\n";
+        out << "Universe post-GM value (actual DMX output): " << int(uni->postGMValue(channel)) << "\n";
+
+        quint32 hash = GenericFader::channelHash(fixture != nullptr ? fxID : Fixture::invalidId(), relChannel);
+        QList<QSharedPointer<GenericFader> > faders = uni->faders();
+        bool anyFader = false;
+
+        out << "Active faders touching this channel:\n";
+        for (QSharedPointer<GenericFader> fader : faders)
+        {
+            if (fader.isNull())
+                continue;
+
+            QHash<quint32, FadeChannel> channels = fader->channels();
+            if (channels.contains(hash) == false)
+                continue;
+
+            anyFader = true;
+            FadeChannel fc = channels.value(hash);
+            QString funcName = "(none)";
+            if (fader->parentFunctionID() != Function::invalidId())
+            {
+                Function *f = m_doc->function(fader->parentFunctionID());
+                if (f != nullptr)
+                    funcName = QString("%1 (ID %2)").arg(f->name()).arg(f->id());
+            }
+
+            out << "  - fader \"" << fader->name() << "\", function " << funcName
+                << ", priority " << fader->priority()
+                << ", intensity " << fader->intensity();
+            if (fader->isPaused())
+                out << ", PAUSED";
+            if (fader->isFadingOut())
+                out << ", FADING OUT";
+            out << "\n";
+            out << "    start=" << int(fc.start()) << " current=" << int(fc.current())
+                << " target=" << int(fc.target())
+                << " fadeTime=" << fc.fadeTime() << "ms elapsed=" << fc.elapsed() << "ms"
+                << " ready=" << (fc.isReady() ? "yes" : "no")
+                << " flags=[" << fadeChannelFlagsToString(fc.flags()) << "]\n";
+        }
+        if (anyFader == false)
+            out << "  (none)\n";
+    }
+    else
+    {
+        out << "Universe pre/post-GM value: universe not available\n";
+    }
+    m_doc->inputOutputMap()->releaseUniverses(false);
+
+    qDebug().noquote() << info;
+
+    return info;
 }
 
 void SimpleDesk::resetUniverse(int universe)
