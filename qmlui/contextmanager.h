@@ -287,8 +287,11 @@ public:
     Q_INVOKABLE void setFixturesDistribution(int direction);
 
     /** Arrange the currently selected Fixtures evenly around a circle of the
-     *  given $diameter (mm), centered on their current centroid */
-    Q_INVOKABLE void arrangeFixturesInCircle(qreal diameter);
+     *  given $diameter (mm), centered on their current centroid. If
+     *  $lookAtCenter is true, each fixture's yaw (the rotation axis
+     *  perpendicular to the plane it's being arranged in) is also set so it
+     *  faces the centroid. */
+    Q_INVOKABLE void arrangeFixturesInCircle(qreal diameter, bool lookAtCenter = false);
 
     /** Arrange the currently selected Fixtures in a grid spanning $width x $height
      *  (mm), centered on their current centroid and rotated by $angleDegrees.
@@ -296,8 +299,36 @@ public:
     Q_INVOKABLE void arrangeFixturesInGrid(qreal width, qreal height, int columns, qreal angleDegrees);
 
     /** Arrange the currently selected Fixtures evenly along a line of the given
-     *  $length (mm) and $angleDegrees orientation, centered on their current centroid */
-    Q_INVOKABLE void arrangeFixturesInLine(qreal length, qreal angleDegrees);
+     *  $length (mm) and $angleDegrees orientation, centered on their current
+     *  centroid. If $lookAtCenter is true, each fixture's yaw (the rotation
+     *  axis perpendicular to the plane it's being arranged in) is also set
+     *  so it faces the centroid. */
+    Q_INVOKABLE void arrangeFixturesInLine(qreal length, qreal angleDegrees, bool lookAtCenter = false);
+
+    /** Returns the diameter (mm) of the circle that best fits the currently
+     *  selected Fixtures' current positions: twice their average distance
+     *  from the centroid. Returns 0 if fewer than 2 fixtures are selected.
+     *  Read-only - used by the Arrange popup's "detect from placement"
+     *  toggle to pre-fill arrangeFixturesInCircle()'s $diameter argument. */
+    Q_INVOKABLE qreal detectedCircleDiameter() const;
+
+    /** Returns the length (mm) of the line that best fits the currently
+     *  selected Fixtures' current positions: the span of their positions
+     *  projected onto the detected line direction (see detectedLineAngle()).
+     *  Returns 0 if fewer than 2 fixtures are selected, or if they're all on
+     *  top of each other. Read-only, for the Arrange popup's "detect from
+     *  placement" toggle. */
+    Q_INVOKABLE qreal detectedLineLength() const;
+
+    /** Returns the orientation (degrees) of the line that best fits the
+     *  currently selected Fixtures' current positions: the principal axis of
+     *  their scatter in the plane the user is looking at (found via 2D PCA).
+     *  Returns 0 if fewer than 2 fixtures are selected, or if they're all on
+     *  top of each other. Read-only, for the Arrange popup's "detect from
+     *  placement" toggle. There's no equivalent detectedGrid*() pair - unlike
+     *  a circle or a line, an arbitrary scatter has no single well-defined
+     *  grid (row/column count, spacing, rotation) to recover. */
+    Q_INVOKABLE qreal detectedLineAngle() const;
 
     /** Add or remove a linked fixture based on the provided $itemID */
     Q_INVOKABLE void setLinkedFixture(quint32 itemID);
@@ -384,6 +415,27 @@ private:
 
     /** Returns the average position (mm) of the currently selected fixtures */
     QVector3D selectedFixturesCentroid() const;
+
+    /** Computes the principal-axis orientation ($angleRadians) and matching
+     *  span ($length, mm) of the currently selected fixtures' current
+     *  positions, in the plane the user is looking at. Shared by
+     *  detectedLineAngle()/detectedLineLength() so the fit - a 2D PCA over
+     *  the position scatter - is only computed once. Both outputs are left
+     *  at 0 if fewer than 2 fixtures are selected, or if they coincide. */
+    void detectedLineFit(qreal &angleRadians, qreal &length) const;
+
+    /** Rotates the yaw of the Fixture with the given $itemID (the rotation
+     *  axis perpendicular to the $hAxis/$vAxis plane, i.e. $dAxis) so it
+     *  faces $centroid from $newPos - both in world space. Used by
+     *  arrangeFixturesInCircle()/arrangeFixturesInLine() when their
+     *  $lookAtCenter argument is true. Assumes 0 degrees of yaw faces along
+     *  +$hAxis, same as the placement math's own angle convention - this is
+     *  an assumption about the fixture model's un-rotated facing direction
+     *  that hasn't been visually confirmed against the 3D mesh, so a 180 or
+     *  90 degree offset may need correcting here if fixtures turn out to
+     *  face the wrong way in practice. */
+    void faceFixtureTowards(quint32 itemID, const QVector3D &newPos, const QVector3D &centroid,
+                             int hAxis, int vAxis, int dAxis);
 
     /** Returns the currently selected Fixture item IDs sorted by DMX order
      *  (universe/address, then head/linked index), rather than the order

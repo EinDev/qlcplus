@@ -32,6 +32,9 @@ private slots:
     void gridRotated90SwapsAxes();
     void gridRotated180Mirrors();
     void lineEndpointsAndCenter();
+    void detectedDiameterMatchesKnownRadius();
+    void detectedLineMatchesKnownAngleAndLength();
+    void bearingToCenterIsOppositeOfCirclePlacementAngle();
 };
 
 #endif
