@@ -2090,11 +2090,8 @@ void FixtureManager::updateCapabilityCounter(bool update, QString capName, int d
     if (update == false)
         return;
 
-    if (m_deferCapabilityCounters)
-    {
-        m_pendingCapabilityDelta[capName] += delta;
+    if (m_capCounterAccumulator.accumulate(capName, delta))
         return;
-    }
 
     QQuickItem *capItem = capabilityCounterItem(capName);
     if (capItem != nullptr)
@@ -2129,22 +2126,18 @@ void FixtureManager::setCapabilityCounter(QString capName, int value)
 
 void FixtureManager::setDeferCapabilityCounters(bool defer)
 {
-    m_deferCapabilityCounters = defer;
+    m_capCounterAccumulator.setDeferred(defer);
 }
 
 void FixtureManager::flushCapabilityCounters()
 {
-    m_deferCapabilityCounters = false;
-
-    QHash<QString, int> pending = m_pendingCapabilityDelta;
-    m_pendingCapabilityDelta.clear();
+    QHash<QString, int> pending = m_capCounterAccumulator.flush();
 
     QHashIterator<QString, int> it(pending);
     while (it.hasNext())
     {
         it.next();
-        if (it.value() != 0)
-            updateCapabilityCounter(true, it.key(), it.value());
+        updateCapabilityCounter(true, it.key(), it.value());
     }
 }
 
