@@ -392,7 +392,12 @@ void SceneEditor::pasteToAllFixtureSameType()
         if (sourceFixture == nullptr)
             continue;
 
-        uchar currentValue = m_scene->value(scv.fxi, scv.channel);
+        /** A selected channel that is not actually set in the Scene means
+         *  the user unset (deselected) it on the source Fixture. Mirror
+         *  that removal on the destination Fixtures instead of forcing a
+         *  0 value into them, which would leave the channel set */
+        bool sourceSet = m_scene->checkValue(scv);
+        uchar currentValue = sourceSet ? m_scene->value(scv.fxi, scv.channel) : 0;
 
         for (quint32 &dstFxId : m_scene->fixtures())
         {
@@ -408,10 +413,14 @@ void SceneEditor::pasteToAllFixtureSameType()
                 {
                     functionManager->setChannelValue(dstScv.fxi, dstScv.channel, dstScv.value);
                 }
-                else
+                else if (sourceSet)
                 {
                     m_scene->setValue(dstScv);
                     slotSceneValueChanged(dstScv);
+                }
+                else if (m_scene->checkValue(dstScv))
+                {
+                    unsetChannel(dstFxId, scv.channel);
                 }
             }
         }
