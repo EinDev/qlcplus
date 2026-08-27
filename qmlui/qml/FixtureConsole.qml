@@ -87,6 +87,16 @@ Rectangle
         externalChange = false
     }
 
+    function unsetChannelValue(channel)
+    {
+        var channelItem = channelsRpt.itemAt(channel)
+        if (!channelItem)
+            return
+
+        if (showEnablers == true)
+            channelItem.isEnabled = false
+    }
+
     function updateChannels()
     {
         for (var i = 0; i < channelsRpt.count; i++)

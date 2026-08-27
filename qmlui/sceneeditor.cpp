@@ -312,6 +312,19 @@ void SceneEditor::unsetChannel(quint32 fxID, quint32 channel)
     m_scene->unsetValue(fxID, channel);
     if (m_source->isOutputEnabled() == true)
         m_source->unset(fxID, channel);
+
+    /** Scene::unsetValue() only emits changed(), not valueChanged(), so
+     *  unlike a value being set, there is no slotSceneValueChanged() call
+     *  to push this into the fixture console UI. Do it here, otherwise a
+     *  fixture other than the one the user directly clicked (e.g. the
+     *  destinations of pasteToAllFixtureSameType()) still shows the
+     *  channel as enabled after it was actually removed from the Scene */
+    if (m_sceneConsole != nullptr)
+    {
+        int fxIndex = m_fixtureIDs.indexOf(fxID);
+        if (m_fxConsoleMap.contains(fxIndex))
+            QMetaObject::invokeMethod(m_fxConsoleMap[fxIndex], "unsetChannelValue", Q_ARG(QVariant, channel));
+    }
 }
 
 void SceneEditor::setFixtureSelection(quint32 fxID)
