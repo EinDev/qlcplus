@@ -981,6 +981,24 @@ void ContextManager::selectEvenOdd(bool even)
     setBatchSelection(false);
 }
 
+void ContextManager::selectEveryNth(int n)
+{
+    if (n <= 1)
+        return;
+
+    QList<quint32> toRemove;
+    for (int i = 0; i < m_selectedFixtures.count(); i++)
+    {
+        if (i % n != 0)
+            toRemove.append(m_selectedFixtures.at(i));
+    }
+
+    setBatchSelection(true);
+    for (quint32 itemID : toRemove)
+        setFixtureSelection(itemID, -1, false);
+    setBatchSelection(false);
+}
+
 QVariantList ContextManager::selectedFixtureAddress()
 {
     QVariantList addresses;

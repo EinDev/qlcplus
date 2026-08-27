@@ -246,6 +246,9 @@ public:
     /** Select every even/odd fixture of the currently selected ones */
     Q_INVOKABLE void selectEvenOdd(bool even);
 
+    /** Select every Nth fixture of the currently selected ones. Assumes n >= 2 */
+    Q_INVOKABLE void selectEveryNth(int n);
+
     /** Returns a list of the selected fixture addresses */
     Q_INVOKABLE QVariantList selectedFixtureAddress();
 

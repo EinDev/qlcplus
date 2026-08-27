@@ -295,7 +295,29 @@ Rectangle
                     faSource: FontAwesome.fa_list_ul
                     onClicked: contextManager.selectEvenOdd(false)
                 }
+
+                IconButton
+                {
+                    id: everyNthFixturesButton
+                    implicitHeight: viewToolbar.height - 2
+                    tooltip: qsTr("Select every Nth fixture of the current selection")
+                    faColor: "white"
+                    faSource: FontAwesome.fa_hashtag
+                    onClicked: everyNthPopup.open()
+                }
             }
+        }
+
+        PopupInputNumber
+        {
+            id: everyNthPopup
+            visible: false
+            label: qsTr("Select every Nth fixture")
+            from: 2
+            to: 100
+            value: 2
+
+            onAccepted: contextManager.selectEveryNth(value)
         }
 
         Loader
