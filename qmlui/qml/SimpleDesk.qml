@@ -46,6 +46,40 @@ Rectangle
             }
     }
 
+    // Shows the report produced by SimpleDesk::debugChannelInfo() for the
+    // channel debug button below. The same text is also logged via qDebug
+    // (visible with dev-build-run.ps1 -Debug).
+    CustomPopupDialog
+    {
+        id: channelDebugPopup
+        z: 3
+        width: mainView.width * 0.5
+        title: qsTr("Channel value debug")
+        standardButtons: Dialog.Ok
+
+        property string text: ""
+
+        contentItem:
+            ScrollView
+            {
+                implicitHeight: Math.min(mainView.height * 0.6, debugTextEdit.implicitHeight + 20)
+                clip: true
+
+                TextEdit
+                {
+                    id: debugTextEdit
+                    width: channelDebugPopup.availableWidth
+                    readOnly: true
+                    selectByMouse: true
+                    wrapMode: TextEdit.NoWrap
+                    font.family: "Consolas"
+                    font.pixelSize: UISettings.textSizeDefault
+                    color: UISettings.fgMain
+                    text: channelDebugPopup.text
+                }
+            }
+    }
+
     SplitView
     {
         anchors.fill: parent
@@ -303,6 +337,22 @@ Rectangle
                                     var channel = index - (fixtureObj ? fixtureObj.address : 0)
                                     simpleDesk.unsetDumpValue(fixtureObj ? fixtureObj.id : -1, channel)
                                     simpleDesk.resetChannel(index)
+                                }
+                            }
+
+                            // channel debug button: shows how the currently
+                            // displayed value is computed (override / dump /
+                            // universe pre-post GM / active faders)
+                            IconButton
+                            {
+                                faSource: FontAwesome.fa_bug
+                                faColor: UISettings.bgControl
+                                tooltip: qsTr("Debug this channel's value")
+                                focusPolicy: Qt.NoFocus
+                                onClicked:
+                                {
+                                    channelDebugPopup.text = simpleDesk.debugChannelInfo(index)
+                                    channelDebugPopup.open()
                                 }
                             }
                         }
