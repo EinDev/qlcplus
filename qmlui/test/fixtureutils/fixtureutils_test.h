@@ -37,6 +37,20 @@ private slots:
     void groupNotFullySelectedWhenOneMemberMissing();
     void emptyGroupIsNeverFullySelected();
     void groupNotFullySelectedWhenOnlySomeHeadsSelected();
+
+    void accumulateChannelGroupValueMatchesPanTiltMSBLSB();
+    void accumulateChannelGroupValueCoarseOnlyMatchesPanTilt();
+
+    void positionDeltaMidpointIsZero();
+    void positionDeltaAtExtremesMatchesDocumentedRange();
+    void positionDeltaRoundTrips();
+
+    void rotationDeltaMidpointIsZero();
+    void rotationDeltaAtExtremesMatchesDocumentedRange();
+    void rotationDeltaRoundTrips();
+
+    void scaleFactorAtExtremesMatchesDocumentedRange();
+    void scaleFactorRoundTrips();
 };
 
 #endif

@@ -25,6 +25,7 @@
 #include "fixtureutils.h"
 #include "monitorproperties.h"
 #include "fixturegroup.h"
+#include "qlcchannel.h"
 #include "fixture.h"
 #include "doc.h"
 
@@ -273,6 +274,138 @@ void FixtureUtils_Test::groupNotFullySelectedWhenOnlySomeHeadsSelected()
     QVERIFY(FixtureUtils::isGroupFullySelected(&grp, &monProps, QList<quint32>{base, head1}) == false);
     // All three sub-items present - now fully selected.
     QVERIFY(FixtureUtils::isGroupFullySelected(&grp, &monProps, QList<quint32>{base, head1, linked1}));
+}
+
+// accumulateChannelGroupValue() is meant to be a drop-in generalization of
+// the MSB/LSB accumulation MainView3D::updateFixtureItem() already hand-rolls
+// for Pan/Tilt (mainview3d.cpp ~1438-1459): "if (ch->controlByte() == MSB)
+// acc += (value << 8); else acc += value;". Reimplement that exact
+// hand-rolled version here as a reference and check both agree, for a
+// fine (MSB+LSB) pair of channels.
+void FixtureUtils_Test::accumulateChannelGroupValueMatchesPanTiltMSBLSB()
+{
+    QLCChannel msbChannel;
+    msbChannel.setControlByte(QLCChannel::MSB);
+    QLCChannel lsbChannel;
+    lsbChannel.setControlByte(QLCChannel::LSB);
+
+    uchar msbValue = 0xAB;
+    uchar lsbValue = 0xCD;
+
+    int reference = 0;
+    reference += (msbValue << 8);
+    reference += (lsbValue);
+
+    int accumulated = 0;
+    accumulated = FixtureUtils::accumulateChannelGroupValue(&msbChannel, msbValue, accumulated);
+    accumulated = FixtureUtils::accumulateChannelGroupValue(&lsbChannel, lsbValue, accumulated);
+
+    QCOMPARE(accumulated, reference);
+    QCOMPARE(accumulated, (int)0xABCD);
+}
+
+// A group with only a coarse (MSB) channel and no LSB pair must land as a
+// multiple of 256 within the same 0-65535 domain - exactly how a coarse-only
+// Pan/Tilt channel behaves today - rather than needing (or silently falling
+// into) a separate 0-255 code path.
+void FixtureUtils_Test::accumulateChannelGroupValueCoarseOnlyMatchesPanTilt()
+{
+    QLCChannel msbOnlyChannel;
+    msbOnlyChannel.setControlByte(QLCChannel::MSB);
+
+    int accumulated = FixtureUtils::accumulateChannelGroupValue(&msbOnlyChannel, 0x7F, 0);
+
+    QCOMPARE(accumulated, (int)(0x7F << 8));
+    QVERIFY(accumulated % 256 == 0);
+    QVERIFY(accumulated <= 65535);
+}
+
+// DMX 32768 (mid-range) must decode to the documented rest position, delta 0,
+// for every axis - this is the "fixture hasn't been touched" case and the
+// single most load-bearing value other workstreams will rely on.
+void FixtureUtils_Test::positionDeltaMidpointIsZero()
+{
+    QCOMPARE(FixtureUtils::positionDeltaFromRaw(32768), 0.0f);
+}
+
+// Pin down the documented +/-2.5m default range (anchored to half of
+// MonitorProperties' default 3D floor grid width/depth, GRID_DEFAULT_WIDTH =
+// GRID_DEFAULT_DEPTH = 5m) at both raw extremes.
+void FixtureUtils_Test::positionDeltaAtExtremesMatchesDocumentedRange()
+{
+    QCOMPARE(FixtureUtils::positionDeltaFromRaw(0), -2.5f);
+    QVERIFY(qAbs(FixtureUtils::positionDeltaFromRaw(65535) - 2.5f) < 0.001f);
+}
+
+// The write-back direction (engineering value -> raw DMX) other workstreams
+// need for drag-to-set-DMX must round-trip through the decode direction
+// within quantization error.
+void FixtureUtils_Test::positionDeltaRoundTrips()
+{
+    for (int raw : { 0, 1, 100, 32768, 40000, 65534, 65535 })
+    {
+        float delta = FixtureUtils::positionDeltaFromRaw(raw);
+        int roundTripped = FixtureUtils::positionRawFromDelta(delta);
+        QVERIFY2(qAbs(roundTripped - raw) <= 1,
+                  qPrintable(QString("raw %1 -> delta %2 -> raw %3")
+                             .arg(raw).arg(delta).arg(roundTripped)));
+    }
+
+    // out-of-range engineering values must clamp, not wrap or overflow.
+    QCOMPARE(FixtureUtils::positionRawFromDelta(-100.0f), 0);
+    QCOMPARE(FixtureUtils::positionRawFromDelta(100.0f), 65535);
+}
+
+void FixtureUtils_Test::rotationDeltaMidpointIsZero()
+{
+    QCOMPARE(FixtureUtils::rotationDeltaFromRaw(32768), 0.0f);
+}
+
+// Pin down the documented 540 degree (+/-270) default range, matching the
+// user's own "Mobile Truss" fixture profile's rotation channels.
+void FixtureUtils_Test::rotationDeltaAtExtremesMatchesDocumentedRange()
+{
+    QCOMPARE(FixtureUtils::rotationDeltaFromRaw(0), -270.0f);
+    QVERIFY(qAbs(FixtureUtils::rotationDeltaFromRaw(65535) - 270.0f) < 0.01f);
+}
+
+void FixtureUtils_Test::rotationDeltaRoundTrips()
+{
+    for (int raw : { 0, 1, 100, 32768, 40000, 65534, 65535 })
+    {
+        float degrees = FixtureUtils::rotationDeltaFromRaw(raw);
+        int roundTripped = FixtureUtils::rotationRawFromDelta(degrees);
+        QVERIFY2(qAbs(roundTripped - raw) <= 1,
+                  qPrintable(QString("raw %1 -> degrees %2 -> raw %3")
+                             .arg(raw).arg(degrees).arg(roundTripped)));
+    }
+
+    QCOMPARE(FixtureUtils::rotationRawFromDelta(-1000.0f), 0);
+    QCOMPARE(FixtureUtils::rotationRawFromDelta(1000.0f), 65535);
+}
+
+// Pin down the documented 0.1x-3.0x scale factor range at both raw extremes
+// (decided with the user, not derived from any physical-property field).
+void FixtureUtils_Test::scaleFactorAtExtremesMatchesDocumentedRange()
+{
+    QCOMPARE(FixtureUtils::scaleFactorFromRaw(0), 0.1f);
+    QVERIFY(qAbs(FixtureUtils::scaleFactorFromRaw(65535) - 3.0f) < 0.001f);
+}
+
+void FixtureUtils_Test::scaleFactorRoundTrips()
+{
+    for (int raw : { 0, 1, 100, 32768, 40000, 65534, 65535 })
+    {
+        float factor = FixtureUtils::scaleFactorFromRaw(raw);
+        int roundTripped = FixtureUtils::scaleRawFromFactor(factor);
+        QVERIFY2(qAbs(roundTripped - raw) <= 1,
+                  qPrintable(QString("raw %1 -> factor %2 -> raw %3")
+                             .arg(raw).arg(factor).arg(roundTripped)));
+    }
+
+    // out-of-range factors must clamp to the 0-65535 raw domain.
+    QCOMPARE(FixtureUtils::scaleRawFromFactor(0.0f), 0);
+    QCOMPARE(FixtureUtils::scaleRawFromFactor(10.0f), 65535);
 }
 
 QTEST_APPLESS_MAIN(FixtureUtils_Test)
