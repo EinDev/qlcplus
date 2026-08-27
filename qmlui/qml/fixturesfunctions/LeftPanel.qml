@@ -345,6 +345,133 @@ SidePanel
                 }
             }
 
+            IconButton
+            {
+                id: speedToolButton
+                objectName: "capSpeed"
+                width: iconSize
+                height: iconSize
+                faSource: FontAwesome.fa_gauge
+                tooltip: qsTr("Speed")
+                counter: 0
+                ButtonGroup.group: capabilitiesGroup
+
+                onClicked: checked = !checked
+                onCounterChanged: if (counter == 0) speedToolButton.checked = false
+
+                PresetsTool
+                {
+                    id: speedTool
+                    parent: mainView
+                    x: leftSidePanel.width
+                    y: UISettings.bigItemHeight
+                    visible: speedToolButton.checked
+                    onVisibleChanged: if (visible) updatePresets(fixtureManager.speedChannels)
+                    onPresetSelected:
+                        function(cap, fxID, chIdx, value)
+                        {
+                            fixtureManager.setPresetValue(fxID, chIdx, value)
+                        }
+                }
+            }
+
+            IconButton
+            {
+                id: prismToolButton
+                objectName: "capPrism"
+                width: iconSize
+                height: iconSize
+                faSource: FontAwesome.fa_flask
+                tooltip: qsTr("Prism")
+                counter: 0
+                ButtonGroup.group: capabilitiesGroup
+
+                onClicked: checked = !checked
+                onCounterChanged: if (counter == 0) prismToolButton.checked = false
+
+                PresetsTool
+                {
+                    id: prismTool
+                    parent: mainView
+                    x: leftSidePanel.width
+                    y: UISettings.bigItemHeight
+                    visible: prismToolButton.checked
+                    onVisibleChanged: if (visible) updatePresets(fixtureManager.prismChannels)
+                    onPresetSelected:
+                        function(cap, fxID, chIdx, value)
+                        {
+                            fixtureManager.setPresetValue(fxID, chIdx, value)
+                        }
+                }
+            }
+
+            IconButton
+            {
+                id: effectToolButton
+                objectName: "capEffect"
+                width: iconSize
+                height: iconSize
+                faSource: FontAwesome.fa_wand_magic_sparkles
+                tooltip: qsTr("Effect")
+                counter: 0
+                ButtonGroup.group: capabilitiesGroup
+
+                onClicked: checked = !checked
+                onCounterChanged: if (counter == 0) effectToolButton.checked = false
+
+                PresetsTool
+                {
+                    id: effectTool
+                    parent: mainView
+                    x: leftSidePanel.width
+                    y: UISettings.bigItemHeight
+                    visible: effectToolButton.checked
+                    onVisibleChanged: if (visible) updatePresets(fixtureManager.effectChannels)
+                    onPresetSelected:
+                        function(cap, fxID, chIdx, value)
+                        {
+                            fixtureManager.setPresetValue(fxID, chIdx, value)
+                        }
+                }
+            }
+
+            IconButton
+            {
+                id: maintenanceToolButton
+                objectName: "capMaintenance"
+                width: iconSize
+                height: iconSize
+                faSource: FontAwesome.fa_wrench
+                tooltip: qsTr("Maintenance")
+                counter: 0
+                ButtonGroup.group: capabilitiesGroup
+
+                onClicked: checked = !checked
+                onCounterChanged: if (counter == 0) maintenanceToolButton.checked = false
+
+                // Maintenance channels have no standard meaning across fixture
+                // models (fan control, reset, lamp strike, etc. all differ per
+                // fixture), unlike Shutter/Gobo/ColorWheel which are broadly
+                // comparable - so this is the one preset list where the
+                // "Product - Channel name" label (see
+                // FixtureManager::presetsChannels()) genuinely matters for
+                // telling entries apart, not just a nicety.
+                PresetsTool
+                {
+                    id: maintenanceTool
+                    parent: mainView
+                    x: leftSidePanel.width
+                    y: UISettings.bigItemHeight
+                    visible: maintenanceToolButton.checked
+                    onVisibleChanged: if (visible) updatePresets(fixtureManager.maintenanceChannels)
+                    onPresetSelected:
+                        function(cap, fxID, chIdx, value)
+                        {
+                            fixtureManager.setPresetValue(fxID, chIdx, value)
+                        }
+                }
+            }
+
             /* filler object */
             Rectangle
             {
