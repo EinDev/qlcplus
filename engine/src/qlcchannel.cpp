@@ -42,6 +42,15 @@
 #define KXMLQLCChannelGroupTilt        QStringLiteral("Tilt")
 #define KXMLQLCChannelGroupMaintenance QStringLiteral("Maintenance")
 #define KXMLQLCChannelGroupNothing     QStringLiteral("Nothing")
+#define KXMLQLCChannelGroupPositionX   QStringLiteral("Position X")
+#define KXMLQLCChannelGroupPositionY   QStringLiteral("Position Y")
+#define KXMLQLCChannelGroupPositionZ   QStringLiteral("Position Z")
+#define KXMLQLCChannelGroupRotationX   QStringLiteral("Rotation X")
+#define KXMLQLCChannelGroupRotationY   QStringLiteral("Rotation Y")
+#define KXMLQLCChannelGroupRotationZ   QStringLiteral("Rotation Z")
+#define KXMLQLCChannelGroupScaleX      QStringLiteral("Scale X")
+#define KXMLQLCChannelGroupScaleY      QStringLiteral("Scale Y")
+#define KXMLQLCChannelGroupScaleZ      QStringLiteral("Scale Z")
 
 #define KXMLQLCChannelColourGeneric    QStringLiteral("Generic")
 #define KXMLQLCChannelColourRed        QStringLiteral("Red")
@@ -606,7 +615,16 @@ QStringList QLCChannel::groupList()
     list.append(KXMLQLCChannelGroupMaintenance);
     list.append(KXMLQLCChannelGroupNothing);
     list.append(KXMLQLCChannelGroupPan);
+    list.append(KXMLQLCChannelGroupPositionX);
+    list.append(KXMLQLCChannelGroupPositionY);
+    list.append(KXMLQLCChannelGroupPositionZ);
     list.append(KXMLQLCChannelGroupPrism);
+    list.append(KXMLQLCChannelGroupRotationX);
+    list.append(KXMLQLCChannelGroupRotationY);
+    list.append(KXMLQLCChannelGroupRotationZ);
+    list.append(KXMLQLCChannelGroupScaleX);
+    list.append(KXMLQLCChannelGroupScaleY);
+    list.append(KXMLQLCChannelGroupScaleZ);
     list.append(KXMLQLCChannelGroupShutter);
     list.append(KXMLQLCChannelGroupSpeed);
     list.append(KXMLQLCChannelGroupTilt);
@@ -640,6 +658,24 @@ QString QLCChannel::groupToString(Group grp)
         return KXMLQLCChannelGroupTilt;
     case Maintenance:
         return KXMLQLCChannelGroupMaintenance;
+    case PositionX:
+        return KXMLQLCChannelGroupPositionX;
+    case PositionY:
+        return KXMLQLCChannelGroupPositionY;
+    case PositionZ:
+        return KXMLQLCChannelGroupPositionZ;
+    case RotationX:
+        return KXMLQLCChannelGroupRotationX;
+    case RotationY:
+        return KXMLQLCChannelGroupRotationY;
+    case RotationZ:
+        return KXMLQLCChannelGroupRotationZ;
+    case ScaleX:
+        return KXMLQLCChannelGroupScaleX;
+    case ScaleY:
+        return KXMLQLCChannelGroupScaleY;
+    case ScaleZ:
+        return KXMLQLCChannelGroupScaleZ;
     default:
         return KXMLQLCChannelGroupNothing;
     }
@@ -671,6 +707,24 @@ QLCChannel::Group QLCChannel::stringToGroup(const QString& str)
         return Maintenance;
     else if (str == KXMLQLCChannelGroupNothing)
         return Nothing;
+    else if (str == KXMLQLCChannelGroupPositionX)
+        return PositionX;
+    else if (str == KXMLQLCChannelGroupPositionY)
+        return PositionY;
+    else if (str == KXMLQLCChannelGroupPositionZ)
+        return PositionZ;
+    else if (str == KXMLQLCChannelGroupRotationX)
+        return RotationX;
+    else if (str == KXMLQLCChannelGroupRotationY)
+        return RotationY;
+    else if (str == KXMLQLCChannelGroupRotationZ)
+        return RotationZ;
+    else if (str == KXMLQLCChannelGroupScaleX)
+        return ScaleX;
+    else if (str == KXMLQLCChannelGroupScaleY)
+        return ScaleY;
+    else if (str == KXMLQLCChannelGroupScaleZ)
+        return ScaleZ;
     else
         return NoGroup;
 }
