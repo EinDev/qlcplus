@@ -31,6 +31,7 @@
 #include "scenevalue.h"
 #include "treemodelitem.h"
 #include "colorfilters.h"
+#include "capabilitycounteraccumulator.h"
 
 class Doc;
 class Fixture;
@@ -551,11 +552,7 @@ private:
     QMap<int, int> m_colorCounters;
 
     /** See setDeferCapabilityCounters() */
-    bool m_deferCapabilityCounters = false;
-
-    /** Capability-counter deltas accumulated while m_deferCapabilityCounters
-     *  is true, keyed by the same capName used by updateCapabilityCounter() */
-    QHash<QString, int> m_pendingCapabilityDelta;
+    CapabilityCounterAccumulator m_capCounterAccumulator;
 
     /*********************************************************************
      * Channel modifiers
