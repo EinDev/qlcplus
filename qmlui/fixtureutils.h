@@ -21,12 +21,14 @@
 #define FIXTUREUTILS_H
 
 #include <QColor>
+#include <QList>
 #include <QMatrix4x4>
 #include <QPointF>
 #include <QVector3D>
 
 class Doc;
 class Fixture;
+class FixtureGroup;
 class QLCChannel;
 class QLCCapability;
 class QLCFixtureMode;
@@ -52,6 +54,13 @@ public:
     static void alignItem(QVector3D refPos, QVector3D &origPos, int pointOfView, int alignment);
 
     static QVector3D item3DPosition(const MonitorProperties *monProps, QPointF point, float thirdVal);
+
+    /** Returns true if every fixture belonging to $group - expanded to every
+     *  one of its heads/linked sub-items via $monProps - has its itemID
+     *  present in $selectedFixtures. A null or empty group is never
+     *  considered fully selected. */
+    static bool isGroupFullySelected(const FixtureGroup *group, const MonitorProperties *monProps,
+                                      const QList<quint32> &selectedFixtures);
 
     /** Returns the first available space (in mm) for a rectangle
      * of the given width and height.
