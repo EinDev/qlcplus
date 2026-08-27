@@ -55,6 +55,10 @@ class FixtureManager final : public QObject
     Q_PROPERTY(QVariantList goboChannels READ goboChannels NOTIFY goboChannelsChanged)
     Q_PROPERTY(QVariantList colorWheelChannels READ colorWheelChannels NOTIFY colorWheelChannelsChanged)
     Q_PROPERTY(QVariantList shutterChannels READ shutterChannels NOTIFY shutterChannelsChanged)
+    Q_PROPERTY(QVariantList speedChannels READ speedChannels NOTIFY speedChannelsChanged)
+    Q_PROPERTY(QVariantList prismChannels READ prismChannels NOTIFY prismChannelsChanged)
+    Q_PROPERTY(QVariantList effectChannels READ effectChannels NOTIFY effectChannelsChanged)
+    Q_PROPERTY(QVariantList maintenanceChannels READ maintenanceChannels NOTIFY maintenanceChannelsChanged)
     Q_PROPERTY(int colorsMask READ colorsMask NOTIFY colorsMaskChanged)
     Q_PROPERTY(quint32 capabilityMask READ capabilityMask NOTIFY capabilityMaskChanged)
 
@@ -464,6 +468,25 @@ public:
      *  The names are in the format: Product - Channel name */
     QVariantList shutterChannels();
 
+    /** Returns the names of the currently selected fixtures with speed channels.
+     *  The names are in the format: Product - Channel name */
+    QVariantList speedChannels();
+
+    /** Returns the names of the currently selected fixtures with prism channels.
+     *  The names are in the format: Product - Channel name */
+    QVariantList prismChannels();
+
+    /** Returns the names of the currently selected fixtures with effect channels.
+     *  The names are in the format: Product - Channel name */
+    QVariantList effectChannels();
+
+    /** Returns the names of the currently selected fixtures with maintenance
+     *  (fixture-specific/custom) channels. The names are in the format:
+     *  Product - Channel name, so entries naturally group by fixture type
+     *  even though maintenance channels have no standard meaning across
+     *  different fixture models */
+    QVariantList maintenanceChannels();
+
     /** Returns the list of QLCCapability in QVariant format for
      *  the channel cached at the given index */
     Q_INVOKABLE QVariantList presetCapabilities(quint32 fixtureID, int chIndex);
@@ -502,6 +525,18 @@ signals:
 
     /** Notify the listeners that the list of fixtures with shutter channels has changed */
     void shutterChannelsChanged();
+
+    /** Notify the listeners that the list of fixtures with speed channels has changed */
+    void speedChannelsChanged();
+
+    /** Notify the listeners that the list of fixtures with prism channels has changed */
+    void prismChannelsChanged();
+
+    /** Notify the listeners that the list of fixtures with effect channels has changed */
+    void effectChannelsChanged();
+
+    /** Notify the listeners that the list of fixtures with maintenance channels has changed */
+    void maintenanceChannelsChanged();
 
     /** Notify the listeners that the available colors changed */
     void colorsMaskChanged(int colorsMask);
