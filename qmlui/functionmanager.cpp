@@ -522,6 +522,7 @@ void FunctionManager::setPreviewEnabled(bool enable)
             {
                 if (enable == false)
                 {
+                    disconnect(f, qOverload<quint32>(&Function::stopped), this, &FunctionManager::slotPreviewFunctionStopped);
                     Tardis::instance()->enqueueAction(Tardis::FunctionStop, f->id(), true, false);
                     f->stop(FunctionParent::master());
                 }
@@ -529,12 +530,30 @@ void FunctionManager::setPreviewEnabled(bool enable)
                 {
                     Tardis::instance()->enqueueAction(Tardis::FunctionStart, f->id(), false, true);
                     f->start(m_doc->masterTimer(), FunctionParent::master());
+                    // a VC widget (or anything else using a Master/ManualVCWidget
+                    // source) can force-stop this Function regardless of our own
+                    // preview source. Notice it so previewEnabled doesn't keep
+                    // reporting a stale "on" state once that happens.
+                    connect(f, qOverload<quint32>(&Function::stopped), this, &FunctionManager::slotPreviewFunctionStopped, Qt::UniqueConnection);
                 }
             }
         }
     }
 
     m_previewEnabled = enable;
+    emit previewEnabledChanged();
+}
+
+void FunctionManager::slotPreviewFunctionStopped(quint32 id)
+{
+    Function *f = m_doc->function(id);
+    if (f != nullptr)
+        disconnect(f, qOverload<quint32>(&Function::stopped), this, &FunctionManager::slotPreviewFunctionStopped);
+
+    if (m_previewEnabled == false)
+        return;
+
+    m_previewEnabled = false;
     emit previewEnabledChanged();
 }
 
@@ -597,6 +616,7 @@ void FunctionManager::selectFunctionID(quint32 fID, bool multiSelection)
                 Function *f = m_doc->function(funcID.toUInt());
                 if (f != nullptr)
                 {
+                    disconnect(f, qOverload<quint32>(&Function::stopped), this, &FunctionManager::slotPreviewFunctionStopped);
                     Tardis::instance()->enqueueAction(Tardis::FunctionStop, f->id(), true, false);
                     f->stop(FunctionParent::master());
                 }
@@ -615,6 +635,7 @@ void FunctionManager::selectFunctionID(quint32 fID, bool multiSelection)
         {
             Tardis::instance()->enqueueAction(Tardis::FunctionStart, f->id(), false, true);
             f->start(m_doc->masterTimer(), FunctionParent::master());
+            connect(f, qOverload<quint32>(&Function::stopped), this, &FunctionManager::slotPreviewFunctionStopped, Qt::UniqueConnection);
         }
     }
     if (fID != Function::invalidId())
