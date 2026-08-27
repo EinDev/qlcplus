@@ -40,6 +40,26 @@ CustomPopupDialog
     property real lineLength: 2000
     property real lineAngle: 0
 
+    // Circle/Line only - Grid has no single well-defined shape to detect a
+    // size/angle from, or a middle to face fixtures towards.
+    property bool detectFromPlacement: false
+    property bool lookAtCenter: false
+
+    function applyDetectedValues()
+    {
+        if (popupRoot.arrangeMode === 0)
+        {
+            popupRoot.circleDiameter = Math.max(circleSlider.from, Math.min(circleSlider.to,
+                                                 contextManager.detectedCircleDiameter()))
+        }
+        else if (popupRoot.arrangeMode === 2)
+        {
+            popupRoot.lineLength = Math.max(lineLengthSlider.from, Math.min(lineLengthSlider.to,
+                                             contextManager.detectedLineLength()))
+            popupRoot.lineAngle = contextManager.detectedLineAngle()
+        }
+    }
+
     contentItem:
         ColumnLayout
         {
@@ -59,7 +79,12 @@ CustomPopupDialog
                     faSource: FontAwesome.fa_circle
                     faColor: "white"
                     tooltip: qsTr("Circle")
-                    onClicked: popupRoot.arrangeMode = 0
+                    onClicked:
+                    {
+                        popupRoot.arrangeMode = 0
+                        if (popupRoot.detectFromPlacement)
+                            popupRoot.applyDetectedValues()
+                    }
                 }
                 IconButton
                 {
@@ -77,7 +102,56 @@ CustomPopupDialog
                     faSource: FontAwesome.fa_grip_lines
                     faColor: "white"
                     tooltip: qsTr("Line")
-                    onClicked: popupRoot.arrangeMode = 2
+                    onClicked:
+                    {
+                        popupRoot.arrangeMode = 2
+                        if (popupRoot.detectFromPlacement)
+                            popupRoot.applyDetectedValues()
+                    }
+                }
+            }
+
+            // Detect from placement / face center - not available for Grid
+            RowLayout
+            {
+                Layout.fillWidth: true
+                Layout.margins: 4
+                visible: popupRoot.arrangeMode !== 1
+                spacing: 4
+
+                IconButton
+                {
+                    checkable: true
+                    checked: popupRoot.detectFromPlacement
+                    faSource: FontAwesome.fa_crosshairs
+                    faColor: "white"
+                    tooltip: qsTr("Detect size/angle from the fixtures' current 3D placement, instead of the sliders below")
+                    onClicked:
+                    {
+                        popupRoot.detectFromPlacement = !popupRoot.detectFromPlacement
+                        if (popupRoot.detectFromPlacement)
+                            popupRoot.applyDetectedValues()
+                    }
+                }
+                RobotoText
+                {
+                    label: qsTr("Detect from placement")
+                }
+
+                Item { Layout.fillWidth: true }
+
+                IconButton
+                {
+                    checkable: true
+                    checked: popupRoot.lookAtCenter
+                    faSource: FontAwesome.fa_location_crosshairs
+                    faColor: "white"
+                    tooltip: qsTr("Rotate each fixture to face the center of the arrangement")
+                    onClicked: popupRoot.lookAtCenter = !popupRoot.lookAtCenter
+                }
+                RobotoText
+                {
+                    label: qsTr("Face center")
                 }
             }
 
@@ -97,6 +171,7 @@ CustomPopupDialog
                 {
                     id: circleSlider
                     Layout.fillWidth: true
+                    enabled: !popupRoot.detectFromPlacement
                     from: 100
                     to: 10000
                     value: popupRoot.circleDiameter
@@ -185,6 +260,7 @@ CustomPopupDialog
                 {
                     id: lineLengthSlider
                     Layout.fillWidth: true
+                    enabled: !popupRoot.detectFromPlacement
                     from: 100
                     to: 10000
                     value: popupRoot.lineLength
@@ -199,6 +275,7 @@ CustomPopupDialog
                 {
                     id: lineAngleSlider
                     Layout.fillWidth: true
+                    enabled: !popupRoot.detectFromPlacement
                     from: -180
                     to: 180
                     value: popupRoot.lineAngle
@@ -216,13 +293,13 @@ CustomPopupDialog
                     switch (popupRoot.arrangeMode)
                     {
                         case 0:
-                            contextManager.arrangeFixturesInCircle(popupRoot.circleDiameter)
+                            contextManager.arrangeFixturesInCircle(popupRoot.circleDiameter, popupRoot.lookAtCenter)
                         break
                         case 1:
                             contextManager.arrangeFixturesInGrid(popupRoot.gridWidth, popupRoot.gridHeight, popupRoot.gridColumns, popupRoot.gridAngle)
                         break
                         case 2:
-                            contextManager.arrangeFixturesInLine(popupRoot.lineLength, popupRoot.lineAngle)
+                            contextManager.arrangeFixturesInLine(popupRoot.lineLength, popupRoot.lineAngle, popupRoot.lookAtCenter)
                         break
                     }
                 }

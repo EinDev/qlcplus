@@ -1484,7 +1484,130 @@ QList<quint32> ContextManager::groupOrSortedSelectedFixtures() const
     return ordered;
 }
 
-void ContextManager::arrangeFixturesInCircle(qreal diameter)
+qreal ContextManager::detectedCircleDiameter() const
+{
+    if (m_selectedFixtures.count() < 2)
+        return 0;
+
+    int hAxis, vAxis, dAxis;
+    fixturePlaneAxes(m_monProps->pointOfView(), hAxis, vAxis, dAxis);
+    Q_UNUSED(dAxis)
+    QVector3D centroid = selectedFixturesCentroid();
+
+    qreal sumRadius = 0;
+    for (quint32 itemID : m_selectedFixtures)
+    {
+        quint32 fxID = FixtureUtils::itemFixtureID(itemID);
+        quint16 headIndex = FixtureUtils::itemHeadIndex(itemID);
+        quint16 linkedIndex = FixtureUtils::itemLinkedIndex(itemID);
+        QVector3D pos = m_monProps->fixturePosition(fxID, headIndex, linkedIndex);
+
+        qreal h = vecAxis(pos, hAxis) - vecAxis(centroid, hAxis);
+        qreal v = vecAxis(pos, vAxis) - vecAxis(centroid, vAxis);
+        sumRadius += qSqrt(h * h + v * v);
+    }
+
+    return (sumRadius / m_selectedFixtures.count()) * 2.0;
+}
+
+void ContextManager::detectedLineFit(qreal &angleRadians, qreal &length) const
+{
+    angleRadians = 0;
+    length = 0;
+
+    if (m_selectedFixtures.count() < 2)
+        return;
+
+    int hAxis, vAxis, dAxis;
+    fixturePlaneAxes(m_monProps->pointOfView(), hAxis, vAxis, dAxis);
+    Q_UNUSED(dAxis)
+    QVector3D centroid = selectedFixturesCentroid();
+
+    // Principal axis of the position scatter, via the dominant eigenvector of
+    // its 2D covariance matrix - the same "structure tensor" formula used to
+    // recover a blob's orientation in image processing.
+    QVector<QPointF> local;
+    local.reserve(m_selectedFixtures.count());
+    qreal sxx = 0, syy = 0, sxy = 0;
+
+    for (quint32 itemID : m_selectedFixtures)
+    {
+        quint32 fxID = FixtureUtils::itemFixtureID(itemID);
+        quint16 headIndex = FixtureUtils::itemHeadIndex(itemID);
+        quint16 linkedIndex = FixtureUtils::itemLinkedIndex(itemID);
+        QVector3D pos = m_monProps->fixturePosition(fxID, headIndex, linkedIndex);
+
+        qreal h = vecAxis(pos, hAxis) - vecAxis(centroid, hAxis);
+        qreal v = vecAxis(pos, vAxis) - vecAxis(centroid, vAxis);
+        local.append(QPointF(h, v));
+
+        sxx += h * h;
+        syy += v * v;
+        sxy += h * v;
+    }
+
+    if (qFuzzyIsNull(sxx) && qFuzzyIsNull(syy) && qFuzzyIsNull(sxy))
+        return; // every fixture sits on top of its neighbours - no direction to detect
+
+    angleRadians = 0.5 * qAtan2(2.0 * sxy, sxx - syy);
+    qreal dirH = qCos(angleRadians);
+    qreal dirV = qSin(angleRadians);
+
+    qreal minProj = 0, maxProj = 0;
+    for (int i = 0; i < local.count(); i++)
+    {
+        qreal proj = local.at(i).x() * dirH + local.at(i).y() * dirV;
+        if (i == 0 || proj < minProj)
+            minProj = proj;
+        if (i == 0 || proj > maxProj)
+            maxProj = proj;
+    }
+
+    length = maxProj - minProj;
+}
+
+qreal ContextManager::detectedLineLength() const
+{
+    qreal angleRadians, length;
+    detectedLineFit(angleRadians, length);
+    return length;
+}
+
+qreal ContextManager::detectedLineAngle() const
+{
+    qreal angleRadians, length;
+    detectedLineFit(angleRadians, length);
+    return qRadiansToDegrees(angleRadians);
+}
+
+void ContextManager::faceFixtureTowards(quint32 itemID, const QVector3D &newPos, const QVector3D &centroid,
+                                         int hAxis, int vAxis, int dAxis)
+{
+    quint32 fxID = FixtureUtils::itemFixtureID(itemID);
+    quint16 headIndex = FixtureUtils::itemHeadIndex(itemID);
+    quint16 linkedIndex = FixtureUtils::itemLinkedIndex(itemID);
+
+    qreal dh = vecAxis(centroid, hAxis) - vecAxis(newPos, hAxis);
+    qreal dv = vecAxis(centroid, vAxis) - vecAxis(newPos, vAxis);
+    if (qFuzzyIsNull(dh) && qFuzzyIsNull(dv))
+        return; // fixture is sitting right on the centroid - no facing to compute
+
+    qreal bearingDeg = qRadiansToDegrees(qAtan2(dv, dh));
+
+    QVector3D currRot = m_monProps->fixtureRotation(fxID, headIndex, linkedIndex);
+    QVector3D newRot = currRot;
+    setVecAxis(newRot, dAxis, bearingDeg);
+
+    Tardis::instance()->enqueueAction(Tardis::FixtureSetRotation, itemID, QVariant(currRot), QVariant(newRot));
+    m_monProps->setFixtureRotation(fxID, headIndex, linkedIndex, newRot);
+
+    if (m_2DView->isEnabled())
+        m_2DView->updateFixtureRotation(itemID, newRot);
+    if (m_3DView->isEnabled())
+        m_3DView->updateFixtureRotation(itemID, newRot);
+}
+
+void ContextManager::arrangeFixturesInCircle(qreal diameter, bool lookAtCenter)
 {
     QList<quint32> fixtures = sortedSelectedFixtures();
     int count = fixtures.count();
@@ -1493,7 +1616,6 @@ void ContextManager::arrangeFixturesInCircle(qreal diameter)
 
     int hAxis, vAxis, dAxis;
     fixturePlaneAxes(m_monProps->pointOfView(), hAxis, vAxis, dAxis);
-    Q_UNUSED(dAxis)
     QVector3D centroid = selectedFixturesCentroid();
     qreal radius = diameter / 2.0;
 
@@ -1520,10 +1642,15 @@ void ContextManager::arrangeFixturesInCircle(qreal diameter)
             m_2DView->updateFixturePosition(itemID, newPos);
         if (m_3DView->isEnabled())
             m_3DView->updateFixturePosition(itemID, newPos);
+
+        if (lookAtCenter)
+            faceFixtureTowards(itemID, newPos, centroid, hAxis, vAxis, dAxis);
     }
 
     m_doc->setModified();
     emit fixturesPositionChanged();
+    if (lookAtCenter)
+        emit fixturesRotationChanged();
 }
 
 void ContextManager::arrangeFixturesInGrid(qreal width, qreal height, int columns, qreal angleDegrees)
@@ -1584,7 +1711,7 @@ void ContextManager::arrangeFixturesInGrid(qreal width, qreal height, int column
     emit fixturesPositionChanged();
 }
 
-void ContextManager::arrangeFixturesInLine(qreal length, qreal angleDegrees)
+void ContextManager::arrangeFixturesInLine(qreal length, qreal angleDegrees, bool lookAtCenter)
 {
     QList<quint32> fixtures = sortedSelectedFixtures();
     int count = fixtures.count();
@@ -1593,7 +1720,6 @@ void ContextManager::arrangeFixturesInLine(qreal length, qreal angleDegrees)
 
     int hAxis, vAxis, dAxis;
     fixturePlaneAxes(m_monProps->pointOfView(), hAxis, vAxis, dAxis);
-    Q_UNUSED(dAxis)
     QVector3D centroid = selectedFixturesCentroid();
 
     qreal angleRad = qDegreesToRadians(angleDegrees);
@@ -1623,10 +1749,15 @@ void ContextManager::arrangeFixturesInLine(qreal length, qreal angleDegrees)
             m_2DView->updateFixturePosition(itemID, newPos);
         if (m_3DView->isEnabled())
             m_3DView->updateFixturePosition(itemID, newPos);
+
+        if (lookAtCenter)
+            faceFixtureTowards(itemID, newPos, centroid, hAxis, vAxis, dAxis);
     }
 
     m_doc->setModified();
     emit fixturesPositionChanged();
+    if (lookAtCenter)
+        emit fixturesRotationChanged();
 }
 
 void ContextManager::setLinkedFixture(quint32 itemID)

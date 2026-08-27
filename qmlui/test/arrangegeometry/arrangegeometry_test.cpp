@@ -19,6 +19,8 @@
 
 #include <QtTest/QtTest>
 #include <QVector3D>
+#include <QPointF>
+#include <QVector>
 #include <qmath.h>
 
 #include "arrangegeometry_test.h"
@@ -79,6 +81,54 @@ static QVector3D linePoint(qreal length, int i, int count, qreal angleDegrees)
     qreal dist = startOffset + i * step;
 
     return QVector3D(dist * qCos(angleRad), dist * qSin(angleRad), 0);
+}
+
+// Mirrors ContextManager::detectedCircleDiameter's math.
+static qreal detectedDiameter(const QVector<QPointF> &localPoints)
+{
+    qreal sumRadius = 0;
+    for (const QPointF &p : localPoints)
+        sumRadius += qSqrt(p.x() * p.x() + p.y() * p.y());
+
+    return (sumRadius / localPoints.count()) * 2.0;
+}
+
+// Mirrors ContextManager::detectedLineFit's PCA math.
+static void detectedLine(const QVector<QPointF> &localPoints, qreal &angleDegrees, qreal &length)
+{
+    qreal sxx = 0, syy = 0, sxy = 0;
+    for (const QPointF &p : localPoints)
+    {
+        sxx += p.x() * p.x();
+        syy += p.y() * p.y();
+        sxy += p.x() * p.y();
+    }
+
+    qreal angleRad = 0.5 * qAtan2(2.0 * sxy, sxx - syy);
+    qreal dirH = qCos(angleRad);
+    qreal dirV = qSin(angleRad);
+
+    qreal minProj = 0, maxProj = 0;
+    for (int i = 0; i < localPoints.count(); i++)
+    {
+        qreal proj = localPoints.at(i).x() * dirH + localPoints.at(i).y() * dirV;
+        if (i == 0 || proj < minProj)
+            minProj = proj;
+        if (i == 0 || proj > maxProj)
+            maxProj = proj;
+    }
+
+    angleDegrees = qRadiansToDegrees(angleRad);
+    length = maxProj - minProj;
+}
+
+// Mirrors ContextManager::faceFixtureTowards's bearing math: the angle (in
+// the same "0 = +h axis, 90 = +v axis" convention circlePoint()/linePoint()
+// place points with) from a point back towards the origin (the centroid,
+// since all the geometry above is expressed relative to it already).
+static qreal bearingToCenterDegrees(const QPointF &localPoint)
+{
+    return qRadiansToDegrees(qAtan2(-localPoint.y(), -localPoint.x()));
 }
 
 static const qreal EPS = 1e-9;
@@ -153,6 +203,62 @@ void ArrangeGeometry_Test::lineEndpointsAndCenter()
     QVERIFY(qAbs(p0.x() - 0.0) < EPS && qAbs(p0.y() - (-50.0)) < EPS);
     QVERIFY(qAbs(p1.x() - 0.0) < EPS && qAbs(p1.y() - 0.0) < EPS); // exact centre
     QVERIFY(qAbs(p2.x() - 0.0) < EPS && qAbs(p2.y() - 50.0) < EPS);
+}
+
+void ArrangeGeometry_Test::detectedDiameterMatchesKnownRadius()
+{
+    // Same 4 points as circleFourPointsAreNinetyDegreesApart(), radius 50 ->
+    // diameter 100. Every point is exactly on the circle, so the average
+    // radius is exact, not just approximate.
+    QVector<QPointF> points;
+    for (int i = 0; i < 4; i++)
+    {
+        QVector3D p = circlePoint(100.0, i, 4);
+        points.append(QPointF(p.x(), p.y()));
+    }
+
+    QVERIFY(qAbs(detectedDiameter(points) - 100.0) < EPS);
+}
+
+void ArrangeGeometry_Test::detectedLineMatchesKnownAngleAndLength()
+{
+    // 5 fixtures on a 200mm line angled 40 degrees - within the PCA angle's
+    // (-90, 90] principal range, so no ambiguity with the equivalent
+    // 40 - 180 = -140 degree orientation of the same line.
+    QVector<QPointF> points;
+    for (int i = 0; i < 5; i++)
+    {
+        QVector3D p = linePoint(200.0, i, 5, 40.0);
+        points.append(QPointF(p.x(), p.y()));
+    }
+
+    qreal angleDegrees, length;
+    detectedLine(points, angleDegrees, length);
+
+    // Unlike the 90-degree-multiple test data elsewhere in this file (which
+    // lands on exact cos/sin values), 40 degrees doesn't - and QVector3D
+    // (linePoint()'s return type) stores components as single-precision
+    // float, so the round-trip through it picks up ~1e-5 rounding noise
+    // that a tighter tolerance would flag as a false failure.
+    QVERIFY(qAbs(angleDegrees - 40.0) < 1e-3);
+    QVERIFY(qAbs(length - 200.0) < 1e-3);
+}
+
+void ArrangeGeometry_Test::bearingToCenterIsOppositeOfCirclePlacementAngle()
+{
+    // A fixture placed at 30 degrees around the circle sits at direction
+    // (cos 30, sin 30) from the centroid, so it must face back along
+    // (-cos 30, -sin 30) - i.e. 30 + 180 = 210 degrees - to look at the centre.
+    qreal angleRad = qDegreesToRadians(30.0);
+    QPointF onCircle(50.0 * qCos(angleRad), 50.0 * qSin(angleRad));
+
+    qreal bearing = bearingToCenterDegrees(onCircle);
+    qreal expected = 30.0 + 180.0;
+    // normalize both to [0, 360) before comparing
+    if (bearing < 0) bearing += 360.0;
+    if (expected >= 360.0) expected -= 360.0;
+
+    QVERIFY(qAbs(bearing - expected) < 1e-6);
 }
 
 QTEST_MAIN(ArrangeGeometry_Test)
