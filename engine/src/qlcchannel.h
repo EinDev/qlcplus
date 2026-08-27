@@ -215,6 +215,15 @@ public:
         Effect,
         Maintenance,
         Nothing,
+        PositionX,
+        PositionY,
+        PositionZ,
+        RotationX,
+        RotationY,
+        RotationZ,
+        ScaleX,
+        ScaleY,
+        ScaleZ,
         NoGroup = INT_MAX
     };
     Q_ENUM(Group)
