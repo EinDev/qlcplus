@@ -260,6 +260,44 @@ Lessons learned so far:
   *running* the exe, not just building it, or it fails to even load with a
   misleading exit code.
 
+## Unit testing (engine/test) - resource paths
+
+`engine/test/common/resource_paths.h`'s `INTERNAL_SCRIPTDIR`/`INTERNAL_FIXTUREDIR`/
+`INTERNAL_PROFILEDIR` are relative paths (`"../../../resources/rgbscripts/"` etc.),
+resolved against the test binary's working directory at runtime - `engine/test/
+CMakeLists.txt` sets that to each test's own build output directory
+(`WORKING_DIRECTORY $<TARGET_FILE_DIR:...>`), so they resolve to
+`<build>/resources/rgbscripts/` etc., not the source tree. Nothing copied those
+resources into the build tree for a normal desktop build (only `if(ANDROID)`
+branches in `resources/{rgbscripts,fixtures,inputprofiles}/CMakeLists.txt` did
+any copying) - `resources/rgbscripts/CMakeLists.txt` now also does an
+unconditional `copy_directory` into the build tree, refreshed via a proper
+`add_custom_command`/`DEPENDS` whenever a script or that directory's own
+`CMakeLists.txt` changes (the latter matters: `RGBScript_Test::scripts()` reads
+that file back as a "is this script registered" check, and `QFile::open
+(QIODevice::ReadWrite)` on a missing file silently creates an empty one instead
+of erroring, so a partial copy missing it fails that check in a confusing way).
+Before this fix, a fresh build had no scripts there at all, and if a build
+directory happened to acquire a copy some other way, it never got refreshed -
+this bit two different overnight test-writing sessions the same way before
+being tracked down. `resources/fixtures/`/`resources/inputprofiles/` likely have
+the same latent gap (same desktop-skips-the-copy pattern) but weren't touched -
+a deliberate follow-up, not verified broken.
+
+**Still-unresolved wrinkle, found while fixing this, not solved**: running a
+test directly (`./rgbscript_test.exe`, from an MSYS2 bash shell with
+`C:\msys64\mingw64\bin` and the built `qlcplusengine.dll`'s directory on `PATH`)
+works and correctly picks up the fresh resource copy. Running the exact same
+binary via `ctest -R rgbscript_test` from the build directory, with the same
+`PATH` exported in the same shell before invoking `ctest`, fails with no
+captured output at all (`Testing/Temporary/LastTest.log` shows `<end of
+output>`) - consistent with `qlcplusengine.dll` not being found specifically
+for a ctest-spawned child process, even though `ctest.exe` itself launches fine
+from that same shell/PATH. Direct binary execution (this project's established
+convention, see the `qmlui/test` section above) is unaffected and is the
+reliable way to run these suites; bare `ctest` invocation for anything needing
+`qlcplusengine.dll` needs further investigation before it can be trusted.
+
 ## Git workflow for this project
 
 **Commit before every build**, even for a fix you're not certain worked yet —
