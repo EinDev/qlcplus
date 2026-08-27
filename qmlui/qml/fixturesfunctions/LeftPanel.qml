@@ -451,12 +451,12 @@ SidePanel
 
                 // Maintenance channels have no standard meaning across fixture
                 // models (fan control, reset, lamp strike, etc. all differ per
-                // fixture), unlike Shutter/Gobo/ColorWheel which are broadly
-                // comparable - so this is the one preset list where the
-                // "Product - Channel name" label (see
-                // FixtureManager::presetsChannels()) genuinely matters for
-                // telling entries apart, not just a nicety.
-                PresetsTool
+                // fixture) and, unlike Shutter/Gobo/ColorWheel, are typically
+                // independent functions someone wants to see/adjust all at
+                // once rather than pick one at a time - so this uses a
+                // dedicated always-visible, grouped-by-fixture-model panel
+                // instead of the single-selection PresetsTool.
+                MaintenanceTool
                 {
                     id: maintenanceTool
                     parent: mainView
@@ -464,11 +464,6 @@ SidePanel
                     y: UISettings.bigItemHeight
                     visible: maintenanceToolButton.checked
                     onVisibleChanged: if (visible) updatePresets(fixtureManager.maintenanceChannels)
-                    onPresetSelected:
-                        function(cap, fxID, chIdx, value)
-                        {
-                            fixtureManager.setPresetValue(fxID, chIdx, value)
-                        }
                 }
             }
 
