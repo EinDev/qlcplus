@@ -1976,23 +1976,7 @@ void ContextManager::setFixtureGroupSelection(quint32 id, bool enable, bool isUn
 bool ContextManager::isGroupFullySelected(quint32 id) const
 {
     FixtureGroup *group = m_doc->fixtureGroup(id);
-    if (group == nullptr || group->fixtureList().isEmpty())
-        return false;
-
-    for (quint32 &fxID : group->fixtureList())
-    {
-        for (quint32 &subID : m_monProps->fixtureIDList(fxID))
-        {
-            quint16 headIndex = m_monProps->fixtureHeadIndex(subID);
-            quint16 linkedIndex = m_monProps->fixtureLinkedIndex(subID);
-            quint32 itemID = FixtureUtils::fixtureItemID(fxID, headIndex, linkedIndex);
-
-            if (m_selectedFixtures.contains(itemID) == false)
-                return false;
-        }
-    }
-
-    return true;
+    return FixtureUtils::isGroupFullySelected(group, m_monProps, m_selectedFixtures);
 }
 
 void ContextManager::selectNextFixtureGroup()

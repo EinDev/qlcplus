@@ -243,6 +243,28 @@ QVector3D FixtureUtils::item3DPosition(const MonitorProperties *monProps, QPoint
     return pos;
 }
 
+bool FixtureUtils::isGroupFullySelected(const FixtureGroup *group, const MonitorProperties *monProps,
+                                         const QList<quint32> &selectedFixtures)
+{
+    if (group == nullptr || group->fixtureList().isEmpty())
+        return false;
+
+    for (quint32 fxID : group->fixtureList())
+    {
+        for (quint32 subID : monProps->fixtureIDList(fxID))
+        {
+            quint16 headIndex = monProps->fixtureHeadIndex(subID);
+            quint16 linkedIndex = monProps->fixtureLinkedIndex(subID);
+            quint32 itemID = FixtureUtils::fixtureItemID(fxID, headIndex, linkedIndex);
+
+            if (selectedFixtures.contains(itemID) == false)
+                return false;
+        }
+    }
+
+    return true;
+}
+
 QPointF FixtureUtils::available2DPosition(Doc *doc, int pointOfView, QRectF fxRect)
 {
     MonitorProperties *monProps = doc->monitorProperties();
