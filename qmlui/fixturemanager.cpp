@@ -2147,6 +2147,7 @@ QMultiHash<int, SceneValue> FixtureManager::getFixtureCapabilities(quint32 itemI
     bool hasDimmer = false, hasColor = false, hasPosition = false;
     bool hasShutter = false, hasColorWheel = false, hasGobos = false;
     bool hasBeam = false;
+    bool hasSpeed = false, hasPrism = false, hasEffect = false, hasMaintenance = false;
     int origColorsMask = m_colorsMask;
     quint32 origCapabilityMask = m_capabilityMask;
     QLCPhysical phy;
@@ -2330,6 +2331,82 @@ QMultiHash<int, SceneValue> FixtureManager::getFixtureCapabilities(quint32 itemI
                 channelsMap.insert(chType, SceneValue(fixtureID, ch));
             }
             break;
+            case QLCChannel::Speed:
+            {
+                hasSpeed = true;
+                if (enable)
+                {
+                    if (m_presetsCache.contains(channel) == false)
+                    {
+                        m_presetsCache[channel] = fixtureID;
+                        emit speedChannelsChanged();
+                    }
+                }
+                else
+                {
+                    m_presetsCache.remove(channel);
+                    emit speedChannelsChanged();
+                }
+                channelsMap.insert(chType, SceneValue(fixtureID, ch));
+            }
+            break;
+            case QLCChannel::Prism:
+            {
+                hasPrism = true;
+                if (enable)
+                {
+                    if (m_presetsCache.contains(channel) == false)
+                    {
+                        m_presetsCache[channel] = fixtureID;
+                        emit prismChannelsChanged();
+                    }
+                }
+                else
+                {
+                    m_presetsCache.remove(channel);
+                    emit prismChannelsChanged();
+                }
+                channelsMap.insert(chType, SceneValue(fixtureID, ch));
+            }
+            break;
+            case QLCChannel::Effect:
+            {
+                hasEffect = true;
+                if (enable)
+                {
+                    if (m_presetsCache.contains(channel) == false)
+                    {
+                        m_presetsCache[channel] = fixtureID;
+                        emit effectChannelsChanged();
+                    }
+                }
+                else
+                {
+                    m_presetsCache.remove(channel);
+                    emit effectChannelsChanged();
+                }
+                channelsMap.insert(chType, SceneValue(fixtureID, ch));
+            }
+            break;
+            case QLCChannel::Maintenance:
+            {
+                hasMaintenance = true;
+                if (enable)
+                {
+                    if (m_presetsCache.contains(channel) == false)
+                    {
+                        m_presetsCache[channel] = fixtureID;
+                        emit maintenanceChannelsChanged();
+                    }
+                }
+                else
+                {
+                    m_presetsCache.remove(channel);
+                    emit maintenanceChannelsChanged();
+                }
+                channelsMap.insert(chType, SceneValue(fixtureID, ch));
+            }
+            break;
             default:
             break;
         }
@@ -2348,6 +2425,10 @@ QMultiHash<int, SceneValue> FixtureManager::getFixtureCapabilities(quint32 itemI
     updateCapabilityCounter(hasColorWheel, "capColorWheel", capDelta);
     updateCapabilityCounter(hasGobos, "capGobos", capDelta);
     updateCapabilityCounter(hasBeam, "capBeam", capDelta);
+    updateCapabilityCounter(hasSpeed, "capSpeed", capDelta);
+    updateCapabilityCounter(hasPrism, "capPrism", capDelta);
+    updateCapabilityCounter(hasEffect, "capEffect", capDelta);
+    updateCapabilityCounter(hasMaintenance, "capMaintenance", capDelta);
 
     return channelsMap;
 }
@@ -2371,6 +2452,10 @@ void FixtureManager::resetCapabilities()
     setCapabilityCounter("capGobos", 0);
     setCapabilityCounter("capShutter", 0);
     setCapabilityCounter("capBeam", 0);
+    setCapabilityCounter("capSpeed", 0);
+    setCapabilityCounter("capPrism", 0);
+    setCapabilityCounter("capEffect", 0);
+    setCapabilityCounter("capMaintenance", 0);
 }
 
 QList<SceneValue> FixtureManager::getFixturePosition(quint32 fxID, int type, int degrees)
@@ -2486,6 +2571,26 @@ QVariantList FixtureManager::colorWheelChannels()
 QVariantList FixtureManager::shutterChannels()
 {
     return presetsChannels(QLCChannel::Shutter);
+}
+
+QVariantList FixtureManager::speedChannels()
+{
+    return presetsChannels(QLCChannel::Speed);
+}
+
+QVariantList FixtureManager::prismChannels()
+{
+    return presetsChannels(QLCChannel::Prism);
+}
+
+QVariantList FixtureManager::effectChannels()
+{
+    return presetsChannels(QLCChannel::Effect);
+}
+
+QVariantList FixtureManager::maintenanceChannels()
+{
+    return presetsChannels(QLCChannel::Maintenance);
 }
 
 QVariantList FixtureManager::presetCapabilities(quint32 fixtureID, int chIndex)
