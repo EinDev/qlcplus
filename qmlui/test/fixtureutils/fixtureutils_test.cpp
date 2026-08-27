@@ -24,6 +24,7 @@
 #include "fixtureutils_test.h"
 #include "fixtureutils.h"
 #include "monitorproperties.h"
+#include "fixturegroup.h"
 #include "fixture.h"
 #include "doc.h"
 
@@ -160,6 +161,118 @@ void FixtureUtils_Test::dmxOrderSortWithHeadTiebreak()
 
     QCOMPARE(FixtureUtils::itemFixtureID(itemIDs.at(4)), fxHigh->id());
     QCOMPARE(FixtureUtils::itemHeadIndex(itemIDs.at(4)), (quint16)2);
+}
+
+// ContextManager::isGroupFullySelected() (qmlui/contextmanager.cpp, added in
+// 73ea55c7b/cb3abe039/34cbbac79) drives the group-row-highlight feature in
+// both FixtureGroupsBar.qml and the left-hand Fixture Groups list.
+// ContextManager itself needs a live QQuickView* to construct, but the check
+// only ever touches Doc/FixtureGroup/MonitorProperties, so its logic was
+// extracted into FixtureUtils::isGroupFullySelected() (same commit as this
+// test) so it can be exercised directly against real engine objects.
+void FixtureUtils_Test::groupFullySelectedWhenAllMembersSelected()
+{
+    Doc doc(this);
+
+    Fixture *fxA = new Fixture(&doc);
+    fxA->setChannels(1);
+    fxA->setAddress(1);
+    doc.addFixture(fxA);
+
+    Fixture *fxB = new Fixture(&doc);
+    fxB->setChannels(1);
+    fxB->setAddress(2);
+    doc.addFixture(fxB);
+
+    FixtureGroup grp(&doc);
+    grp.assignFixture(fxA->id());
+    grp.assignFixture(fxB->id());
+
+    MonitorProperties monProps;
+    QList<quint32> selected = {
+        FixtureUtils::fixtureItemID(fxA->id(), 0, 0),
+        FixtureUtils::fixtureItemID(fxB->id(), 0, 0)
+    };
+
+    QVERIFY(FixtureUtils::isGroupFullySelected(&grp, &monProps, selected));
+}
+
+void FixtureUtils_Test::groupNotFullySelectedWhenOneMemberMissing()
+{
+    Doc doc(this);
+
+    Fixture *fxA = new Fixture(&doc);
+    fxA->setChannels(1);
+    fxA->setAddress(1);
+    doc.addFixture(fxA);
+
+    Fixture *fxB = new Fixture(&doc);
+    fxB->setChannels(1);
+    fxB->setAddress(2);
+    doc.addFixture(fxB);
+
+    FixtureGroup grp(&doc);
+    grp.assignFixture(fxA->id());
+    grp.assignFixture(fxB->id());
+
+    MonitorProperties monProps;
+    // fxB never makes it into the selection.
+    QList<quint32> selected = { FixtureUtils::fixtureItemID(fxA->id(), 0, 0) };
+
+    QVERIFY(FixtureUtils::isGroupFullySelected(&grp, &monProps, selected) == false);
+}
+
+// The empty-group early return is a deliberate behavioural choice (an empty
+// group can never read as "fully selected", however the selection looks),
+// not an accident of the loop just never running - pin it down explicitly.
+void FixtureUtils_Test::emptyGroupIsNeverFullySelected()
+{
+    Doc doc(this);
+    FixtureGroup grp(&doc);
+    MonitorProperties monProps;
+
+    QVERIFY(FixtureUtils::isGroupFullySelected(&grp, &monProps, QList<quint32>()) == false);
+
+    Fixture *fx = new Fixture(&doc);
+    fx->setChannels(1);
+    fx->setAddress(1);
+    doc.addFixture(fx);
+    QList<quint32> selected = { FixtureUtils::fixtureItemID(fx->id(), 0, 0) };
+    QVERIFY(FixtureUtils::isGroupFullySelected(&grp, &monProps, selected) == false);
+}
+
+// The subtlest part of the real logic: every one of a fixture's
+// MonitorProperties sub-items (extra heads AND linked copies, tracked
+// independently of the base fixture) must be present in the selection, not
+// just the base fixture's own itemID.
+void FixtureUtils_Test::groupNotFullySelectedWhenOnlySomeHeadsSelected()
+{
+    Doc doc(this);
+
+    Fixture *fx = new Fixture(&doc);
+    fx->setChannels(1);
+    fx->setAddress(1);
+    doc.addFixture(fx);
+
+    FixtureGroup grp(&doc);
+    grp.assignFixture(fx->id());
+
+    MonitorProperties monProps;
+    // Register an extra head (1,0) and an extra linked copy (0,1) as
+    // sub-items alongside the implicit base item (0,0).
+    monProps.setFixturePosition(fx->id(), 1, 0, QVector3D());
+    monProps.setFixturePosition(fx->id(), 0, 1, QVector3D());
+
+    quint32 base   = FixtureUtils::fixtureItemID(fx->id(), 0, 0);
+    quint32 head1  = FixtureUtils::fixtureItemID(fx->id(), 1, 0);
+    quint32 linked1 = FixtureUtils::fixtureItemID(fx->id(), 0, 1);
+
+    // Only the base item selected - the extra head and linked copy are not.
+    QVERIFY(FixtureUtils::isGroupFullySelected(&grp, &monProps, QList<quint32>{base}) == false);
+    // Base + head, still missing the linked copy.
+    QVERIFY(FixtureUtils::isGroupFullySelected(&grp, &monProps, QList<quint32>{base, head1}) == false);
+    // All three sub-items present - now fully selected.
+    QVERIFY(FixtureUtils::isGroupFullySelected(&grp, &monProps, QList<quint32>{base, head1, linked1}));
 }
 
 QTEST_APPLESS_MAIN(FixtureUtils_Test)

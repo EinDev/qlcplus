@@ -32,6 +32,11 @@ private slots:
     void alignTopViewMovesOnlyTheAlignedAxis();
     void alignLeftViewMovesOnlyTheAlignedAxis();
     void dmxOrderSortWithHeadTiebreak();
+
+    void groupFullySelectedWhenAllMembersSelected();
+    void groupNotFullySelectedWhenOneMemberMissing();
+    void emptyGroupIsNeverFullySelected();
+    void groupNotFullySelectedWhenOnlySomeHeadsSelected();
 };
 
 #endif
