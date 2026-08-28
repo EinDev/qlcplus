@@ -413,6 +413,31 @@ void TreeModel_Test::staleItemRoleChangeIsIgnoredSafely()
     tree.roleChanged(childItem, TreeModel::IsExpandedRole, true);
 }
 
+// TreeModel::removeItem() looks up a top-level (single-segment) path by
+// scanning m_items for a matching label and only calls beginRemoveRows()/
+// endRemoveRows() once it finds one - a path that doesn't match anything
+// must fall through to returning false without mutating m_items at all,
+// rather than e.g. removing nothing but still emitting the row-removal
+// signals (which would desync any attached view's row count from the model's
+// actual rowCount()).
+void TreeModel_Test::removingNonExistentTopLevelItemLeavesTreeUnchanged()
+{
+    TreeModel tree;
+    tree.setColumnNames(QStringList() << "id");
+    tree.enableSorting(false);
+    tree.addItem("Fixture A", QVariantList() << 1);
+    tree.addItem("Fixture B", QVariantList() << 2);
+
+    QSignalSpy rowsRemovedSpy(&tree, &TreeModel::rowsRemoved);
+
+    QCOMPARE(tree.removeItem("Fixture Z"), false);
+
+    QCOMPARE(tree.rowCount(), 2);
+    QCOMPARE(rowsRemovedSpy.count(), 0);
+    QCOMPARE(tree.data(tree.index(0), TreeModel::LabelRole).toString(), QString("Fixture A"));
+    QCOMPARE(tree.data(tree.index(1), TreeModel::LabelRole).toString(), QString("Fixture B"));
+}
+
 // QTEST_APPLESS_MAIN (no QCoreApplication at all) was enough for every test
 // above this point, but QQmlEngine - needed to actually exercise the
 // isBatchSelection() context-property lookup below - requires one to exist.
