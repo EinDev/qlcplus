@@ -66,6 +66,23 @@ Rectangle
         }
     }
 
+    // Unlike the DMX/2D/3D/Universe Grid views (which live inside
+    // FixturesAndFunctions.qml's previewLoader and get destroyed whenever
+    // the sub-view changes), this console lives in BottomPanel, a sibling
+    // of that loader - so switching sub-views does not tear it down, and
+    // any open channel tool popup would otherwise stay visible on top of
+    // the newly-selected view.
+    Connections
+    {
+        target: contextManager
+        ignoreUnknownSignals: true
+
+        function onCurrentSubContextChanged()
+        {
+            channelToolLoader.closeChannelTool()
+        }
+    }
+
     ChannelToolLoader
     {
         id: channelToolLoader
