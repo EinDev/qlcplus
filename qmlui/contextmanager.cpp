@@ -1111,7 +1111,7 @@ void ContextManager::setFixturesOffset(qreal x, qreal y)
              fixture->channelNumber(QLCChannel::PositionZ, QLCChannel::MSB) != QLCChannel::invalid()))
         {
             QVector3D gridCenter = FixtureUtils::gridCenterPosition(m_monProps);
-            QVector3D newDelta = FixtureUtils::fixturePositionDelta(fixture) + QVector3D(x, 0, y) / 1000.0f;
+            QVector3D newDelta = cachedPositionDelta(fxID, fixture) + QVector3D(x, 0, y) / 1000.0f;
             pushPositionDelta(fixture, newDelta);
             if (m_2DView->isEnabled())
                 m_2DView->updateFixturePosition(itemID, gridCenter + (newDelta * 1000.0f));
@@ -1168,6 +1168,11 @@ void ContextManager::pushPositionDelta(Fixture *fixture, QVector3D deltaMeters)
                 m_functionManager->setChannelValue(sv.fxi, sv.channel, sv.value);
         }
     }
+
+    // Record what we just told this fixture to be - see cachedPositionDelta()
+    // for why this must not be re-derived from the fixture's own channel
+    // values on the next call instead.
+    m_fixturePositionDeltaCache.insert(fixture->id(), deltaMeters);
 }
 
 void ContextManager::pushRotationDelta(Fixture *fixture, QVector3D deltaDegrees)
@@ -1192,6 +1197,31 @@ void ContextManager::pushRotationDelta(Fixture *fixture, QVector3D deltaDegrees)
                 m_functionManager->setChannelValue(sv.fxi, sv.channel, sv.value);
         }
     }
+
+    // See pushPositionDelta()'s equivalent note.
+    m_fixtureRotationDeltaCache.insert(fixture->id(), deltaDegrees);
+}
+
+QVector3D ContextManager::cachedPositionDelta(quint32 fxID, Fixture *fixture) const
+{
+    QHash<quint32, QVector3D>::const_iterator it = m_fixturePositionDeltaCache.constFind(fxID);
+    if (it != m_fixturePositionDeltaCache.constEnd())
+        return it.value();
+
+    QVector3D delta = FixtureUtils::fixturePositionDelta(fixture);
+    m_fixturePositionDeltaCache.insert(fxID, delta);
+    return delta;
+}
+
+QVector3D ContextManager::cachedRotationDelta(quint32 fxID, Fixture *fixture) const
+{
+    QHash<quint32, QVector3D>::const_iterator it = m_fixtureRotationDeltaCache.constFind(fxID);
+    if (it != m_fixtureRotationDeltaCache.constEnd())
+        return it.value();
+
+    QVector3D delta = FixtureUtils::fixtureRotationDelta(fixture);
+    m_fixtureRotationDeltaCache.insert(fxID, delta);
+    return delta;
 }
 
 QVector3D ContextManager::fixturesPosition() const
@@ -1213,7 +1243,7 @@ QVector3D ContextManager::fixturesPosition() const
              fixture->channelNumber(QLCChannel::PositionY, QLCChannel::MSB) != QLCChannel::invalid() ||
              fixture->channelNumber(QLCChannel::PositionZ, QLCChannel::MSB) != QLCChannel::invalid()))
         {
-            return FixtureUtils::gridCenterPosition(m_monProps) + (FixtureUtils::fixturePositionDelta(fixture) * 1000.0f);
+            return FixtureUtils::gridCenterPosition(m_monProps) + (cachedPositionDelta(fxID, fixture) * 1000.0f);
         }
 
         return m_monProps->fixturePosition(fxID, headIndex, linkedIndex);
@@ -1285,7 +1315,7 @@ void ContextManager::setFixturesPosition(QVector3D position)
                  fixture->channelNumber(QLCChannel::PositionY, QLCChannel::MSB) != QLCChannel::invalid() ||
                  fixture->channelNumber(QLCChannel::PositionZ, QLCChannel::MSB) != QLCChannel::invalid()))
             {
-                QVector3D newDelta = FixtureUtils::fixturePositionDelta(fixture) + (position / 1000.0f);
+                QVector3D newDelta = cachedPositionDelta(fxID, fixture) + (position / 1000.0f);
                 pushPositionDelta(fixture, newDelta);
                 if (m_3DView->isEnabled())
                     m_3DView->updateFixturePosition(itemID, FixtureUtils::gridCenterPosition(m_monProps) + (newDelta * 1000.0f));
@@ -2129,7 +2159,7 @@ QVector3D ContextManager::fixturesRotation() const
                  fixture->channelNumber(QLCChannel::RotationY, QLCChannel::MSB) != QLCChannel::invalid() ||
                  fixture->channelNumber(QLCChannel::RotationZ, QLCChannel::MSB) != QLCChannel::invalid()))
             {
-                return FixtureUtils::fixtureRotationDelta(fixture);
+                return cachedRotationDelta(fixtureID, fixture);
             }
 
             return m_monProps->fixtureRotation(fixtureID, headIndex, linkedIndex);
@@ -2191,7 +2221,7 @@ void ContextManager::setFixturesRotation(QVector3D degrees)
                  fixture->channelNumber(QLCChannel::RotationY, QLCChannel::MSB) != QLCChannel::invalid() ||
                  fixture->channelNumber(QLCChannel::RotationZ, QLCChannel::MSB) != QLCChannel::invalid()))
             {
-                QVector3D newDelta = FixtureUtils::fixtureRotationDelta(fixture) + degrees;
+                QVector3D newDelta = cachedRotationDelta(fxID, fixture) + degrees;
                 pushRotationDelta(fixture, newDelta);
                 if (m_2DView->isEnabled())
                     m_2DView->updateFixtureRotation(itemID, newDelta);

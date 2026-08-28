@@ -20,6 +20,7 @@
 #ifndef CONTEXTMANAGER_H
 #define CONTEXTMANAGER_H
 
+#include <QHash>
 #include <QObject>
 #include <QQuickView>
 #include <QVector3D>
@@ -466,7 +467,28 @@ private:
      *  ($deltaDegrees). */
     void pushRotationDelta(Fixture *fixture, QVector3D deltaDegrees);
 
+    /** The position/rotation delta we last told $fixture's PositionX/Y/Z or
+     *  RotationX/Y/Z channels to have, tracked in m_fixturePositionDeltaCache/
+     *  m_fixtureRotationDeltaCache (keyed by fixture ID) instead of re-derived
+     *  from Fixture::channelValueAt() on every call. Needed because
+     *  channelValueAt() only reflects a pushPositionDelta()/pushRotationDelta()
+     *  write once Doc's regular processing tick has run - a fast drag calls
+     *  this far more often than that tick fires, so re-deriving "current
+     *  delta" from the fixture on every increment reads a stale value and
+     *  silently discards most of the increments that haven't been processed
+     *  yet (reproduced as: dragging the fixture a visible distance only
+     *  actually moves it a small fraction of that distance). Seeded from the
+     *  fixture's actual current value the first time it's asked about; after
+     *  that it's updated purely from what we ourselves pushed, making it the
+     *  authoritative record of "what we told this fixture to be" rather than
+     *  a read of the DMX output. */
+    QVector3D cachedPositionDelta(quint32 fxID, Fixture *fixture) const;
+    QVector3D cachedRotationDelta(quint32 fxID, Fixture *fixture) const;
+
 private:
+    mutable QHash<quint32, QVector3D> m_fixturePositionDeltaCache;
+    mutable QHash<quint32, QVector3D> m_fixtureRotationDeltaCache;
+
     /** The list of the currently selected Fixture item IDs */
     QList<quint32> m_selectedFixtures;
 
