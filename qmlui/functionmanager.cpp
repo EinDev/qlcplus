@@ -1019,11 +1019,10 @@ void FunctionManager::cloneFunctions()
                 continue;
             }
 
-            Tardis::instance()->enqueueAction(Tardis::FunctionCreate, copy->id(), QVariant(),
-                                              Tardis::instance()->actionToByteArray(Tardis::FunctionCreate, copy->id()));
-
-            /* If the cloned Function is a Sequence,
-             * clone the bound Scene too */
+            /* If the cloned Function is a Sequence, clone the bound Scene too
+             * and rebind the copy to it *before* snapshotting the copy below,
+             * so the undo/redo XML for the Sequence copy stores the new bound
+             * Scene ID rather than the original's */
             if (func->type() == Function::SequenceType)
             {
                 Sequence *sequence = qobject_cast<Sequence *>(copy);
@@ -1043,6 +1042,9 @@ void FunctionManager::cloneFunctions()
                     }
                 }
             }
+
+            Tardis::instance()->enqueueAction(Tardis::FunctionCreate, copy->id(), QVariant(),
+                                              Tardis::instance()->actionToByteArray(Tardis::FunctionCreate, copy->id()));
         }
     }
 }
