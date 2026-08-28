@@ -25,9 +25,40 @@
 #include "fixtureutils.h"
 #include "monitorproperties.h"
 #include "fixturegroup.h"
+#include "qlcfixturedef.h"
+#include "qlcfixturemode.h"
 #include "qlcchannel.h"
 #include "fixture.h"
 #include "doc.h"
+
+// Builds a Fixture with a single, MSB-only (coarse) channel of $group set to
+// $value - just enough to exercise FixtureUtils::fixturePositionDelta()/
+// fixtureRotationDelta()/fixtureScaleFactor(), which each scan a fixture's
+// real channels/values rather than taking raw ints directly.
+static Fixture *createSingleChannelFixture(Doc *doc, QLCChannel::Group group, uchar value)
+{
+    QLCFixtureDef *def = new QLCFixtureDef();
+    QLCFixtureMode *mode = new QLCFixtureMode(def);
+
+    QLCChannel *channel = new QLCChannel();
+    channel->setName("Test Channel");
+    channel->setGroup(group);
+    channel->setControlByte(QLCChannel::MSB);
+    // insertChannel() below requires the channel to already be registered
+    // with the mode's parent QLCFixtureDef, or it silently refuses to add it.
+    def->addChannel(channel);
+    mode->insertChannel(channel, 0);
+
+    Fixture *fixture = new Fixture(doc);
+    fixture->setAddress(0);
+    fixture->setFixtureDefinition(def, mode);
+    doc->addFixture(fixture);
+
+    QByteArray values(1, char(value));
+    fixture->setChannelValues(values);
+
+    return fixture;
+}
 
 // Every mass-selection, arrange/align, and drag-position code path this
 // session touched identifies a fixture (or one head of a multi-head/linked
@@ -406,6 +437,54 @@ void FixtureUtils_Test::scaleFactorRoundTrips()
     // out-of-range factors must clamp to the 0-65535 raw domain.
     QCOMPARE(FixtureUtils::scaleRawFromFactor(0.0f), 0);
     QCOMPARE(FixtureUtils::scaleRawFromFactor(10.0f), 65535);
+}
+
+// fixturePositionDelta() is the single source of truth MainView3D::
+// updateFixtureItem() (DMX->transform) and ContextManager::setFixturesPosition()
+// (drag->DMX write-back) both rely on to know "what is this fixture's current
+// live position offset" - an axis with no channel at all on the fixture must
+// read back as exactly 0 (unaffected), never positionDeltaFromRaw(0)'s -2.5m,
+// or every axis a profile doesn't define would silently drag the fixture off
+// to one side.
+void FixtureUtils_Test::fixturePositionDeltaIgnoresAbsentAxes()
+{
+    Doc doc(this);
+    Fixture *fixture = createSingleChannelFixture(&doc, QLCChannel::PositionX, 0xFF);
+
+    QVector3D delta = FixtureUtils::fixturePositionDelta(fixture);
+
+    QCOMPARE(delta.x(), FixtureUtils::positionDeltaFromRaw(0xFF << 8));
+    QCOMPARE(delta.y(), 0.0f);
+    QCOMPARE(delta.z(), 0.0f);
+}
+
+// Same guarantee as above, for RotationX/Y/Z.
+void FixtureUtils_Test::fixtureRotationDeltaIgnoresAbsentAxes()
+{
+    Doc doc(this);
+    Fixture *fixture = createSingleChannelFixture(&doc, QLCChannel::RotationZ, 0xFF);
+
+    QVector3D delta = FixtureUtils::fixtureRotationDelta(fixture);
+
+    QCOMPARE(delta.z(), FixtureUtils::rotationDeltaFromRaw(0xFF << 8));
+    QCOMPARE(delta.x(), 0.0f);
+    QCOMPARE(delta.y(), 0.0f);
+}
+
+// fixtureScaleFactor() is not delta-based like position/rotation - an absent
+// axis must default to 1.0 (no scaling), not scaleFactorFromRaw(0)'s 0.1x,
+// or a fixture defining only ScaleX would get silently squashed to 10% on
+// the Y/Z axes it never asked to control.
+void FixtureUtils_Test::fixtureScaleFactorDefaultsToOneForAbsentAxes()
+{
+    Doc doc(this);
+    Fixture *fixture = createSingleChannelFixture(&doc, QLCChannel::ScaleX, 0xFF);
+
+    QVector3D factor = FixtureUtils::fixtureScaleFactor(fixture);
+
+    QCOMPARE(factor.x(), FixtureUtils::scaleFactorFromRaw(0xFF << 8));
+    QCOMPARE(factor.y(), 1.0f);
+    QCOMPARE(factor.z(), 1.0f);
 }
 
 QTEST_APPLESS_MAIN(FixtureUtils_Test)

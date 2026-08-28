@@ -1092,6 +1092,32 @@ void ContextManager::setFixturesOffset(qreal x, qreal y)
         if (m_monProps->fixtureFlags(fxID, headIndex, linkedIndex) & MonitorProperties::LockedFlag)
             continue;
 
+        Fixture *fixture = m_doc->fixture(fxID);
+
+        // Fixtures with their own PositionX/PositionZ DMX channels drag as a
+        // live DMX offset from their static rest placement, never touching
+        // the persisted MonitorProperties position - same principle as
+        // Pan/Tilt, which is always a visual overlay on top of a fixed rest
+        // pose (and the same pattern setFixturesPosition() uses for the 3D
+        // view's drag handler, below). Only meaningful in TopView, since
+        // that's the only 2D orientation where the drag's own x/y map
+        // directly onto world X/Z (see FixtureUtils::item2DPosition() and
+        // this function's own TopView case just below) - world Y is the
+        // vertical axis (see MainView3D::updateFixturePosition()'s mm -> m
+        // conversion), not shown in a top-down 2D plan, so PositionY is left
+        // untouched here exactly like the 3D-only PositionY case is.
+        if (fixture != nullptr && m_monProps->pointOfView() == MonitorProperties::TopView &&
+            (fixture->channelNumber(QLCChannel::PositionX, QLCChannel::MSB) != QLCChannel::invalid() ||
+             fixture->channelNumber(QLCChannel::PositionZ, QLCChannel::MSB) != QLCChannel::invalid()))
+        {
+            QVector3D basePos = m_monProps->fixturePosition(fxID, headIndex, linkedIndex);
+            QVector3D newDelta = FixtureUtils::fixturePositionDelta(fixture) + QVector3D(x, 0, y) / 1000.0f;
+            pushPositionDelta(fixture, newDelta);
+            if (m_2DView->isEnabled())
+                m_2DView->updateFixturePosition(itemID, basePos + (newDelta * 1000.0f));
+            continue;
+        }
+
         QVector3D currPos = m_monProps->fixturePosition(fxID, headIndex, linkedIndex);
         QVector3D newPos;
 
@@ -1120,6 +1146,54 @@ void ContextManager::setFixturesOffset(qreal x, qreal y)
     }
 }
 
+void ContextManager::pushPositionDelta(Fixture *fixture, QVector3D deltaMeters)
+{
+    const QLCChannel::Group axisGroups[3] = {
+        QLCChannel::PositionX, QLCChannel::PositionY, QLCChannel::PositionZ
+    };
+    const float deltaValues[3] = { deltaMeters.x(), deltaMeters.y(), deltaMeters.z() };
+
+    for (int i = 0; i < 3; i++)
+    {
+        if (fixture->channelNumber(axisGroups[i], QLCChannel::MSB) == QLCChannel::invalid())
+            continue;
+
+        int raw = FixtureUtils::positionRawFromDelta(deltaValues[i]);
+        QList<SceneValue> svList = fixture->axisValueToValues(axisGroups[i], raw);
+        for (SceneValue &sv : svList)
+        {
+            if (m_editingEnabled == false || m_functionManager->acceptsSceneValues() == false)
+                setDumpValue(sv.fxi, sv.channel, sv.value);
+            else
+                m_functionManager->setChannelValue(sv.fxi, sv.channel, sv.value);
+        }
+    }
+}
+
+void ContextManager::pushRotationDelta(Fixture *fixture, QVector3D deltaDegrees)
+{
+    const QLCChannel::Group axisGroups[3] = {
+        QLCChannel::RotationX, QLCChannel::RotationY, QLCChannel::RotationZ
+    };
+    const float deltaValues[3] = { deltaDegrees.x(), deltaDegrees.y(), deltaDegrees.z() };
+
+    for (int i = 0; i < 3; i++)
+    {
+        if (fixture->channelNumber(axisGroups[i], QLCChannel::MSB) == QLCChannel::invalid())
+            continue;
+
+        int raw = FixtureUtils::rotationRawFromDelta(deltaValues[i]);
+        QList<SceneValue> svList = fixture->axisValueToValues(axisGroups[i], raw);
+        for (SceneValue &sv : svList)
+        {
+            if (m_editingEnabled == false || m_functionManager->acceptsSceneValues() == false)
+                setDumpValue(sv.fxi, sv.channel, sv.value);
+            else
+                m_functionManager->setChannelValue(sv.fxi, sv.channel, sv.value);
+        }
+    }
+}
+
 QVector3D ContextManager::fixturesPosition() const
 {
     if (m_selectedFixtures.count() == 1)
@@ -1127,7 +1201,18 @@ QVector3D ContextManager::fixturesPosition() const
         quint32 fxID = FixtureUtils::itemFixtureID(m_selectedFixtures.first());
         quint16 headIndex = FixtureUtils::itemHeadIndex(m_selectedFixtures.first());
         quint16 linkedIndex = FixtureUtils::itemLinkedIndex(m_selectedFixtures.first());
-        return m_monProps->fixturePosition(fxID, headIndex, linkedIndex);
+        QVector3D pos = m_monProps->fixturePosition(fxID, headIndex, linkedIndex);
+
+        // The static/rest position never moves for a fixture with its own
+        // PositionX/Y/Z channels (see setFixturesPosition() below) - add back
+        // its current live DMX offset so read-drag-write (as the 3D view's
+        // mouse handler does every onPositionChanged event) sees the actual
+        // visual position, not the frozen rest pose.
+        Fixture *fixture = m_doc->fixture(fxID);
+        if (fixture != nullptr)
+            pos += FixtureUtils::fixturePositionDelta(fixture) * 1000.0f;
+
+        return pos;
     }
 
     return QVector3D(0, 0, 0);
@@ -1150,13 +1235,31 @@ void ContextManager::setFixturesPosition(QVector3D position)
             return;
 
         QVector3D currPos = m_monProps->fixturePosition(fxID, headIndex, linkedIndex);
+        Fixture *fixture = m_doc->fixture(fxID);
 
-        Tardis::instance()->enqueueAction(Tardis::FixtureSetPosition, itemID, QVariant(currPos), QVariant(position));
+        // Fixtures with their own PositionX/Y/Z DMX channels drag as a live
+        // DMX offset from their static rest placement (currPos), which is
+        // never overwritten here - same principle as setFixturesOffset()'s
+        // TopView case above, and as Pan/Tilt, which is always a visual
+        // overlay on top of a fixed rest pose.
+        if (fixture != nullptr &&
+            (fixture->channelNumber(QLCChannel::PositionX, QLCChannel::MSB) != QLCChannel::invalid() ||
+             fixture->channelNumber(QLCChannel::PositionY, QLCChannel::MSB) != QLCChannel::invalid() ||
+             fixture->channelNumber(QLCChannel::PositionZ, QLCChannel::MSB) != QLCChannel::invalid()))
+        {
+            pushPositionDelta(fixture, (position - currPos) / 1000.0f);
+            if (m_3DView->isEnabled())
+                m_3DView->updateFixturePosition(itemID, position);
+        }
+        else
+        {
+            Tardis::instance()->enqueueAction(Tardis::FixtureSetPosition, itemID, QVariant(currPos), QVariant(position));
 
-        // absolute position change
-        m_monProps->setFixturePosition(fxID, headIndex, linkedIndex, position);
-        if (m_3DView->isEnabled())
-            m_3DView->updateFixturePosition(m_selectedFixtures.first(), position);
+            // absolute position change
+            m_monProps->setFixturePosition(fxID, headIndex, linkedIndex, position);
+            if (m_3DView->isEnabled())
+                m_3DView->updateFixturePosition(m_selectedFixtures.first(), position);
+        }
     }
     else
     {
@@ -1172,6 +1275,20 @@ void ContextManager::setFixturesPosition(QVector3D position)
                 continue;
 
             QVector3D currPos = m_monProps->fixturePosition(fxID, headIndex, linkedIndex);
+            Fixture *fixture = m_doc->fixture(fxID);
+
+            if (fixture != nullptr &&
+                (fixture->channelNumber(QLCChannel::PositionX, QLCChannel::MSB) != QLCChannel::invalid() ||
+                 fixture->channelNumber(QLCChannel::PositionY, QLCChannel::MSB) != QLCChannel::invalid() ||
+                 fixture->channelNumber(QLCChannel::PositionZ, QLCChannel::MSB) != QLCChannel::invalid()))
+            {
+                QVector3D newDelta = FixtureUtils::fixturePositionDelta(fixture) + (position / 1000.0f);
+                pushPositionDelta(fixture, newDelta);
+                if (m_3DView->isEnabled())
+                    m_3DView->updateFixturePosition(itemID, currPos + (newDelta * 1000.0f));
+                continue;
+            }
+
             QVector3D newPos = currPos + position;
             Tardis::instance()->enqueueAction(Tardis::FixtureSetPosition, itemID, QVariant(currPos), QVariant(newPos));
 
@@ -1999,7 +2116,17 @@ QVector3D ContextManager::fixturesRotation() const
             quint16 headIndex = FixtureUtils::itemHeadIndex(m_selectedFixtures.first());
             quint16 linkedIndex = FixtureUtils::itemLinkedIndex(m_selectedFixtures.first());
 
-            return m_monProps->fixtureRotation(fixtureID, headIndex, linkedIndex);
+            QVector3D rot = m_monProps->fixtureRotation(fixtureID, headIndex, linkedIndex);
+
+            // Same reasoning as fixturesPosition() above: add back the fixture's
+            // current live DMX rotation offset so a read-modify-write (the
+            // Settings panel's numeric rotation input) sees the actual visual
+            // rotation, not the frozen rest pose.
+            Fixture *fixture = m_doc->fixture(fixtureID);
+            if (fixture != nullptr)
+                rot += FixtureUtils::fixtureRotationDelta(fixture);
+
+            return rot;
         }
     }
 
@@ -2015,15 +2142,33 @@ void ContextManager::setFixturesRotation(QVector3D degrees)
         quint16 headIndex = FixtureUtils::itemHeadIndex(itemID);
         quint16 linkedIndex = FixtureUtils::itemLinkedIndex(itemID);
         QVector3D rotation = m_monProps->fixtureRotation(fxID, headIndex, linkedIndex);
+        Fixture *fixture = m_doc->fixture(fxID);
 
-        Tardis::instance()->enqueueAction(Tardis::FixtureSetRotation, itemID, QVariant(rotation), QVariant(degrees));
+        // Fixtures with their own RotationX/Y/Z DMX channels rotate as a live
+        // DMX offset from their static rest orientation (rotation), which is
+        // never overwritten here - same principle as setFixturesPosition().
+        if (fixture != nullptr &&
+            (fixture->channelNumber(QLCChannel::RotationX, QLCChannel::MSB) != QLCChannel::invalid() ||
+             fixture->channelNumber(QLCChannel::RotationY, QLCChannel::MSB) != QLCChannel::invalid() ||
+             fixture->channelNumber(QLCChannel::RotationZ, QLCChannel::MSB) != QLCChannel::invalid()))
+        {
+            pushRotationDelta(fixture, degrees - rotation);
+            if (m_2DView->isEnabled())
+                m_2DView->updateFixtureRotation(itemID, degrees);
+            if (m_3DView->isEnabled())
+                m_3DView->updateFixtureRotation(itemID, degrees);
+        }
+        else
+        {
+            Tardis::instance()->enqueueAction(Tardis::FixtureSetRotation, itemID, QVariant(rotation), QVariant(degrees));
 
-        // absolute rotation change
-        m_monProps->setFixtureRotation(fxID, headIndex, linkedIndex, degrees);
-        if (m_2DView->isEnabled())
-            m_2DView->updateFixtureRotation(itemID, degrees);
-        if (m_3DView->isEnabled())
-            m_3DView->updateFixtureRotation(itemID, degrees);
+            // absolute rotation change
+            m_monProps->setFixtureRotation(fxID, headIndex, linkedIndex, degrees);
+            if (m_2DView->isEnabled())
+                m_2DView->updateFixtureRotation(itemID, degrees);
+            if (m_3DView->isEnabled())
+                m_3DView->updateFixtureRotation(itemID, degrees);
+        }
     }
     else
     {
@@ -2034,6 +2179,22 @@ void ContextManager::setFixturesRotation(QVector3D degrees)
             quint16 headIndex = FixtureUtils::itemHeadIndex(itemID);
             quint16 linkedIndex = FixtureUtils::itemLinkedIndex(itemID);
             QVector3D rotation = m_monProps->fixtureRotation(fxID, headIndex, linkedIndex);
+            Fixture *fixture = m_doc->fixture(fxID);
+
+            if (fixture != nullptr &&
+                (fixture->channelNumber(QLCChannel::RotationX, QLCChannel::MSB) != QLCChannel::invalid() ||
+                 fixture->channelNumber(QLCChannel::RotationY, QLCChannel::MSB) != QLCChannel::invalid() ||
+                 fixture->channelNumber(QLCChannel::RotationZ, QLCChannel::MSB) != QLCChannel::invalid()))
+            {
+                QVector3D newDelta = FixtureUtils::fixtureRotationDelta(fixture) + degrees;
+                pushRotationDelta(fixture, newDelta);
+                if (m_2DView->isEnabled())
+                    m_2DView->updateFixtureRotation(itemID, rotation + newDelta);
+                if (m_3DView->isEnabled())
+                    m_3DView->updateFixtureRotation(itemID, rotation + newDelta);
+                continue;
+            }
+
             QVector3D newRot = rotation + degrees;
 
             // normalize back to a 0-359 range

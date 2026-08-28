@@ -28,6 +28,7 @@
 #include "scenevalue.h"
 
 class Doc;
+class Fixture;
 class MainView2D;
 class MainView3D;
 class MainViewDMX;
@@ -454,6 +455,16 @@ private:
      *  back to sortedSelectedFixtures() (DMX order) when the selection spans
      *  multiple groups, or none. */
     QList<quint32> groupOrSortedSelectedFixtures() const;
+
+    /** Pushes $deltaMeters as a live DMX value onto $fixture's PositionX/Y/Z
+     *  channels (whichever of the three it actually defines - the others are
+     *  no-ops), following the same dump-value/scene-value routing decision
+     *  setPositionValue() uses for Pan/Tilt. */
+    void pushPositionDelta(Fixture *fixture, QVector3D deltaMeters);
+
+    /** Same as pushPositionDelta(), for $fixture's RotationX/Y/Z channels
+     *  ($deltaDegrees). */
+    void pushRotationDelta(Fixture *fixture, QVector3D deltaDegrees);
 
 private:
     /** The list of the currently selected Fixture item IDs */

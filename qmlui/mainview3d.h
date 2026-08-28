@@ -82,6 +82,11 @@ typedef struct
     QEntity *m_headItem;
     /** The bounding volume information */
     BoundingVolume m_volume;
+    /** The uniform scale updateFixtureScale() applied to fit the generic mesh
+     *  into the fixture's declared physical box, before any DMX-driven
+     *  ScaleX/Y/Z is factored in. Defaults to (1,1,1) for items that never go
+     *  through updateFixtureScale() (procedurally-built meshes). */
+    QVector3D m_baseScale;
     /** The selection box entity */
     QEntity *m_selectionBox;
     /** Reference to the texture used to render the
@@ -260,6 +265,12 @@ public:
 
     /** Update the scale of a Fixture with the provided $itemID */
     void updateFixtureScale(quint32 itemID, QVector3D origSize);
+
+    /** Apply a live, DMX-driven ScaleX/Y/Z multiplier on top of the base scale
+     *  updateFixtureScale() established - unlike updateFixtureScale(), this
+     *  does not touch m_volume, so it is safe to call every time the DMX
+     *  scale channels change rather than only once at item creation. */
+    void updateFixtureDmxScale(quint32 itemID, QVector3D factor);
 
     /** Loaded mesh bounding-box extents (in metres) for the item with $itemID,
      *  or a zero vector if the item is not (yet) present in the 3D scene. */

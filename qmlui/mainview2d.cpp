@@ -383,6 +383,8 @@ void MainView2D::updateFixtureItem(Fixture *fixture, quint16 headIndex, quint16 
     bool setPosition = false;
     int panDegrees = 0;
     int tiltDegrees = 0;
+    bool setPositionOffset = false;
+    bool setRotationOffset = false;
 
     if (fxItem == nullptr)
         return;
@@ -466,6 +468,20 @@ void MainView2D::updateFixtureItem(Fixture *fixture, quint16 headIndex, quint16 
                     tiltDegrees += (value);
                 setPosition = true;
             }
+            break;
+            // World Y is the vertical axis (see MainView3D::updateFixturePosition()'s
+            // mm -> m conversion), so it isn't shown in this flat top-down view -
+            // only PositionX/PositionZ (screen X/Y) and the yaw-equivalent
+            // RotationY (screen in-plane rotation, matching
+            // FixtureUtils::item2DRotation()'s TopView case using rot.y())
+            // are relevant here; PositionY/RotationX/RotationZ are the 3D
+            // view's job (see MainView3D::updateFixtureItem()).
+            case QLCChannel::PositionX:
+            case QLCChannel::PositionZ:
+                setPositionOffset = true;
+            break;
+            case QLCChannel::RotationY:
+                setRotationOffset = true;
             break;
             case QLCChannel::Colour:
             {
@@ -565,6 +581,28 @@ void MainView2D::updateFixtureItem(Fixture *fixture, quint16 headIndex, quint16 
         QMetaObject::invokeMethod(fxItem, "setPosition",
                 Q_ARG(QVariant, panDegrees),
                 Q_ARG(QVariant, tiltDegrees));
+    }
+
+    if (setPositionOffset)
+    {
+        // MonitorProperties positions are in millimetres, while
+        // FixtureUtils::fixturePositionDelta() returns metres (see
+        // MainView3D::updateFixturePosition()'s own mm -> m conversion for
+        // the same value). Only X/Z (screen X/Y in TopView) are applied here -
+        // the vertical Y delta is left out of this 2D-only composition.
+        QVector3D basePos = m_monProps->fixturePosition(fixture->id(), headIndex, linkedIndex);
+        QVector3D posDelta = FixtureUtils::fixturePositionDelta(fixture);
+
+        updateFixturePosition(itemID, QVector3D(basePos.x() + (posDelta.x() * 1000.0f), basePos.y(),
+                                                basePos.z() + (posDelta.z() * 1000.0f)));
+    }
+
+    if (setRotationOffset)
+    {
+        QVector3D baseRot = m_monProps->fixtureRotation(fixture->id(), headIndex, linkedIndex);
+        QVector3D rotDelta = FixtureUtils::fixtureRotationDelta(fixture);
+
+        updateFixtureRotation(itemID, QVector3D(baseRot.x(), baseRot.y() + rotDelta.y(), baseRot.z()));
     }
 }
 
