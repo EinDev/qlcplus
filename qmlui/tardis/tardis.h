@@ -92,6 +92,8 @@ public:
         /* Fixture group editing actions */
         FixtureGroupCreate = 0x0300,
         FixtureGroupDelete,
+        FixtureGroupSetName,
+        FixtureGroupSetContents,
 
         /* Function editing actions */
         FunctionCreate = 0x1000,
