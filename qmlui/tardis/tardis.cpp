@@ -499,7 +499,11 @@ bool Tardis::processBufferedAction(int action, quint32 objID, QVariant &value)
         break;
         case FixtureGroupDelete:
         {
-            m_doc->deleteFixtureGroup(objID);
+            // Route through FixtureManager rather than calling Doc directly:
+            // this also keeps its fixture/groups tree model in sync (removed
+            // node + groupsTreeModelChanged), the same way FixtureDelete
+            // above routes through m_fixtureManager->deleteFixtures().
+            m_fixtureManager->deleteFixtureGroups(QVariantList() << objID);
         }
         break;
         case FunctionCreate:
@@ -799,9 +803,16 @@ int Tardis::processAction(TardisAction &action, bool undo)
 
                 // loadXML() sets the group's fields (name/size/heads) directly,
                 // without emitting the change notifications that the regular
-                // setters do, so explicitly notify listeners (FixtureGroupEditor,
-                // the groups tree, etc.) that this group's contents were replaced.
+                // setters do, so explicitly notify listeners (FixtureGroupEditor)
+                // that this group's contents were replaced.
                 emit group->changed(group->id());
+
+                // The FixtureManager's fixture/groups tree is a separate model
+                // that isn't kept in sync by FixtureGroup's own signals (e.g.
+                // deleteFixtureInGroup() removes a tree node explicitly) - so
+                // explicitly rebuild it too, to restore/reflect whatever this
+                // action just changed about the group's fixture membership.
+                m_fixtureManager->refreshGroupsTree();
             }
         }
         break;
