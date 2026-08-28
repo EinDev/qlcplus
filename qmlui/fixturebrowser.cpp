@@ -368,13 +368,20 @@ void FixtureBrowser::updateSearchTree()
 {
     m_searchTree->clear();
 
-    QStringList mfList = m_doc->fixtureDefCache()->manufacturers();
+    // Use the cached manufacturer/model map (also used by manufacturers()/modelsList())
+    // instead of QLCFixtureDefCache::manufacturers()/models(), which each re-scan the
+    // entire fixture definition list (1000+ defs) from scratch - calling those directly
+    // here made every keystroke in the search box O(manufacturers x total defs).
+    if (m_defCache.isEmpty())
+        m_defCache = m_doc->fixtureDefCache()->fixtureCache();
+
+    QStringList mfList = m_defCache.keys();
     mfList.sort();
     QString searchFilter = m_searchFilter.toLower();
 
     for (QString &manufacturer : mfList) // C++11
     {
-        QStringList modelsList = m_doc->fixtureDefCache()->models(manufacturer);
+        QStringList modelsList = m_defCache[manufacturer].keys();
         if (manufacturer == "Generic")
         {
             modelsList << "Generic Dimmer";
