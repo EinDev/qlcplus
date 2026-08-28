@@ -914,6 +914,13 @@ void FixtureManager::updateGroupsTree(Doc *doc, TreeModel *treeModel, QString se
     QStringList uniNames = doc->inputOutputMap()->universeNames();
     QList<Fixture*> fixtureList = doc->fixtures();
 
+    // Every caller of this function emits its own single "list changed" signal
+    // (e.g. groupsTreeModelChanged) right after this call returns - suspend
+    // treeModel's own per-item notifications for the clear()+repopulate below so
+    // that signal is the only thing that triggers a downstream rebuild (see
+    // TreeModel::setNotificationsSuspended()'s doc comment for why this matters).
+    treeModel->setNotificationsSuspended(true);
+
     treeModel->clear();
 
     if (showFlags & ShowCheckBoxes)
@@ -957,6 +964,8 @@ void FixtureManager::updateGroupsTree(Doc *doc, TreeModel *treeModel, QString se
 
         treeModel->setPathData(universe->name(), uniParams);
     }
+
+    treeModel->setNotificationsSuspended(false);
 
     //treeModel->printTree(); // enable for debug purposes
 }

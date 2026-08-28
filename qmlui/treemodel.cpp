@@ -44,6 +44,11 @@ QChar TreeModel::separator()
     return QLatin1Char('`');
 }
 
+void TreeModel::setNotificationsSuspended(bool suspended)
+{
+    blockSignals(suspended);
+}
+
 void TreeModel::clear()
 {
     int itemsCount = m_items.count();
