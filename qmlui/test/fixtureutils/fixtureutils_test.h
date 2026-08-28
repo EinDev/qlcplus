@@ -51,6 +51,10 @@ private slots:
 
     void scaleFactorAtExtremesMatchesDocumentedRange();
     void scaleFactorRoundTrips();
+
+    void fixturePositionDeltaIgnoresAbsentAxes();
+    void fixtureRotationDeltaIgnoresAbsentAxes();
+    void fixtureScaleFactorDefaultsToOneForAbsentAxes();
 };
 
 #endif

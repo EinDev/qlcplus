@@ -538,6 +538,108 @@ int FixtureUtils::scaleRawFromFactor(float factor)
     return qBound(0, raw, RAW_16BIT_MAX);
 }
 
+QVector3D FixtureUtils::fixturePositionDelta(Fixture *fixture)
+{
+    QVector3D delta(0, 0, 0);
+
+    if (fixture == nullptr)
+        return delta;
+
+    int posX = 0, posY = 0, posZ = 0;
+    bool hasX = false, hasY = false, hasZ = false;
+
+    for (int i = 0; i < int(fixture->channels()); i++)
+    {
+        const QLCChannel *ch = fixture->channel(quint32(i));
+        if (ch == nullptr)
+            continue;
+
+        uchar value = fixture->channelValueAt(i);
+
+        switch (ch->group())
+        {
+            case QLCChannel::PositionX: posX = accumulateChannelGroupValue(ch, value, posX); hasX = true; break;
+            case QLCChannel::PositionY: posY = accumulateChannelGroupValue(ch, value, posY); hasY = true; break;
+            case QLCChannel::PositionZ: posZ = accumulateChannelGroupValue(ch, value, posZ); hasZ = true; break;
+            default: break;
+        }
+    }
+
+    if (hasX) delta.setX(positionDeltaFromRaw(posX));
+    if (hasY) delta.setY(positionDeltaFromRaw(posY));
+    if (hasZ) delta.setZ(positionDeltaFromRaw(posZ));
+
+    return delta;
+}
+
+QVector3D FixtureUtils::fixtureRotationDelta(Fixture *fixture)
+{
+    QVector3D delta(0, 0, 0);
+
+    if (fixture == nullptr)
+        return delta;
+
+    int rotX = 0, rotY = 0, rotZ = 0;
+    bool hasX = false, hasY = false, hasZ = false;
+
+    for (int i = 0; i < int(fixture->channels()); i++)
+    {
+        const QLCChannel *ch = fixture->channel(quint32(i));
+        if (ch == nullptr)
+            continue;
+
+        uchar value = fixture->channelValueAt(i);
+
+        switch (ch->group())
+        {
+            case QLCChannel::RotationX: rotX = accumulateChannelGroupValue(ch, value, rotX); hasX = true; break;
+            case QLCChannel::RotationY: rotY = accumulateChannelGroupValue(ch, value, rotY); hasY = true; break;
+            case QLCChannel::RotationZ: rotZ = accumulateChannelGroupValue(ch, value, rotZ); hasZ = true; break;
+            default: break;
+        }
+    }
+
+    if (hasX) delta.setX(rotationDeltaFromRaw(rotX));
+    if (hasY) delta.setY(rotationDeltaFromRaw(rotY));
+    if (hasZ) delta.setZ(rotationDeltaFromRaw(rotZ));
+
+    return delta;
+}
+
+QVector3D FixtureUtils::fixtureScaleFactor(Fixture *fixture)
+{
+    QVector3D factor(1.0f, 1.0f, 1.0f);
+
+    if (fixture == nullptr)
+        return factor;
+
+    int scaleX = 0, scaleY = 0, scaleZ = 0;
+    bool hasX = false, hasY = false, hasZ = false;
+
+    for (int i = 0; i < int(fixture->channels()); i++)
+    {
+        const QLCChannel *ch = fixture->channel(quint32(i));
+        if (ch == nullptr)
+            continue;
+
+        uchar value = fixture->channelValueAt(i);
+
+        switch (ch->group())
+        {
+            case QLCChannel::ScaleX: scaleX = accumulateChannelGroupValue(ch, value, scaleX); hasX = true; break;
+            case QLCChannel::ScaleY: scaleY = accumulateChannelGroupValue(ch, value, scaleY); hasY = true; break;
+            case QLCChannel::ScaleZ: scaleZ = accumulateChannelGroupValue(ch, value, scaleZ); hasZ = true; break;
+            default: break;
+        }
+    }
+
+    if (hasX) factor.setX(scaleFactorFromRaw(scaleX));
+    if (hasY) factor.setY(scaleFactorFromRaw(scaleY));
+    if (hasZ) factor.setZ(scaleFactorFromRaw(scaleZ));
+
+    return factor;
+}
+
 bool FixtureUtils::goboTiming(const QLCCapability *cap, uchar value, int &speed)
 {
     speed = MIN_GOBO_SPEED;

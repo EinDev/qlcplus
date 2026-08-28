@@ -411,6 +411,34 @@ QList<SceneValue> Fixture::positionToValues(int type, float degrees, bool isRela
     return posList;
 }
 
+QList<SceneValue> Fixture::axisValueToValues(QLCChannel::Group axisGroup, int raw)
+{
+    QList<SceneValue> valList;
+    QList<quint32> chDone;
+
+    if (m_fixtureMode == NULL)
+        return valList;
+
+    quint16 rawValue = static_cast<quint16>(qBound(0, raw, 65535));
+
+    for (int i = 0; i < heads(); i++)
+    {
+        quint32 msb = channelNumber(axisGroup, QLCChannel::MSB, i);
+        if (msb == QLCChannel::invalid() || chDone.contains(msb))
+            continue;
+        quint32 lsb = channelNumber(axisGroup, QLCChannel::LSB, i);
+
+        valList.append(SceneValue(id(), msb, static_cast<uchar>(rawValue >> 8)));
+
+        if (lsb != QLCChannel::invalid())
+            valList.append(SceneValue(id(), lsb, static_cast<uchar>(rawValue & 0x00FF)));
+
+        chDone.append(msb);
+    }
+
+    return valList;
+}
+
 QList<SceneValue> Fixture::zoomToValues(float degrees, bool isRelative)
 {
     QList<SceneValue> chList;

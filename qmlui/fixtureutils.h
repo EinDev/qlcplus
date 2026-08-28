@@ -157,6 +157,24 @@ public:
      *  raw unit of quantization error. */
     static int scaleRawFromFactor(float factor);
 
+    /** Scans $fixture's current channel values for PositionX/Y/Z and returns
+     *  the resulting world-space delta (meters - see positionDeltaFromRaw()),
+     *  one axis at a time via accumulateChannelGroupValue(). An axis with no
+     *  matching channel on the fixture contributes 0 (no offset) rather than
+     *  positionDeltaFromRaw(0)'s -2.5m - "no channel" and "channel currently
+     *  at DMX 0" are different things and must not be conflated. */
+    static QVector3D fixturePositionDelta(Fixture *fixture);
+
+    /** Same as fixturePositionDelta(), for RotationX/Y/Z (degrees). An axis
+     *  with no matching channel contributes 0 degrees. */
+    static QVector3D fixtureRotationDelta(Fixture *fixture);
+
+    /** Scans $fixture's current channel values for ScaleX/Y/Z and returns the
+     *  resulting linear scale factor per axis (see scaleFactorFromRaw()). An
+     *  axis with no matching channel contributes 1.0 (no scaling) rather than
+     *  scaleFactorFromRaw(0)'s 0.1x. */
+    static QVector3D fixtureScaleFactor(Fixture *fixture);
+
     /** Calculate the gobo wheel speed depending on $cap preset */
     static bool goboTiming(const QLCCapability *cap, uchar value, int &speed);
 

@@ -293,6 +293,16 @@ public:
      *  and the provided type (Pan or Tilt) */
     QList<SceneValue> positionToValues(int type, float degrees, bool isRelative = false);
 
+    /** Return a list of DMX values for the generic per-axis $axisGroup
+     *  (PositionX/Y/Z, RotationX/Y/Z, ScaleX/Y/Z), splitting the already
+     *  converted $raw 16-bit value (0-65535) into its MSB/LSB channel(s) the
+     *  same way positionToValues() does for Pan/Tilt. Unlike positionToValues(),
+     *  the degrees/delta -> raw conversion for these groups is not physical-
+     *  property-based (see FixtureUtils::positionRawFromDelta() /
+     *  rotationRawFromDelta()), so callers convert to $raw themselves before
+     *  calling this. */
+    QList<SceneValue> axisValueToValues(QLCChannel::Group axisGroup, int raw);
+
     /** Return a list of DMX values based on the given zoom degrees */
     QList<SceneValue> zoomToValues(float degrees, bool isRelative);
 

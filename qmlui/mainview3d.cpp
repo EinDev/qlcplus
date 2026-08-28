@@ -697,6 +697,7 @@ void MainView3D::createFixtureItem(quint32 fxID, quint16 headIndex, quint16 link
     mesh->m_selectionBox = nullptr;
     mesh->m_goboTexture = nullptr;
     mesh->m_generation = m_sceneGeneration;
+    mesh->m_baseScale = QVector3D(1, 1, 1);
     m_createItemCount++;
 
     if (fixture->type() == QLCFixtureDef::LEDBarBeams)
@@ -1360,6 +1361,8 @@ void MainView3D::updateFixtureItem(Fixture *fixture, quint16 headIndex, quint16 
     bool goboSet = false;
     int panValue = 0;
     int tiltValue = 0;
+    bool setTransformOffset = false;
+    bool setScaleOffset = false;
 
     if (meshItem == nullptr)
         return;
@@ -1455,6 +1458,25 @@ void MainView3D::updateFixtureItem(Fixture *fixture, quint16 headIndex, quint16 
 
                 if (previous.isEmpty() || value != uchar(previous.at(i)))
                     setPosition = true;
+            }
+            break;
+            case QLCChannel::PositionX:
+            case QLCChannel::PositionY:
+            case QLCChannel::PositionZ:
+            case QLCChannel::RotationX:
+            case QLCChannel::RotationY:
+            case QLCChannel::RotationZ:
+            {
+                if (previous.isEmpty() || value != uchar(previous.at(i)))
+                    setTransformOffset = true;
+            }
+            break;
+            case QLCChannel::ScaleX:
+            case QLCChannel::ScaleY:
+            case QLCChannel::ScaleZ:
+            {
+                if (previous.isEmpty() || value != uchar(previous.at(i)))
+                    setScaleOffset = true;
             }
             break;
             case QLCChannel::Speed:
@@ -1579,6 +1601,25 @@ void MainView3D::updateFixtureItem(Fixture *fixture, quint16 headIndex, quint16 
                 Q_ARG(QVariant, panValue),
                 Q_ARG(QVariant, tiltValue));
     }
+
+    // DMX-driven Position/Rotation/Scale: a live visual-only offset composed on
+    // top of the fixture's static placement (m_monProps), which is never
+    // overwritten here - exactly like Pan/Tilt's DMX value never gets written
+    // into MonitorProperties either.
+    if (setTransformOffset)
+    {
+        QVector3D posDelta = FixtureUtils::fixturePositionDelta(fixture);
+        QVector3D rotDelta = FixtureUtils::fixtureRotationDelta(fixture);
+
+        QVector3D basePos = m_monProps->fixturePosition(fixture->id(), headIndex, linkedIndex);
+        QVector3D baseRot = m_monProps->fixtureRotation(fixture->id(), headIndex, linkedIndex);
+
+        updateFixturePosition(itemID, basePos + (posDelta * 1000.0f));
+        updateFixtureRotation(itemID, baseRot + rotDelta);
+    }
+
+    if (setScaleOffset)
+        updateFixtureDmxScale(itemID, FixtureUtils::fixtureScaleFactor(fixture));
 }
 
 void MainView3D::updateFixtureSelection(QList<quint32> fixtures)
@@ -1945,11 +1986,26 @@ void MainView3D::updateFixtureScale(quint32 itemID, QVector3D origSize)
 
     float minScale = qMin(xScale, qMin(yScale, zScale));
 
-    mesh->m_rootTransform->setScale3D(QVector3D(minScale, minScale, minScale));
+    mesh->m_baseScale = QVector3D(minScale, minScale, minScale);
+    mesh->m_rootTransform->setScale3D(mesh->m_baseScale);
 
     // warning: after this, the original mesh size is lost forever
     mesh->m_volume.m_extents *= minScale;
     mesh->m_volume.m_center *= minScale;
+}
+
+void MainView3D::updateFixtureDmxScale(quint32 itemID, QVector3D factor)
+{
+    if (isEnabled() == false)
+        return;
+
+    SceneItem *mesh = m_entitiesMap.value(itemID, nullptr);
+    if (mesh == nullptr || mesh->m_rootTransform == nullptr)
+        return;
+
+    mesh->m_rootTransform->setScale3D(QVector3D(mesh->m_baseScale.x() * factor.x(),
+                                                mesh->m_baseScale.y() * factor.y(),
+                                                mesh->m_baseScale.z() * factor.z()));
 }
 
 void MainView3D::removeFixtureItem(quint32 itemID)
@@ -2060,6 +2116,7 @@ void MainView3D::createGenericItem(QString filename, int itemID)
     mesh->m_selectionBox = nullptr;
     mesh->m_goboTexture = nullptr;
     mesh->m_generation = m_sceneGeneration;
+    mesh->m_baseScale = QVector3D(1, 1, 1);
 
     QEntity *newItem = qobject_cast<QEntity *>(m_genericComponent->create());
     if (newItem == nullptr)
