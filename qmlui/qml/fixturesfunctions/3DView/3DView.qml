@@ -355,8 +355,16 @@ Rectangle
 
                 function setZoom(amount)
                 {
-                    if ((amount < 0 && View3D.cameraPosition.z < 1) ||
-                        (amount > 0 && View3D.cameraPosition.z > 30))
+                    // Clamp on actual distance from the view center, not the raw
+                    // world-space Z coordinate - once the camera has been orbited
+                    // (panAboutViewCenter/tiltAboutViewCenter below both change
+                    // position.x/y/z while preserving distance), position.z alone
+                    // stops tracking "how zoomed in we are" and can sit under 1
+                    // from many orbit angles even at the default distance, which
+                    // permanently blocked zooming in (amount < 0) after any orbit.
+                    var distance = viewCamera.position.minus(viewCamera.viewCenter).length()
+                    if ((amount < 0 && distance < 1) ||
+                        (amount > 0 && distance > 30))
                         return
 
                     translate(Qt.vector3d(0, 0, -amount), Camera.DontTranslateViewCenter)
