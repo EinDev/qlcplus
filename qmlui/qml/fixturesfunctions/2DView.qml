@@ -396,15 +396,35 @@ Rectangle
                     drag.threshold: 10
                     drag.target: parent
 
+                    // Fires once Qt Quick has actually cleared drag.active (after
+                    // onReleased below has already run, per QQuickMouseArea's own
+                    // release handling) - by then onXChanged/onYChanged's own
+                    // "if (drag.active)" guard is already false, so resetting
+                    // x/y/lastFlushed here cannot re-enter flushDragOffset() the
+                    // way doing this same reset from onReleased did (that
+                    // re-entrancy pushed an extra delta equal to the negation of
+                    // the whole gesture, which canceled or inverted the result
+                    // right at the moment of release).
+                    drag.onActiveChanged:
+                    {
+                        if (drag.active)
+                            return;
+
+                        contentsDragArea.flushDragOffset()
+                        contentsDragArea.x = 0
+                        contentsDragArea.y = 0
+                        contentsDragArea.lastFlushedX = 0
+                        contentsDragArea.lastFlushedY = 0
+                    }
+
                     onReleased: (mouse) =>
                     {
                         if (drag.active)
                         {
-                            contentsDragArea.flushDragOffset()
-                            contentsDragArea.x = 0
-                            contentsDragArea.y = 0
-                            contentsDragArea.lastFlushedX = 0
-                            contentsDragArea.lastFlushedY = 0
+                            // handled by drag.onActiveChanged above, which fires
+                            // once Qt actually clears the flag - this branch only
+                            // needs to exist so a real drag doesn't fall into the
+                            // click-handling "else" below
                         }
                         else
                         {
