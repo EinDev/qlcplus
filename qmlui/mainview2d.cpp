@@ -585,24 +585,26 @@ void MainView2D::updateFixtureItem(Fixture *fixture, quint16 headIndex, quint16 
 
     if (setPositionOffset)
     {
-        // MonitorProperties positions are in millimetres, while
-        // FixtureUtils::fixturePositionDelta() returns metres (see
-        // MainView3D::updateFixturePosition()'s own mm -> m conversion for
-        // the same value). Only X/Z (screen X/Y in TopView) are applied here -
-        // the vertical Y delta is left out of this 2D-only composition.
-        QVector3D basePos = m_monProps->fixturePosition(fixture->id(), headIndex, linkedIndex);
+        // Absolute position anchored to the stage/grid's own center (matching
+        // the "50% = center" convention documented for the user's own
+        // real-world fixture profiles), not to wherever the fixture happens to
+        // be manually placed - see MainView3D::updateFixtureItem()'s identical
+        // reasoning. MonitorProperties positions are in millimetres, while
+        // FixtureUtils::fixturePositionDelta() returns metres. Only X/Z
+        // (screen X/Y in TopView) are applied here - the vertical Y delta is
+        // left out of this 2D-only composition.
+        QVector3D gridCenter = FixtureUtils::gridCenterPosition(m_monProps);
         QVector3D posDelta = FixtureUtils::fixturePositionDelta(fixture);
 
-        updateFixturePosition(itemID, QVector3D(basePos.x() + (posDelta.x() * 1000.0f), basePos.y(),
-                                                basePos.z() + (posDelta.z() * 1000.0f)));
+        updateFixturePosition(itemID, QVector3D(gridCenter.x() + (posDelta.x() * 1000.0f), gridCenter.y(),
+                                                gridCenter.z() + (posDelta.z() * 1000.0f)));
     }
 
     if (setRotationOffset)
     {
-        QVector3D baseRot = m_monProps->fixtureRotation(fixture->id(), headIndex, linkedIndex);
         QVector3D rotDelta = FixtureUtils::fixtureRotationDelta(fixture);
 
-        updateFixtureRotation(itemID, QVector3D(baseRot.x(), baseRot.y() + rotDelta.y(), baseRot.z()));
+        updateFixtureRotation(itemID, QVector3D(0, rotDelta.y(), 0));
     }
 }
 
