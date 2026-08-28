@@ -331,6 +331,8 @@ void VCWidget::setAllowResize(bool allowResize)
     if (m_allowResize == allowResize)
         return;
 
+    enqueueTardisAction(Tardis::VCWidgetAllowResize, m_allowResize, allowResize);
+
     m_allowResize = allowResize;
     emit allowResizeChanged(allowResize);
 }
@@ -349,6 +351,8 @@ void VCWidget::setDisabled(bool disable)
     if (m_isDisabled == disable)
         return;
 
+    enqueueTardisAction(Tardis::VCWidgetDisabled, m_isDisabled, disable);
+
     m_isDisabled = disable;
     setDocModified();
     emit disabledStateChanged(disable);
@@ -362,6 +366,8 @@ void VCWidget::setVisible(bool isVisible)
 {
     if (m_isVisible == isVisible)
         return;
+
+    enqueueTardisAction(Tardis::VCWidgetVisible, m_isVisible, isVisible);
 
     m_isVisible = isVisible;
     emit isVisibleChanged(isVisible);
@@ -536,6 +542,8 @@ void VCWidget::setPage(int pNum)
 {
     if (pNum == m_page)
         return;
+
+    enqueueTardisAction(Tardis::VCWidgetPage, m_page, pNum);
 
     m_page = pNum;
     emit pageChanged(pNum);
