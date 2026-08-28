@@ -36,6 +36,7 @@ private slots:
     void batchSelectionSuppressesFlatModelDataChanged();
     void structuralChangeDuringBatchSelectionStaysConsistent();
     void staleItemRoleChangeIsIgnoredSafely();
+    void removingNonExistentTopLevelItemLeavesTreeUnchanged();
 };
 
 #endif
