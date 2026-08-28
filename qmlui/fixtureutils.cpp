@@ -640,6 +640,17 @@ QVector3D FixtureUtils::fixtureScaleFactor(Fixture *fixture)
     return factor;
 }
 
+QVector3D FixtureUtils::gridCenterPosition(const MonitorProperties *monProps)
+{
+    if (monProps == nullptr)
+        return QVector3D(0, 0, 0);
+
+    float unitScale = monProps->gridUnits() == MonitorProperties::Meters ? 1.0f : 0.3048f;
+    QVector3D gridMeters = monProps->gridSize() * unitScale;
+
+    return gridMeters * 500.0f;
+}
+
 bool FixtureUtils::goboTiming(const QLCCapability *cap, uchar value, int &speed)
 {
     speed = MIN_GOBO_SPEED;

@@ -175,6 +175,17 @@ public:
      *  scaleFactorFromRaw(0)'s 0.1x. */
     static QVector3D fixtureScaleFactor(Fixture *fixture);
 
+    /** The stage/grid's own center, in the same millimetre/corner-origin
+     *  convention MonitorProperties::fixturePosition() uses (see
+     *  MainView3D::updateFixturePosition()'s pos/1000 - gridMeters/2 scene
+     *  conversion). Used as the absolute reference point for fixtures whose
+     *  PositionX/Y/Z channels are DMX-driven - such a fixture's DMX value 32768
+     *  (delta 0, see positionDeltaFromRaw()) means "at the center of the
+     *  stage", matching the "50% = center" convention documented for the
+     *  user's own real-world fixture profiles, not "wherever it happened to be
+     *  manually placed". */
+    static QVector3D gridCenterPosition(const MonitorProperties *monProps);
+
     /** Calculate the gobo wheel speed depending on $cap preset */
     static bool goboTiming(const QLCCapability *cap, uchar value, int &speed);
 

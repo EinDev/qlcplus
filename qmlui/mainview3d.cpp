@@ -1602,20 +1602,20 @@ void MainView3D::updateFixtureItem(Fixture *fixture, quint16 headIndex, quint16 
                 Q_ARG(QVariant, tiltValue));
     }
 
-    // DMX-driven Position/Rotation/Scale: a live visual-only offset composed on
-    // top of the fixture's static placement (m_monProps), which is never
-    // overwritten here - exactly like Pan/Tilt's DMX value never gets written
-    // into MonitorProperties either.
+    // DMX-driven Position/Rotation/Scale: an absolute transform, anchored to
+    // the stage's own center/identity orientation rather than to wherever the
+    // fixture happens to be manually placed - matching the "50% = center"
+    // convention documented for the user's own real-world fixture profiles.
+    // m_monProps's static placement/rotation is intentionally not read here.
     if (setTransformOffset)
     {
         QVector3D posDelta = FixtureUtils::fixturePositionDelta(fixture);
         QVector3D rotDelta = FixtureUtils::fixtureRotationDelta(fixture);
 
-        QVector3D basePos = m_monProps->fixturePosition(fixture->id(), headIndex, linkedIndex);
-        QVector3D baseRot = m_monProps->fixtureRotation(fixture->id(), headIndex, linkedIndex);
+        QVector3D gridCenter = FixtureUtils::gridCenterPosition(m_monProps);
 
-        updateFixturePosition(itemID, basePos + (posDelta * 1000.0f));
-        updateFixtureRotation(itemID, baseRot + rotDelta);
+        updateFixturePosition(itemID, gridCenter + (posDelta * 1000.0f));
+        updateFixtureRotation(itemID, rotDelta);
     }
 
     if (setScaleOffset)
