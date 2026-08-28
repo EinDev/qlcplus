@@ -212,6 +212,14 @@ void QLCFixtureHead::cacheChannels(const QLCFixtureMode* mode)
         {
             m_shutterChannels << i;
         }
+        else if (ch->group() == QLCChannel::PositionX || ch->group() == QLCChannel::PositionY ||
+                 ch->group() == QLCChannel::PositionZ || ch->group() == QLCChannel::RotationX ||
+                 ch->group() == QLCChannel::RotationY || ch->group() == QLCChannel::RotationZ ||
+                 ch->group() == QLCChannel::ScaleX || ch->group() == QLCChannel::ScaleY ||
+                 ch->group() == QLCChannel::ScaleZ)
+        {
+            setMapIndex(ch->group(), ch->controlByte(), i);
+        }
     }
 
     // if this head doesn't include any Pan/Tilt channel
