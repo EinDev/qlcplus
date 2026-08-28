@@ -355,6 +355,7 @@ QByteArray Tardis::actionToByteArray(int code, quint32 objID, QVariant data)
         break;
         case FixtureGroupCreate:
         case FixtureGroupDelete:
+        case FixtureGroupSetContents:
         {
             FixtureGroup *group = qobject_cast<FixtureGroup *>(m_doc->fixtureGroup(objID));
             if (group)
@@ -437,6 +438,7 @@ bool Tardis::processBufferedAction(int action, quint32 objID, QVariant &value)
             case FixtureCreate:
             case FixtureDelete:
             case FixtureGroupCreate:
+            case FixtureGroupDelete:
             case PaletteCreate:
             case PaletteDelete:
             case FunctionCreate:
@@ -503,6 +505,15 @@ bool Tardis::processBufferedAction(int action, quint32 objID, QVariant &value)
         case FixtureGroupCreate:
         {
             FixtureGroup::loader(xmlReader, m_doc);
+        }
+        break;
+        case FixtureGroupDelete:
+        {
+            // Route through FixtureManager rather than calling Doc directly:
+            // this also keeps its fixture/groups tree model in sync (removed
+            // node + groupsTreeModelChanged), the same way FixtureDelete
+            // above routes through m_fixtureManager->deleteFixtures().
+            m_fixtureManager->deleteFixtureGroups(QVariantList() << objID);
         }
         break;
         case PaletteCreate:
@@ -778,6 +789,51 @@ int Tardis::processAction(TardisAction &action, bool undo)
             m_fixtureManager->setChannelModifierByName(action.m_objID,
                                                        modifierMap.value("channelIndex").toUInt(),
                                                        modifierMap.value("modifierName").toString());
+        }
+        break;
+
+        /* ******************** Fixture group editing actions ******************** */
+        case FixtureGroupCreate:
+            processBufferedAction(undo ? FixtureGroupDelete : FixtureGroupCreate, action.m_objID, action.m_newValue);
+            return undo ? FixtureGroupDelete : FixtureGroupCreate;
+
+        case FixtureGroupDelete:
+            processBufferedAction(undo ? FixtureGroupCreate : FixtureGroupDelete, action.m_objID, action.m_oldValue);
+            return undo ? FixtureGroupCreate : FixtureGroupDelete;
+
+        case FixtureGroupSetName:
+        {
+            m_fixtureManager->renameFixtureGroup(action.m_objID, value->toString());
+        }
+        break;
+
+        case FixtureGroupSetContents:
+        {
+            FixtureGroup *group = qobject_cast<FixtureGroup *>(m_doc->fixtureGroup(action.m_objID));
+            if (group != nullptr)
+            {
+                QBuffer buffer;
+                buffer.setData(value->toByteArray());
+                buffer.open(QIODevice::ReadOnly | QIODevice::Text);
+                QXmlStreamReader xmlReader(&buffer);
+                xmlReader.readNextStartElement();
+
+                group->reset();
+                group->loadXML(xmlReader);
+
+                // loadXML() sets the group's fields (name/size/heads) directly,
+                // without emitting the change notifications that the regular
+                // setters do, so explicitly notify listeners (FixtureGroupEditor)
+                // that this group's contents were replaced.
+                emit group->changed(group->id());
+
+                // The FixtureManager's fixture/groups tree is a separate model
+                // that isn't kept in sync by FixtureGroup's own signals (e.g.
+                // deleteFixtureInGroup() removes a tree node explicitly) - so
+                // explicitly rebuild it too, to restore/reflect whatever this
+                // action just changed about the group's fixture membership.
+                m_fixtureManager->refreshGroupsTree();
+            }
         }
         break;
 
