@@ -1019,6 +1019,9 @@ void FunctionManager::cloneFunctions()
                 continue;
             }
 
+            Tardis::instance()->enqueueAction(Tardis::FunctionCreate, copy->id(), QVariant(),
+                                              Tardis::instance()->actionToByteArray(Tardis::FunctionCreate, copy->id()));
+
             /* If the cloned Function is a Sequence,
              * clone the bound Scene too */
             if (func->type() == Function::SequenceType)
@@ -1028,9 +1031,16 @@ void FunctionManager::cloneFunctions()
                 Function *scene = m_doc->function(sceneID);
                 if (scene != nullptr)
                 {
+                    // createCopy(m_doc) with the default addToDoc argument already
+                    // adds sceneCopy to the Doc, so it needs its own undo entry too,
+                    // otherwise undoing the clone would leave this orphaned Scene behind
                     Function *sceneCopy = scene->createCopy(m_doc);
                     if (sceneCopy != nullptr)
+                    {
                         sequence->setBoundSceneID(sceneCopy->id());
+                        Tardis::instance()->enqueueAction(Tardis::FunctionCreate, sceneCopy->id(), QVariant(),
+                                                          Tardis::instance()->actionToByteArray(Tardis::FunctionCreate, sceneCopy->id()));
+                    }
                 }
             }
         }
