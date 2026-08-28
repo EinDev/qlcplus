@@ -1376,6 +1376,24 @@ int Tardis::processAction(TardisAction &action, bool undo)
             m_virtualConsole->reparentWidget(widget, targetFrame);
         }
         break;
+        case VCWidgetAllowResize:
+        {
+            auto member = std::mem_fn(&VCWidget::setAllowResize);
+            member(qobject_cast<VCWidget *>(m_virtualConsole->widget(action.m_objID)), value->toBool());
+        }
+        break;
+        case VCWidgetDisabled:
+        {
+            auto member = std::mem_fn(&VCWidget::setDisabled);
+            member(qobject_cast<VCWidget *>(m_virtualConsole->widget(action.m_objID)), value->toBool());
+        }
+        break;
+        case VCWidgetVisible:
+        {
+            auto member = std::mem_fn(&VCWidget::setVisible);
+            member(qobject_cast<VCWidget *>(m_virtualConsole->widget(action.m_objID)), value->toBool());
+        }
+        break;
         case VCWidgetCaption:
         {
             auto member = std::mem_fn(&VCWidget::setCaption);
@@ -1404,6 +1422,12 @@ int Tardis::processAction(TardisAction &action, bool undo)
         {
             auto member = std::mem_fn(&VCWidget::setFont);
             member(qobject_cast<VCWidget *>(m_virtualConsole->widget(action.m_objID)), value->value<QFont>());
+        }
+        break;
+        case VCWidgetPage:
+        {
+            auto member = std::mem_fn(&VCWidget::setPage);
+            member(qobject_cast<VCWidget *>(m_virtualConsole->widget(action.m_objID)), value->toInt());
         }
         break;
         case VCWidgetZIndex:
