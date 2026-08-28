@@ -131,6 +131,19 @@ public:
     /** Helper method to print the tree in human readable form */
     void printTree(int tab = 0) const;
 
+    /** Suspend (true) or resume (false) this tree's own change notifications -
+     *  roleChanged/structureChanged and the standard QAbstractItemModel signals.
+     *  Meant for a bulk clear()-then-repopulate pass: without it, each individual
+     *  addItem() call during the repopulation fires structureChanged (which bubbles
+     *  from every descendant tree - see the signal's doc comment below), and
+     *  TreeFlatModel does a full flatten of the whole tree on every one it sees.
+     *  For a tree of any real size that turns one rebuild into hundreds of full
+     *  rebuilds. Resuming does NOT retroactively emit anything for what changed
+     *  while suspended - the caller of a bulk update is expected to send its own
+     *  single "finished" signal afterward, which every caller of this pattern in
+     *  this codebase (e.g. FixtureManager::updateGroupsTree()) already does. */
+    void setNotificationsSuspended(bool suspended);
+
 signals:
     void roleChanged(TreeModelItem *item, int role, const QVariant &value);
 
