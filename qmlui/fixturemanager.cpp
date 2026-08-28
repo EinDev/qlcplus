@@ -420,11 +420,14 @@ bool FixtureManager::deleteFixtureInGroup(quint32 groupID, quint32 itemID, QStri
     //quint16 headIndex = FixtureUtils::itemHeadIndex(itemID);
     //quint16 linkedIndex = FixtureUtils::itemLinkedIndex(itemID);
 
-    //Tardis::instance()->enqueueAction(Tardis::FixtureDelete, fxID,
-    //                                  Tardis::instance()->actionToByteArray(Tardis::FixtureCreate, fxID), QVariant());
+    QByteArray beforeContents = Tardis::instance()->actionToByteArray(Tardis::FixtureGroupSetContents, groupID);
 
     qDebug() << "Removing fixture" << fxID << "from group" << group->name();
     group->resignFixture(fxID);
+
+    QByteArray afterContents = Tardis::instance()->actionToByteArray(Tardis::FixtureGroupSetContents, groupID);
+    if (afterContents != beforeContents)
+        Tardis::instance()->enqueueAction(Tardis::FixtureGroupSetContents, groupID, beforeContents, afterContents);
 
     m_fixtureTree->removeItem(path);
     emit groupsTreeModelChanged();
@@ -434,6 +437,15 @@ bool FixtureManager::deleteFixtureInGroup(quint32 groupID, quint32 itemID, QStri
         deleteFixtureGroups(QVariantList() << group->id());
 
     return true;
+}
+
+void FixtureManager::refreshGroupsTree()
+{
+    if (m_fixtureTree == nullptr)
+        return;
+
+    updateGroupsTree(m_doc, m_fixtureTree, m_searchFilter);
+    emit groupsTreeModelChanged();
 }
 
 bool FixtureManager::renameFixture(quint32 itemID, QString newName)
@@ -1511,6 +1523,8 @@ bool FixtureManager::renameFixtureGroup(quint32 groupID, QString newName)
     for (QString &uniName : m_doc->inputOutputMap()->universeNames())
         if (uniName == newName)
             return false;
+
+    Tardis::instance()->enqueueAction(Tardis::FixtureGroupSetName, groupID, group->name(), newName);
 
     group->setName(newName);
 

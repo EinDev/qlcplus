@@ -179,6 +179,12 @@ public:
 
     Q_INVOKABLE bool deleteFixtureInGroup(quint32 groupID, quint32 itemID, QString path);
 
+    /** Rebuild the groups/fixtures tree model and notify listeners. Used to
+     *  resync the tree after something changed a FixtureGroup's contents
+     *  without going through one of this class's own tree-updating methods
+     *  (e.g. a Tardis undo/redo restoring a group's heads) */
+    Q_INVOKABLE void refreshGroupsTree();
+
     /** Rename the Fixture with the provided $itemID to $newName */
     Q_INVOKABLE bool renameFixture(quint32 itemID, QString newName);
 
