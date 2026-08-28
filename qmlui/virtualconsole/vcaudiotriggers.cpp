@@ -304,6 +304,7 @@ void VCAudioTriggers::setSelectedBar(int index)
 
     m_selectedBar = index;
     updateFixtureTree();
+    emit groupsTreeModelChanged();
     emit selectedBarChanged();
 }
 
