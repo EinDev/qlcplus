@@ -22,6 +22,7 @@
 
 #include "palettemanager.h"
 #include "contextmanager.h"
+#include "tardis.h"
 #include "listmodel.h"
 #include "scene.h"
 #include "doc.h"
@@ -126,6 +127,11 @@ quint32 PaletteManager::createPalette(QLCPalette *palette, QString name)
         qWarning() << "Failed to add palette";
         delete palette;
     }
+    else
+    {
+        Tardis::instance()->enqueueAction(Tardis::PaletteCreate, newPalette->id(), QVariant(),
+                                          Tardis::instance()->actionToByteArray(Tardis::PaletteCreate, newPalette->id()));
+    }
 
     updatePaletteList();
 
@@ -144,6 +150,9 @@ quint32 PaletteManager::createPosition3DPalette(QString name, float x, float y, 
         delete newPalette;
         return QLCPalette::invalidId();
     }
+
+    Tardis::instance()->enqueueAction(Tardis::PaletteCreate, newPalette->id(), QVariant(),
+                                      Tardis::instance()->actionToByteArray(Tardis::PaletteCreate, newPalette->id()));
 
     updatePaletteList();
     return newPalette->id();
@@ -166,7 +175,11 @@ void PaletteManager::updatePalette(QLCPalette *palette, QVariant value1)
     QVariantList prevValues = palette->values();
     palette->setValue(value1);
     if (prevValues != palette->values() && palette->isTemporary() == false)
+    {
         m_doc->setModified();
+        Tardis::instance()->enqueueAction(Tardis::PaletteUpdate, palette->id(),
+                                          QVariant(prevValues), QVariant(palette->values()));
+    }
 }
 
 void PaletteManager::updatePalette(QLCPalette *palette, QVariant value1, QVariant value2)
@@ -178,7 +191,11 @@ void PaletteManager::updatePalette(QLCPalette *palette, QVariant value1, QVarian
     QVariantList prevValues = palette->values();
     palette->setValue(value1, value2);
     if (prevValues != palette->values() && palette->isTemporary() == false)
+    {
         m_doc->setModified();
+        Tardis::instance()->enqueueAction(Tardis::PaletteUpdate, palette->id(),
+                                          QVariant(prevValues), QVariant(palette->values()));
+    }
 }
 
 void PaletteManager::updatePalette(QLCPalette *palette, QVariant value1, QVariant value2, QVariant value3)
@@ -190,18 +207,26 @@ void PaletteManager::updatePalette(QLCPalette *palette, QVariant value1, QVarian
     QVariantList prevValues = palette->values();
     palette->setValue(value1, value2, value3);
     if (prevValues != palette->values() && palette->isTemporary() == false)
+    {
         m_doc->setModified();
+        Tardis::instance()->enqueueAction(Tardis::PaletteUpdate, palette->id(),
+                                          QVariant(prevValues), QVariant(palette->values()));
+    }
 }
 
 void PaletteManager::deletePalettes(QVariantList list)
 {
     for (QVariant pID : list)
     {
-        QLCPalette *p = m_doc->palette(pID.toInt());
+        quint32 id = pID.toUInt();
+        QLCPalette *p = m_doc->palette(id);
         if (p == nullptr)
             continue;
 
-        m_doc->deletePalette(pID.toInt());
+        Tardis::instance()->enqueueAction(Tardis::PaletteDelete, id,
+                                          Tardis::instance()->actionToByteArray(Tardis::PaletteDelete, id),
+                                          QVariant());
+        m_doc->deletePalette(id);
     }
 
     updatePaletteList();
