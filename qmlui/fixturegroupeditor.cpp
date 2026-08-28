@@ -27,6 +27,7 @@
 #include "fixturemanager.h"
 #include "fixtureutils.h"
 #include "treemodel.h"
+#include "tardis.h"
 #include "doc.h"
 
 FixtureGroupEditor::FixtureGroupEditor(QQuickView *view, Doc *doc,
@@ -47,7 +48,7 @@ FixtureGroupEditor::FixtureGroupEditor(QQuickView *view, Doc *doc,
     // displaying it (e.g. the 2D/3D groups bar) are always up to date
     connect(m_doc, SIGNAL(fixtureGroupAdded(quint32)), this, SIGNAL(groupsListModelChanged()));
     connect(m_doc, SIGNAL(fixtureGroupRemoved(quint32)), this, SIGNAL(groupsListModelChanged()));
-    connect(m_doc, SIGNAL(fixtureGroupChanged(quint32)), this, SIGNAL(groupsListModelChanged()));
+    connect(m_doc, SIGNAL(fixtureGroupChanged(quint32)), this, SLOT(slotFixtureGroupChanged(quint32)));
 }
 
 FixtureGroupEditor::~FixtureGroupEditor()
@@ -77,7 +78,9 @@ void FixtureGroupEditor::resetGroup()
     if (m_editGroup == nullptr)
         return;
 
+    QByteArray before = groupContentsSnapshot();
     m_editGroup->reset();
+    enqueueGroupContentsChange(before);
     updateGroupMap();
 }
 
@@ -89,6 +92,8 @@ void FixtureGroupEditor::regenerateFromDmxOrder(int rows)
     QList<quint32> fixtureIDs = m_editGroup->fixtureList();
     if (fixtureIDs.isEmpty())
         return;
+
+    QByteArray before = groupContentsSnapshot();
 
     std::sort(fixtureIDs.begin(), fixtureIDs.end(), [this] (quint32 left, quint32 right)
     {
@@ -127,6 +132,8 @@ void FixtureGroupEditor::regenerateFromDmxOrder(int rows)
         cellIndex += qMax(1, fixture->heads());
     }
 
+    enqueueGroupContentsChange(before);
+
     m_groupSelection.clear();
     updateGroupMap();
     emit groupSizeChanged();
@@ -134,6 +141,21 @@ void FixtureGroupEditor::regenerateFromDmxOrder(int rows)
 
 void FixtureGroupEditor::slotDocLoaded()
 {
+    emit groupsListModelChanged();
+}
+
+void FixtureGroupEditor::slotFixtureGroupChanged(quint32 id)
+{
+    // Keep the currently open grid editor in sync whenever its group's
+    // contents change from elsewhere (e.g. a Tardis undo/redo restoring
+    // a previous name/size/heads state)
+    if (m_editGroup != nullptr && id == m_editGroup->id())
+    {
+        emit groupNameChanged();
+        emit groupSizeChanged();
+        updateGroupMap();
+    }
+
     emit groupsListModelChanged();
 }
 
@@ -168,6 +190,8 @@ void FixtureGroupEditor::setGroupName(QString name)
     if (m_editGroup == nullptr || m_editGroup->name() == name)
         return;
 
+    Tardis::instance()->enqueueAction(Tardis::FixtureGroupSetName, m_editGroup->id(), m_editGroup->name(), name);
+
     m_editGroup->setName(name);
 
     emit groupNameChanged();
@@ -186,7 +210,9 @@ void FixtureGroupEditor::setGroupSize(QSize size)
     if (m_editGroup == nullptr || size == m_editGroup->size())
         return;
 
+    QByteArray before = groupContentsSnapshot();
     m_editGroup->setSize(size);
+    enqueueGroupContentsChange(before);
     emit groupSizeChanged();
     updateGroupMap();
 }
@@ -293,8 +319,10 @@ bool FixtureGroupEditor::addFixture(QVariant reference, int x, int y)
     if (reference.canConvert<Fixture *>())
     {
         Fixture *fixture = reference.value<Fixture *>();
+        QByteArray before = groupContentsSnapshot();
         if (m_editGroup->assignFixture(fixture->id(), QLCPoint(x, y)) == true)
         {
+            enqueueGroupContentsChange(before);
             updateGroupMap();
             return true;
         }
@@ -310,8 +338,10 @@ bool FixtureGroupEditor::addHead(quint32 itemID, int headIndex, int x, int y)
 
     quint32 fixtureID = FixtureUtils::itemFixtureID(itemID);
     GroupHead head(fixtureID, headIndex);
+    QByteArray before = groupContentsSnapshot();
     if (m_editGroup->assignHead(QLCPoint(x, y), head) == true)
     {
+        enqueueGroupContentsChange(before);
         updateGroupMap();
         return true;
     }
@@ -360,6 +390,8 @@ void FixtureGroupEditor::moveSelection(int x, int y, int offset)
     if (checkSelection(x, y, offset) == false)
         return;
 
+    QByteArray before = groupContentsSnapshot();
+
     QList<GroupHead> headsList;
 
     for (int i = 0; i < m_groupSelection.count(); i++)
@@ -379,6 +411,8 @@ void FixtureGroupEditor::moveSelection(int x, int y, int offset)
         }
         m_editGroup->assignHead(pt, headsList.at(i));
     }
+
+    enqueueGroupContentsChange(before);
 
     updateGroupMap();
 
@@ -400,9 +434,18 @@ void FixtureGroupEditor::deleteSelection()
         {
             QString fxPath = QString("%1%2%3").arg(m_editGroup->name()).arg(TreeModel::separator()).arg(fixture->name());
             quint32 itemID = FixtureUtils::fixtureItemID(fixture->id(), gHead.head, 0);
+            // deleteFixtureInGroup() removes this fixture's head from the group
+            // and enqueues its own Tardis undo action for it, so the
+            // resignHead() below is a no-op in this branch.
             m_fixtureManager->deleteFixtureInGroup(m_editGroup->id(), itemID, fxPath);
+            m_editGroup->resignHead(point);
         }
-        m_editGroup->resignHead(point);
+        else
+        {
+            QByteArray before = groupContentsSnapshot();
+            if (m_editGroup->resignHead(point))
+                enqueueGroupContentsChange(before);
+        }
     }
 
     m_groupSelection.clear();
@@ -414,6 +457,8 @@ void FixtureGroupEditor::transformSelection(int transformation)
 {
     if (m_editGroup == nullptr)
         return;
+
+    QByteArray before = groupContentsSnapshot();
 
     int minX = m_editGroup->size().width();
     int minY = m_editGroup->size().height();
@@ -532,6 +577,8 @@ void FixtureGroupEditor::transformSelection(int transformation)
         }
     }
 
+    enqueueGroupContentsChange(before);
+
     /** Finally, inform the UI that the map has changed */
     updateGroupMap();
 }
@@ -555,6 +602,23 @@ QString FixtureGroupEditor::getTooltip(int x, int y)
             .arg(fixture->address() + 1)
             .arg(fixture->universe() + 1);
     return tooltip;
+}
+
+QByteArray FixtureGroupEditor::groupContentsSnapshot() const
+{
+    if (m_editGroup == nullptr)
+        return QByteArray();
+
+    return Tardis::instance()->actionToByteArray(Tardis::FixtureGroupSetContents, m_editGroup->id());
+}
+
+void FixtureGroupEditor::enqueueGroupContentsChange(const QByteArray &before)
+{
+    if (m_editGroup == nullptr)
+        return;
+
+    Tardis::instance()->enqueueAction(Tardis::FixtureGroupSetContents, m_editGroup->id(), before,
+                                      Tardis::instance()->actionToByteArray(Tardis::FixtureGroupSetContents, m_editGroup->id()));
 }
 
 void FixtureGroupEditor::updateGroupMap()

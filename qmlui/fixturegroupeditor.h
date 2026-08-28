@@ -21,6 +21,7 @@
 #define FIXTUREGROUPEDITOR_H
 
 #include <QQuickView>
+#include <QByteArray>
 #include <QObject>
 
 #include <qlcpoint.h>
@@ -61,6 +62,11 @@ public:
 public slots:
     /** Slot called whenever a new workspace has been loaded */
     void slotDocLoaded();
+
+    /** Slot called whenever a FixtureGroup's properties change (e.g. a Tardis
+     *  undo/redo restoring a previous state) so the currently open grid editor,
+     *  if any, stays in sync */
+    void slotFixtureGroupChanged(quint32 id);
 
 signals:
     /** Notify the listeners that the FixtureGroup list model has changed */
@@ -149,6 +155,16 @@ public:
 private:
     void updateGroupMap();
     QLCPoint pointFromAbsolute(int absoluteIndex);
+
+    /** Take an undo/redo snapshot of the currently edited group's full contents
+     *  (name, size and heads), for use as the "before" or "after" value of a
+     *  Tardis::FixtureGroupSetContents action */
+    QByteArray groupContentsSnapshot() const;
+
+    /** Enqueue a Tardis::FixtureGroupSetContents action recording that the
+     *  currently edited group's contents changed from $before to their
+     *  current (already mutated) state */
+    void enqueueGroupContentsChange(const QByteArray &before);
 
 signals:
     void groupSizeChanged();
