@@ -349,23 +349,41 @@ Rectangle
 
                 Drag.active: dragMouseArea.drag.active
 
+                // contentsDragArea.x/y are driven by MouseArea.drag as an
+                // absolute function of (position when the drag started) +
+                // (mouse movement since press) - QML recomputes them that way
+                // on every mouse-move event for as long as the drag is
+                // active. They must NOT be reset to 0 while a drag is still
+                // active: doing so doesn't clear an accumulator, it fights
+                // that recomputation, and the next mouse-move event overwrites
+                // the reset with its own absolute value again - which is what
+                // caused drags to appear to jump onto the wrong axis. Track
+                // the last-flushed position separately instead, and send only
+                // the incremental difference; only reset the real coordinates
+                // once the drag has actually ended (onReleased), same as before.
+                property real lastFlushedX: 0
+                property real lastFlushedY: 0
+
                 function flushDragOffset()
                 {
-                    if (contentsDragArea.x === 0 && contentsDragArea.y === 0)
+                    var totalX = contentsDragArea.x + twoDContents.x
+                    var totalY = contentsDragArea.y + twoDContents.y
+                    var dx = totalX - contentsDragArea.lastFlushedX
+                    var dy = totalY - contentsDragArea.lastFlushedY
+
+                    if (dx === 0 && dy === 0)
                         return;
 
                     var units = View2D.gridUnits === MonitorProperties.Meters ? 1000.0 : 304.8
-                    var xDelta = contentsDragArea.x + twoDContents.x
-                    var yDelta = contentsDragArea.y + twoDContents.y
 
                     // transform pixels in millimeters
-                    xDelta = (xDelta * units) / View2D.cellPixels;
-                    yDelta = (yDelta * units) / View2D.cellPixels;
+                    var xDelta = (dx * units) / View2D.cellPixels;
+                    var yDelta = (dy * units) / View2D.cellPixels;
 
                     contextManager.setFixturesOffset(xDelta, yDelta)
 
-                    contentsDragArea.x = 0
-                    contentsDragArea.y = 0
+                    contentsDragArea.lastFlushedX = totalX
+                    contentsDragArea.lastFlushedY = totalY
                 }
 
                 onXChanged: if (dragMouseArea.drag.active) flushDragOffset()
@@ -383,6 +401,10 @@ Rectangle
                         if (drag.active)
                         {
                             contentsDragArea.flushDragOffset()
+                            contentsDragArea.x = 0
+                            contentsDragArea.y = 0
+                            contentsDragArea.lastFlushedX = 0
+                            contentsDragArea.lastFlushedY = 0
                         }
                         else
                         {
