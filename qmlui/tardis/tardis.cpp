@@ -361,6 +361,14 @@ QByteArray Tardis::actionToByteArray(int code, quint32 objID, QVariant data)
                 group->saveXML(&xmlWriter);
         }
         break;
+        case PaletteCreate:
+        case PaletteDelete:
+        {
+            QLCPalette *palette = m_doc->palette(objID);
+            if (palette)
+                palette->saveXML(&xmlWriter);
+        }
+        break;
         case FunctionCreate:
         case FunctionDelete:
         {
@@ -429,6 +437,8 @@ bool Tardis::processBufferedAction(int action, quint32 objID, QVariant &value)
             case FixtureCreate:
             case FixtureDelete:
             case FixtureGroupCreate:
+            case PaletteCreate:
+            case PaletteDelete:
             case FunctionCreate:
             case FunctionDelete:
             case ChaserAddStep:
@@ -493,6 +503,16 @@ bool Tardis::processBufferedAction(int action, quint32 objID, QVariant &value)
         case FixtureGroupCreate:
         {
             FixtureGroup::loader(xmlReader, m_doc);
+        }
+        break;
+        case PaletteCreate:
+        {
+            QLCPalette::loader(xmlReader, m_doc);
+        }
+        break;
+        case PaletteDelete:
+        {
+            m_doc->deletePalette(objID);
         }
         break;
         case FunctionCreate:
@@ -758,6 +778,23 @@ int Tardis::processAction(TardisAction &action, bool undo)
             m_fixtureManager->setChannelModifierByName(action.m_objID,
                                                        modifierMap.value("channelIndex").toUInt(),
                                                        modifierMap.value("modifierName").toString());
+        }
+        break;
+
+        /* *********************** Palette editing actions ************************ */
+        case PaletteCreate:
+            processBufferedAction(undo ? PaletteDelete : PaletteCreate, action.m_objID, action.m_newValue);
+            return undo ? PaletteDelete : PaletteCreate;
+
+        case PaletteDelete:
+            processBufferedAction(undo ? PaletteCreate : PaletteDelete, action.m_objID, action.m_oldValue);
+            return undo ? PaletteCreate : PaletteDelete;
+
+        case PaletteUpdate:
+        {
+            QLCPalette *palette = m_doc->palette(action.m_objID);
+            if (palette)
+                palette->setValues(value->toList());
         }
         break;
 

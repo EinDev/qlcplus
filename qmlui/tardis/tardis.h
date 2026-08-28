@@ -93,6 +93,11 @@ public:
         FixtureGroupCreate = 0x0300,
         FixtureGroupDelete,
 
+        /* Palette editing actions */
+        PaletteCreate = 0x0400,
+        PaletteDelete,
+        PaletteUpdate,
+
         /* Function editing actions */
         FunctionCreate = 0x1000,
         FunctionDelete,
