@@ -349,6 +349,28 @@ Rectangle
 
                 Drag.active: dragMouseArea.drag.active
 
+                function flushDragOffset()
+                {
+                    if (contentsDragArea.x === 0 && contentsDragArea.y === 0)
+                        return;
+
+                    var units = View2D.gridUnits === MonitorProperties.Meters ? 1000.0 : 304.8
+                    var xDelta = contentsDragArea.x + twoDContents.x
+                    var yDelta = contentsDragArea.y + twoDContents.y
+
+                    // transform pixels in millimeters
+                    xDelta = (xDelta * units) / View2D.cellPixels;
+                    yDelta = (yDelta * units) / View2D.cellPixels;
+
+                    contextManager.setFixturesOffset(xDelta, yDelta)
+
+                    contentsDragArea.x = 0
+                    contentsDragArea.y = 0
+                }
+
+                onXChanged: if (dragMouseArea.drag.active) flushDragOffset()
+                onYChanged: if (dragMouseArea.drag.active) flushDragOffset()
+
                 MouseArea
                 {
                     id: dragMouseArea
@@ -360,18 +382,7 @@ Rectangle
                     {
                         if (drag.active)
                         {
-                            var units = View2D.gridUnits === MonitorProperties.Meters ? 1000.0 : 304.8
-                            var xDelta = contentsDragArea.x + twoDContents.x
-                            var yDelta = contentsDragArea.y + twoDContents.y
-
-                            // transform pixels in millimeters
-                            xDelta = (xDelta * units) / View2D.cellPixels;
-                            yDelta = (yDelta * units) / View2D.cellPixels;
-
-                            contextManager.setFixturesOffset(xDelta, yDelta)
-
-                            contentsDragArea.x = 0
-                            contentsDragArea.y = 0
+                            contentsDragArea.flushDragOffset()
                         }
                         else
                         {
