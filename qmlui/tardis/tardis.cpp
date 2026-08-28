@@ -355,6 +355,7 @@ QByteArray Tardis::actionToByteArray(int code, quint32 objID, QVariant data)
         break;
         case FixtureGroupCreate:
         case FixtureGroupDelete:
+        case FixtureGroupSetContents:
         {
             FixtureGroup *group = qobject_cast<FixtureGroup *>(m_doc->fixtureGroup(objID));
             if (group)
@@ -429,6 +430,7 @@ bool Tardis::processBufferedAction(int action, quint32 objID, QVariant &value)
             case FixtureCreate:
             case FixtureDelete:
             case FixtureGroupCreate:
+            case FixtureGroupDelete:
             case FunctionCreate:
             case FunctionDelete:
             case ChaserAddStep:
@@ -493,6 +495,11 @@ bool Tardis::processBufferedAction(int action, quint32 objID, QVariant &value)
         case FixtureGroupCreate:
         {
             FixtureGroup::loader(xmlReader, m_doc);
+        }
+        break;
+        case FixtureGroupDelete:
+        {
+            m_doc->deleteFixtureGroup(objID);
         }
         break;
         case FunctionCreate:
@@ -758,6 +765,44 @@ int Tardis::processAction(TardisAction &action, bool undo)
             m_fixtureManager->setChannelModifierByName(action.m_objID,
                                                        modifierMap.value("channelIndex").toUInt(),
                                                        modifierMap.value("modifierName").toString());
+        }
+        break;
+
+        /* ******************** Fixture group editing actions ******************** */
+        case FixtureGroupCreate:
+            processBufferedAction(undo ? FixtureGroupDelete : FixtureGroupCreate, action.m_objID, action.m_newValue);
+            return undo ? FixtureGroupDelete : FixtureGroupCreate;
+
+        case FixtureGroupDelete:
+            processBufferedAction(undo ? FixtureGroupCreate : FixtureGroupDelete, action.m_objID, action.m_oldValue);
+            return undo ? FixtureGroupCreate : FixtureGroupDelete;
+
+        case FixtureGroupSetName:
+        {
+            m_fixtureManager->renameFixtureGroup(action.m_objID, value->toString());
+        }
+        break;
+
+        case FixtureGroupSetContents:
+        {
+            FixtureGroup *group = qobject_cast<FixtureGroup *>(m_doc->fixtureGroup(action.m_objID));
+            if (group != nullptr)
+            {
+                QBuffer buffer;
+                buffer.setData(value->toByteArray());
+                buffer.open(QIODevice::ReadOnly | QIODevice::Text);
+                QXmlStreamReader xmlReader(&buffer);
+                xmlReader.readNextStartElement();
+
+                group->reset();
+                group->loadXML(xmlReader);
+
+                // loadXML() sets the group's fields (name/size/heads) directly,
+                // without emitting the change notifications that the regular
+                // setters do, so explicitly notify listeners (FixtureGroupEditor,
+                // the groups tree, etc.) that this group's contents were replaced.
+                emit group->changed(group->id());
+            }
         }
         break;
 
