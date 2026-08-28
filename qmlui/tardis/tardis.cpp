@@ -1388,12 +1388,9 @@ int Tardis::processAction(TardisAction &action, bool undo)
             member(qobject_cast<VCWidget *>(m_virtualConsole->widget(action.m_objID)), value->toBool());
         }
         break;
-        case VCWidgetVisible:
-        {
-            auto member = std::mem_fn(&VCWidget::setVisible);
-            member(qobject_cast<VCWidget *>(m_virtualConsole->widget(action.m_objID)), value->toBool());
-        }
-        break;
+        /* VCWidgetVisible is deliberately left unhandled here: nothing enqueues it
+         * (see VCWidget::setVisible()) - isVisible is derived, page-flip-driven
+         * runtime state, not a design-time property. */
         case VCWidgetCaption:
         {
             auto member = std::mem_fn(&VCWidget::setCaption);

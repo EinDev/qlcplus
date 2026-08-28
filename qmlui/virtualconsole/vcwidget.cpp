@@ -98,6 +98,14 @@ void VCWidget::enqueueTardisAction(int code, QVariant oldVal, QVariant newVal)
     if (Tardis::instance() == nullptr)
         return;
 
+    // Some widget subclasses (e.g. VCPage) set properties from their own
+    // constructor, before the widget has been registered with an ID by
+    // VirtualConsole::addWidgetToMap(). Such a change can never be looked
+    // up again by ID, so it would just sit in the undo history as a dead
+    // entry that's silently skipped whenever it's replayed.
+    if (id() == invalidId())
+        return;
+
     Tardis *tardis = Tardis::instance();
     tardis->enqueueAction(code, id(), oldVal, newVal);
 }
@@ -367,8 +375,11 @@ void VCWidget::setVisible(bool isVisible)
     if (m_isVisible == isVisible)
         return;
 
-    enqueueTardisAction(Tardis::VCWidgetVisible, m_isVisible, isVisible);
-
+    // Deliberately NOT wired to Tardis: the only caller is VCFrame::setCurrentPage()'s
+    // per-child cascade (a derived, page-flip-driven runtime state - there is no
+    // design-time write path for isVisible at all), so tracking it here would enqueue
+    // one undo action per child widget and mark the doc modified on every single
+    // page navigation, live or in the editor.
     m_isVisible = isVisible;
     emit isVisibleChanged(isVisible);
 }
