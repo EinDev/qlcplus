@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <QImage>
 #include <QDebug>
+#include <QTimer>
 #include <QQmlContext>
 
 #include "fixturegroupeditor.h"
@@ -148,12 +149,28 @@ void FixtureGroupEditor::slotFixtureGroupChanged(quint32 id)
 {
     // Keep the currently open grid editor in sync whenever its group's
     // contents change from elsewhere (e.g. a Tardis undo/redo restoring
-    // a previous name/size/heads state)
-    if (m_editGroup != nullptr && id == m_editGroup->id())
+    // a previous name/size/heads state). FixtureGroup::changed() can fire
+    // once per head for a single user gesture (moveSelection/transformSelection
+    // touch every selected head individually), so coalesce into a single
+    // deferred refresh instead of rebuilding the grid map synchronously on
+    // every emission - this ran during normal grid editing, not just undo.
+    if (m_editGroup != nullptr && id == m_editGroup->id() && m_pendingGroupRefresh == false)
     {
-        emit groupNameChanged();
-        emit groupSizeChanged();
-        updateGroupMap();
+        m_pendingGroupRefresh = true;
+        QTimer::singleShot(0, this, [this, id]() {
+            m_pendingGroupRefresh = false;
+
+            // The group may have been deleted (and its C++ object freed) by
+            // the time this runs, e.g. undo/redo of removing the last fixture
+            // from a group also removes the group itself - guard against a
+            // dangling m_editGroup by re-resolving the id through Doc.
+            if (m_editGroup != nullptr && m_editGroup == m_doc->fixtureGroup(id))
+            {
+                emit groupNameChanged();
+                emit groupSizeChanged();
+                updateGroupMap();
+            }
+        });
     }
 
     emit groupsListModelChanged();
@@ -617,8 +634,14 @@ void FixtureGroupEditor::enqueueGroupContentsChange(const QByteArray &before)
     if (m_editGroup == nullptr)
         return;
 
-    Tardis::instance()->enqueueAction(Tardis::FixtureGroupSetContents, m_editGroup->id(), before,
-                                      Tardis::instance()->actionToByteArray(Tardis::FixtureGroupSetContents, m_editGroup->id()));
+    QByteArray after = Tardis::instance()->actionToByteArray(Tardis::FixtureGroupSetContents, m_editGroup->id());
+
+    // Skip recording a no-op undo step, e.g. transformSelection()/moveSelection()
+    // called with nothing actually selected/moved
+    if (after == before)
+        return;
+
+    Tardis::instance()->enqueueAction(Tardis::FixtureGroupSetContents, m_editGroup->id(), before, after);
 }
 
 void FixtureGroupEditor::updateGroupMap()
