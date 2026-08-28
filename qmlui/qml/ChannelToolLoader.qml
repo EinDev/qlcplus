@@ -47,12 +47,12 @@ Item
         var toolWidth = Math.max(itemRoot.width, itemRoot.implicitWidth)
         var toolHeight = Math.max(itemRoot.height, itemRoot.implicitHeight)
 
-        var rightX = posInParent.x + UISettings.iconSizeMedium
-        var leftX = posInParent.x + targetItem.width - toolWidth
+        var rightX = posInParent.x + targetItem.width
+        var leftX = posInParent.x - toolWidth
         var preferredX = (rightX + toolWidth <= parentItem.width) ? rightX : leftX
 
-        var belowY = posInParent.y
-        var aboveY = posInParent.y + targetItem.height - toolHeight
+        var belowY = posInParent.y + targetItem.height
+        var aboveY = posInParent.y - toolHeight
         var preferredY = (belowY + toolHeight <= parentItem.height) ? belowY : aboveY
 
         x = Math.max(0, Math.min(preferredX, parentItem.width - toolWidth))
