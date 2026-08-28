@@ -1040,8 +1040,10 @@ void FunctionManager::cloneFunctions()
                 continue;
             }
 
-            /* If the cloned Function is a Sequence,
-             * clone the bound Scene too */
+            /* If the cloned Function is a Sequence, clone the bound Scene too
+             * and rebind the copy to it *before* snapshotting the copy below,
+             * so the undo/redo XML for the Sequence copy stores the new bound
+             * Scene ID rather than the original's */
             if (func->type() == Function::SequenceType)
             {
                 Sequence *sequence = qobject_cast<Sequence *>(copy);
@@ -1049,11 +1051,21 @@ void FunctionManager::cloneFunctions()
                 Function *scene = m_doc->function(sceneID);
                 if (scene != nullptr)
                 {
+                    // createCopy(m_doc) with the default addToDoc argument already
+                    // adds sceneCopy to the Doc, so it needs its own undo entry too,
+                    // otherwise undoing the clone would leave this orphaned Scene behind
                     Function *sceneCopy = scene->createCopy(m_doc);
                     if (sceneCopy != nullptr)
+                    {
                         sequence->setBoundSceneID(sceneCopy->id());
+                        Tardis::instance()->enqueueAction(Tardis::FunctionCreate, sceneCopy->id(), QVariant(),
+                                                          Tardis::instance()->actionToByteArray(Tardis::FunctionCreate, sceneCopy->id()));
+                    }
                 }
             }
+
+            Tardis::instance()->enqueueAction(Tardis::FunctionCreate, copy->id(), QVariant(),
+                                              Tardis::instance()->actionToByteArray(Tardis::FunctionCreate, copy->id()));
         }
     }
 }
