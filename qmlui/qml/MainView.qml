@@ -66,6 +66,31 @@ Rectangle
         return false
     }
 
+    // Each top-level context is backed by its own persistent Loader (declared
+    // in mainViewArea below) so switching tabs only toggles visibility
+    // instead of destroying and recreating the whole view (and, for Fixtures
+    // & Functions, every fixture item in the active 2D/3D preview) every time.
+    readonly property var contextResources: ({
+        "FIXANDFUNC": "qrc:/FixturesAndFunctions.qml",
+        "VC": "qrc:/VirtualConsole.qml",
+        "SDESK": "qrc:/SimpleDesk.qml",
+        "SHOWMGR": "qrc:/ShowManager.qml",
+        "IOMGR": "qrc:/InputOutputManager.qml"
+    })
+
+    function loaderForContext(ctx)
+    {
+        switch (ctx)
+        {
+            case "FIXANDFUNC": return fnfLoader
+            case "VC": return vcLoader
+            case "SDESK": return sdeskLoader
+            case "SHOWMGR": return showmgrLoader
+            case "IOMGR": return iomgrLoader
+        }
+        return null
+    }
+
     function switchToContext(ctx, qmlRes)
     {
         if (currentContext === ctx)
@@ -84,8 +109,22 @@ Rectangle
             currentContext = ""
         }
 
-        if (qmlRes)
-            mainViewLoader.source = qmlRes
+        // For the 5 standard tabs, qmlRes is always the same fixed resource
+        // for a given ctx (see contextResources) - activate that context's
+        // own persistent Loader rather than loading qmlRes into a shared one.
+        // Anything else (e.g. the native Fixture Editor's "FXEDITOR"
+        // pseudo-context, which has no tab of its own) falls back to the
+        // transient overlay, same as loadResource() below.
+        var ldr = loaderForContext(ctx)
+        if (ldr)
+        {
+            overlayLoader.source = ""
+            ldr.active = true
+        }
+        else if (qmlRes)
+        {
+            overlayLoader.source = qmlRes
+        }
     }
 
     function setDimScreen(enable)
@@ -122,7 +161,20 @@ Rectangle
 
     function loadResource(qmlRes)
     {
-        mainViewLoader.source = qmlRes
+        // if qmlRes is one of the standard tab views, go through the normal
+        // context-switch path so it uses (and keeps alive) its persistent
+        // Loader instead of the transient overlay below.
+        for (var ctx in contextResources)
+        {
+            if (contextResources[ctx] === qmlRes)
+            {
+                overlayLoader.source = ""
+                switchToContext(ctx, qmlRes)
+                return
+            }
+        }
+
+        overlayLoader.source = qmlRes
     }
 
     FontLoader
@@ -581,12 +633,70 @@ Rectangle
         onLoaded: if (item) { item.closeRequested.connect(function() { mainView.showWizardVisible = false }); item.open() }
     }
 
-    Loader
+    Item
     {
-        id: mainViewLoader
+        id: mainViewArea
         width: parent.width
         height: parent.height - (mainToolbar.visible ? mainToolbar.height : 0)
         y: mainToolbar.visible ? mainToolbar.height : 0
+
+        // One Loader per top-level tab, activated lazily on first visit and
+        // then kept alive for the lifetime of the app - switching tabs only
+        // changes which one is visible. This avoids destroying and rebuilding
+        // an entire tab's item tree (in particular every fixture item in
+        // Fixtures & Functions' 2D/3D preview) on every switch.
+        Loader
+        {
+            id: fnfLoader
+            anchors.fill: parent
+            active: false
+            visible: mainView.currentContext === "FIXANDFUNC"
+            source: mainView.contextResources["FIXANDFUNC"]
+        }
+        Loader
+        {
+            id: vcLoader
+            anchors.fill: parent
+            active: false
+            visible: mainView.currentContext === "VC"
+            source: mainView.contextResources["VC"]
+        }
+        Loader
+        {
+            id: sdeskLoader
+            anchors.fill: parent
+            active: false
+            visible: mainView.currentContext === "SDESK"
+            source: mainView.contextResources["SDESK"]
+        }
+        Loader
+        {
+            id: showmgrLoader
+            anchors.fill: parent
+            active: false
+            visible: mainView.currentContext === "SHOWMGR"
+            source: mainView.contextResources["SHOWMGR"]
+        }
+        Loader
+        {
+            id: iomgrLoader
+            anchors.fill: parent
+            active: false
+            visible: mainView.currentContext === "IOMGR"
+            source: mainView.contextResources["IOMGR"]
+        }
+
+        // transient overlay used by loadResource() for one-off resources
+        // that aren't one of the standard tabs above (e.g. the UI Settings
+        // editor) - unlike the Loaders above, this one is torn down again
+        // once its resource is cleared.
+        Loader
+        {
+            id: overlayLoader
+            anchors.fill: parent
+            z: 10
+            visible: source !== ""
+        }
 
         Component.onCompleted:
         {
