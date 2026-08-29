@@ -29,11 +29,6 @@ Popup
 {
     id: menuRoot
     padding: 0
-    // Force in-scene rendering: on styles/platforms whose default
-    // popupType is Popup.Window, hover (MouseArea.containsMouse, used by
-    // ContextMenuEntry's highlight) does not reliably reach descendants
-    // of a popup rendered as a separate top-level window.
-    popupType: Popup.Item
 
     property Item submenuItem: null
     property int flagSize: UISettings.iconSizeDefault * 1.5
@@ -404,11 +399,11 @@ Popup
             entryText: qsTr("Network")
             onEntered: submenuItem = networkMenu
 
-            onClicked:
-            {
-                if (Qt.platform.os === "android")
-                    submenuItem = networkMenu
-            }
+            // Also reachable by click, not just hover (originally Android-only,
+            // since Android has no hover at all) - a plain click is a harmless,
+            // always-available fallback in case hover delivery to this flyout
+            // is ever unreliable on desktop too.
+            onClicked: submenuItem = networkMenu
 
             Rectangle
             {
@@ -519,11 +514,9 @@ Popup
             entryText: qsTr("Language")
             onEntered: submenuItem = languageMenu
 
-            onClicked:
-            {
-                if (Qt.platform.os === "android")
-                    submenuItem = languageMenu
-            }
+            // See the Network entry's onClicked above - same always-available
+            // click fallback, not just Android.
+            onClicked: submenuItem = languageMenu
 
             Rectangle
             {
