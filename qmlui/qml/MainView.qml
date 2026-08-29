@@ -652,6 +652,16 @@ Rectangle
             active: false
             visible: mainView.currentContext === "FIXANDFUNC"
             source: mainView.contextResources["FIXANDFUNC"]
+
+            // Now that this tab's item tree survives a switch away instead of
+            // being destroyed (see the comment above), anything that used to
+            // rely on that destruction to implicitly close itself - e.g. a
+            // floating channel-tool popup - needs closing explicitly here.
+            onVisibleChanged:
+            {
+                if (!visible && item && typeof item.closeChannelTools === "function")
+                    item.closeChannelTools()
+            }
         }
         Loader
         {

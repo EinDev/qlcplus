@@ -59,6 +59,19 @@ Rectangle
             sceneEditor.externalControlEnabled = false
     }
 
+    /** Closes any floating channel-tool popup open in the currently loaded
+     *  editor (e.g. SceneFixtureConsole). Called from FixturesAndFunctions.qml
+     *  when the Fixtures & Functions tab itself is being hidden (top-level
+     *  tab switch) - this panel isn't destroyed by that switch (only by
+     *  onVisibleChanged above, which is driven by the Scene editor
+     *  lifecycle, not by tab switching), so a popup left open in it would
+     *  otherwise stay open underneath the newly-shown tab. */
+    function closeChannelTools()
+    {
+        if (editorLoader.item && typeof editorLoader.item.closeChannelTools === "function")
+            editorLoader.item.closeChannelTools()
+    }
+
     function animatePanel(checked)
     {
         if (checked === isOpen)

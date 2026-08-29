@@ -41,6 +41,18 @@ Rectangle
         dmxSettings.visible = show
     }
 
+    /** Closes any floating channel-tool popup currently open on this view.
+     *  Called from FixturesAndFunctions.qml when the Fixtures & Functions
+     *  tab itself is being hidden (top-level tab switch) - unlike a
+     *  sub-context switch (2D/3D/UNIGRID), which already destroys this
+     *  whole view via previewLoader's source reassignment, hiding the
+     *  Fixtures & Functions tab leaves this view (and any open popup)
+     *  alive underneath, so it needs to be closed explicitly. */
+    function closeChannelTools()
+    {
+        channelToolLoader.closeChannelTool()
+    }
+
     ChannelToolLoader
     {
         id: channelToolLoader
