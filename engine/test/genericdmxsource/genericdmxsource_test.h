@@ -35,6 +35,7 @@ private slots:
 
     void setUnset();
     void unsetAll();
+    void unsetRemovesFaderChannel();
 
     void writeDMXAppliesValueToUniverse();
     void writeDMXSkipsWhenOutputDisabled();

@@ -285,7 +285,15 @@ QString SimpleDesk::debugChannelInfo(int channel) const
 
     quint32 fxID = m_doc->fixtureForAddress(address);
     Fixture *fixture = m_doc->fixture(fxID);
-    quint32 relChannel = fixture != nullptr ? address - fixture->address() : address;
+    // NOTE: Fixture::address() returns only the low 9 bits (the address
+    // within the fixture's own universe, 0-511), while m_doc->fixtureForAddress()
+    // and this method's own "address" are keyed by the full universe-qualified
+    // address (universe << 9 | address). Subtracting fixture->address() from
+    // "address" here is only correct for universe 0; for any other universe it
+    // undercounts the subtraction by (universe * 512), producing a bogus,
+    // way-too-large relative channel. Use fixture->universeAddress(), which is
+    // in the same domain as "address", instead.
+    quint32 relChannel = fixture != nullptr ? address - fixture->universeAddress() : address;
 
     QString info;
     QTextStream out(&info);
