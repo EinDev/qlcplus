@@ -101,6 +101,12 @@ public:
     /** Check if Simple desk is currently controlling a channel */
     bool hasChannel(uint channel);
 
+    /** Debug helper: gather a human-readable report of how the channel's
+     *  currently displayed value is derived (Simple Desk override, Scene dump
+     *  queue, DMX universe pre/post-GM value, and any GenericFader/Function
+     *  currently driving it). Also logged via qDebug. */
+    Q_INVOKABLE QString debugChannelInfo(int channel) const;
+
     /** Reset the values of the given universe to zero */
     Q_INVOKABLE void resetUniverse(int universe);
 
