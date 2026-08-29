@@ -1619,14 +1619,14 @@ int Tardis::processAction(TardisAction &action, bool undo)
         {
             Function *function = m_doc->function(action.m_objID);
             if (function != nullptr)
-                function->start(m_doc->masterTimer(), FunctionParent::master());
+                function->start(m_doc->masterTimer(), FunctionParent::master(FunctionParent::TardisUndoRedo));
         }
         break;
         case FunctionStop:
         {
             Function *function = m_doc->function(action.m_objID);
             if (function != nullptr)
-                function->stop(FunctionParent::master());
+                function->stop(FunctionParent::master(FunctionParent::TardisUndoRedo));
         }
         break;
         case VCCueListPlayClicked:

@@ -669,7 +669,7 @@ void RGBMatrix::preRun(MasterTimer *timer)
         if (m_group == NULL)
         {
             // No fixture group to control
-            stop(FunctionParent::master());
+            stop(FunctionParent::master(FunctionParent::EngineSelfStop));
             return;
         }
 
@@ -717,7 +717,7 @@ void RGBMatrix::write(MasterTimer *timer, QList<Universe *> universes)
         if (m_group == NULL)
         {
             // No fixture group to control
-            stop(FunctionParent::master());
+            stop(FunctionParent::master(FunctionParent::EngineSelfStop));
             return;
         }
 
@@ -831,7 +831,7 @@ void RGBMatrix::roundCheck()
         return;
 
     if (m_stepHandler->checkNextStep(runOrder(), m_rgbColors[0], m_rgbColors[1], m_stepsCount) == false)
-        stop(FunctionParent::master());
+        stop(FunctionParent::master(FunctionParent::EngineSelfStop));
 
     // Update continuous phase based on current step index (prevents cumulative rounding errors)
     // This is analogous to how EFX uses m_currentAngle for phase scaling

@@ -45,7 +45,7 @@ void FunctionEditor::setFunctionID(quint32 ID)
     if (m_function != nullptr && m_function->isRunning())
     {
         wasRunning = true;
-        m_function->stop(FunctionParent::master());
+        m_function->stop(FunctionParent::master(FunctionParent::FunctionEditorPreview));
     }
     if (m_function != nullptr)
         disconnect(m_function, qOverload<quint32>(&Function::stopped), this, &FunctionEditor::slotFunctionStopped);
@@ -57,7 +57,7 @@ void FunctionEditor::setFunctionID(quint32 ID)
 
     if (wasRunning)
     {
-        m_function->start(m_doc->masterTimer(), FunctionParent::master());
+        m_function->start(m_doc->masterTimer(), FunctionParent::master(FunctionParent::FunctionEditorPreview));
         if (m_previewEnabled)
             connect(m_function, qOverload<quint32>(&Function::stopped), this, &FunctionEditor::slotFunctionStopped, Qt::UniqueConnection);
     }
@@ -91,7 +91,7 @@ void FunctionEditor::setPreviewEnabled(bool enable)
     if (m_previewEnabled)
     {
         if (m_function->isRunning() == false)
-            m_function->start(m_doc->masterTimer(), FunctionParent::master());
+            m_function->start(m_doc->masterTimer(), FunctionParent::master(FunctionParent::FunctionEditorPreview));
         // a VC widget (or anything else using a Master/ManualVCWidget source)
         // can force-stop this Function regardless of our own preview source.
         // Notice it so previewEnabled doesn't keep reporting a stale "on"
@@ -102,7 +102,7 @@ void FunctionEditor::setPreviewEnabled(bool enable)
     {
         disconnect(m_function, qOverload<quint32>(&Function::stopped), this, &FunctionEditor::slotFunctionStopped);
         if (m_function->isRunning())
-            m_function->stop(FunctionParent::master());
+            m_function->stop(FunctionParent::master(FunctionParent::FunctionEditorPreview));
     }
     emit previewEnabledChanged(enable);
 }

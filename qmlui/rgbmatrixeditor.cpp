@@ -622,7 +622,7 @@ void RGBMatrixEditor::saveToSequence()
     {
         bool testRunning = m_matrix->isRunning();
         if (testRunning)
-            m_matrix->stopAndWait();
+            m_matrix->stopAndWait(FunctionParent::master(FunctionParent::FunctionEditorPreview));
 
         m_previewTimer->stop();
 
@@ -818,7 +818,7 @@ void RGBMatrixEditor::saveToSequence()
         m_doc->addFunction(sequence);
 
         if (testRunning == true)
-            m_matrix->start(m_doc->masterTimer(), FunctionParent::master());
+            m_matrix->start(m_doc->masterTimer(), FunctionParent::master(FunctionParent::FunctionEditorPreview));
 
         m_previewTimer->start(MasterTimer::tick());
     }

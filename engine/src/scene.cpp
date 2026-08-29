@@ -826,7 +826,7 @@ void Scene::write(MasterTimer *timer, QList<Universe*> ua)
 
     if (m_values.count() == 0 && m_palettes.count() == 0)
     {
-        stop(FunctionParent::master());
+        stop(FunctionParent::master(FunctionParent::EngineSelfStop));
         return;
     }
 

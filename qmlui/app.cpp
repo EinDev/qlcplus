@@ -928,7 +928,7 @@ bool App::loadWorkspace(const QString &fileName)
             if (func != nullptr)
             {
                 qDebug() << Q_FUNC_INFO << "Starting startup function. (" << m_doc->startupFunction() << ")";
-                func->start(m_doc->masterTimer(), FunctionParent::master());
+                func->start(m_doc->masterTimer(), FunctionParent::master(FunctionParent::ProjectAutostart));
             }
             else
             {
