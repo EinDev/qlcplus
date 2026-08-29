@@ -70,6 +70,13 @@ private slots:
     void candidateGroupsForSelectionEmptyWhenNothingSelected();
     void candidateGroupsForSelectionEmptyWhenSelectionUngrouped();
     void invertGroupSelectionOnPreFilteredSubsetMatchesScopedCandidate();
+    void functionFixturesForScene();
+    void functionFixturesForEFX();
+    void functionFixturesRecursesIntoChaserSteps();
+    void functionFixturesSkipsUnsupportedChaserStepType();
+    void functionFixturesIsCycleSafeAcrossChasers();
+    void functionFixturesReturnsEmptyForInvalidOrUnsupportedFunction();
+    void functionsFixturesUnionsAcrossSelectedFunctions();
 };
 
 #endif
