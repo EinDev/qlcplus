@@ -62,6 +62,53 @@ Q_DECLARE_METATYPE(StringStringPair)
 
 #define LIVE_ACTIONS_START_CODE     0xF000
 
+/**
+ * Tardis is QLC+'s undo/redo engine: every user-facing mutation (fixture edits,
+ * function edits, VC widget edits, live VC interactions, ...) is funneled through
+ * enqueueAction() as a (code, objID, oldValue, newValue) tuple and later replayed
+ * (in reverse, for undo) by processAction().
+ *
+ * Threading model - easy to get backwards from the QThread base class alone:
+ * Tardis::run() (the code that actually executes on the separate thread) only
+ * dequeues incoming actions and maintains m_history/m_historyIndex (batching
+ * near-simultaneous duplicate actions within TARDIS_ACTION_INTERTIME ms, capping
+ * at TARDIS_MAX_ACTIONS_NUMBER, forwarding to the network). It never calls
+ * processAction(). undoAction()/redoAction() are Q_INVOKABLE, called directly
+ * from QML on the *main* thread, and call processAction() synchronously right
+ * there - which is what actually pokes ContextManager/FixtureManager/
+ * FunctionManager/VirtualConsole/etc. So despite subclassing QThread, none of
+ * the code that touches Doc or UI objects ever runs off the main thread; the
+ * worker thread's only job is bookkeeping the action queue/history.
+ *
+ * Adding a new undoable action requires ALL of the following - missing any one
+ * compiles fine and looks wired up, but silently does nothing (or crashes on
+ * undo) the first time it's exercised:
+ *   1. A new value in the ActionCodes enum below, in the right numeric block
+ *      (blocks are grouped by subsystem). Two separate thresholds gate live
+ *      behaviour, easy to conflate: enqueueAction() skips setModified() for
+ *      any code >= LIVE_ACTIONS_START_CODE (0xF000), but run() only skips
+ *      recording history at all for the narrower range >= VCButtonSetPressed
+ *      (0xF200) - so e.g. FixtureSetDumpValue/FunctionStart/FunctionStop
+ *      (0xF000-0xF1FF) don't dirty the project, yet still go through the same
+ *      history/undo machinery as any other action.
+ *   2. A Tardis::instance()->enqueueAction(...) call at the actual mutation
+ *      site (e.g. in FixtureManager/FunctionManager/VirtualConsole/...).
+ *   3. A `case` for it in processAction() (tardis.cpp) that applies m_oldValue
+ *      (undo) or m_newValue (redo) back onto the real object.
+ *   4. For a create/delete-style action (an object that stops existing on one
+ *      side of the toggle - see the Create/Delete pairs below): the value
+ *      passed to enqueueAction() must be a QByteArray produced by
+ *      actionToByteArray(), and processAction()'s case must call
+ *      processBufferedAction() to recreate the object from it - a plain
+ *      QVariant of the object's old state doesn't work once the object itself
+ *      has been deleted. processBufferedAction() only warns (qWarning,
+ *      "Action 0x.. is not buffered!") that a non-QByteArray value reached it
+ *      for a code it already knows is supposed to be buffered - that code list
+ *      is itself hardcoded in processBufferedAction() (tardis.cpp), so a new
+ *      create/delete action also needs adding there, or forgetting the
+ *      QByteArray payload at the enqueueAction() call site fails with no
+ *      warning at all.
+ */
 class Tardis final : public QThread
 {
     Q_OBJECT

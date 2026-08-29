@@ -283,6 +283,13 @@ public:
     /**
      * Delete the given fixture instance from Doc
      *
+     * Emits fixtureRemoved(id) and then deletes the Fixture immediately and
+     * synchronously (not deferred to the event loop, see doc.cpp) - a
+     * directly-connected slot on fixtureRemoved() can still safely use the
+     * pointer while handling that exact signal, but must not retain it past
+     * returning from the slot, and any code running after this call returns
+     * must not dereference a previously-held pointer to this fixture at all.
+     *
      * @param id The ID of the fixture instance to delete
      */
     bool deleteFixture(quint32 id);
@@ -387,6 +394,15 @@ public:
     /**
      * Remove and delete a fixture group. Doesn't destroy group's fixtures.
      * The group pointer is invalid after this call.
+     *
+     * Like deleteFixture() above, fixtureGroupRemoved(id) is emitted right
+     * before the FixtureGroup is deleted, immediately and synchronously - a
+     * caller holding a raw FixtureGroup* (e.g. an open group editor) must
+     * clear it from a direct connection to fixtureGroupRemoved(), not on some
+     * later tick, or it will dangle. This is also triggered indirectly: e.g.
+     * deleting the last fixture out of a group via FixtureManager can empty
+     * the group and cause Doc to delete it as a side effect - see
+     * qmlui/fixturegroupeditor.h's m_editGroup for the real bug this caused.
      */
     bool deleteFixtureGroup(quint32 id);
 
