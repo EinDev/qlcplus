@@ -80,6 +80,34 @@ Q_DECLARE_METATYPE(StringStringPair)
  * the code that touches Doc or UI objects ever runs off the main thread; the
  * worker thread's only job is bookkeeping the action queue/history.
  *
+ * m_history/m_historyIndex are therefore genuinely shared mutable state
+ * between the two threads: run() rewrites both on every processed action
+ * (trimming/matching/appending/truncating), while undoAction()/redoAction()
+ * read and rewind both synchronously from the GUI thread on every Ctrl+Z/
+ * Ctrl+Y keystroke. m_queueMutex only guards m_actionsQueue (the incoming-
+ * action handoff) - it says nothing about this pair, so without a dedicated
+ * lock this is a genuine data race on a non-atomic QList + index.
+ * m_historyMutex is that lock, guarding m_history/m_historyIndex
+ * specifically:
+ *   - run() takes it for the whole trim/match/append/index-update sequence
+ *     of a single processed action. forwardActionToNetwork() is left
+ *     outside the lock - it only touches the already-dequeued local
+ *     TardisAction and posts a queued cross-thread call, neither of which
+ *     touches history.
+ *   - undoAction()/redoAction() take it for their *entire* body, including
+ *     the processAction() calls: a single undo/redo can walk several
+ *     batched history entries, decrementing/incrementing m_historyIndex
+ *     between reads, and needs a stable view of history across that whole
+ *     walk rather than just per-read - releasing the lock mid-loop would
+ *     let run() truncate/append history out from under an in-progress
+ *     undo/redo and reintroduce a subtler version of the same race. This
+ *     makes their critical section coarser than run()'s per-action one, but
+ *     processAction() itself never touches m_history/m_historyIndex (only
+ *     Doc/UI objects), so holding m_historyMutex across it cannot recurse
+ *     back into the same lock.
+ *   - resetHistory() (called from app.cpp on project load/new) takes the
+ *     same lock too - it's a third, infrequent mutator of this same pair.
+ *
  * Adding a new undoable action requires ALL of the following - missing any one
  * compiles fine and looks wired up, but silently does nothing (or crashes on
  * undo) the first time it's exercised:
@@ -408,6 +436,12 @@ private:
     /** Synchronization variables between threads */
     QMutex m_queueMutex;
     QSemaphore m_queueSem;
+
+    /** Guards m_history/m_historyIndex, which run() (worker thread) mutates
+     *  on every processed action while undoAction()/redoAction()/
+     *  resetHistory() (main/GUI thread) read and rewind them. See the class
+     *  doc comment above for the locking-granularity rationale. */
+    QMutex m_historyMutex;
 
     /** The actual history of actions */
     QList<TardisAction> m_history;
