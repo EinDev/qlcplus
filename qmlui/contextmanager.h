@@ -52,6 +52,9 @@ class ContextManager final : public QObject
     Q_PROPERTY(int selectedDimmersCount READ selectedDimmersCount NOTIFY selectedDimmersCountChanged)
     Q_PROPERTY(QVector3D fixturesPosition READ fixturesPosition WRITE setFixturesPosition NOTIFY fixturesPositionChanged)
     Q_PROPERTY(QVector3D fixturesRotation READ fixturesRotation WRITE setFixturesRotation NOTIFY fixturesRotationChanged)
+    Q_PROPERTY(bool selectedFixtureHasDmxTransform READ selectedFixtureHasDmxTransform NOTIFY selectedFixturesChanged)
+    Q_PROPERTY(quint32 fixtureDmxTransformFlags READ fixtureDmxTransformFlags WRITE setFixtureDmxTransformFlags NOTIFY fixtureDmxTransformFlagsChanged)
+    Q_PROPERTY(qreal fixtureDmxScale READ fixtureDmxScale WRITE setFixtureDmxScale NOTIFY fixtureDmxScaleChanged)
     Q_PROPERTY(int dumpValuesCount READ dumpValuesCount NOTIFY dumpValuesCountChanged)
     Q_PROPERTY(quint32 dumpChannelMask READ dumpChannelMask NOTIFY dumpChannelMaskChanged)
     Q_PROPERTY(bool multipleSelection READ multipleSelection WRITE setMultipleSelection NOTIFY multipleSelectionChanged)
@@ -355,6 +358,26 @@ public:
     void setFixturesRotation(QVector3D degrees);
     void setFixtureRotation(quint32 itemID, QVector3D degrees);
 
+    /** True when exactly one fixture is selected and it has its own
+     *  PositionX/Y/Z or RotationX/Y/Z DMX channels - i.e. whether the
+     *  per-fixture DMX invert/scale properties below are meaningful for the
+     *  current selection. False for no selection, a multiple selection, or a
+     *  fixture with none of those channels. */
+    bool selectedFixtureHasDmxTransform() const;
+
+    /** Get/Set the per-fixture DMX position/rotation invert flags (any
+     *  combination of MonitorProperties::InvertedPosition/RotationXYZFlag)
+     *  for the currently selected single fixture. Reads back 0 and no-ops on
+     *  write for no/multiple selection. */
+    quint32 fixtureDmxTransformFlags() const;
+    void setFixtureDmxTransformFlags(quint32 flags);
+
+    /** Get/Set the per-fixture DMX-to-view position/rotation scale multiplier
+     *  (default 1.0) for the currently selected single fixture. Reads back
+     *  1.0 and no-ops on write for no/multiple selection. */
+    qreal fixtureDmxScale() const;
+    void setFixtureDmxScale(qreal scale);
+
     /** Select/Deselect all the fixtures of the Group/Universe with the provided $id */
     Q_INVOKABLE void setFixtureGroupSelection(quint32 id, bool enable, bool isUniverse);
 
@@ -405,6 +428,8 @@ signals:
     void selectedDimmersCountChanged();
     void fixturesPositionChanged();
     void fixturesRotationChanged();
+    void fixtureDmxTransformFlagsChanged();
+    void fixtureDmxScaleChanged();
 
 private:
     /** Select the next available Fixture group, cycling through the
@@ -484,6 +509,16 @@ private:
      *  a read of the DMX output. */
     QVector3D cachedPositionDelta(quint32 fxID, Fixture *fixture) const;
     QVector3D cachedRotationDelta(quint32 fxID, Fixture *fixture) const;
+
+    /** Drops $fxID's cached position/rotation delta (see cachedPositionDelta()/
+     *  cachedRotationDelta() above) and re-renders its 2D/3D preview from a
+     *  freshly re-derived one - called after changing this fixture's own
+     *  invert/scale settings (setFixtureDmxTransformFlags()/setFixtureDmxScale()),
+     *  since those settings change what a given DMX value *means* without the
+     *  DMX value itself changing, so the cache and the on-screen position/
+     *  rotation would otherwise silently keep showing the pre-change result
+     *  until the next unrelated universe write happened to invalidate it. */
+    void refreshFixtureDmxTransform(quint32 fxID);
 
 private:
     mutable QHash<quint32, QVector3D> m_fixturePositionDeltaCache;
