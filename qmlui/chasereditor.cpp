@@ -339,7 +339,7 @@ void ChaserEditor::setPlaybackIndex(int playbackIndex)
             bool sceneWasRunning = currScene->isRunning();
             if (sceneWasRunning)
             {
-                currScene->stop(FunctionParent::master());
+                currScene->stop(FunctionParent::master(FunctionParent::ChaserEditorStepPreview));
 
                 // Remove channels from the previous step absent in the new step
                 // so the fader re-initialises clean when the scene restarts.
@@ -358,7 +358,7 @@ void ChaserEditor::setPlaybackIndex(int playbackIndex)
                 currScene->setValue(scv);
 
             if (sceneWasRunning)
-                currScene->start(m_doc->masterTimer(), FunctionParent::master());
+                currScene->start(m_doc->masterTimer(), FunctionParent::master(FunctionParent::ChaserEditorStepPreview));
         }
     }
 
