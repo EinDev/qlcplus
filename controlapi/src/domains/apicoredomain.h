@@ -39,6 +39,11 @@ private:
     void registerMethods();
     App *app() const;
 
+    /** Broadcasts core.project.loaded ({reason, project: CoreProjectMetadata}),
+     *  the one event a spec-built client should refresh all its domain state
+     *  from - see core.project.new/open/close handlers, the only callers. */
+    void broadcastProjectLoaded(const QString &reason, const QString &originClientId);
+
 private slots:
     void slotModeChanged(Doc::Mode mode);
     void slotDocRevisionChanged(quint32 revision);
