@@ -147,7 +147,7 @@ void ApiIoDomain_Test::universeCreateWithStaleRevisionConflicts()
 
 void ApiIoDomain_Test::grandMasterSetValueBroadcastsLiveEvent()
 {
-    helloAndGetClientId();
+    QString clientId = helloAndGetClientId();
 
     QSignalSpy spy(m_client, &QWebSocket::textMessageReceived);
 
@@ -173,6 +173,9 @@ void ApiIoDomain_Test::grandMasterSetValueBroadcastsLiveEvent()
         else if (type == QStringLiteral("event") && obj.value(QStringLiteral("topic")).toString() == QStringLiteral("io.grandMaster.changed"))
         {
             QCOMPARE(obj.value(QStringLiteral("data")).toObject().value(QStringLiteral("value")).toInt(), 128);
+            // originClientId should be attributed to the client that made
+            // the change (00-conventions.md §3/§9), not left null.
+            QCOMPARE(obj.value(QStringLiteral("originClientId")).toString(), clientId);
             sawEvent = true;
         }
     }
@@ -183,7 +186,7 @@ void ApiIoDomain_Test::grandMasterSetValueBroadcastsLiveEvent()
 
 void ApiIoDomain_Test::blackoutToggleBroadcastsLiveEvent()
 {
-    helloAndGetClientId();
+    QString clientId = helloAndGetClientId();
     bool before = m_doc->inputOutputMap()->blackout();
 
     QSignalSpy spy(m_client, &QWebSocket::textMessageReceived);
@@ -198,6 +201,9 @@ void ApiIoDomain_Test::blackoutToggleBroadcastsLiveEvent()
         {
             QCOMPARE(obj.value(QStringLiteral("topic")).toString(), QStringLiteral("io.blackout.changed"));
             QCOMPARE(obj.value(QStringLiteral("data")).toObject().value(QStringLiteral("blackout")).toBool(), !before);
+            // originClientId should be attributed to the client that made
+            // the change (00-conventions.md §3/§9), not left null.
+            QCOMPARE(obj.value(QStringLiteral("originClientId")).toString(), clientId);
             sawEvent = true;
         }
     }
