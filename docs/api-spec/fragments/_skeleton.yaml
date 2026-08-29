@@ -26,9 +26,18 @@ defaultContentType: application/json
 
 servers:
   local:
-    host: localhost:9999
+    host: localhost:9010
     pathname: /qlcplusapi
     protocol: ws
+    description: >
+      9010 is ApiServer::API_SERVER_DEFAULT_PORT (controlapi/src/apiserver.h)
+      — this API's actual listen port. Port 9999 is a DIFFERENT, older server
+      (webaccess's legacy pipe-delimited remote-control protocol,
+      webaccess/src/webaccess.cpp) — do not use it here. The pathname above
+      is decorative only: QWebSocketServer does not route by path, so the
+      server accepts the WebSocket handshake regardless of what pathname the
+      client connects with; there is nothing to implement server-side to
+      "support" it.
 
 channels:
   qlcplus:

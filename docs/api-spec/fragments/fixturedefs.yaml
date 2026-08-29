@@ -375,14 +375,14 @@ messages:
               type: integer
               description: "sessionRevision this client last observed for this session."
 
-  FixtureDefsSessionSetMetadataRequest:
+  FixtureDefsSessionUpdateRequest:
     payload:
       type: object
       required: [type, id, method, params]
       properties:
         type: { const: request }
         id: { type: string }
-        method: { const: fixturedefs.session.setMetadata }
+        method: { const: fixturedefs.session.update }
         params:
           type: object
           required: [sessionId, baseRevision]
@@ -473,13 +473,13 @@ messages:
   # (metadata, physical, channel/capability/mode/head/alias CRUD, fork).
   # Carries the FULL updated definition snapshot rather than a JSON Patch —
   # see notes.md for why (definitions are small documents).
-  FixtureDefsSessionChangedEvent:
+  FixtureDefsSessionUpdatedEvent:
     payload:
       type: object
       required: [type, topic, data]
       properties:
         type: { const: event }
-        topic: { const: fixturedefs.session.changed }
+        topic: { const: fixturedefs.session.updated }
         originClientId: { type: [string, "null"] }
         data:
           type: object
@@ -633,7 +633,7 @@ messages:
             replaces the channel's entire capability list with the preset's
             auto-generated capability, mirroring ChannelEdit::setupPreset —
             the resulting capabilities are visible in the following
-            fixturedefs.session.changed event.
+            fixturedefs.session.updated event.
           properties:
             sessionId: { type: string }
             baseRevision: { type: integer }
@@ -1451,7 +1451,7 @@ operations:
     channel: { $ref: '#/channels/qlcplus' }
     messages:
       - $ref: '#/channels/qlcplus/messages/fixtureDefsSessionForkToUserRequest'
-  sendFixtureDefsSessionSetMetadata:
+  sendFixtureDefsSessionUpdate:
     action: send
     channel: { $ref: '#/channels/qlcplus' }
     messages:
@@ -1527,19 +1527,19 @@ operations:
     channel: { $ref: '#/channels/qlcplus' }
     description: >
       Shared response for every "sendFixtureDefs*" mutation above that
-      doesn't allocate a new id (ForkToUser, SetMetadata, SetPhysical,
+      doesn't allocate a new id (ForkToUser, Update, SetPhysical,
       ChannelUpdate, ChannelRemove, CapabilityUpdate, CapabilityRemove,
       CapabilityAutoPatchColors, AliasUpdate, AliasRemove, ModeUpdate,
       ModeRemove, ModeSetChannels, ModeSetPhysical, HeadRemove).
     messages:
       - $ref: '#/channels/qlcplus/messages/fixtureDefsSessionAckResponse'
 
-  receiveFixtureDefsSessionChangedEvent:
+  receiveFixtureDefsSessionUpdatedEvent:
     action: receive
     channel: { $ref: '#/channels/qlcplus' }
     description: "Broadcast after every session mutation, including the id-allocating ones below."
     messages:
-      - $ref: '#/channels/qlcplus/messages/fixtureDefsSessionChangedEvent'
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsSessionUpdatedEvent'
 
   # ---- Session mutations that allocate a new id (bespoke responses) ----
   sendFixtureDefsChannelAdd:

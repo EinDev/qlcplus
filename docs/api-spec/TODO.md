@@ -67,6 +67,30 @@ strictly gating it.
       `.create` vs `.add`, and any other verb pairs across all seven domains
       now that everything's merged into one file and greppable together.
       (Note: Normalized .create/.add, .delete/.remove, and .update/.updated patterns across spec; documented in 00-conventions.md §8)
+      (Correction: that normalization pass had left `.update`/`.updated`
+      half-applied — operation `$ref`s were repointed at new
+      `functionsUpdateRequest`/`fixtureDefsSessionUpdateRequest`/
+      `ioUniverseUpdatedEvent` message keys without renaming the fragment
+      messages themselves, which broke `merge.py` with 7 dangling refs and
+      left the checked-in `qlcplus-api.yaml` internally inconsistent (e.g.
+      `FunctionsUpdateRequest`'s `method` still read
+      `functions.setCommonAttributes`) — see
+      `docs/agent-reports/2026-08-29-asyncapi-audit.md` findings #1/#2. Fixed:
+      `functions.setCommonAttributes`/`FunctionsSetCommonAttributesRequest`
+      -> `functions.update`/`FunctionsUpdateRequest` (+ Response/OkResponse),
+      `functions.commonAttributesChanged` -> `functions.updated`
+      (`FunctionsUpdatedEvent`); `fixturedefs.session.setMetadata`/
+      `FixtureDefsSessionSetMetadataRequest` -> `fixturedefs.session.update`/
+      `FixtureDefsSessionUpdateRequest`, `fixturedefs.session.changed` ->
+      `fixturedefs.session.updated` (`FixtureDefsSessionUpdatedEvent`);
+      `io.universe.changed`/`IoUniverseChangedEvent` -> `io.universe.updated`/
+      `IoUniverseUpdatedEvent`; matching operation ids renamed too
+      (`sendFunctionsUpdate`, `sendFixtureDefsSessionUpdate`,
+      `receiveIoUniverseUpdated(FromPatch)`, etc.). `merge.py` and
+      `final_check.py` both pass again as of this fix. The rest of this
+      item's "check `.rename` vs `.setName`, `.create` vs `.add`, and any
+      other verb pairs across all seven domains" scope was NOT redone here —
+      only the specific `.update`/`.updated` breakage above was in scope.)
 
 ---
 

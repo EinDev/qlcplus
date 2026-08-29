@@ -312,7 +312,7 @@ messages:
           properties:
             docRevision:
               type: integer
-  IoUniverseChangedEvent:
+  IoUniverseUpdatedEvent:
     payload:
       type: object
       required:
@@ -323,7 +323,7 @@ messages:
         type:
           const: event
         topic:
-          const: io.universe.changed
+          const: io.universe.updated
         originClientId:
           type:
           - string
@@ -2331,7 +2331,7 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/ioUniverseUpdateResponse'
-  receiveIoUniverseChanged:
+  receiveIoUniverseUpdated:
     action: receive
     channel:
       $ref: '#/channels/qlcplus'
@@ -2367,11 +2367,11 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/ioPatchSetParametersResponse'
-  receiveIoUniverseChangedFromPatch:
+  receiveIoUniverseUpdatedFromPatch:
     action: receive
     channel:
       $ref: '#/channels/qlcplus'
-    description: Same io.universe.changed event as io.universe.update — see IoUniverseUpdatedEvent; listed
+    description: Same io.universe.updated event as io.universe.update — see IoUniverseUpdatedEvent; listed
       again here since every io.patch.* mutation above broadcasts it too.
     messages:
     - $ref: '#/channels/qlcplus/messages/ioUniverseUpdatedEvent'

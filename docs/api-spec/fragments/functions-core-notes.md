@@ -8,7 +8,7 @@
 ## Scope
 
 The generic `Function` base API (`functions.list/get/create/delete/rename/
-move/start/stop/setPause/tap/adjustAttribute/setCommonAttributes`, plus the
+move/start/stop/setPause/tap/adjustAttribute/update`, plus the
 `functions.status.changed` live event) applying to all 10
 `Function::Type` subtypes, **plus** full type-specific CRUD for Scene,
 Chaser, EFX, Collection, Sequence, and the non-Function auxiliary resource
