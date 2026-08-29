@@ -57,7 +57,7 @@ public:
     void createFixtureItems(quint32 fxID, QVector3D pos, bool mmCoords = true);
 
     void createFixtureItem(quint32 fxID, quint16 headIndex, quint16 linkedIndex,
-                           QVector3D pos, bool mmCoords = true);
+                           QVector3D pos, bool mmCoords = true, bool isCenterPosition = false);
 
     /** Set/update the flags of a fixture item */
     void setFixtureFlags(quint32 itemID, quint32 flags);
@@ -83,8 +83,16 @@ public:
     /** Update the rotation of a Fixture with the provided $itemID */
     void updateFixtureRotation(quint32 itemID, QVector3D degrees);
 
-    /** Update the position of a Fixture with the provided $itemID */
-    void updateFixturePosition(quint32 itemID, QVector3D pos);
+    /** Update the position of a Fixture with the provided $itemID. $pos is a
+     *  top-left/corner-origin coordinate (matching MonitorProperties::
+     *  fixturePosition()'s convention) unless $isCenterPosition is set, in
+     *  which case $pos is the item's visual center (e.g. a DMX PositionX/Y/Z-
+     *  driven fixture's stage-center-anchored coordinate - see
+     *  FixtureUtils::gridCenterPosition()) and gets converted to the
+     *  equivalent corner by subtracting half the item's own width/height
+     *  before it is applied, so the item is centered on $pos instead of
+     *  having $pos land on its top-left corner. */
+    void updateFixturePosition(quint32 itemID, QVector3D pos, bool isCenterPosition = false);
 
     /** Update the position of a Fixture with the provided $itemID */
     void updateFixtureSize(quint32 itemID, Fixture *fixture);
