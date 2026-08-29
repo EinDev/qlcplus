@@ -362,10 +362,17 @@ messages:
             name:
               type: string
               description: >
-                Base friendly name. When quantity > 1, the engine appends
-                " [<n>]" per instance (Fixture::setName(), see
-                FixtureManager::addFixture()) — mirror that suffixing
-                server-side for parity with the current UI.
+                Base friendly name. The engine appends " [<n>]"
+                unconditionally — even for a single fixture (quantity == 1)
+                — using the new fixture's own id + 1 as <n>, not a
+                per-batch instance ordinal starting at 1
+                (FixtureManager::addFixture(): `fxi->setName(QString("%1
+                [%2]").arg(name).arg(fxi->id() + 1))`). Mirror this exactly
+                server-side for parity with the current UI: a bulk-patch of
+                quantity=3 does NOT necessarily produce "[1]", "[2]", "[3]"
+                — it produces "[<id0+1>]", "[<id0+2>]", "[<id0+3>]", which
+                only coincide with 1/2/3 if fixture ids happen to be
+                contiguous from 0.
             quantity:
               type: integer
               default: 1
@@ -1099,10 +1106,25 @@ schemas:
       focusType: { type: string }
       focusPanMax: { type: integer }
       focusTiltMax: { type: integer }
+      layoutWidth:
+        type: integer
+        description: "Head arrangement grid width, for matrix/pixel fixtures (QLCPhysical::layoutSize()). Previously missing here despite being present on FixtureDefsPhysical in fixturedefs.yaml — same QLCPhysical field; fixtures.defs.getMode needs it to preview a matrix fixture's head layout in the patch dialog."
+      layoutHeight:
+        type: integer
+        description: "Head arrangement grid height, for matrix/pixel fixtures. See layoutWidth."
 
   FixturesCapability:
     type: object
-    description: QLCCapability — one DMX value sub-range of a channel.
+    description: >
+      QLCCapability — one DMX value sub-range of a channel. This is a
+      read-oriented summary shape (min/max/name/preset plus derived
+      presetType/color1/color2 for direct UI rendering), distinct from
+      FixtureDefsCapability in fixturedefs.yaml, which exposes the same
+      engine object's raw authoring shape (resources/aliases/warning) for
+      the definition editor. The two intentionally differ because they serve
+      different consumers of the same QLCCapability — see fixturedefs.yaml's
+      FixtureDefsCapability schema doc and fixturedefs-notes.md for why they
+      aren't unified into one schema.
     required: [min, max, name]
     properties:
       min: { type: integer }
@@ -1190,13 +1212,30 @@ schemas:
       channels: { type: integer, description: Fixture::channels() — the instance's channel footprint. }
       fixtureType:
         type: string
-        description: QLCFixtureDef::FixtureType as string, or "Generic Dimmer" when isGeneric is true.
+        description: >
+          Fixture::typeString() — QLCFixtureDef::typeToString(fixtureDef()->type())
+          when a real definition is attached, otherwise the literal string
+          "Dimmer". There is no separate "Generic Dimmer" string anywhere in
+          the engine: a generic fixture's fixtureType reads exactly "Dimmer",
+          same as a real dimmer definition — use isGeneric to tell them
+          apart, not this field.
       manufacturer: { type: string }
       model: { type: string }
       mode: { type: string }
       isGeneric:
         type: boolean
-        description: true if this fixture has no real QLCFixtureDef (Fixture::fixtureDef() == null), i.e. a generic dimmer.
+        description: >
+          true if this fixture is a generic dimmer. qmlui always attaches a
+          procedural QLCFixtureDef to generic fixtures (Fixture::
+          genericDimmerDef(), fixture.cpp), so "no definition at all" is
+          never the actual runtime state to test for — Fixture::fixtureDef()
+          is never null for a live-patched fixture. The real discriminator,
+          matching the engine's own check (fixture.cpp, e.g. around the
+          generic-def-ownership check in Fixture::setFixtureDefinition), is
+          whether the attached definition's manufacturer AND model are both
+          the literal string "Generic" (QLCFixtureDef::manufacturer() ==
+          "Generic" && model() == "Generic") — not identity/nullness of the
+          definition pointer.
       crossUniverse:
         type: boolean
         description: Fixture::crossUniverse().
