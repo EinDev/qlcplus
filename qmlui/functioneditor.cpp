@@ -45,7 +45,7 @@ void FunctionEditor::setFunctionID(quint32 ID)
     if (m_function != nullptr && m_function->isRunning())
     {
         wasRunning = true;
-        m_function->stop(FunctionParent::master());
+        m_function->stop(FunctionParent::master(FunctionParent::FunctionEditorPreview));
     }
 
     m_functionID = ID;
@@ -54,7 +54,7 @@ void FunctionEditor::setFunctionID(quint32 ID)
         m_functionType = m_function->type();
 
     if (wasRunning)
-        m_function->start(m_doc->masterTimer(), FunctionParent::master());
+        m_function->start(m_doc->masterTimer(), FunctionParent::master(FunctionParent::FunctionEditorPreview));
 }
 
 quint32 FunctionEditor::functionID() const
@@ -85,12 +85,12 @@ void FunctionEditor::setPreviewEnabled(bool enable)
     if (m_previewEnabled)
     {
         if (m_function->isRunning() == false)
-            m_function->start(m_doc->masterTimer(), FunctionParent::master());
+            m_function->start(m_doc->masterTimer(), FunctionParent::master(FunctionParent::FunctionEditorPreview));
     }
     else
     {
         if (m_function->isRunning())
-            m_function->stop(FunctionParent::master());
+            m_function->stop(FunctionParent::master(FunctionParent::FunctionEditorPreview));
     }
     emit previewEnabledChanged(enable);
 }

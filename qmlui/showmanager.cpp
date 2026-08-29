@@ -1327,7 +1327,7 @@ void ShowManager::playShow()
     if (m_currentShow->isRunning() == false)
     {
         m_cursorMovedDuringPause = false;
-        m_currentShow->start(m_doc->masterTimer(), FunctionParent::master(), m_currentTime);
+        m_currentShow->start(m_doc->masterTimer(), FunctionParent::master(FunctionParent::ShowManagerPlayback), m_currentTime);
         setPlaybackState(true, false);
         return;
     }
@@ -1336,10 +1336,10 @@ void ShowManager::playShow()
     {
         if (m_cursorMovedDuringPause)
         {
-            m_currentShow->stop(FunctionParent::master());
-            m_currentShow->stopAndWait();
+            m_currentShow->stop(FunctionParent::master(FunctionParent::ShowManagerPlayback));
+            m_currentShow->stopAndWait(FunctionParent::master(FunctionParent::ShowManagerPlayback));
             m_cursorMovedDuringPause = false;
-            m_currentShow->start(m_doc->masterTimer(), FunctionParent::master(), m_currentTime);
+            m_currentShow->start(m_doc->masterTimer(), FunctionParent::master(FunctionParent::ShowManagerPlayback), m_currentTime);
         }
         else
         {
@@ -1359,7 +1359,7 @@ void ShowManager::stopShow()
     if (m_currentShow != nullptr && m_currentShow->isRunning())
     {
         m_cursorMovedDuringPause = false;
-        m_currentShow->stop(FunctionParent::master());
+        m_currentShow->stop(FunctionParent::master(FunctionParent::ShowManagerPlayback));
         setPlaybackState(false, false);
         return;
     }
