@@ -29,6 +29,7 @@ class MonitorProperties_Test final : public QObject
 private slots:
     void defaults();
     void fixtureItems();
+    void fixtureItemsXML();
     void lightItems();
     void lightItemsXML();
     void genericItems();

@@ -1181,6 +1181,41 @@ void ContextManager::pushPositionDelta(Fixture *fixture, QVector3D deltaMeters)
     // for why this must not be re-derived from the fixture's own channel
     // values on the next call instead.
     m_fixturePositionDeltaCache.insert(fixture->id(), deltaMeters);
+
+    // Also persist the equivalent absolute position into MonitorProperties,
+    // in the same millimetre/corner-origin convention every other fixture's
+    // fixturePosition() already uses (see gridCenterPosition()'s own doc
+    // comment) - this is otherwise unused for a fixture with its own
+    // PositionX/Y/Z channels (see the "is DMX-driven" branches in
+    // setFixturesOffset()/setFixturesPosition()/fixturesPosition(), which
+    // deliberately never call setFixturePosition()), so writing it here does
+    // not conflict with anything else that reads it.
+    //
+    // Root-cause fix for a user report: dragging such a fixture only ever
+    // pushed the position as a live DMX value (via setDumpValue() above),
+    // which Doc::saveXML() never persists (dumped/live channel values are
+    // runtime-only, unlike a Scene's stored values) - so the position was
+    // silently lost on every save, and reopening the project showed the
+    // fixture back at delta 0 (world center). MonitorProperties::saveXML()
+    // itself round-trips correctly (see the new fixtureItemsXML() test in
+    // monitorproperties_test) - the bug was that nothing upstream of it ever
+    // wrote this fixture's position into it in the first place.
+    //
+    // NOTE: this fixes the *save* side only. Restoring it on *load* still
+    // needs a decision this commit deliberately leaves unmade: either
+    // re-push the loaded value onto the fixture's live DMX channels at
+    // project load (correct, but physically moves real connected hardware
+    // the instant a project is opened - a "flag before implementing" case
+    // per this project's standing rule), or make the 2D/3D views prefer this
+    // persisted value over the live (still-default) DMX-derived one for a
+    // fixture's very first render after load, without touching DMX output
+    // (cosmetic-only, no hardware side effect, but touches the same
+    // updateFixtureItem() path slotUniverseWritten() drives on every single
+    // universe write, which is recently-hardened/cache-sensitive code not
+    // touched here). See the task report for the tradeoffs.
+    m_monProps->setFixturePosition(fixture->id(), 0, 0,
+                                   FixtureUtils::gridCenterPosition(m_monProps) + (deltaMeters * 1000.0f));
+    m_doc->setModified();
 }
 
 void ContextManager::pushRotationDelta(Fixture *fixture, QVector3D deltaDegrees)
@@ -1208,6 +1243,12 @@ void ContextManager::pushRotationDelta(Fixture *fixture, QVector3D deltaDegrees)
 
     // See pushPositionDelta()'s equivalent note.
     m_fixtureRotationDeltaCache.insert(fixture->id(), deltaDegrees);
+
+    // Persist alongside the position fix above, for the same reason -
+    // fixtureRotation() already represents absolute degrees for a
+    // non-DMX-driven fixture, so no unit conversion is needed here.
+    m_monProps->setFixtureRotation(fixture->id(), 0, 0, deltaDegrees);
+    m_doc->setModified();
 }
 
 QVector3D ContextManager::cachedPositionDelta(quint32 fxID, Fixture *fixture) const
