@@ -22,9 +22,11 @@
 #include <QSurfaceFormat>
 #include <QCommandLineParser>
 #include <QQmlApplicationEngine>
+#include <QTimer>
 
 #include "app.h"
 #include "asynclogwriter.h"
+#include "freezewatchdog.h"
 #include "networkmanager.h"
 #include "apiserver.h"
 #include "qlcconfig.h"
@@ -292,6 +294,28 @@ int main(int argc, char *argv[])
     // fullscreen mode
     if (parser.isSet(fullscreenOption))
         qlcplusApp.toggleFullscreen();
+
+    // Freeze/hang watchdog (docs/agent-reports/2026-08-29-crash-freeze-diagnostics-options.md,
+    // option F3). Started right here, immediately before the event loop
+    // starts running, so that whatever synchronous startup/project-loading
+    // work happened above (which can legitimately take a while for a big
+    // .qxw) is never counted against the freeze threshold - only stalls of
+    // the *running* event loop are.
+    FreezeWatchdog freezeWatchdog;
+    freezeWatchdog.start();
+
+#ifdef Q_OS_WIN
+    // Dev-only: deliberately hang the main thread to verify the watchdog
+    // above actually fires end-to-end. Gated behind an env var so it can
+    // never trigger outside a manual test; never wired to any UI/flag.
+    if (qEnvironmentVariableIsSet("QLCPLUS_DEBUG_FREEZE"))
+    {
+        int secs = qEnvironmentVariableIntValue("QLCPLUS_DEBUG_FREEZE");
+        if (secs <= 0)
+            secs = 20;
+        QTimer::singleShot(3000, &app, [secs]() { FreezeWatchdog::debugBlockMainThread(secs); });
+    }
+#endif
 
     int result = app.exec();
     delete g_logWriter; // destructor drains the queue and joins the thread
