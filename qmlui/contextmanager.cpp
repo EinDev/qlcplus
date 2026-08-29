@@ -547,6 +547,14 @@ void ContextManager::resetContexts()
     m_channelsMap.clear();
     resetDumpValues();
 
+    // Loaded projects renumber Fixture IDs from 0, so a stale cache entry
+    // keyed by an ID reused by the new project's fixtures would otherwise
+    // resume a drag from the previous project's delta. See cachedPositionDelta()/
+    // cachedRotationDelta() - both reseed on demand from the fixture's actual
+    // channel values, so clearing here is safe.
+    m_fixturePositionDeltaCache.clear();
+    m_fixtureRotationDeltaCache.clear();
+
     for (quint32 &itemID : m_selectedFixtures)
         setFixtureSelection(itemID, -1, false);
     m_selectedFixtures.clear();
@@ -1127,10 +1135,10 @@ void ContextManager::setFixturesOffset(qreal x, qreal y)
                 newPos = QVector3D(currPos.x() + x, currPos.y(), currPos.z() + y);
             break;
             case MonitorProperties::RightSideView:
-                newPos = QVector3D(currPos.x(),  currPos.y() + (m_monProps->gridSize().y() - y), currPos.z() - x);
+                newPos = QVector3D(currPos.x(), currPos.y() - y, currPos.z() - x);
             break;
             case MonitorProperties::LeftSideView:
-                newPos = QVector3D(currPos.x(), currPos.y() + (m_monProps->gridSize().y() - y), currPos.z() + x);
+                newPos = QVector3D(currPos.x(), currPos.y() - y, currPos.z() + x);
             break;
             default:
                 newPos = QVector3D(currPos.x() + x, currPos.y() - y, currPos.z());
@@ -2583,6 +2591,24 @@ void ContextManager::slotSimpleDeskValueChanged(quint32 fxID, quint32 channel, q
         setDumpValue(fxID, channel, uchar(value), false);
 }
 
+// Used by slotUniverseWritten() below to compare a single axis of a cached
+// position/rotation delta against the value freshly re-derived from the
+// fixture's own channels. Axes the fixture has no channel for must be
+// skipped entirely rather than compared as 0 vs 0 - FixtureUtils::
+// fixturePositionDelta()/fixtureRotationDelta() report 0 for those, but the
+// cached delta can be non-zero on such an axis (e.g. a fixture with only a
+// PositionX channel, dragged diagonally still accumulates a Z component in
+// the cache), which would otherwise look like a spurious external change on
+// every single universe write and defeat the cache.
+static bool axisDeltaChanged(Fixture *fixture, QLCChannel::Group group,
+                              float cachedValue, float freshValue, float epsilon)
+{
+    if (fixture->channelNumber(group, QLCChannel::MSB) == QLCChannel::invalid())
+        return false;
+
+    return qAbs(freshValue - cachedValue) > epsilon;
+}
+
 void ContextManager::slotUniverseWritten(quint32 idx, const QByteArray &ua)
 {
     for (Fixture *fixture : m_doc->fixtures())
@@ -2595,6 +2621,58 @@ void ContextManager::slotUniverseWritten(quint32 idx, const QByteArray &ua)
 
         if (fixture->setChannelValues(ua) == true)
         {
+            // A Scene, Simple Desk or Chaser (or another console entirely) may
+            // have just written this fixture's position/rotation channels
+            // behind our back. Our own pushPositionDelta()/pushRotationDelta()
+            // writes land here too, once Doc's processing tick catches up, so
+            // only drop a cache entry when the fixture's actual channel values
+            // no longer match what we last told it to be - comparing against
+            // an exact re-derivation (rather than unconditionally dropping on
+            // every write) avoids immediately invalidating the entry a drag
+            // step just wrote, which would reintroduce the stale-delta bug
+            // this cache was added to fix. The epsilons are a few DMX raw
+            // steps wide (see positionRawFromDelta()/rotationRawFromDelta()),
+            // comfortably above float round-trip quantization noise between a
+            // pushed delta and its channel-value re-derivation. Comparison is
+            // done per-axis (see axisDeltaChanged()) so an axis the fixture
+            // has no channel for - always 0 from the fresh re-derivation, but
+            // possibly non-zero in the cache - never looks like an external
+            // change.
+            //
+            // Known remaining race, not addressed here: an external write
+            // landing in the narrow window between this class's own push and
+            // Doc's processing tick catching up can be read as external and
+            // drop that window's increment. This is bounded (at most the
+            // increments accumulated within one processing tick) and doesn't
+            // compound like the original un-cached bug did.
+            quint32 fxID = fixture->id();
+
+            QHash<quint32, QVector3D>::iterator posIt = m_fixturePositionDeltaCache.find(fxID);
+            if (posIt != m_fixturePositionDeltaCache.end())
+            {
+                QVector3D fresh = FixtureUtils::fixturePositionDelta(fixture);
+                QVector3D cached = posIt.value();
+                if (axisDeltaChanged(fixture, QLCChannel::PositionX, cached.x(), fresh.x(), 0.0005f) ||
+                    axisDeltaChanged(fixture, QLCChannel::PositionY, cached.y(), fresh.y(), 0.0005f) ||
+                    axisDeltaChanged(fixture, QLCChannel::PositionZ, cached.z(), fresh.z(), 0.0005f))
+                {
+                    m_fixturePositionDeltaCache.erase(posIt);
+                }
+            }
+
+            QHash<quint32, QVector3D>::iterator rotIt = m_fixtureRotationDeltaCache.find(fxID);
+            if (rotIt != m_fixtureRotationDeltaCache.end())
+            {
+                QVector3D fresh = FixtureUtils::fixtureRotationDelta(fixture);
+                QVector3D cached = rotIt.value();
+                if (axisDeltaChanged(fixture, QLCChannel::RotationX, cached.x(), fresh.x(), 0.05f) ||
+                    axisDeltaChanged(fixture, QLCChannel::RotationY, cached.y(), fresh.y(), 0.05f) ||
+                    axisDeltaChanged(fixture, QLCChannel::RotationZ, cached.z(), fresh.z(), 0.05f))
+                {
+                    m_fixtureRotationDeltaCache.erase(rotIt);
+                }
+            }
+
             if (m_DMXView->isEnabled())
                 m_DMXView->updateFixture(fixture);
             if (m_2DView->isEnabled())

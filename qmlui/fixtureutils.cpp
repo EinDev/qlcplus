@@ -239,17 +239,27 @@ void FixtureUtils::alignItem(QVector3D refPos, QVector3D &origPos, int pointOfVi
 QVector3D FixtureUtils::item3DPosition(const MonitorProperties *monProps, QPointF point, float thirdVal)
 {
     QVector3D pos(point.x(), point.y(), thirdVal);
+    float gridUnits = monProps->gridUnits() == MonitorProperties::Meters ? 1000.0 : 304.8;
 
+    // Must stay the exact inverse of item2DPosition() above for each point of
+    // view - every non-TopView branch there flips Y via
+    // (gridSize().y() * gridUnits) - pos.y(), so recovering pos.y() here needs
+    // the same subtraction applied to point.y() (not a plain pass-through).
     switch(monProps->pointOfView())
     {
         case MonitorProperties::TopView:
             pos = QVector3D(point.x(), thirdVal, point.y());
         break;
+        case MonitorProperties::Undefined:
+        case MonitorProperties::FrontView:
+            pos = QVector3D(point.x(), (monProps->gridSize().y() * gridUnits) - point.y(), thirdVal);
+        break;
         case MonitorProperties::RightSideView:
-            pos = QVector3D(thirdVal, point.y(), monProps->gridSize().z() - point.x());
+            pos = QVector3D(thirdVal, (monProps->gridSize().y() * gridUnits) - point.y(),
+                             (monProps->gridSize().x() * gridUnits) - point.x());
         break;
         case MonitorProperties::LeftSideView:
-            pos = QVector3D(thirdVal, point.y(), point.x());
+            pos = QVector3D(thirdVal, (monProps->gridSize().y() * gridUnits) - point.y(), point.x());
         break;
         default:
         break;
