@@ -424,7 +424,7 @@ messages:
               type: string
             docRevision:
               type: integer
-  FunctionsSetCommonAttributesRequest:
+  FunctionsUpdateRequest:
     payload:
       type: object
       required:
@@ -438,7 +438,7 @@ messages:
         id:
           type: string
         method:
-          const: functions.setCommonAttributes
+          const: functions.update
         params:
           type: object
           required:
@@ -468,12 +468,12 @@ messages:
               $ref: '#/components/schemas/FunctionsBlendModeEnum'
             baseRevision:
               type: integer
-  FunctionsSetCommonAttributesResponse:
+  FunctionsUpdateResponse:
     payload:
       oneOf:
       - $ref: '#/components/messages/FunctionsUpdateOkResponse/payload'
       - $ref: '#/components/messages/ErrorResponse/payload'
-  FunctionsSetCommonAttributesOkResponse:
+  FunctionsUpdateOkResponse:
     payload:
       type: object
       required:
@@ -490,7 +490,7 @@ messages:
           const: true
         result:
           $ref: '#/components/schemas/FunctionsDocRevisionResult'
-  FunctionsCommonAttributesChangedEvent:
+  FunctionsUpdatedEvent:
     payload:
       type: object
       required:
@@ -501,7 +501,7 @@ messages:
         type:
           const: event
         topic:
-          const: functions.commonAttributesChanged
+          const: functions.updated
         originClientId:
           type:
           - string
@@ -3203,19 +3203,19 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/functionsMovedEvent'
-  sendFunctionsSetCommonAttributes:
+  sendFunctionsUpdate:
     action: send
     channel:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/functionsUpdateRequest'
-  receiveFunctionsSetCommonAttributesResponse:
+  receiveFunctionsUpdateResponse:
     action: receive
     channel:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/functionsUpdateResponse'
-  receiveFunctionsCommonAttributesChanged:
+  receiveFunctionsUpdated:
     action: receive
     channel:
       $ref: '#/channels/qlcplus'

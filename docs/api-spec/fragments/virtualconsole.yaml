@@ -3120,7 +3120,7 @@ messages:
           description: 'VCSpeedDial::applyFunctionsTime(enqueue=true) - "Apply" button: pushes currentTime
             x factor onto every attached Function''s fadeIn/fadeOut/duration (per-function factor overrides
             from VcSpeedDialConfig.functions). This mutates those Functions'' speed attributes, which
-            surfaces as functions.commonAttributesChanged events from functions-core - not duplicated
+            surfaces as functions.updated events from functions-core - not duplicated
             here.
 
             '

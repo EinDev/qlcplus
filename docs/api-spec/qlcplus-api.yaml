@@ -10,9 +10,15 @@ info:
 defaultContentType: application/json
 servers:
   local:
-    host: localhost:9999
+    host: localhost:9010
     pathname: /qlcplusapi
     protocol: ws
+    description: '9010 is ApiServer::API_SERVER_DEFAULT_PORT (controlapi/src/apiserver.h) — this API''s
+      actual listen port. Port 9999 is a DIFFERENT, older server (webaccess''s legacy pipe-delimited remote-control
+      protocol, webaccess/src/webaccess.cpp) — do not use it here. The pathname above is decorative only:
+      QWebSocketServer does not route by path, so the server accepts the WebSocket handshake regardless
+      of what pathname the client connects with; there is nothing to implement server-side to "support"
+      it.'
 channels:
   qlcplus:
     address: /qlcplusapi
@@ -2153,7 +2159,7 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/fixtureDefsSessionForkToUserRequest'
-  sendFixtureDefsSessionSetMetadata:
+  sendFixtureDefsSessionUpdate:
     action: send
     channel:
       $ref: '#/channels/qlcplus'
@@ -2242,12 +2248,12 @@ operations:
     channel:
       $ref: '#/channels/qlcplus'
     description: Shared response for every "sendFixtureDefs*" mutation above that doesn't allocate a new
-      id (ForkToUser, SetMetadata, SetPhysical, ChannelUpdate, ChannelRemove, CapabilityUpdate, CapabilityRemove,
+      id (ForkToUser, Update, SetPhysical, ChannelUpdate, ChannelRemove, CapabilityUpdate, CapabilityRemove,
       CapabilityAutoPatchColors, AliasUpdate, AliasRemove, ModeUpdate, ModeRemove, ModeSetChannels, ModeSetPhysical,
       HeadRemove).
     messages:
     - $ref: '#/channels/qlcplus/messages/fixtureDefsSessionAckResponse'
-  receiveFixtureDefsSessionChangedEvent:
+  receiveFixtureDefsSessionUpdatedEvent:
     action: receive
     channel:
       $ref: '#/channels/qlcplus'
@@ -2440,19 +2446,19 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/functionsMovedEvent'
-  sendFunctionsSetCommonAttributes:
+  sendFunctionsUpdate:
     action: send
     channel:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/functionsUpdateRequest'
-  receiveFunctionsSetCommonAttributesResponse:
+  receiveFunctionsUpdateResponse:
     action: receive
     channel:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/functionsUpdateResponse'
-  receiveFunctionsCommonAttributesChanged:
+  receiveFunctionsUpdated:
     action: receive
     channel:
       $ref: '#/channels/qlcplus'
@@ -8693,7 +8699,7 @@ components:
             - channelId
             description: Partial update. Setting `preset` to anything other than Custom replaces the channel's
               entire capability list with the preset's auto-generated capability, mirroring ChannelEdit::setupPreset
-              — the resulting capabilities are visible in the following fixturedefs.session.changed event.
+              — the resulting capabilities are visible in the following fixturedefs.session.updated event.
             properties:
               sessionId:
                 type: string
@@ -9876,7 +9882,7 @@ components:
           id:
             type: string
           method:
-            const: functions.setCommonAttributes
+            const: functions.update
           params:
             type: object
             required:
@@ -19930,8 +19936,7 @@ components:
             description: 'VCSpeedDial::applyFunctionsTime(enqueue=true) - "Apply" button: pushes currentTime
               x factor onto every attached Function''s fadeIn/fadeOut/duration (per-function factor overrides
               from VcSpeedDialConfig.functions). This mutates those Functions'' speed attributes, which
-              surfaces as functions.updated events from functions-core - not duplicated
-              here.'
+              surfaces as functions.updated events from functions-core - not duplicated here.'
             properties:
               widgetId:
                 type: string
