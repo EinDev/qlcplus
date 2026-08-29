@@ -48,6 +48,7 @@ InputOutputMap::InputOutputMap(const Doc *doc, quint32 universes)
     , m_blackout(false)
     , m_universeChanged(false)
     , m_localProfilesLoaded(false)
+    , m_beatGeneratorType(Disabled)
     , m_currentBPM(0)
     , m_beatTime(new QElapsedTimer())
     , m_networkServerType(NativeServer)
@@ -1027,10 +1028,11 @@ void InputOutputMap::setBeatGeneratorType(InputOutputMap::BeatGeneratorType type
     if (type == m_beatGeneratorType)
         return;
 
-    if (m_beatGeneratorType == Audio)
+    if (m_beatGeneratorType == Audio && !m_inputCapture.isNull())
     {
         m_inputCapture->unregisterBandsNumber(4);
-        disconnect(m_inputCapture, SIGNAL(beatDetected(int)), this, SLOT(slotProcessBeat(int)));
+        disconnect(m_inputCapture.data(), SIGNAL(beatDetected(int)), this, SLOT(slotProcessBeat(int)));
+        m_inputCapture.clear();
     }
 
     m_beatGeneratorType = type;
@@ -1058,9 +1060,8 @@ void InputOutputMap::setBeatGeneratorType(InputOutputMap::BeatGeneratorType type
             // reset the current BPM number and detect it from the audio input
             setBpmNumber(0);
             m_beatTime->restart();
-            QSharedPointer<AudioCapture> capture(m_doc->audioInputCapture());
-            m_inputCapture = capture.data();
-            connect(m_inputCapture, SIGNAL(beatDetected(int)), this, SLOT(slotProcessBeat(int)));
+            m_inputCapture = m_doc->audioInputCapture();
+            connect(m_inputCapture.data(), SIGNAL(beatDetected(int)), this, SLOT(slotProcessBeat(int)));
             m_inputCapture->registerBandsNumber(4);
         }
         break;
