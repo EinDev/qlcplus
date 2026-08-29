@@ -40,12 +40,21 @@ merge finalizes:
    *any* of the seven domains as dispatched. Flag this to the repo owner:
    either it needs a small follow-up fragment/domain, or an explicit,
    deliberate scope cut for v1.
-3. **ChannelsGroup live-vs-doc level**: `functions.channelsgroup.setLevel`
-   exists alongside the structural `create/delete/rename/setChannels/
-   setInputSource` — meaning this fragment treats a channels-group's live
-   fader level as §4b (no `baseRevision`) while its membership/definition is
-   §4a. Confirm `functions.channelsgroup.setLevel`'s payload indeed omits
-   `baseRevision` per that split before finalizing (skim the schema).
+3. **ChannelsGroup live-vs-doc level — confirmed, and it's the *other* way
+   round from what this header comment guessed.** `functions.channelsgroup.setLevel`
+   actually requires `baseRevision` just like `create/delete/rename/setChannels/
+   setInputSource` — the whole ChannelsGroup surface, including the master
+   level, is modeled as full §4a document state (matches the engine: the
+   level is persisted via `KXMLQLCChannelsGroupValue`, not ephemeral). This
+   is a real design tension worth flagging rather than a bug to fix: a VC
+   slider bound to a channels-group level would, per the §4a contract, need
+   a fresh `baseRevision` for every drag tick and risk `CONFLICT` responses
+   under fast dragging or concurrent editors — the same tradeoff a genuine
+   §4b live-fader design would avoid. Left as §4a here because the engine's
+   own persistence model leaves no alternative without inventing an
+   unpersisted live-preview value the engine doesn't have; a future revision
+   could add a separate, explicitly-unpersisted "live preview" message if
+   this becomes a real usability problem.
 
 ## Other flags for the merge pass
 
