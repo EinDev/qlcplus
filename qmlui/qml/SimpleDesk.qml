@@ -34,6 +34,19 @@ Rectangle
     property bool dmxValues: true
     property real maxValue: 255
 
+    /** Closes any floating channel-tool popup currently open on Simple Desk.
+     *  Called from MainView.qml when the Simple Desk tab itself is being
+     *  hidden (top-level tab switch) - Simple Desk has its own independent
+     *  ChannelToolLoader (separate from the one(s) used by Fixtures &
+     *  Functions), and since this tab's item tree survives a switch away
+     *  instead of being destroyed, a popup left open here would otherwise
+     *  stay open underneath the newly-shown tab. Mirrors
+     *  SceneFixtureConsole.qml/DMXView.qml's closeChannelTools(). */
+    function closeChannelTools()
+    {
+        channelToolLoader.closeChannelTool()
+    }
+
     ChannelToolLoader
     {
         id: channelToolLoader
