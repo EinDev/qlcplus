@@ -32,6 +32,8 @@
 #include "doc.h"
 #include "function.h"
 #include "qlcchannel.h"
+#include "virtualconsole.h"
+#include "chaser.h"
 
 #define UserRoleClassReference  (Qt::UserRole + 1)
 #define UserRoleChannelIndex    (Qt::UserRole + 2)
@@ -277,6 +279,67 @@ static QString fadeChannelFlagsToString(int flags)
     return list.isEmpty() ? QStringLiteral("none") : list.join("|");
 }
 
+// Describes a single FunctionParent as precisely as the engine's actually
+// tracked data allows. $childFunctionID is the ID of the Function that this
+// source started (i.e. the Function owning the fader being reported on) -
+// used to try to resolve which Chaser/Sequence step is currently active.
+static QString describeFunctionParent(const FunctionParent &source, Doc *doc,
+                                       QQuickView *view, quint32 childFunctionID)
+{
+    switch (source.type())
+    {
+        case FunctionParent::Function:
+        {
+            Function *parent = doc->function(source.id());
+            if (parent == nullptr)
+                return QString("a Function (ID %1) that no longer exists").arg(source.id());
+
+            QString stepInfo;
+            if (parent->type() & (Function::ChaserType | Function::SequenceType))
+            {
+                Chaser *chaser = qobject_cast<Chaser *>(parent);
+                if (chaser != nullptr)
+                {
+                    ChaserRunnerStep step = chaser->currentRunningStep();
+                    if (step.m_function != nullptr && step.m_function->id() == childFunctionID)
+                        stepInfo = QString(", step %1 (0-based)").arg(step.m_index);
+                    else
+                        stepInfo = ", step undetermined (not the Chaser's first currently-running step)";
+                }
+            }
+            return QString("%1 \"%2\" (ID %3)%4")
+                    .arg(parent->typeString()).arg(parent->name()).arg(parent->id()).arg(stepInfo);
+        }
+
+        case FunctionParent::AutoVCWidget:
+        case FunctionParent::ManualVCWidget:
+        {
+            QString kind = source.type() == FunctionParent::ManualVCWidget ? "manual" : "automatic";
+            VirtualConsole *vc = view != nullptr
+                    ? qobject_cast<VirtualConsole *>(view->rootContext()->contextProperty("virtualConsole").value<QObject *>())
+                    : nullptr;
+            VCWidget *widget = vc != nullptr ? vc->widget(source.id()) : nullptr;
+            if (widget != nullptr)
+            {
+                return QString("Virtual Console %1 widget \"%2\" (ID %3), page %4")
+                        .arg(kind).arg(widget->caption()).arg(widget->id()).arg(widget->page());
+            }
+            return QString("a Virtual Console %1 widget (ID %2) that no longer exists").arg(kind).arg(source.id());
+        }
+
+        case FunctionParent::Master:
+            return QStringLiteral(
+                "a generic override source (FunctionParent::Master, ID 0) - this exact sentinel is used "
+                "identically by Function Manager preview, the Function/Scene/Chaser/RGBMatrix editors' live "
+                "preview, Show Manager, project-load autostart, Tardis undo/redo, web/OSC quick actions, and "
+                "a Function's own internal self-restart, so the engine's tracked data cannot distinguish "
+                "which of these actually started it");
+
+        default:
+            return QString("an unrecognized source type %1 (ID %2)").arg(source.type()).arg(source.id());
+    }
+}
+
 QString SimpleDesk::debugChannelInfo(int channel) const
 {
     QMutexLocker locker(&m_mutex);
@@ -359,9 +422,10 @@ QString SimpleDesk::debugChannelInfo(int channel) const
             anyFader = true;
             FadeChannel fc = channels.value(hash);
             QString funcName = "(none)";
+            Function *f = nullptr;
             if (fader->parentFunctionID() != Function::invalidId())
             {
-                Function *f = m_doc->function(fader->parentFunctionID());
+                f = m_doc->function(fader->parentFunctionID());
                 if (f != nullptr)
                     funcName = QString("%1 (ID %2)").arg(f->name()).arg(f->id());
             }
@@ -379,6 +443,25 @@ QString SimpleDesk::debugChannelInfo(int channel) const
                 << " fadeTime=" << fc.fadeTime() << "ms elapsed=" << fc.elapsed() << "ms"
                 << " ready=" << (fc.isReady() ? "yes" : "no")
                 << " flags=[" << fadeChannelFlagsToString(fc.flags()) << "]\n";
+
+            // WHO started the Function driving this fader? GenericFader::parentFunctionID()
+            // above is only WHICH Function owns the fader (e.g. a Scene's own ID) - the actual
+            // start source is tracked separately on the Function itself, via Function::start()'s
+            // FunctionParent argument (see Function::sources()).
+            if (f != nullptr)
+            {
+                QList<FunctionParent> sources = f->sources();
+                if (sources.isEmpty())
+                {
+                    out << "    Started by: (none currently recorded on the Function - "
+                           "its stop is likely already pending, e.g. fading out)\n";
+                }
+                else
+                {
+                    for (const FunctionParent &source : sources)
+                        out << "    Started by: " << describeFunctionParent(source, m_doc, m_view, f->id()) << "\n";
+                }
+            }
         }
         if (anyFader == false)
             out << "  (none)\n";
