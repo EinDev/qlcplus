@@ -53,8 +53,18 @@ add_subdirectory(rgbtext)
 add_subdirectory(scene)
 add_subdirectory(scenegrandmaster)
 add_subdirectory(scenevalue)
-add_subdirectory(script)
-add_subdirectory(scriptv4)
+# engine/src/CMakeLists.txt compiles script.cpp (legacy Script) for the
+# widgets build and scriptv4.cpp (JS-based Script via ScriptRunner/QJSEngine)
+# for qmlui - both declare a class literally named Script with several
+# identically-signatured methods, so building the "wrong" test suite here
+# would still link against qlcplusengine, just silently exercise the other
+# implementation's Script under an ODR violation. Mirror engine/src's exact
+# condition so only the suite matching what's actually compiled gets added.
+if(qmlui)
+    add_subdirectory(scriptv4)
+else()
+    add_subdirectory(script)
+endif()
 add_subdirectory(sequence)
 add_subdirectory(show)
 add_subdirectory(showfunction)
@@ -123,7 +133,6 @@ set(QLCPLUS_ENGINE_TESTS
     scene_test
     scenegrandmaster_test
     scenevalue_test
-    script_test
     sequence_test
     show_test
     showfunction_test
@@ -133,6 +142,11 @@ set(QLCPLUS_ENGINE_TESTS
     universeperf_test
     video_test
 )
+if(qmlui)
+    list(APPEND QLCPLUS_ENGINE_TESTS scriptv4_test)
+else()
+    list(APPEND QLCPLUS_ENGINE_TESTS script_test)
+endif()
 foreach(_qlcplus_test_target ${QLCPLUS_ENGINE_TESTS})
     add_test(NAME ${_qlcplus_test_target}
              COMMAND $<TARGET_FILE:${_qlcplus_test_target}>
