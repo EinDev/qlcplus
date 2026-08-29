@@ -30,6 +30,8 @@ private slots:
     void defaults();
     void fixtureItems();
     void fixtureItemsXML();
+    void fixtureDmxTransformDefaults();
+    void fixtureDmxTransformXML();
     void lightItems();
     void lightItemsXML();
     void genericItems();
