@@ -80,6 +80,9 @@ VCAudioTriggers::VCAudioTriggers(Doc *doc, VirtualConsole *vc, QObject *parent)
     m_spectrumBars.resize(m_inputCapture->defaultBarsNumber() + 1);
     m_audioLevels.resize(m_spectrumBars.count());
     setBarsNumber(m_spectrumBars.count());
+
+    connect(m_doc, SIGNAL(functionRemoved(quint32)),
+            this, SLOT(slotFunctionRemoved(quint32)));
 }
 
 VCAudioTriggers::~VCAudioTriggers()
@@ -452,6 +455,25 @@ void VCAudioTriggers::setBarFunction(quint32 functionId)
                          ? m_doc->function(functionId)
                          : nullptr;
     emit barsInfoChanged();
+}
+
+void VCAudioTriggers::slotFunctionRemoved(quint32 fid)
+{
+    bool changed = false;
+
+    for (int i = 0; i < m_spectrumBars.count(); i++)
+    {
+        AudioBar &bar = m_spectrumBars[i];
+        if (bar.m_type == FunctionBar && bar.m_functionId == fid)
+        {
+            bar.m_function = nullptr;
+            bar.m_functionId = Function::invalidId();
+            changed = true;
+        }
+    }
+
+    if (changed)
+        emit barsInfoChanged();
 }
 
 void VCAudioTriggers::setBarWidget(quint32 widgetId)
