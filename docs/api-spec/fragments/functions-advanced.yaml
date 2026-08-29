@@ -63,6 +63,17 @@ messages:
                   author:
                     type: string
                     description: Script author (type=script only)
+                  acceptedColors:
+                    type: integer
+                    enum:
+                    - 0
+                    - 1
+                    - 2
+                    description: RGBAlgorithm::acceptColors() - how many of FunctionsRgbMatrixConfig.colors'
+                      5 slots this algorithm actually uses. 0 = none (it generates its own colors), 1
+                      = only Color1/slot 0, 2 = Color1 and Color2/slots 0-1. Drives the real editor's
+                      dynamic color-slot count - a client showing all 5 slots regardless of this value
+                      will offer slots the algorithm silently ignores.
   FunctionsRgbMatrixGetScriptPropertiesRequest:
     payload:
       type: object
@@ -417,10 +428,25 @@ messages:
               type: array
               items:
                 type: integer
-              description: 0-based line numbers that failed to parse
+              description: '1-based line numbers that failed to parse, counted over the full raw source
+                text (Script::setData) INCLUDING blank lines - i.e. usable directly as a 1-based index
+                into functions.script.setSource''s source split on newlines. This is a DIFFERENT numbering
+                space from functionRefs/fixtureRefs''s `line` below - do not mix the two when highlighting
+                source lines in an editor.
+
+                '
             functionRefs:
               type: array
-              description: Functions referenced via startfunction/stopfunction/waitfunctionstart/waitfunctionstop
+              description: 'Functions referenced via startfunction. NOTE: despite the name, the engine''s
+                Script::functionList() helper this is built from only recognizes the startfunction command
+                - stopfunction/waitfunctionstart/waitfunctionstop references are NOT currently reported
+                here even though the script language supports them; treat this as a known under-reporting
+                gap, not full coverage of every function reference in the script. `line` here is a 0-based
+                index into the engine''s blank-line-skipping tokenized line list (Script::m_lines), NOT
+                the same numbering as syntaxErrorLines above - a client cannot use the two interchangeably
+                to highlight the same source line.
+
+                '
               items:
                 type: object
                 required:
@@ -433,7 +459,11 @@ messages:
                     type: integer
             fixtureRefs:
               type: array
-              description: Fixtures referenced via setfixture
+              description: 'Fixtures referenced via setfixture. `line` here uses the same 0-based, blank-skipping
+                tokenized-list numbering as functionRefs.line above - see its note on the two distinct
+                line-number spaces in this response.
+
+                '
               items:
                 type: object
                 required:
@@ -666,7 +696,9 @@ messages:
               $ref: '#/components/schemas/FunctionsShowTimeDivision'
             bpm:
               type: integer
-              description: Required when timeDivisionType is one of the BPM_* values
+              description: Required when timeDivisionType is one of the bpm_4_4/bpm_3_4/bpm_2_4 values
+                (see FunctionsShowTimeDivision) - not literally 'BPM_*', that's just the C++ enumerator
+                naming style.
             baseRevision:
               type: integer
   FunctionsShowSetTimeDivisionResponse:
@@ -1104,9 +1136,15 @@ messages:
           - trackId
           - solo
           - baseRevision
-          description: Convenience mutation mirroring ShowManager::setTrackSolo - mutes every other track
-            in the Show and unmutes this one (solo=true), or just unmutes this one (solo=false). Not a
-            persisted 'solo' flag - it's sugar over multiple mute changes.
+          description: 'Convenience mutation mirroring ShowManager::setTrackSolo - mutes every other track
+            in the Show and unmutes this one (solo=true). solo=false is NOT the inverse of solo=true:
+            it unmutes EVERY track in the Show (verified against ShowManager::setTrackSolo), not just
+            this one - there is no per-track "was this soloed" state to restore, since solo isn''t a
+            persisted flag, just sugar over multiple mute changes. A client wanting "restore this show''s
+            mute pattern from before I soloed a track" must snapshot each track''s mute state itself
+            before calling solo=true.
+
+            '
           properties:
             showId:
               type: string
@@ -1212,8 +1250,8 @@ messages:
       - topic
       - data
       description: Bulk track event for mutations that touch more than one track at once (functions.show.track.setSolo,
-        functions.show.track.move). Carries an RFC 6902 JSON Patch against the tracks array returned by
-        functions.show.get.
+        functions.show.track.move). Carries an RFC 6902 JSON Patch against the tracks array - i.e. functions.get's
+        typeDetail (FunctionsShowDetail.tracks), not the removed per-type functions.show.get.
       properties:
         type:
           const: event
@@ -1275,7 +1313,13 @@ messages:
               description: Milliseconds from the Show's start
             duration:
               type: integer
-              description: Milliseconds; defaults to the placed function's own totalDuration if omitted
+              description: 'Milliseconds; defaults to the placed function''s own totalDuration if omitted
+                AND that totalDuration is non-zero. Some function types (e.g. a looping Chaser/Scene)
+                report totalDuration 0, which is not usable as a timeline duration - in that case the
+                server falls back to a fixed default (mirrors qmlui''s ShowManager::addShowItem: 5000ms
+                if the Show''s timeDivisionType is Time, 4000ms if Beats), not 0.
+
+                '
             color:
               type: string
               description: Hex color; defaults to ShowFunction::defaultColor(type) if omitted
@@ -1455,8 +1499,12 @@ messages:
           - trackId
           - startTime
           - baseRevision
-          description: Moves an item to a (possibly different) track and/or start time. Mirrors ShowManager::checkAndMoveItem,
-            including its overlap check.
+          description: 'Moves an item to a (possibly different) track and/or start time. Mirrors ShowManager::checkAndMoveItem,
+            including its overlap check: rejected with error.code INVALID_PARAMS (not CONFLICT - that
+            code is reserved for baseRevision mismatches per 00-conventions.md §7) if the destination
+            position would overlap an existing item on the target track.
+
+            '
           properties:
             showId:
               type: string
@@ -1560,8 +1608,20 @@ messages:
               type: string
             duration:
               type: integer
-              description: New duration in ms; rejected (CONFLICT-style INVALID_PARAMS) if it would overlap
-                a following item
+              description: 'New duration in ms; rejected with error.code INVALID_PARAMS (not CONFLICT
+                - that code is reserved for baseRevision mismatches per 00-conventions.md §7) if it would
+                overlap a following item.
+
+                This only changes the ShowFunction wrapper''s own duration/trim on the timeline (equivalent
+                to the real editor''s "stretch" toggle being off) - it has no counterpart to the real
+                editor''s stretch-resize mode (ShowManager.stretchFunctions), which instead proportionally
+                rescales an underlying Chaser''s per-step durations (converting its speed mode from Common
+                to PerStep as needed, see ShowManager::convertChaserCommonToPerStep) so the Chaser''s
+                own content stretches to fill the new timeline duration rather than being trimmed/looped.
+                A client wanting that behavior must replicate it itself via functions.chaser.setSpeedModes
+                plus per-step duration writes.
+
+                '
             baseRevision:
               type: integer
   FunctionsShowItemResizeResponse:
@@ -1933,7 +1993,8 @@ messages:
       - data
       description: Bulk item event for mutations that can touch many items across many tracks at once
         (functions.show.rippleInsertTime, functions.show.rippleCutTime). Carries an RFC 6902 JSON Patch
-        against the flattened item list, per 00-conventions.md §4a's guidance for large nested resources.
+        against the nested tracks[].items arrays (paths like "/tracks/<trackIndex>/items/<itemIndex>",
+        matching FunctionsShowDetail's actual shape - NOT a separately flattened item list).
       properties:
         type:
           const: event
@@ -2038,7 +2099,10 @@ messages:
               type: array
               items:
                 type: string
-              description: Supported source file extensions, e.g. 'wav', 'mp3'
+              description: Supported source file extensions, as glob patterns matching the engine decoder
+                plugins' own reported form (e.g. AudioDecoderMad returns '*.mp3', not the bare extension
+                'mp3') - a client filtering an Open dialog should match against these patterns, not treat
+                them as bare suffixes.
   FunctionsAudioSetSourceRequest:
     payload:
       type: object
@@ -2483,10 +2547,13 @@ messages:
               type: array
               items:
                 type: string
+              description: Glob patterns (e.g. '*.mp4'), not bare extensions - see functions.audio.listCapabilities.extensions
+                for why.
             pictureExtensions:
               type: array
               items:
                 type: string
+              description: Glob patterns, same format as videoExtensions above.
             screens:
               type: array
               description: Displays available on the engine host machine for functions.video.setScreenTarget
@@ -2629,7 +2696,13 @@ messages:
               type:
               - object
               - 'null'
-              description: null clears custom geometry (renders at natural/fullscreen size)
+              description: 'Omitting this property entirely leaves the current geometry unchanged (standard
+                partial-update semantics, like every other optional field in this params object). Sending
+                it explicitly as null clears custom geometry (renders at natural/fullscreen size, Video::setCustomGeometry(QRect())).
+                Sending an object sets it. These are the only two "no custom geometry" wire encodings
+                a client should ever need to send here; omitted and null are NOT interchangeable.
+
+                '
               properties:
                 x:
                   type: integer
@@ -2688,6 +2761,7 @@ messages:
           type: object
           required:
           - functionId
+          - customGeometry
           - docRevision
           properties:
             functionId:
@@ -2696,6 +2770,9 @@ messages:
               type:
               - object
               - 'null'
+              description: Always present (required above) - the full current value, either an object
+                or null for "no custom geometry". Unlike the request side, an event never omits this
+                field to mean "unchanged" - it always reports the resulting state.
               properties:
                 x:
                   type: integer
@@ -3072,7 +3149,14 @@ schemas:
         description: type=text only
       font:
         type: object
-        description: type=text only
+        description: 'type=text only. Deliberate subset of the engine''s full QFont (RGBText stores/round-trips
+          a complete QFont, and the real editor exposes it via a native font picker, qmlui/rgbmatrixeditor.h''s
+          algoTextFont) - only family/pointSize/bold/italic are exposed here. Other QFont attributes
+          the editor lets you set (underline, weight values beyond plain bold/regular, stretch, letter
+          spacing, etc.) are not represented in this schema; a client-authored functions.rgbmatrix.setConfig
+          silently drops/resets them rather than preserving whatever the file already had.
+
+          '
         properties:
           family:
             type: string
@@ -3143,14 +3227,6 @@ schemas:
     - dimmer
     - shutter
     description: RGBMatrix::ControlMode
-  FunctionsBlendMode:
-    type: string
-    enum:
-    - normal
-    - mask
-    - additive
-    - subtractive
-    description: Universe::BlendMode
   FunctionsRgbMatrixConfig:
     type: object
     required:
@@ -3177,7 +3253,12 @@ schemas:
       controlMode:
         $ref: '#/components/schemas/FunctionsRgbMatrixControlMode'
       blendMode:
-        $ref: '#/components/schemas/FunctionsBlendMode'
+        $ref: '#/components/schemas/FunctionsBlendModeEnum'
+        description: Same schema and PascalCase casing as functions-core.yaml's FunctionsDetail.blendMode
+          - this is the same persisted Function-level field (RGBMatrix::setBlendMode overrides the generic
+          setter but writes the same value), previously duplicated here under a different, lowercase-cased
+          local schema; a value read from functions.get can now be written back here directly with no
+          case translation.
       dimmerControl:
         type: boolean
         description: Legacy flag, superseded by controlMode=dimmer. See notes.md.
@@ -3261,6 +3342,7 @@ schemas:
     type: object
     required:
     - sourceUrl
+    - customGeometry
     - zIndex
     - screen
     - fullscreen
