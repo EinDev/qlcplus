@@ -39,6 +39,7 @@ private slots:
     void load();
     void loadWrongRoot();
     void save();
+    void saveLoadRoundTrip();
 };
 
 #endif

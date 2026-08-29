@@ -49,6 +49,8 @@ private slots:
     void load();
     void save();
     void dmxOrderGridRegeneration();
+    void resetEmptiesHeads();
+    void resetAndLoadXMLRoundTrip();
 
 private:
     Doc* m_doc;

@@ -1004,4 +1004,83 @@ void FixtureGroup_Test::dmxOrderGridRegeneration()
     QVERIFY(grp.head(QLCPoint(0, 3)) == GroupHead(fx40, 0));
 }
 
+void FixtureGroup_Test::resetEmptiesHeads()
+{
+    // Tardis::processAction()'s FixtureGroupSetContents case relies on
+    // reset() leaving a clean slate before repopulating via loadXML() -
+    // verify that explicitly.
+    FixtureGroup grp(m_doc);
+    grp.setSize(QSize(4, 4));
+    for (quint32 id = 0; id < 16; id++)
+    {
+        Fixture* fxi = new Fixture(m_doc);
+        fxi->setChannels(1);
+        fxi->setAddress(m_currentAddr);
+        m_currentAddr += fxi->channels();
+        m_doc->addFixture(fxi);
+        grp.assignFixture(fxi->id());
+    }
+    QCOMPARE(grp.headList().size(), 16);
+
+    grp.reset();
+
+    QCOMPARE(grp.headList().size(), 0);
+    QCOMPARE(grp.headsMap().size(), 0);
+    QCOMPARE(grp.fixtureList().size(), 0);
+    // reset() must preserve the group's matrix size
+    QCOMPARE(grp.size(), QSize(4, 4));
+}
+
+void FixtureGroup_Test::resetAndLoadXMLRoundTrip()
+{
+    // This is the exact pattern used by Tardis::FixtureGroupSetContents:
+    // group->reset(); group->loadXML(xmlReader); on the SAME existing
+    // object, not creating a new one via the static loader(). Verify that
+    // this round trip reproduces the pre-reset state exactly.
+    FixtureGroup grp(m_doc);
+    grp.setSize(QSize(4, 5));
+    grp.setName("Pertti Pasanen");
+    grp.setId(99);
+    for (quint32 id = 0; id < 32; id++)
+    {
+        Fixture* fxi = new Fixture(m_doc);
+        fxi->setChannels(1);
+        fxi->setAddress(m_currentAddr);
+        m_currentAddr += fxi->channels();
+        m_doc->addFixture(fxi);
+        grp.assignFixture(fxi->id());
+    }
+    QCOMPARE(grp.headList().size(), 32);
+
+    const QString originalName = grp.name();
+    const QSize originalSize = grp.size();
+    const quint32 originalId = grp.id();
+    const QMap<QLCPoint, GroupHead> originalHeads = grp.headsMap();
+
+    QBuffer buffer;
+    buffer.open(QIODevice::WriteOnly | QIODevice::Text);
+    QXmlStreamWriter xmlWriter(&buffer);
+
+    QVERIFY(grp.saveXML(&xmlWriter) == true);
+
+    xmlWriter.setDevice(NULL);
+    buffer.close();
+
+    buffer.open(QIODevice::ReadOnly | QIODevice::Text);
+    QXmlStreamReader xmlReader(&buffer);
+    xmlReader.readNextStartElement();
+    QVERIFY(xmlReader.name().toString() == "FixtureGroup");
+
+    grp.reset();
+    QCOMPARE(grp.headList().size(), 0);
+
+    QVERIFY(grp.loadXML(xmlReader) == true);
+
+    QCOMPARE(grp.name(), originalName);
+    QCOMPARE(grp.size(), originalSize);
+    QCOMPARE(grp.id(), originalId);
+    QCOMPARE(grp.headsMap(), originalHeads);
+    QCOMPARE(grp.headList().size(), 32);
+}
+
 QTEST_APPLESS_MAIN(FixtureGroup_Test)
