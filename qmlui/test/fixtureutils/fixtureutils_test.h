@@ -37,6 +37,14 @@ private slots:
     void groupNotFullySelectedWhenOneMemberMissing();
     void emptyGroupIsNeverFullySelected();
     void groupNotFullySelectedWhenOnlySomeHeadsSelected();
+
+    void functionFixturesForScene();
+    void functionFixturesForEFX();
+    void functionFixturesRecursesIntoChaserSteps();
+    void functionFixturesSkipsUnsupportedChaserStepType();
+    void functionFixturesIsCycleSafeAcrossChasers();
+    void functionFixturesReturnsEmptyForInvalidOrUnsupportedFunction();
+    void functionsFixturesUnionsAcrossSelectedFunctions();
 };
 
 #endif
