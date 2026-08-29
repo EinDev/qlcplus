@@ -23,6 +23,7 @@
 #include "simpledesk.h"
 #include "keypadparser.h"
 #include "genericfader.h"
+#include "genericdmxsource.h"
 #include "functionmanager.h"
 #include "fadechannel.h"
 #include "scenevalue.h"
@@ -373,6 +374,55 @@ static QString describeFunctionParent(const FunctionParent &source, Doc *doc,
     }
 }
 
+// Describes a GenericDMXSource::Feature tag (see genericdmxsource.h) as
+// precisely as it identifies a UI feature - the GenericDMXSource equivalent
+// of describeFunctionParent()'s FunctionParent::Master case above, but for
+// a channel with no owning Function at all (fader->parentFunctionID() ==
+// Function::invalidId()).
+static QString describeGenericDMXSourceFeature(GenericDMXSource::Feature feature)
+{
+    switch (feature)
+    {
+        case GenericDMXSource::DragPositionPush:
+            return QStringLiteral("dragging a DMX-position/rotation-driven fixture in the 2D/3D view");
+        case GenericDMXSource::PersistedTransformRestore:
+            return QStringLiteral("a saved position/rotation being restored onto live DMX channels on project load");
+        case GenericDMXSource::PositionPickPoint:
+            return QStringLiteral("the 3D view's \"click a point to aim\" Pan/Tilt tool");
+        case GenericDMXSource::FixtureConsoleChannelSet:
+            return QStringLiteral("a raw channel value set from the Fixture Console/DMX View/Scene fixture console");
+        case GenericDMXSource::IntensityTool:
+            return QStringLiteral("the left panel's Intensity slider");
+        case GenericDMXSource::ColorTool:
+            return QStringLiteral("the left panel's Color tool live preview");
+        case GenericDMXSource::PositionCenterTool:
+            return QStringLiteral("the Position tool's \"center\" button");
+        case GenericDMXSource::PresetTool:
+            return QStringLiteral("a capability/preset picker (Maintenance/Speed/Prism/Effect tool, "
+                                   "Gobo/Color macro picker...)");
+        case GenericDMXSource::FixtureHighlight:
+            return QStringLiteral("the \"Highlight\" button flashing the selected fixtures");
+        case GenericDMXSource::PositionTool:
+            return QStringLiteral("the Position tool's Pan/Tilt drag");
+        case GenericDMXSource::BeamTool:
+            return QStringLiteral("the Beam/zoom tool");
+        case GenericDMXSource::PalettePreview:
+            return QStringLiteral("Palette Manager's preview of a palette");
+        case GenericDMXSource::DumpUndoRedo:
+            return QStringLiteral("Tardis replaying a dumped channel value during undo/redo");
+        case GenericDMXSource::SceneEditorPreview:
+            return QStringLiteral("a Scene Editor's own live preview of the Scene being edited");
+        case GenericDMXSource::SceneEditorExternalControlHighlight:
+            return QStringLiteral("a Scene Editor's external-control (Virtual Console fader/joystick) "
+                                   "fixture/position highlight");
+        case GenericDMXSource::Unspecified:
+        default:
+            return QString(
+                "a generic/untagged GenericDMXSource caller (Feature %1) not yet given its own identity - "
+                "expected only from engine test facilities").arg(int(feature));
+    }
+}
+
 QString SimpleDesk::debugChannelInfo(int channel) const
 {
     QMutexLocker locker(&m_mutex);
@@ -493,6 +543,43 @@ QString SimpleDesk::debugChannelInfo(int channel) const
                 {
                     for (const FunctionParent &source : sources)
                         out << "    Started by: " << describeFunctionParent(source, m_doc, m_view, f->id()) << "\n";
+                }
+            }
+            else
+            {
+                // No owning Function at all - this fader was requested directly by
+                // some other DMXSource. Simple Desk owns its own fader(s) (it is a
+                // DMXSource in its own right, not a GenericDMXSource user - see
+                // m_fadersMap), so check that first...
+                bool isSimpleDeskFader = m_fadersMap.values().contains(fader);
+                if (isSimpleDeskFader)
+                {
+                    out << "    Started by: Simple Desk's own manual channel override "
+                           "(slider/keypad set on this channel)\n";
+                }
+                else
+                {
+                    // ...otherwise see if a live GenericDMXSource instance (ContextManager's
+                    // 2D/3D/dump-value source, or a SceneEditor's preview/highlight source)
+                    // tagged this exact fader/channel with a Feature (see genericdmxsource.h).
+                    GenericDMXSource::Feature feature;
+                    if (GenericDMXSource::findFeatureForFader(fader.data(), fxID, relChannel, feature))
+                    {
+                        out << "    Started by: " << describeGenericDMXSourceFeature(feature) << "\n";
+                    }
+                    else
+                    {
+                        // Neither Simple Desk nor any live GenericDMXSource claims this
+                        // fader. The remaining known fader owners that never set a
+                        // parent Function ID or go through GenericDMXSource are Virtual
+                        // Console widgets in "level"/relative mode (VCSlider, VCXYPad,
+                        // VCAudioTriggers) and CueStack/ScriptRunner - none of these are
+                        // tagged by this debug tool today.
+                        out << "    Started by: (unidentified - no live GenericDMXSource or "
+                               "Simple Desk instance claims this channel; likely a Virtual "
+                               "Console widget, CueStack, or Script fader, none of which "
+                               "currently tag their start source)\n";
+                    }
                 }
             }
         }
