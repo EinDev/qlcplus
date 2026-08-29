@@ -1232,11 +1232,11 @@ int Function::invalidAttributeId()
     return -1;
 }
 
-bool Function::stopAndWait()
+bool Function::stopAndWait(FunctionParent source)
 {
     QMutexLocker locker(&m_stopMutex);
 
-    stop(FunctionParent::master());
+    stop(source);
 
     QElapsedTimer watchdog;
     watchdog.restart();

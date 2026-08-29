@@ -576,9 +576,9 @@ void WebAccessQml::slotHandleWebSocketRequest(QHttpConnection *conn, QString dat
             if (f != nullptr)
             {
                 if (!f->isRunning() && newStatus)
-                    f->start(m_doc->masterTimer(), FunctionParent::master());
+                    f->start(m_doc->masterTimer(), FunctionParent::master(FunctionParent::WebAccess));
                 else if (f->isRunning() && !newStatus)
-                    f->stop(FunctionParent::master());
+                    f->stop(FunctionParent::master(FunctionParent::WebAccess));
             }
             return;
         }

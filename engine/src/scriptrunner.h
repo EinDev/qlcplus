@@ -50,7 +50,22 @@ class ScriptRunner final : public QThread
      * Initialization
      ************************************************************************/
 public:
-    ScriptRunner(Doc *doc, const QString &content, QObject *parent = 0);
+    /**
+     * @param doc The project Doc
+     * @param content The script source
+     * @param ownerFunctionID The ID of the Script Function that owns this
+     *        runner, if any. Used to identify, in Function::start()/stop()'s
+     *        FunctionParent argument, this Script itself as the source when
+     *        a "startFunction"/"stopFunction" script command starts/stops
+     *        another Function (see startFunction()/stopFunction() below) -
+     *        the same FunctionParent(Function, containerID) convention
+     *        already used by Chaser/Collection/Show for their own children.
+     *        Defaults to Function::invalidId() for runner instances that
+     *        never actually start/stop other Functions (totalDuration(),
+     *        syntaxErrorsLines()).
+     */
+    ScriptRunner(Doc *doc, const QString &content, QObject *parent = 0,
+                 quint32 ownerFunctionID = Function::invalidId());
     ~ScriptRunner();
 
     /** Start the thread execution and therefore the JavaScript code */
@@ -239,6 +254,30 @@ private:
     /** Common code to check if script is running and if function exists */
     Function* getFunctionIfRunning(quint32 fID) const;
 
+    /**
+     * The FunctionParent to use when this script's "startFunction" command
+     * (or the queued START/START_DONT_STOP operation on script exit)
+     * starts another Function - identifies this script itself
+     * (FunctionParent(Function, m_ownerFunctionID)), the same way a
+     * Chaser/Collection/Show identifies itself to its own children. Falls
+     * back to a generic Master override if this runner was never given an
+     * owner (shouldn't happen for a runner that actually starts/stops
+     * Functions - see the constructor).
+     *
+     * NOTE: this is deliberately NOT used for stopping a Function (see
+     * FunctionParent::master(FunctionParent::ScriptStopFunction) at the
+     * "stopFunction" command's and script-exit cleanup's stop() call
+     * sites instead) - unlike Chaser/Collection/Show, a script's
+     * "stopFunction" command has always been able to force-stop a
+     * Function regardless of who started it (Function::stop()'s
+     * "override anything" rule only fires for FunctionParent::Master,
+     * not for a Function-typed source unless the ids match). Using
+     * FunctionParent(Function, m_ownerFunctionID) for stop() as well
+     * would have silently narrowed that to "only stop what I started" -
+     * a real behavior change this project's users rely on not having.
+     */
+    FunctionParent startFunctionSource() const;
+
     /** ScriptRunner function operations enum to handle start/stop/wait commands */
     enum FunctionOperation
     {
@@ -256,6 +295,9 @@ private:
     Doc *m_doc;
     QString m_content;
     bool m_running;
+    // ID of the Script Function that owns this runner - see the
+    // ownerFunctionID constructor parameter above.
+    quint32 m_ownerFunctionID;
 
     QJSEngine *m_engine;
     // Queue holding the Function IDs to start/stop

@@ -524,12 +524,12 @@ void FunctionManager::setPreviewEnabled(bool enable)
                 {
                     disconnect(f, qOverload<quint32>(&Function::stopped), this, &FunctionManager::slotPreviewFunctionStopped);
                     Tardis::instance()->enqueueAction(Tardis::FunctionStop, f->id(), true, false);
-                    f->stop(FunctionParent::master());
+                    f->stop(FunctionParent::master(FunctionParent::FunctionManagerPreview));
                 }
                 else
                 {
                     Tardis::instance()->enqueueAction(Tardis::FunctionStart, f->id(), false, true);
-                    f->start(m_doc->masterTimer(), FunctionParent::master());
+                    f->start(m_doc->masterTimer(), FunctionParent::master(FunctionParent::FunctionManagerPreview));
                     // a VC widget (or anything else using a Master/ManualVCWidget
                     // source) can force-stop this Function regardless of our own
                     // preview source. Notice it so previewEnabled doesn't keep
@@ -591,9 +591,9 @@ void FunctionManager::setScenePreviewEnabled(bool enable)
     if (scene != nullptr)
     {
         if (enable)
-            scene->start(m_doc->masterTimer(), FunctionParent::master());
+            scene->start(m_doc->masterTimer(), FunctionParent::master(FunctionParent::FunctionManagerScenePreview));
         else
-            scene->stop(FunctionParent::master());
+            scene->stop(FunctionParent::master(FunctionParent::FunctionManagerScenePreview));
     }
 
     emit scenePreviewEnabledChanged();
@@ -618,7 +618,7 @@ void FunctionManager::selectFunctionID(quint32 fID, bool multiSelection)
                 {
                     disconnect(f, qOverload<quint32>(&Function::stopped), this, &FunctionManager::slotPreviewFunctionStopped);
                     Tardis::instance()->enqueueAction(Tardis::FunctionStop, f->id(), true, false);
-                    f->stop(FunctionParent::master());
+                    f->stop(FunctionParent::master(FunctionParent::FunctionManagerPreview));
                 }
             }
         }
@@ -634,7 +634,7 @@ void FunctionManager::selectFunctionID(quint32 fID, bool multiSelection)
         if (f != nullptr)
         {
             Tardis::instance()->enqueueAction(Tardis::FunctionStart, f->id(), false, true);
-            f->start(m_doc->masterTimer(), FunctionParent::master());
+            f->start(m_doc->masterTimer(), FunctionParent::master(FunctionParent::FunctionManagerPreview));
             connect(f, qOverload<quint32>(&Function::stopped), this, &FunctionManager::slotPreviewFunctionStopped, Qt::UniqueConnection);
         }
     }
@@ -879,7 +879,7 @@ void FunctionManager::deleteFunction(quint32 fid)
     }
 
     if (f->isRunning())
-        f->stopAndWait();
+        f->stopAndWait(FunctionParent::master(FunctionParent::FunctionManagerDelete));
 
     Tardis::instance()->enqueueAction(Tardis::FunctionDelete, f->id(),
                                       Tardis::instance()->actionToByteArray(Tardis::FunctionDelete, f->id()),
@@ -905,7 +905,7 @@ void FunctionManager::deleteFunctions(QVariantList IDList)
             continue;
 
         if (f->isRunning())
-            f->stop(FunctionParent::master());
+            f->stop(FunctionParent::master(FunctionParent::FunctionManagerDelete));
 
         if (m_selectedIDList.contains(fID))
             m_selectedIDList.removeAll(fID);

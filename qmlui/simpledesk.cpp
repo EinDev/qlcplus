@@ -328,12 +328,45 @@ static QString describeFunctionParent(const FunctionParent &source, Doc *doc,
         }
 
         case FunctionParent::Master:
-            return QStringLiteral(
-                "a generic override source (FunctionParent::Master, ID 0) - this exact sentinel is used "
-                "identically by Function Manager preview, the Function/Scene/Chaser/RGBMatrix editors' live "
-                "preview, Show Manager, project-load autostart, Tardis undo/redo, web/OSC quick actions, and "
-                "a Function's own internal self-restart, so the engine's tracked data cannot distinguish "
-                "which of these actually started it");
+        {
+            switch (source.id())
+            {
+                case FunctionParent::EngineSelfStop:
+                    return QStringLiteral("the Function's own internal logic (natural completion, "
+                                           "or an error condition such as a missing fixture group)");
+                case FunctionParent::MasterTimerStopAll:
+                    return QStringLiteral("MasterTimer's stop-all-functions request (e.g. Blackout/panic)");
+                case FunctionParent::ProjectAutostart:
+                    return QStringLiteral("the project's configured startup Function, auto-started on project load");
+                case FunctionParent::FunctionManagerPreview:
+                    return QStringLiteral("Function Manager's preview toggle/selection (no editor open)");
+                case FunctionParent::FunctionManagerScenePreview:
+                    return QStringLiteral("Function Manager's live Scene preview (Scene or Sequence editor open)");
+                case FunctionParent::FunctionManagerDelete:
+                    return QStringLiteral("Function Manager stopping the Function before deleting it");
+                case FunctionParent::FunctionEditorPreview:
+                    return QStringLiteral("a Function Editor's own preview toggle (Scene/EFX/Audio/Collection/"
+                                           "Script/Video/Chaser/RGBMatrix editor)");
+                case FunctionParent::ChaserEditorStepPreview:
+                    return QStringLiteral("Chaser/Sequence Editor's step-scrubbing preview of the bound Scene");
+                case FunctionParent::ShowManagerPlayback:
+                    return QStringLiteral("Show Manager's play/pause/stop transport controls");
+                case FunctionParent::TardisUndoRedo:
+                    return QStringLiteral("Tardis replaying a Function start/stop action during undo/redo");
+                case FunctionParent::WebAccess:
+                    return QStringLiteral("a WebAccess/OSC \"setFunctionStatus\" API request");
+                case FunctionParent::VideoWindowClosed:
+                    return QStringLiteral("the user closing a Video function's preview window");
+                case FunctionParent::ScriptStopFunction:
+                    return QStringLiteral("a Script's \"stopFunction\" command (or its own exit cleanup)");
+                case FunctionParent::GenericOverride:
+                default:
+                    return QString(
+                        "a generic override source (FunctionParent::Master, ID %1) not yet given its own "
+                        "identity - expected only from engine/UI test facilities or the legacy QLC+4 Qt "
+                        "Widgets UI, neither of which this checkout builds").arg(source.id());
+            }
+        }
 
         default:
             return QString("an unrecognized source type %1 (ID %2)").arg(source.type()).arg(source.id());
