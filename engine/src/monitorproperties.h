@@ -166,7 +166,20 @@ public:
         InvertedPositionZFlag = (1 << 7),
         InvertedRotationXFlag = (1 << 8),
         InvertedRotationYFlag = (1 << 9),
-        InvertedRotationZFlag = (1 << 10)
+        InvertedRotationZFlag = (1 << 10),
+        /** Set on a fixture whose PositionX/Y/Z or RotationX/Y/Z DMX channels
+         *  currently have a valid dragged position/rotation persisted in
+         *  m_position/m_rotation (see ContextManager::pushPositionDelta()/
+         *  pushRotationDelta()). Needed because m_position/m_rotation are
+         *  also written, in a completely different convention, by ordinary
+         *  (non-DMX-driven) fixture placement - without a dedicated marker,
+         *  there would be no way to tell "this is a persisted drag delta"
+         *  from "this is just this fixture's regular 2D/3D placement" when
+         *  deciding whether to restore it onto live DMX channels on project
+         *  load. Independent flags since a fixture may define only a
+         *  position or only a rotation channel group. */
+        HasDmxPositionFlag    = (1 << 11),
+        HasDmxRotationFlag    = (1 << 12)
     };
 #if QT_VERSION >= 0x050500
     Q_ENUM(ItemFlags)
