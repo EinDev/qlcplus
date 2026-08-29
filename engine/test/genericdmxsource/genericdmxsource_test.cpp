@@ -23,6 +23,8 @@
 #define private public
 #include "genericdmxsource_test.h"
 #include "genericdmxsource.h"
+#include "genericfader.h"
+#include "universe.h"
 #include "doc.h"
 #include "fixture.h"
 #undef private
@@ -79,6 +81,36 @@ void GenericDMXSource_Test::unsetAll()
     src.unsetAll();
     src.writeDMX(nullptr, m_doc->inputOutputMap()->universes());
     QCOMPARE(src.channelsCount(), quint32(0));
+}
+
+void GenericDMXSource_Test::unsetRemovesFaderChannel()
+{
+    // Regression test: once a channel has been written at least once,
+    // GenericDMXSource::unset() must also detach it from whichever Universe
+    // GenericFader is holding it - otherwise GenericFader::write() (invoked
+    // on every Universe tick, independently of GenericDMXSource) would keep
+    // outputting the last value forever, even though this source's own
+    // bookkeeping (m_values / channels() / channelsCount()) correctly shows
+    // the channel as gone.
+    GenericDMXSource src(m_doc);
+    src.setOutputEnabled(true);
+    src.set(m_fxiId, 0, 255);
+
+    QList<Universe *> ua = m_doc->inputOutputMap()->universes();
+    src.writeDMX(nullptr, ua);
+
+    Universe *uni = ua.at(0);
+    QSharedPointer<GenericFader> fader = src.m_fadersMap.value(uni->id(), QSharedPointer<GenericFader>());
+    QVERIFY(!fader.isNull());
+    QCOMPARE(fader->channelsCount(), 1);
+
+    src.unset(m_fxiId, 0);
+    QCOMPARE(src.channelsCount(), quint32(0));
+
+    // this is the actual regression check: before the fix, the fader kept
+    // the channel latched at value 255 even though GenericDMXSource itself
+    // reports nothing set any more
+    QCOMPARE(fader->channelsCount(), 0);
 }
 
 QTEST_MAIN(GenericDMXSource_Test)
