@@ -22,6 +22,7 @@
 #include "apisession.h"
 #include "apienvelope.h"
 #include "inputoutputmap.h"
+#include "grandmaster.h"
 #include "universe.h"
 #include "doc.h"
 
@@ -34,6 +35,45 @@ QJsonObject universeToJson(Universe *universe)
     obj.insert(QStringLiteral("name"), universe->name());
     obj.insert(QStringLiteral("totalChannels"), universe->totalChannels());
     obj.insert(QStringLiteral("passthrough"), universe->passthrough());
+    return obj;
+}
+
+// Spec strings (docs/api-spec/fragments/io.yaml IoGrandMasterChannelMode/
+// IoGrandMasterValueMode) deliberately spelled out here rather than reusing
+// GrandMaster::channelModeToString()/valueModeToString(): those serialize
+// the .qxw persistence form, which for AllChannels is the abbreviated "All"
+// (see KXMLQLCGMChannelModeAllChannels in grandmaster.cpp) - not the spec's
+// "AllChannels".
+QString grandMasterChannelModeToJson(GrandMaster::ChannelMode mode)
+{
+    switch (mode)
+    {
+    case GrandMaster::AllChannels:
+        return QStringLiteral("AllChannels");
+    default:
+    case GrandMaster::Intensity:
+        return QStringLiteral("Intensity");
+    }
+}
+
+QString grandMasterValueModeToJson(GrandMaster::ValueMode mode)
+{
+    switch (mode)
+    {
+    case GrandMaster::Reduce:
+        return QStringLiteral("Reduce");
+    default:
+    case GrandMaster::Limit:
+        return QStringLiteral("Limit");
+    }
+}
+
+QJsonObject grandMasterStateToJson(InputOutputMap *ioMap)
+{
+    QJsonObject obj;
+    obj.insert(QStringLiteral("value"), int(ioMap->grandMasterValue()));
+    obj.insert(QStringLiteral("channelMode"), grandMasterChannelModeToJson(ioMap->grandMasterChannelMode()));
+    obj.insert(QStringLiteral("valueMode"), grandMasterValueModeToJson(ioMap->grandMasterValueMode()));
     return obj;
 }
 
@@ -116,8 +156,11 @@ void ApiIoDomain::slotUniverseWritten(quint32 id, const QByteArray &postGMValues
 
 void ApiIoDomain::slotGrandMasterValueChanged(uchar value)
 {
-    QJsonObject data;
-    data.insert(QStringLiteral("value"), int(value));
+    Q_UNUSED(value)
+    // IoGrandMasterState requires channelMode/valueMode alongside value, so
+    // read the full current state from the map rather than just relaying the
+    // signal's own parameter.
+    QJsonObject data = grandMasterStateToJson(m_doc->inputOutputMap());
     // Live (§4b) but low-frequency: always delivered, not subscribe-gated.
     m_server->broadcast(QStringLiteral("io.grandMaster.changed"), data, QString(), false);
 }
@@ -191,9 +234,7 @@ void ApiIoDomain::registerMethods()
     dispatcher->registerMethod(QStringLiteral("io.grandMaster.get"), [doc](ApiSession *session, const QString &id, const QJsonObject &params)
     {
         Q_UNUSED(params)
-        QJsonObject result;
-        result.insert(QStringLiteral("value"), int(doc->inputOutputMap()->grandMasterValue()));
-        session->send(ApiEnvelope::buildOkResponse(id, result));
+        session->send(ApiEnvelope::buildOkResponse(id, grandMasterStateToJson(doc->inputOutputMap())));
     });
 
     dispatcher->registerMethod(QStringLiteral("io.grandMaster.setValue"), [doc](ApiSession *session, const QString &id, const QJsonObject &params)
