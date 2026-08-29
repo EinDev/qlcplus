@@ -197,7 +197,10 @@ void VCSlider::remapChannels(const QMap<SceneValue, SceneValue> &remapMap)
             newChannels.append(remapMap.value(key));
     }
 
-    m_levelChannels = newChannels;
+    {
+        QMutexLocker locker(&m_levelValueMutex);
+        m_levelChannels = newChannels;
+    }
     emit channelsCountChanged();
 }
 
@@ -465,12 +468,16 @@ qreal VCSlider::attributeValueToSliderValue(qreal value)
 
 void VCSlider::setValue(int value, bool setDMX, bool updateFeedback)
 {
-    if (m_value == value)
-        return;
+    {
+        QMutexLocker locker(&m_levelValueMutex);
 
-    Tardis::instance()->enqueueAction(Tardis::VCSliderSetValue, id(), m_value, value);
+        if (m_value == value)
+            return;
 
-    m_value = value;
+        Tardis::instance()->enqueueAction(Tardis::VCSliderSetValue, id(), m_value, value);
+
+        m_value = value;
+    }
 
     switch(sliderMode())
     {
@@ -595,6 +602,7 @@ void VCSlider::addLevelChannel(quint32 fixture, quint32 channel)
 {
     SceneValue lch(fixture, channel);
 
+    QMutexLocker locker(&m_levelValueMutex);
     if (m_levelChannels.contains(lch) == false)
         m_levelChannels.append(lch);
 }
@@ -602,6 +610,8 @@ void VCSlider::addLevelChannel(quint32 fixture, quint32 channel)
 void VCSlider::removeLevelChannel(quint32 fixture, quint32 channel)
 {
     SceneValue lch(fixture, channel);
+
+    QMutexLocker locker(&m_levelValueMutex);
     m_levelChannels.removeAll(lch);
 }
 
@@ -764,7 +774,10 @@ void VCSlider::slotTreeDataChanged(TreeModelItem *item, int role, const QVariant
             removeLevelChannel(fixtureID, chIndex);
     }
 
-    std::sort(m_levelChannels.begin(), m_levelChannels.end());
+    {
+        QMutexLocker locker(&m_levelValueMutex);
+        std::sort(m_levelChannels.begin(), m_levelChannels.end());
+    }
     emit channelsCountChanged();
 
     if (clickAndGoType() == CnGPreset)
@@ -873,7 +886,10 @@ void VCSlider::setClickAndGoColors(QColor rgb, QColor wauv)
     m_cngSecondaryColor = wauv;
 
     // invalidate value if not changed
-    m_value = 0;
+    {
+        QMutexLocker locker(&m_levelValueMutex);
+        m_value = 0;
+    }
     // set mid-position value
     setValue(128, true, true);
 
@@ -1338,6 +1354,10 @@ void VCSlider::writeDMXLevel(MasterTimer* timer, QList<Universe *> universes)
 
             if (m_isOverriding == false)
             {
+                // setValue() takes m_levelValueMutex itself; release it here first
+                // to avoid a self-deadlock on this (non-recursive) mutex, since
+                // nothing after this point needs the lock before returning.
+                locker.unlock();
                 setValue(m_monitorValue, false, true);
                 return;
             }
