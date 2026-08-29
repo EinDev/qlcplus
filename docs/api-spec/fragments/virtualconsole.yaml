@@ -1635,10 +1635,20 @@ messages:
           required:
           - widgetId
           - controlId
-          description: 'VirtualConsole::createAndDetectInputSource()/ enableInputSourceAutoDetection()
-            - "learn" wizard: the server starts listening for the next external controller signal on behalf
-            of the requesting client and, once received, binds it to $controlId and broadcasts vc.widget.inputSourcesChanged.
-            Live/session-scoped; superseded by a second call or vc.widget.inputDetect.stop.
+          description: 'VirtualConsole::createAndDetectInputSource()/enableInputSourceAutoDetection()
+            - "learn" wizard: the server starts listening for the next external controller signal and,
+            once received, binds it to $controlId and broadcasts vc.widget.inputSourcesChanged.
+
+            IMPORTANT - this is NOT scoped to the requesting client: VirtualConsole holds exactly one
+            global autodetect slot (m_autoDetectionWidget, a single member variable, not a per-session
+            map), so at most one widget across the ENTIRE server can be in learn mode at a time. If
+            client A calls this and client B calls it again before A''s completes, B''s call silently
+            takes over the slot (A never gets its binding) - there is no per-client isolation or queuing.
+            Likewise vc.widget.inputDetect.stop (VirtualConsole::disableAutoDetection(), which takes no
+            widget/client argument at all) cancels whichever widget currently holds the slot, regardless
+            of which client started it. A multi-client UI should treat "someone is learning" as global
+            state - e.g. disable the learn button everywhere else while any client has one in progress -
+            rather than assuming per-client isolation.
 
             '
           properties:
@@ -1668,6 +1678,10 @@ messages:
           const: vc.widget.inputDetect.stop
         params:
           type: object
+          description: VirtualConsole::disableAutoDetection() - cancels learn mode for WHICHEVER
+            widget currently holds the single global autodetect slot. No widgetId param here because
+            the engine method itself takes no argument - see VcWidgetInputDetectStartRequest, there is
+            at most one widget learning at a time server-wide, not one per requesting client.
   VcWidgetInputDetectStopResponse:
     payload:
       oneOf:
