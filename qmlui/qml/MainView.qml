@@ -670,6 +670,16 @@ Rectangle
             active: false
             visible: mainView.currentContext === "VC"
             source: mainView.contextResources["VC"]
+
+            // See fnfLoader's onVisibleChanged above - same guard, applied
+            // uniformly to every persistent tab Loader so any future
+            // floating popup exposing closeChannelTools() is covered
+            // without needing this file touched again.
+            onVisibleChanged:
+            {
+                if (!visible && item && typeof item.closeChannelTools === "function")
+                    item.closeChannelTools()
+            }
         }
         Loader
         {
@@ -678,6 +688,15 @@ Rectangle
             active: false
             visible: mainView.currentContext === "SDESK"
             source: mainView.contextResources["SDESK"]
+
+            // Simple Desk has its own independent ChannelToolLoader (see
+            // SimpleDesk.qml's closeChannelTools()) - this is the same bug
+            // class as fnfLoader above, just for the Simple Desk tab.
+            onVisibleChanged:
+            {
+                if (!visible && item && typeof item.closeChannelTools === "function")
+                    item.closeChannelTools()
+            }
         }
         Loader
         {
@@ -686,6 +705,12 @@ Rectangle
             active: false
             visible: mainView.currentContext === "SHOWMGR"
             source: mainView.contextResources["SHOWMGR"]
+
+            onVisibleChanged:
+            {
+                if (!visible && item && typeof item.closeChannelTools === "function")
+                    item.closeChannelTools()
+            }
         }
         Loader
         {
@@ -694,6 +719,12 @@ Rectangle
             active: false
             visible: mainView.currentContext === "IOMGR"
             source: mainView.contextResources["IOMGR"]
+
+            onVisibleChanged:
+            {
+                if (!visible && item && typeof item.closeChannelTools === "function")
+                    item.closeChannelTools()
+            }
         }
 
         // transient overlay used by loadResource() for one-off resources
