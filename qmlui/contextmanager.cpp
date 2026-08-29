@@ -475,7 +475,7 @@ void ContextManager::setPositionPickPoint(QVector3D point)
             for (SceneValue &posSv : svList)
             {
                 if (m_editingEnabled == false || m_functionManager->acceptsSceneValues() == false)
-                    setDumpValue(posSv.fxi, posSv.channel, posSv.value);
+                    setDumpValue(posSv.fxi, posSv.channel, posSv.value, true, GenericDMXSource::PositionPickPoint);
                 else
                     m_functionManager->setChannelValue(posSv.fxi, posSv.channel, posSv.value);
             }
@@ -509,7 +509,7 @@ void ContextManager::setPositionPickPoint(QVector3D point)
             for (SceneValue &posSv : svList)
             {
                 if (m_editingEnabled == false || m_functionManager->acceptsSceneValues() == false)
-                    setDumpValue(posSv.fxi, posSv.channel, posSv.value);
+                    setDumpValue(posSv.fxi, posSv.channel, posSv.value, true, GenericDMXSource::PositionPickPoint);
                 else
                     m_functionManager->setChannelValue(posSv.fxi, posSv.channel, posSv.value);
             }
@@ -601,7 +601,8 @@ void ContextManager::restorePersistedDmxTransforms()
             {
                 QVector3D gridCenter = FixtureUtils::gridCenterPosition(m_monProps);
                 QVector3D persisted = m_monProps->fixturePosition(fxID, 0, 0);
-                pushPositionDelta(fixture, (persisted - gridCenter) / 1000.0f);
+                pushPositionDelta(fixture, (persisted - gridCenter) / 1000.0f,
+                                  GenericDMXSource::PersistedTransformRestore);
             }
         }
 
@@ -611,7 +612,8 @@ void ContextManager::restorePersistedDmxTransforms()
                 fixture->channelNumber(QLCChannel::RotationY, QLCChannel::MSB) != QLCChannel::invalid() ||
                 fixture->channelNumber(QLCChannel::RotationZ, QLCChannel::MSB) != QLCChannel::invalid())
             {
-                pushRotationDelta(fixture, m_monProps->fixtureRotation(fxID, 0, 0));
+                pushRotationDelta(fixture, m_monProps->fixtureRotation(fxID, 0, 0),
+                                   GenericDMXSource::PersistedTransformRestore);
             }
         }
     }
@@ -1227,7 +1229,7 @@ void ContextManager::setFixturesOffset(qreal x, qreal y)
     }
 }
 
-void ContextManager::pushPositionDelta(Fixture *fixture, QVector3D deltaMeters)
+void ContextManager::pushPositionDelta(Fixture *fixture, QVector3D deltaMeters, GenericDMXSource::Feature feature)
 {
     const QLCChannel::Group axisGroups[3] = {
         QLCChannel::PositionX, QLCChannel::PositionY, QLCChannel::PositionZ
@@ -1268,7 +1270,7 @@ void ContextManager::pushPositionDelta(Fixture *fixture, QVector3D deltaMeters)
         for (SceneValue &sv : svList)
         {
             if (m_editingEnabled == false || m_functionManager->acceptsSceneValues() == false)
-                setDumpValue(sv.fxi, sv.channel, sv.value);
+                setDumpValue(sv.fxi, sv.channel, sv.value, true, feature);
             else
                 m_functionManager->setChannelValue(sv.fxi, sv.channel, sv.value);
         }
@@ -1328,7 +1330,7 @@ void ContextManager::pushPositionDelta(Fixture *fixture, QVector3D deltaMeters)
     m_doc->setModified();
 }
 
-void ContextManager::pushRotationDelta(Fixture *fixture, QVector3D deltaDegrees)
+void ContextManager::pushRotationDelta(Fixture *fixture, QVector3D deltaDegrees, GenericDMXSource::Feature feature)
 {
     const QLCChannel::Group axisGroups[3] = {
         QLCChannel::RotationX, QLCChannel::RotationY, QLCChannel::RotationZ
@@ -1360,7 +1362,7 @@ void ContextManager::pushRotationDelta(Fixture *fixture, QVector3D deltaDegrees)
         for (SceneValue &sv : svList)
         {
             if (m_editingEnabled == false || m_functionManager->acceptsSceneValues() == false)
-                setDumpValue(sv.fxi, sv.channel, sv.value);
+                setDumpValue(sv.fxi, sv.channel, sv.value, true, feature);
             else
                 m_functionManager->setChannelValue(sv.fxi, sv.channel, sv.value);
         }
@@ -2789,28 +2791,29 @@ void ContextManager::slotFixtureFlagsChanged(quint32 itemID, quint32 flags)
 void ContextManager::slotChannelValueChanged(quint32 fxID, quint32 channel, quint8 value)
 {
     if (m_editingEnabled == false || m_functionManager->acceptsSceneValues() == false)
-        setDumpValue(fxID, channel, uchar(value));
+        setDumpValue(fxID, channel, uchar(value), true, GenericDMXSource::FixtureConsoleChannelSet);
     else
         m_functionManager->setChannelValue(fxID, channel, uchar(value));
 }
 
 void ContextManager::setColorValue(QColor col, QColor wauv)
 {
-    setChannelValueByType((int)QLCChannel::Red, col.red());
-    setChannelValueByType((int)QLCChannel::Green, col.green());
-    setChannelValueByType((int)QLCChannel::Blue, col.blue());
+    setChannelValueByType((int)QLCChannel::Red, col.red(), false, UINT_MAX, GenericDMXSource::ColorTool);
+    setChannelValueByType((int)QLCChannel::Green, col.green(), false, UINT_MAX, GenericDMXSource::ColorTool);
+    setChannelValueByType((int)QLCChannel::Blue, col.blue(), false, UINT_MAX, GenericDMXSource::ColorTool);
 
-    setChannelValueByType((int)QLCChannel::White, wauv.red());
-    setChannelValueByType((int)QLCChannel::Amber, wauv.green());
-    setChannelValueByType((int)QLCChannel::UV, wauv.blue());
+    setChannelValueByType((int)QLCChannel::White, wauv.red(), false, UINT_MAX, GenericDMXSource::ColorTool);
+    setChannelValueByType((int)QLCChannel::Amber, wauv.green(), false, UINT_MAX, GenericDMXSource::ColorTool);
+    setChannelValueByType((int)QLCChannel::UV, wauv.blue(), false, UINT_MAX, GenericDMXSource::ColorTool);
 
     QColor cmykColor = col.toCmyk();
-    setChannelValueByType((int)QLCChannel::Cyan, cmykColor.cyan());
-    setChannelValueByType((int)QLCChannel::Magenta, cmykColor.magenta());
-    setChannelValueByType((int)QLCChannel::Yellow, cmykColor.yellow());
+    setChannelValueByType((int)QLCChannel::Cyan, cmykColor.cyan(), false, UINT_MAX, GenericDMXSource::ColorTool);
+    setChannelValueByType((int)QLCChannel::Magenta, cmykColor.magenta(), false, UINT_MAX, GenericDMXSource::ColorTool);
+    setChannelValueByType((int)QLCChannel::Yellow, cmykColor.yellow(), false, UINT_MAX, GenericDMXSource::ColorTool);
 }
 
-void ContextManager::setChannelValueByType(int type, int value, bool isRelative, quint32 channel)
+void ContextManager::setChannelValueByType(int type, int value, bool isRelative, quint32 channel,
+                                            GenericDMXSource::Feature feature)
 {
     //qDebug() << "[setChannelValueByType] type:" << type << "value:" << value << "relative:" << isRelative << "channel:" << channel;
     QList<SceneValue> svList = m_channelsMap.values(type);
@@ -2834,7 +2837,7 @@ void ContextManager::setChannelValueByType(int type, int value, bool isRelative,
             }
 
             if (m_editingEnabled == false || m_functionManager->acceptsSceneValues() == false)
-                setDumpValue(sv.fxi, sv.channel, val);
+                setDumpValue(sv.fxi, sv.channel, val, true, feature);
             else
                 m_functionManager->setChannelValue(sv.fxi, sv.channel, val);
         }
@@ -2862,7 +2865,7 @@ void ContextManager::setPositionValue(int type, float degrees, bool isRelative)
         for (SceneValue &posSv : svList)
         {
             if (m_editingEnabled == false || m_functionManager->acceptsSceneValues() == false)
-                setDumpValue(posSv.fxi, posSv.channel, posSv.value);
+                setDumpValue(posSv.fxi, posSv.channel, posSv.value, true, GenericDMXSource::PositionTool);
             else
                 m_functionManager->setChannelValue(posSv.fxi, posSv.channel, posSv.value);
         }
@@ -2871,8 +2874,8 @@ void ContextManager::setPositionValue(int type, float degrees, bool isRelative)
 
 void ContextManager::setPositionCenter()
 {
-    setChannelValueByType((int)QLCChannel::Pan, 127);
-    setChannelValueByType((int)QLCChannel::Tilt, 127);
+    setChannelValueByType((int)QLCChannel::Pan, 127, false, UINT_MAX, GenericDMXSource::PositionCenterTool);
+    setChannelValueByType((int)QLCChannel::Tilt, 127, false, UINT_MAX, GenericDMXSource::PositionCenterTool);
 }
 
 void ContextManager::setBeamDegrees(float degrees, bool isRelative)
@@ -2896,7 +2899,7 @@ void ContextManager::setBeamDegrees(float degrees, bool isRelative)
         for (SceneValue &zSv : svList)
         {
             if (m_editingEnabled == false || m_functionManager->acceptsSceneValues() == false)
-                setDumpValue(zSv.fxi, zSv.channel, zSv.value);
+                setDumpValue(zSv.fxi, zSv.channel, zSv.value, true, GenericDMXSource::BeamTool);
             else
                 m_functionManager->setChannelValue(zSv.fxi, zSv.channel, zSv.value);
         }
@@ -2905,12 +2908,12 @@ void ContextManager::setBeamDegrees(float degrees, bool isRelative)
 
 void ContextManager::highlightFixtureSelection()
 {
-    setChannelValueByType((int)QLCChannel::Red, UCHAR_MAX);
-    setChannelValueByType((int)QLCChannel::Green, UCHAR_MAX);
-    setChannelValueByType((int)QLCChannel::Blue, UCHAR_MAX);
+    setChannelValueByType((int)QLCChannel::Red, UCHAR_MAX, false, UINT_MAX, GenericDMXSource::FixtureHighlight);
+    setChannelValueByType((int)QLCChannel::Green, UCHAR_MAX, false, UINT_MAX, GenericDMXSource::FixtureHighlight);
+    setChannelValueByType((int)QLCChannel::Blue, UCHAR_MAX, false, UINT_MAX, GenericDMXSource::FixtureHighlight);
     //setChannelValueByType((int)QLCChannel::White, UCHAR_MAX);
 
-    setChannelValueByType((int)QLCChannel::Intensity, UCHAR_MAX);
+    setChannelValueByType((int)QLCChannel::Intensity, UCHAR_MAX, false, UINT_MAX, GenericDMXSource::FixtureHighlight);
 
     // search for shutter open and lamp on
     for (quint32 &itemID : m_selectedFixtures)
@@ -2929,7 +2932,7 @@ void ContextManager::highlightFixtureSelection()
                     cap->preset() == QLCCapability::LampOn)
                 {
                     if (m_editingEnabled == false || m_functionManager->acceptsSceneValues() == false)
-                        setDumpValue(fxID, i, cap->middle());
+                        setDumpValue(fxID, i, cap->middle(), true, GenericDMXSource::FixtureHighlight);
                     else
                         m_functionManager->setChannelValue(fxID, i, cap->middle());
                     break;
@@ -2944,7 +2947,7 @@ void ContextManager::setChannelValues(QList<SceneValue> values)
     for (SceneValue &sv : values)
     {
         if (m_editingEnabled == false || m_functionManager->acceptsSceneValues() == false)
-            setDumpValue(sv.fxi, sv.channel, sv.value);
+            setDumpValue(sv.fxi, sv.channel, sv.value, true, GenericDMXSource::PalettePreview);
         else
             m_functionManager->setChannelValue(sv.fxi, sv.channel, sv.value);
     }
@@ -2963,13 +2966,16 @@ void ContextManager::slotPresetChanged(const QLCChannel *channel, quint8 value)
         {
             quint32 chIdx = fixture->fixtureMode()->channelNumber((QLCChannel *)channel);
             if (chIdx != QLCChannel::invalid())
-                setChannelValueByType((int)channel->group(), value, false, chIdx);
+                setChannelValueByType((int)channel->group(), value, false, chIdx, GenericDMXSource::PresetTool);
         }
     }
 }
 
 void ContextManager::slotSimpleDeskValueChanged(quint32 fxID, quint32 channel, quint8 value)
 {
+    // output is false here, so this never reaches GenericDMXSource::set() -
+    // it only feeds the dump-value list Simple Desk's own slider changes are
+    // queued into, not a live DMX push of its own.
     if (m_editingEnabled == false)
         setDumpValue(fxID, channel, uchar(value), false);
 }
@@ -3092,7 +3098,8 @@ void ContextManager::slotFunctionEditingChanged(bool status)
  * DMX channels dump
  *********************************************************************/
 
-void ContextManager::setDumpValue(quint32 fxID, quint32 channel, uchar value, bool output)
+void ContextManager::setDumpValue(quint32 fxID, quint32 channel, uchar value, bool output,
+                                   GenericDMXSource::Feature feature)
 {
     QVariant currentVal, newVal;
     SceneValue sValue(fxID, channel, value);
@@ -3107,7 +3114,7 @@ void ContextManager::setDumpValue(quint32 fxID, quint32 channel, uchar value, bo
         {
             Tardis::instance()->enqueueAction(Tardis::FixtureSetDumpValue, 0, currentVal, newVal);
             if (m_source)
-                m_source->set(fxID, channel, value);
+                m_source->set(fxID, channel, value, feature);
         }
 
         if (valIndex >= 0)

@@ -27,6 +27,7 @@
 
 #include "qlcchannel.h"
 #include "scenevalue.h"
+#include "genericdmxsource.h"
 
 class Doc;
 class Fixture;
@@ -36,7 +37,6 @@ class MainView3D;
 class MainViewDMX;
 class FixtureManager;
 class FunctionManager;
-class GenericDMXSource;
 class MonitorProperties;
 class PreviewContext;
 class SimpleDesk;
@@ -442,7 +442,8 @@ public:
      *  Function(s) reference no fixtures. */
     Q_INVOKABLE void selectFixturesInFunctions();
 
-    Q_INVOKABLE void setChannelValueByType(int type, int value, bool isRelative = false, quint32 channel = UINT_MAX);
+    Q_INVOKABLE void setChannelValueByType(int type, int value, bool isRelative = false, quint32 channel = UINT_MAX,
+                                            GenericDMXSource::Feature feature = GenericDMXSource::IntensityTool);
 
     Q_INVOKABLE void setColorValue(QColor col, QColor wauv);
 
@@ -555,12 +556,17 @@ private:
     /** Pushes $deltaMeters as a live DMX value onto $fixture's PositionX/Y/Z
      *  channels (whichever of the three it actually defines - the others are
      *  no-ops), following the same dump-value/scene-value routing decision
-     *  setPositionValue() uses for Pan/Tilt. */
-    void pushPositionDelta(Fixture *fixture, QVector3D deltaMeters);
+     *  setPositionValue() uses for Pan/Tilt. $feature defaults to the normal
+     *  2D/3D drag case; restorePersistedDmxTransforms() overrides it since
+     *  it calls this to replay a persisted delta on project load rather than
+     *  in response to a live drag. */
+    void pushPositionDelta(Fixture *fixture, QVector3D deltaMeters,
+                            GenericDMXSource::Feature feature = GenericDMXSource::DragPositionPush);
 
     /** Same as pushPositionDelta(), for $fixture's RotationX/Y/Z channels
      *  ($deltaDegrees). */
-    void pushRotationDelta(Fixture *fixture, QVector3D deltaDegrees);
+    void pushRotationDelta(Fixture *fixture, QVector3D deltaDegrees,
+                            GenericDMXSource::Feature feature = GenericDMXSource::DragPositionPush);
 
     /** The position/rotation delta we last told $fixture's PositionX/Y/Z or
      *  RotationX/Y/Z channels to have, tracked in m_fixturePositionDeltaCache/
@@ -615,8 +621,12 @@ private:
      * DMX channels dump
      *********************************************************************/
 public:
-    /** Store a channel value for Scene dumping */
-    Q_INVOKABLE void setDumpValue(quint32 fxID, quint32 channel, uchar value, bool output = true);
+    /** Store a channel value for Scene dumping. $feature identifies the
+     *  calling UI feature (see GenericDMXSource::Feature) for debugging
+     *  purposes only - it has no effect when $output is false, since no
+     *  GenericDMXSource::set() call happens in that case. */
+    Q_INVOKABLE void setDumpValue(quint32 fxID, quint32 channel, uchar value, bool output = true,
+                                   GenericDMXSource::Feature feature = GenericDMXSource::Unspecified);
 
     /** Remove a channel from the Scene dumping list */
     Q_INVOKABLE void unsetDumpValue(quint32 fxID, quint32 channel);

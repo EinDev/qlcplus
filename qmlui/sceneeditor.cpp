@@ -160,7 +160,7 @@ void SceneEditor::setPreviewEnabled(bool enable)
     if (enable == true)
     {
         foreach (SceneValue sv, m_scene->values())
-            m_source->set(sv.fxi, sv.channel, sv.value);
+            m_source->set(sv.fxi, sv.channel, sv.value, GenericDMXSource::SceneEditorPreview);
     }
     else
         m_source->unsetAll();
@@ -283,7 +283,7 @@ void SceneEditor::slotSceneValueChanged(SceneValue scv)
     }
 
     if (blindMode == false)
-        m_source->set(scv.fxi, scv.channel, scv.value);
+        m_source->set(scv.fxi, scv.channel, scv.value, GenericDMXSource::SceneEditorPreview);
 }
 
 void SceneEditor::slotAliasChanged()
@@ -1281,7 +1281,7 @@ void SceneEditor::outputAllPositions()
      *  have been written, so it would wipe the values set right below.
      *  Overwriting with 0 releases the Fixture without that race */
     for (SceneValue &scv : m_highlightChannels)
-        m_highlightSource->set(scv.fxi, scv.channel, 0);
+        m_highlightSource->set(scv.fxi, scv.channel, 0, GenericDMXSource::SceneEditorExternalControlHighlight);
 
     m_highlightChannels.clear();
     m_highlightedFixture = Fixture::invalidId();
@@ -1319,7 +1319,7 @@ void SceneEditor::outputAllPositions()
 
             for (SceneValue &scv : fixture->positionToValues(QLCChannel::Pan,
                                                              (float(dmx) * panMax) / 65535.0f))
-                m_highlightSource->set(scv.fxi, scv.channel, scv.value);
+                m_highlightSource->set(scv.fxi, scv.channel, scv.value, GenericDMXSource::SceneEditorExternalControlHighlight);
         }
 
         if (tiltMSB != QLCChannel::invalid())
@@ -1330,7 +1330,7 @@ void SceneEditor::outputAllPositions()
 
             for (SceneValue &scv : fixture->positionToValues(QLCChannel::Tilt,
                                                              (float(dmx) * tiltMax) / 65535.0f))
-                m_highlightSource->set(scv.fxi, scv.channel, scv.value);
+                m_highlightSource->set(scv.fxi, scv.channel, scv.value, GenericDMXSource::SceneEditorExternalControlHighlight);
         }
     }
 
@@ -1373,7 +1373,7 @@ void SceneEditor::highlightCurrentFixture()
                 if (channel->colour() == QLCChannel::NoColour ||
                     channel->colour() == QLCChannel::White)
                 {
-                    m_highlightSource->set(fxID, i, UCHAR_MAX);
+                    m_highlightSource->set(fxID, i, UCHAR_MAX, GenericDMXSource::SceneEditorExternalControlHighlight);
                     m_highlightChannels.append(SceneValue(fxID, i));
                 }
             }
@@ -1385,7 +1385,7 @@ void SceneEditor::highlightCurrentFixture()
                 {
                     if (cap->preset() == QLCCapability::ShutterOpen)
                     {
-                        m_highlightSource->set(fxID, i, cap->middle());
+                        m_highlightSource->set(fxID, i, cap->middle(), GenericDMXSource::SceneEditorExternalControlHighlight);
                         m_highlightChannels.append(SceneValue(fxID, i));
                         break;
                     }
@@ -1399,7 +1399,7 @@ void SceneEditor::highlightCurrentFixture()
                 {
                     if (cap->preset() == QLCCapability::LampOn)
                     {
-                        m_highlightSource->set(fxID, i, cap->middle());
+                        m_highlightSource->set(fxID, i, cap->middle(), GenericDMXSource::SceneEditorExternalControlHighlight);
                         m_highlightChannels.append(SceneValue(fxID, i));
                         break;
                     }
@@ -1455,7 +1455,7 @@ void SceneEditor::slotPositionTimeout()
 
             /** Keep the transmitted position up to date, otherwise the beam
              *  would not move while the Scene is edited in blind mode */
-            m_highlightSource->set(scv.fxi, scv.channel, scv.value);
+            m_highlightSource->set(scv.fxi, scv.channel, scv.value, GenericDMXSource::SceneEditorExternalControlHighlight);
         }
     }
 
@@ -1469,7 +1469,7 @@ void SceneEditor::slotPositionTimeout()
         {
             functionManager->setChannelValue(scv.fxi, scv.channel, scv.value);
 
-            m_highlightSource->set(scv.fxi, scv.channel, scv.value);
+            m_highlightSource->set(scv.fxi, scv.channel, scv.value, GenericDMXSource::SceneEditorExternalControlHighlight);
         }
     }
 }
