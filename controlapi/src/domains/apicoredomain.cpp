@@ -31,6 +31,27 @@
 
 #define MASTERTIMER_FREQUENCY "mastertimer/frequency"
 
+namespace {
+
+// Shared by core.project.get and the core.project.loaded broadcast - see
+// CoreProjectMetadata in docs/api-spec/fragments/core.yaml.
+QJsonObject projectMetadataToJson(Doc *doc, App *app)
+{
+    QJsonObject obj;
+    QString path = app != nullptr ? app->fileName() : QString();
+    obj.insert(QStringLiteral("filePath"), path.isEmpty() ? QJsonValue() : QJsonValue(path));
+    obj.insert(QStringLiteral("fileName"), path.isEmpty() ? QJsonValue() : QJsonValue(QFileInfo(path).fileName()));
+    obj.insert(QStringLiteral("isModified"), doc->isModified());
+    obj.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
+    // docRevisionAtLastSave not tracked by Doc today, could be added or ignored
+    obj.insert(QStringLiteral("docRevisionAtLastSave"), QJsonValue());
+    // creator: engine doesn't expose this easily in Doc
+    obj.insert(QStringLiteral("creator"), QJsonValue());
+    return obj;
+}
+
+} // namespace
+
 ApiCoreDomain::ApiCoreDomain(Doc *doc, ApiServer *server, QObject *parent)
     : QObject(parent)
     , m_doc(doc)
@@ -82,11 +103,7 @@ void ApiCoreDomain::registerMethods()
         result.insert(QStringLiteral("docRevision"), int(m_doc->docRevision()));
         session->send(ApiEnvelope::buildOkResponse(id, result));
 
-        // Note: App::newWorkspace() calls Doc::clear() which calls Doc::bumpRevision()
-        // and emits docRevisionChanged, so slotDocRevisionChanged will handle broadcast.
-        // Actually, core.project.loaded is what we should broadcast.
-        // We'll broadcast that in slotDocRevisionChanged if we can detect the reason,
-        // but it's better to broadcast it here or in a dedicated signal from App.
+        broadcastProjectLoaded(QStringLiteral("new"), session->clientId());
     });
 
     // core.project.open
@@ -129,6 +146,8 @@ void ApiCoreDomain::registerMethods()
             // warningsHtml: not easily available from App today without changes to capture Doc::errorLog()
             result.insert(QStringLiteral("warningsHtml"), QJsonValue::Null);
             session->send(ApiEnvelope::buildOkResponse(id, result));
+
+            broadcastProjectLoaded(QStringLiteral("opened"), session->clientId());
         }
         else
         {
@@ -152,6 +171,8 @@ void ApiCoreDomain::registerMethods()
         QJsonObject result;
         result.insert(QStringLiteral("docRevision"), int(m_doc->docRevision()));
         session->send(ApiEnvelope::buildOkResponse(id, result));
+
+        broadcastProjectLoaded(QStringLiteral("closed"), session->clientId());
     });
 
     // core.project.save
@@ -243,19 +264,7 @@ void ApiCoreDomain::registerMethods()
     d->registerMethod(QStringLiteral("core.project.get"), [this](ApiSession *session, const QString &id, const QJsonObject &params)
     {
         Q_UNUSED(params)
-        App *a = app();
-        QJsonObject result;
-        QString path = a ? a->fileName() : QString();
-        result.insert(QStringLiteral("filePath"), path.isEmpty() ? QJsonValue(QJsonValue::Null) : path);
-        result.insert(QStringLiteral("fileName"), path.isEmpty() ? QJsonValue(QJsonValue::Null) : QFileInfo(path).fileName());
-        result.insert(QStringLiteral("isModified"), m_doc->isModified());
-        result.insert(QStringLiteral("docRevision"), int(m_doc->docRevision()));
-        // docRevisionAtLastSave not tracked by Doc today, could be added or ignored
-        result.insert(QStringLiteral("docRevisionAtLastSave"), QJsonValue(QJsonValue::Null));
-        // creator: engine doesn't expose this easily in Doc
-        result.insert(QStringLiteral("creator"), QJsonValue(QJsonValue::Null));
-
-        session->send(ApiEnvelope::buildOkResponse(id, result));
+        session->send(ApiEnvelope::buildOkResponse(id, projectMetadataToJson(m_doc, app())));
     });
 
     // core.project.recentFiles
@@ -301,7 +310,9 @@ void ApiCoreDomain::registerMethods()
             return;
         }
 
+        m_pendingOriginClientId = session->clientId();
         m_doc->setMode(mode);
+        m_pendingOriginClientId.clear();
         session->send(ApiEnvelope::buildOkResponse(id, QJsonObject()));
     });
 
@@ -349,17 +360,25 @@ void ApiCoreDomain::slotModeChanged(Doc::Mode mode)
 {
     QJsonObject data;
     data.insert(QStringLiteral("mode"), mode == Doc::Design ? QStringLiteral("design") : QStringLiteral("operate"));
-    m_server->broadcast(QStringLiteral("core.mode.changed"), data, QString(), false);
+    m_server->broadcast(QStringLiteral("core.mode.changed"), data, m_pendingOriginClientId, false);
 }
 
 void ApiCoreDomain::slotDocRevisionChanged(quint32 revision)
 {
     Q_UNUSED(revision)
-    // This is a broad signal. core.project.loaded is what should be broadcast
-    // when a whole new document is there.
-    // Unfortunately Doc doesn't know *why* it was bumped.
-    // For now, we'll just broadcast project loaded events from the handlers.
-    // Wait, if another domain bumps revision, we don't want to broadcast core.project.loaded.
+    // Deliberately empty: docRevisionChanged fires for every structural
+    // change, not just a full document replace, so it cannot be used to
+    // broadcast core.project.loaded (Doc doesn't record *why* it was
+    // bumped). core.project.new/open/close call broadcastProjectLoaded()
+    // themselves instead, where the reason is unambiguous.
+}
+
+void ApiCoreDomain::broadcastProjectLoaded(const QString &reason, const QString &originClientId)
+{
+    QJsonObject data;
+    data.insert(QStringLiteral("reason"), reason);
+    data.insert(QStringLiteral("project"), projectMetadataToJson(m_doc, app()));
+    m_server->broadcast(QStringLiteral("core.project.loaded"), data, originClientId, false);
 }
 
 void ApiCoreDomain::slotRecentFilesChanged()
