@@ -645,6 +645,9 @@ messages:
       - type
       - topic
       - data
+      description: Broadcast after vc.widget.create only. The bulk creators, vc.widget.createMatrix
+        and vc.widget.createFromFunctions, broadcast on vc.widget.bulkUpdated instead (see
+        VcWidgetsBulkUpdatedEvent) - a client must listen on both topics to observe every new widget.
       properties:
         type:
           const: event
@@ -905,8 +908,11 @@ messages:
       - type
       - topic
       - data
-      description: Broadcast after vc.widget.update and after vc.widget.reparent (position-only moves
-        use vc.widget.repositioned, see below).
+      description: Broadcast after vc.widget.update and after vc.widget.reparent - reparent moves
+        exactly one widget, so it is reported here, NOT on vc.widget.bulkUpdated (which is reserved
+        for the genuinely multi-widget operations - align/distribute/bulkStyle - plus the
+        vc.widget.createMatrix/createFromFunctions creation events, see VcWidgetsBulkUpdatedEvent).
+        Position-only moves within the same parent use vc.widget.repositioned instead, see below.
       properties:
         type:
           const: event
@@ -1327,8 +1333,16 @@ messages:
       - type
       - topic
       - data
-      description: Broadcast after vc.widget.align, vc.widget.distribute, vc.widget.bulkStyle or vc.widget.reparent
-        - carries every affected widget's resulting full state.
+      description: 'Broadcast after any of the genuinely multi-widget operations: vc.widget.align,
+        vc.widget.distribute, vc.widget.bulkStyle - carries every affected widget''s resulting full
+        state. NOT broadcast for vc.widget.reparent (single-widget - see vc.widget.updated instead).
+
+        Also reused, same topic/shape, as the creation event for vc.widget.createMatrix and
+        vc.widget.createFromFunctions (see the receiveVcWidgetsBulkCreated operation) - a client that
+        only listens for new widgets on vc.widget.created (VcWidgetCreatedEvent) WILL MISS every
+        widget created by those two bulk-creation methods; listen on this topic as well to catch them.
+
+        '
       properties:
         type:
           const: event
@@ -1385,6 +1399,8 @@ messages:
               type: integer
             channel:
               type: integer
+              description: Same composited (page-in-upper-bits) encoding as VcInputSource.channel -
+                see there.
             lowerValue:
               type: integer
               minimum: 0
@@ -2619,9 +2635,11 @@ messages:
       - type
       - topic
       - data
-      description: 'Broadcast every second while the clock is ticking (wall-clock display, or a running
-        Stopwatch/Countdown), and immediately on play/pause/reset. Subscribe-gated (1Hz per widget), see
-        notes.md.
+      description: 'Cadence depends on clockType (VCClock::setClockType()/playPauseTimer()): a plain
+        wall-clock display (Clock) ticks at 1 Hz, but a RUNNING Stopwatch or Countdown ticks every
+        100 ms (10 Hz), not 1 Hz - the engine switches m_timer''s interval when the timer starts.
+        Also broadcast immediately (off-cadence) on play/pause/reset. Subscribe-gated - see notes.md
+        for the real per-clockType rate, not a flat "1Hz per widget" assumption.
 
         '
       properties:
@@ -4080,6 +4098,15 @@ schemas:
         type: integer
       channel:
         type: integer
+        description: 'QLCInputSource::channel() - the COMPOSITED value, not the bare DMX channel:
+          bits 0-15 are the actual channel, bits 16-31 are the multipage Frame''s page number
+          (VCPage/VCFrame::remapInputSources() calls QLCInputSource::setPage(), which folds the page
+          into these upper bits: channel = (page << 16) | bareChannel). This only matters for a widget
+          living inside a multi-page VCFrame (see VcFrameConfig.multiPageMode) - for a widget on a
+          single-page frame or the page root, page is 0 and this equals the bare channel. To read/write
+          just the DMX channel, mask with 0x0000FFFF; to read/write just the page, shift right 16 bits.
+
+          '
       lowerValue:
         type: integer
       upperValue:
@@ -4315,10 +4342,35 @@ schemas:
         type: string
       fixtureGroupId:
         type: string
+        description: presetType=fixtureGroup only - the whole group's heads are resolved dynamically
+          (VCXYPadPreset::m_fxGroupID valid case), so membership changes are picked up automatically.
+      heads:
+        type: array
+        description: presetType=fixtureGroupHead only - the authoritative representation of
+          VCXYPadPreset::m_fxGroup, an explicit QList<GroupHead> that can name an ARBITRARY SET of
+          one or more heads across one or more fixtures (not just a single head - fixtureId/headIndex
+          below cannot represent a multi-head preset and are kept only as a convenience echo of
+          heads[0] for the common single-head case). Always populate/read this array for
+          fixtureGroupHead presets; a client that only looks at fixtureId/headIndex silently drops
+          every head past the first.
+        items:
+          type: object
+          required:
+          - fixtureId
+          - headIndex
+          properties:
+            fixtureId:
+              type: string
+            headIndex:
+              type: integer
       fixtureId:
         type: string
+        description: presetType=fixtureGroupHead convenience only - equals heads[0].fixtureId. See
+          heads above for the full (possibly multi-head) list.
       headIndex:
         type: integer
+        description: presetType=fixtureGroupHead convenience only - equals heads[0].headIndex. See
+          heads above for the full (possibly multi-head) list.
   VcFrameConfig:
     type: object
     description: VCFrame document-state config.
@@ -4529,6 +4581,10 @@ schemas:
           only on next start.
       algorithmIndex:
         type: integer
+        description: Index into VCAnimation::algorithms(), i.e. RGBAlgorithm::algorithms(doc) - the
+          SAME list and ordering as functions.rgbmatrix.listAlgorithms (functions-advanced.yaml). No
+          vc.* message exposes this list separately; a client must call functions.rgbmatrix.listAlgorithms
+          to resolve this index to a name (or vice versa).
       colors:
         type: array
         maxItems: 5
@@ -4547,13 +4603,28 @@ schemas:
         type: string
         enum:
         - color
+        - colorReset
         - colorKnobs
         - text
         - algorithm
+        description: 'This consolidates the engine''s 17-value VCAnimationPreset::ControlType enum
+          (Color1..Color5, Color1Knob..Color5Knob, Color1Reset..Color5Reset, Animation, Text) into
+          5 abstracted types, using colorIndex (0..4) to pick which of the 5 color slots a
+          color/colorKnobs/colorReset preset targets. colorReset (Color1Reset..Color5Reset) is a
+          legacy control type loadable from VCMatrix XML (KXMLQLCVCAnimationPreset compatibility) -
+          applying it clears colorIndex''s slot back to no override (VCAnimation::applyPreset()''s
+          Color<N>Reset case calls setColorAt(colorIndex, QColor())), it does not use the color field.
+
+          '
       colorIndex:
         type: integer
+        description: color/colorReset/colorKnobs only - which of the 5 color slots (0..4) this preset
+          affects.
       color:
         type: string
+        description: color only - the color to set colorIndex to. Not used by colorReset (which
+          always clears to no override) or colorKnobs (whose live value comes from
+          vc.animation.setPresetKnobValue instead).
       text:
         type: string
       algorithmName:
@@ -4997,7 +5068,8 @@ operations:
     action: receive
     channel:
       $ref: '#/channels/qlcplus'
-    description: Broadcast after align/distribute/bulkStyle/reparent.
+    description: Broadcast after align/distribute/bulkStyle - NOT reparent, which is single-widget
+      and reported on vc.widget.updated instead. See VcWidgetsBulkUpdatedEvent.
     messages:
     - $ref: '#/channels/qlcplus/messages/vcWidgetsBulkUpdatedEvent'
   sendVcWidgetInputSourceSet:
