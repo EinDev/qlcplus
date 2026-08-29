@@ -30,6 +30,27 @@ class Fixture;
 class FixtureGroup;
 class FixtureManager;
 
+/**
+ * Editor for a single FixtureGroup's head layout (the grid used by 2D/3D group
+ * buttons and Simple Desk's group view).
+ *
+ * m_editGroup is a raw, non-owning pointer into Doc - it can be deleted out
+ * from under this class at any time, not just via an explicit "delete this
+ * group" action: deleteSelection() (below) removes single-head fixtures via
+ * FixtureManager::deleteFixtureInGroup(), which auto-deletes the whole
+ * FixtureGroup once it becomes empty (Doc::deleteFixtureGroup(), see doc.h -
+ * it deletes the object immediately and synchronously right after emitting
+ * fixtureGroupRemoved()). deleteSelection() (below) calls
+ * deleteFixtureInGroup() from inside a loop that keeps dereferencing
+ * m_editGroup afterwards (resignHead(), further iterations, a trailing
+ * updateGroupMap()) - any such method must re-check m_editGroup for nullptr
+ * after every call into FixtureManager/Doc that could trigger this path, and
+ * anything that needs to react to the group's removal must do so from a
+ * *direct* connection to Doc::fixtureGroupRemoved(quint32), synchronously,
+ * before the emitting call returns - not on a later event-loop tick - or the
+ * next dereference is a use-after-free. See commits 875bb70d5/c99e1d70c (a
+ * sibling branch at the time of writing) for a worked fix of exactly this.
+ */
 class FixtureGroupEditor final : public QObject
 {
     Q_OBJECT
