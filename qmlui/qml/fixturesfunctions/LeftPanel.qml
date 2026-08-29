@@ -37,6 +37,36 @@ SidePanel
         item.height = Qt.binding(function() { return leftSidePanel.height })
     }
 
+    /** Closes every capability tool popup opened from this panel (Intensity,
+     *  Shutter, Position, Color, Color Wheel, Gobos, Beam, Speed, Prism,
+     *  Effect, Maintenance). Unlike SceneFixtureConsole/DMXView/SimpleDesk's
+     *  ChannelToolLoader-based popups (see ChannelToolLoader.qml), each of
+     *  these tools below explicitly reparents itself to mainView - the
+     *  application's top-level root Item, a common ancestor of every tab -
+     *  so it renders above whichever tab is currently showing regardless of
+     *  that tab's own Loader visibility, and its own visibility is tied only
+     *  to its toggle button's checked state, never to mainView.currentContext.
+     *  So hiding the Fixtures & Functions tab does NOT hide these the way it
+     *  hides a plain-Item descendant: they must be closed explicitly by
+     *  unchecking their button (which their visible binding already reacts
+     *  to). Called from FixturesAndFunctions.qml's closeChannelTools(), the
+     *  same place that already closes the unrelated ChannelToolLoader
+     *  popups on a top-level tab switch. */
+    function closeChannelTools()
+    {
+        intToolButton.checked = false
+        shutterToolButton.checked = false
+        posToolButton.checked = false
+        colorToolButton.checked = false
+        cWheelToolButton.checked = false
+        goboToolButton.checked = false
+        beamToolButton.checked = false
+        speedToolButton.checked = false
+        prismToolButton.checked = false
+        effectToolButton.checked = false
+        maintenanceToolButton.checked = false
+    }
+
     Rectangle
     {
         id: sideBar
