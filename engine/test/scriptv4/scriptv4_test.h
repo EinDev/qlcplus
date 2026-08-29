@@ -1,6 +1,6 @@
 /*
   Q Light Controller Plus - Unit test
-  genericdmxsource_test.h
+  scriptv4_test.h
 
   Copyright (c) Massimo Callegari
 
@@ -17,33 +17,28 @@
   limitations under the License.
 */
 
-#ifndef GENERICDMXSOURCE_TEST_H
-#define GENERICDMXSOURCE_TEST_H
+#ifndef SCRIPTV4_TEST_H
+#define SCRIPTV4_TEST_H
 
 #include <QObject>
 
-class Doc;
-class GenericDMXSource_Test final : public QObject
+class ScriptV4_Test final : public QObject
 {
     Q_OBJECT
 
 private slots:
-    void initTestCase();
-    void cleanupTestCase();
-    void init();
-    void cleanup();
+    void convertLegacyMethodMapsKnownKeywords();
 
-    void setUnset();
-    void unsetAll();
+    void convertLineWaitPlainNumber();
+    void convertLineWaitWithTimeUnitIsQuoted();
+    void convertLineBlackoutOnOff();
+    void convertLineQuotedValueConvertsToSingleQuotes();
+    void convertLineRandomValueConvertsToEngineRandomCall();
+    void convertLineMissingColonIsSyntaxError();
 
-    void writeDMXAppliesValueToUniverse();
-    void writeDMXSkipsWhenOutputDisabled();
-    void writeDMXIgnoresUnknownFixture();
-    void writeDMXSkipsChannelsBeyondAvailableUniverses();
+    void getValueFromStringPlainAndRandomRange();
 
-private:
-    Doc* m_doc;
-    quint32 m_fxiId;
+    void functionAndFixtureListParseConvertedSyntax();
 };
 
-#endif // GENERICDMXSOURCE_TEST_H
+#endif // SCRIPTV4_TEST_H

@@ -18,6 +18,7 @@
 */
 
 #include <QtTest>
+#include <QSignalSpy>
 #define private public
 #include "qlcclipboard.h"
 #undef private
@@ -73,6 +74,62 @@ void QLCClipboard_Test::copyFunction()
     QCOMPARE(clip.hasFunction(), true);
     QVERIFY(clip.getFunction() != m_scene);
     QCOMPARE(clip.getFunction()->name(), QString("Copy of %1").arg(m_scene->name()));
+}
+
+void QLCClipboard_Test::copyFunctionNullIsNoOp()
+{
+    QLCClipboard clip(m_doc);
+    clip.copyContent(0, m_scene);
+    QVERIFY(clip.hasFunction());
+    Function *copy = clip.getFunction();
+
+    // copyContent(Function*) with a NULL function returns immediately and
+    // must leave a previously copied function untouched.
+    clip.copyContent(0, static_cast<Function*>(nullptr));
+
+    QVERIFY(clip.hasFunction());
+    QCOMPARE(clip.getFunction(), copy);
+}
+
+void QLCClipboard_Test::copyFunctionReplacesPreviousOrphanCopy()
+{
+    QLCClipboard clip(m_doc);
+    clip.copyContent(0, m_scene);
+    Function *firstCopy = clip.getFunction();
+    QVERIFY(firstCopy != nullptr);
+    QVERIFY(m_doc->function(firstCopy->id()) == nullptr);
+
+    // Copying again must discard (not leak) the previous orphan copy, since
+    // it was never added to m_doc. Watch its destroyed() signal rather than
+    // comparing pointers - a freed object's memory can coincidentally be
+    // reused for the very next allocation, which would make a pointer
+    // inequality check pass even for a leak.
+    QSignalSpy destroyedSpy(firstCopy, &QObject::destroyed);
+    clip.copyContent(0, m_scene);
+
+    QCOMPARE(destroyedSpy.count(), 1);
+    QVERIFY(clip.hasFunction());
+
+    clip.resetContents();
+    QCOMPARE(clip.hasFunction(), false);
+}
+
+void QLCClipboard_Test::resetContentsDoesNotDeleteCopyThatWasAddedToDoc()
+{
+    QLCClipboard clip(m_doc);
+    clip.copyContent(0, m_scene);
+    Function *copy = clip.getFunction();
+    QVERIFY(copy != nullptr);
+
+    // Simulate the copy having since been pasted into the project (added to
+    // Doc) - resetContents() must recognize this and only clear its own
+    // pointer, never delete a function that Doc now owns.
+    QVERIFY(m_doc->addFunction(copy));
+    clip.resetContents();
+    QCOMPARE(clip.hasFunction(), false);
+    QCOMPARE(m_doc->function(copy->id()), copy);
+
+    m_doc->deleteFunction(copy->id());
 }
 
 void QLCClipboard_Test::reset()
