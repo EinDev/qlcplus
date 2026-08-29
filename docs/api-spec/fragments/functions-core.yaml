@@ -479,8 +479,9 @@ messages:
             duration:
               type: integer
               minimum: 0
-              description: See FunctionsDetail.duration for the sentinel encoding, and functions-core-notes.md
-                for how it relates to Chaser/Sequence step hold/duration.
+              description: See FunctionsDetail.duration for the sentinel encoding. A Chaser/Sequence's
+                own duration here is normally overall/derived rather than set directly - see FunctionsChaserStep's
+                description for how a step's own hold/duration relate.
             blendMode:
               $ref: '#/components/schemas/FunctionsBlendModeEnum'
             baseRevision:
@@ -2827,10 +2828,22 @@ schemas:
         $ref: '#/components/schemas/FunctionsTempoTypeEnum'
       fadeInSpeed:
         type: integer
+        description: 'Milliseconds, or beats if tempoType is Beats. Two sentinel values are valid on
+          this and every other speed/duration field in this fragment (fadeOutSpeed, duration below,
+          ChaserStep/SequenceStep fadeIn/hold/fadeOut/duration, functions.setCommonAttributes''s speed
+          params): 4294967294 ((uint)-2, Function::infiniteSpeed()) means "infinite"/"hold forever" -
+          one of the most common real step configurations - and 4294967295 ((uint)-1, Function::defaultSpeed())
+          means "use the default" (only meaningful in specific contexts, e.g. as a Chaser/Sequence speed-mode
+          fallback). Clients send/receive these as plain (large) integers, not a separate null/"infinite"
+          wire form.
+
+          '
       fadeOutSpeed:
         type: integer
+        description: See fadeInSpeed above for the sentinel encoding.
       duration:
         type: integer
+        description: See fadeInSpeed above for the sentinel encoding.
       totalDuration:
         type: integer
         description: Function::totalDuration() - considers steps/stretch, may differ from duration.
