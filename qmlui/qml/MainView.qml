@@ -751,6 +751,24 @@ Rectangle
 
     PopupNetworkConnect { id: clientAccessPopup }
 
+    // "Invert Selection in Group(s)" disambiguation dialog - lives at the
+    // root so it's reachable regardless of which view/panel triggered
+    // contextManager.invertGroupSelection() (Ctrl+G, the Fixture Groups
+    // panel button, or the 2D view's "Groups" settings row all call the same
+    // C++ method).
+    PopupInvertGroupSelection { id: invertGroupSelectionPopup }
+
+    Connections
+    {
+        target: contextManager
+        ignoreUnknownSignals: true
+        function onCandidateGroupsForInversionReady(groups)
+        {
+            invertGroupSelectionPopup.groups = groups
+            invertGroupSelectionPopup.open()
+        }
+    }
+
     /** Menu to open/load/save a project */
     ActionsMenu
     {

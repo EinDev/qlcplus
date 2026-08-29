@@ -30,6 +30,7 @@
 
 class Doc;
 class Fixture;
+class FixtureGroup;
 class MainView2D;
 class MainView3D;
 class MainViewDMX;
@@ -408,11 +409,27 @@ public:
 
     /** "Invert Selection in Group(s)": replaces the current fixture selection
      *  with the union, across every Fixture Group that has at least one
-     *  currently-selected member, of that group's complement (the group's
-     *  own members that are NOT currently selected). A selected fixture that
-     *  belongs to no group contributes nothing and is simply dropped. A
-     *  no-op (selection left untouched) when nothing is currently selected. */
+     *  currently-selected member ("candidate group"), of that group's
+     *  complement (the group's own members that are NOT currently selected).
+     *  A selected fixture that belongs to no group contributes nothing and is
+     *  simply dropped. A no-op (selection left untouched) when nothing is
+     *  currently selected.
+     *
+     *  When the selection has 0 or 1 candidate group, this applies
+     *  immediately, same as always. When it spans more than one candidate
+     *  group, this instead emits candidateGroupsForInversionReady() with the
+     *  ambiguous candidates and waits for the QML side to ask the user which
+     *  one(s) to use (see confirmGroupSelectionInversion()) - the selection
+     *  is left untouched until/unless that happens. */
     Q_INVOKABLE void invertGroupSelection();
+
+    /** Applies "Invert Selection in Group(s)", scoped to just the Fixture
+     *  Groups named in $groupIds (as returned to QML via
+     *  candidateGroupsForInversionReady()'s "mValue" entries), after the user
+     *  has picked which of the ambiguous candidate groups to include. Any id
+     *  that no longer resolves to a FixtureGroup (e.g. deleted while the
+     *  dialog was open) is silently skipped. */
+    Q_INVOKABLE void confirmGroupSelectionInversion(QVariantList groupIds);
 
     Q_INVOKABLE void setChannelValueByType(int type, int value, bool isRelative = false, quint32 channel = UINT_MAX);
 
@@ -459,10 +476,24 @@ signals:
     void fixtureDmxTransformFlagsChanged();
     void fixtureDmxScaleChanged();
 
+    /** Emitted by invertGroupSelection() instead of applying immediately,
+     *  whenever the current selection spans more than one candidate Fixture
+     *  Group - the QML side is expected to let the user choose a subset and
+     *  then call confirmGroupSelectionInversion(). $groups is a QVariantList
+     *  of QVariantMaps, one per candidate group, each with "mLabel" (the
+     *  group's name()) and "mValue" (its id, to pass back in
+     *  confirmGroupSelectionInversion()). */
+    void candidateGroupsForInversionReady(QVariantList groups);
+
 private:
     /** Select the next available Fixture group, cycling through the
      *  groups defined in the Doc. Deselects everything else. */
     void selectNextFixtureGroup();
+
+    /** Shared tail end of invertGroupSelection()/confirmGroupSelectionInversion():
+     *  replaces the current fixture selection with
+     *  FixtureUtils::invertGroupSelection()'s result for $groups. */
+    void applyGroupSelectionInversion(const QList<FixtureGroup *> &groups);
 
     /** Returns the world axis indices (0=X, 1=Y, 2=Z) that represent the
      *  horizontal ($hAxis) and vertical ($vAxis) directions on screen for
