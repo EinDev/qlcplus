@@ -62,6 +62,20 @@ public:
     static bool isGroupFullySelected(const FixtureGroup *group, const MonitorProperties *monProps,
                                       const QList<quint32> &selectedFixtures);
 
+    /** Computes the "Invert Selection in Group(s)" result for the current
+     *  fixture selection: every Fixture Group in $groups that has at least
+     *  one currently-selected member ("candidate group") contributes its own
+     *  complement - the itemIDs (expanded to heads/linked sub-items via
+     *  $monProps) that belong to that group but are NOT in $selectedFixtures.
+     *  The return value is the union of these per-group complements across
+     *  every candidate group (deduplicated). A fixture selected but belonging
+     *  to no group contributes nothing and never appears in the result.
+     *  Returns an empty list if $selectedFixtures is empty or no group has a
+     *  selected member. */
+    static QList<quint32> invertGroupSelection(const QList<FixtureGroup *> &groups,
+                                                const MonitorProperties *monProps,
+                                                const QList<quint32> &selectedFixtures);
+
     /** Returns the first available space (in mm) for a rectangle
      * of the given width and height.
      * This method works with the monitor properties and the fixtures list */
