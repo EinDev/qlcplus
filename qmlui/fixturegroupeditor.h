@@ -115,10 +115,12 @@ private:
     bool m_pendingGroupRefresh = false;
     /** ID of m_editGroup, cached separately so slotFixtureGroupRemoved() can
      *  check "is this my group?" by ID alone, without dereferencing
-     *  m_editGroup - some removal paths (e.g. Doc::clearContents(), which
-     *  deletes each FixtureGroup *before* emitting fixtureGroupRemoved for
-     *  it, unlike Doc::deleteFixtureGroup()) would otherwise make that
-     *  dereference a use-after-free. */
+     *  m_editGroup. Every current FixtureGroup removal path (Doc::
+     *  deleteFixtureGroup(), Doc::clearContents()) emits fixtureGroupRemoved
+     *  before deleting the object, but comparing by cached ID rather than
+     *  ever dereferencing m_editGroup is kept as a defensive habit - a future
+     *  removal path that got the ordering wrong would otherwise silently
+     *  reintroduce a use-after-free here. */
     quint32 m_editGroupId;
 
     /*********************************************************************
