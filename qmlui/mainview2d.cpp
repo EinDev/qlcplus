@@ -81,7 +81,7 @@ void MainView2D::setUniverseFilter(quint32 universeFilter)
 
         Fixture *fixture = m_doc->fixture(fixtureID);
         if (fixture == nullptr)
-            return;
+            continue;
 
         int linkedIndex = FixtureUtils::itemLinkedIndex(itemID);
         int headIdx = FixtureUtils::itemHeadIndex(itemID);
