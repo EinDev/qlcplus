@@ -105,7 +105,7 @@ void ApiCoreDomain_Test::projectGetReturnsMetadata()
 
 void ApiCoreDomain_Test::modeGetSetBroadcastsEvent()
 {
-    helloAndGetClientId();
+    QString clientId = helloAndGetClientId();
 
     // 1. Get initial mode
     QJsonObject reply = sendAndWaitForReply(QStringLiteral("core.mode.get"), QJsonObject());
@@ -128,6 +128,9 @@ void ApiCoreDomain_Test::modeGetSetBroadcastsEvent()
     QJsonObject event = QJsonDocument::fromJson(spy.at(0).at(0).toString().toUtf8()).object();
     QCOMPARE(event.value(QStringLiteral("topic")).toString(), QStringLiteral("core.mode.changed"));
     QCOMPARE(event.value(QStringLiteral("data")).toObject().value(QStringLiteral("mode")).toString(), QStringLiteral("operate"));
+    // originClientId should be attributed to the client that made the
+    // change (00-conventions.md §3/§9), not left null.
+    QCOMPARE(event.value(QStringLiteral("originClientId")).toString(), clientId);
 }
 
 void ApiCoreDomain_Test::settingsGetSetBroadcastsEvent()

@@ -53,6 +53,17 @@ private slots:
 private:
     Doc *m_doc;
     ApiServer *m_server;
+
+    /** Requesting client's id, stashed by core.mode.set just before calling
+     *  Doc::setMode() so slotModeChanged() - fired synchronously from
+     *  within that call if the mode actually changed - can attribute
+     *  core.mode.changed to it instead of leaving originClientId null (see
+     *  00-conventions.md §3/§9). Doc::setMode() is a no-op (and never emits)
+     *  when the requested mode already matches the current one, so this is
+     *  unconditionally cleared again right after the call returns - the
+     *  same "set before, clear after" pattern as ApiIoDomain's
+     *  m_pendingOriginClientId, see its longer comment there. */
+    QString m_pendingOriginClientId;
 };
 
 #endif

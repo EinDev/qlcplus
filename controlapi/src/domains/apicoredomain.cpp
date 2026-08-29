@@ -310,7 +310,9 @@ void ApiCoreDomain::registerMethods()
             return;
         }
 
+        m_pendingOriginClientId = session->clientId();
         m_doc->setMode(mode);
+        m_pendingOriginClientId.clear();
         session->send(ApiEnvelope::buildOkResponse(id, QJsonObject()));
     });
 
@@ -358,7 +360,7 @@ void ApiCoreDomain::slotModeChanged(Doc::Mode mode)
 {
     QJsonObject data;
     data.insert(QStringLiteral("mode"), mode == Doc::Design ? QStringLiteral("design") : QStringLiteral("operate"));
-    m_server->broadcast(QStringLiteral("core.mode.changed"), data, QString(), false);
+    m_server->broadcast(QStringLiteral("core.mode.changed"), data, m_pendingOriginClientId, false);
 }
 
 void ApiCoreDomain::slotDocRevisionChanged(quint32 revision)

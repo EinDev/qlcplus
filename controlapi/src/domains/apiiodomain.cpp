@@ -206,7 +206,7 @@ void ApiIoDomain::slotUniverseAdded(quint32 id)
     data.insert(QStringLiteral("universe"), universeDetailToJson(universe));
     data.insert(QStringLiteral("docRevision"), int(m_doc->docRevision()));
     // Structural (§4a): always delivered, not subscribe-gated.
-    m_server->broadcast(QStringLiteral("io.universe.created"), data, QString(), false);
+    m_server->broadcast(QStringLiteral("io.universe.created"), data, m_pendingOriginClientId, false);
 }
 
 void ApiIoDomain::slotUniverseWritten(quint32 id, const QByteArray &postGMValues)
@@ -248,14 +248,14 @@ void ApiIoDomain::slotGrandMasterValueChanged(uchar value)
     // signal's own parameter.
     QJsonObject data = grandMasterStateToJson(m_doc->inputOutputMap());
     // Live (§4b) but low-frequency: always delivered, not subscribe-gated.
-    m_server->broadcast(QStringLiteral("io.grandMaster.changed"), data, QString(), false);
+    m_server->broadcast(QStringLiteral("io.grandMaster.changed"), data, m_pendingOriginClientId, false);
 }
 
 void ApiIoDomain::slotBlackoutChanged(bool blackout)
 {
     QJsonObject data;
     data.insert(QStringLiteral("blackout"), blackout);
-    m_server->broadcast(QStringLiteral("io.blackout.changed"), data, QString(), false);
+    m_server->broadcast(QStringLiteral("io.blackout.changed"), data, m_pendingOriginClientId, false);
 }
 
 void ApiIoDomain::registerMethods()
@@ -316,7 +316,11 @@ void ApiIoDomain::registerMethods()
         // applies m_pendingUniverseName if set above) fires synchronously
         // within addUniverse() since InputOutputMap and Doc share this thread -
         // doc->docRevision() below already reflects the new value.
-        if (doc->inputOutputMap()->addUniverse() == false)
+        m_pendingOriginClientId = session->clientId();
+        bool added = doc->inputOutputMap()->addUniverse();
+        m_pendingOriginClientId.clear();
+
+        if (added == false)
         {
             m_hasPendingUniverseName = false;
             m_pendingUniverseName.clear();
@@ -337,10 +341,16 @@ void ApiIoDomain::registerMethods()
         session->send(ApiEnvelope::buildOkResponse(id, grandMasterStateToJson(doc->inputOutputMap())));
     });
 
-    dispatcher->registerMethod(QStringLiteral("io.grandMaster.setValue"), [doc](ApiSession *session, const QString &id, const QJsonObject &params)
+    dispatcher->registerMethod(QStringLiteral("io.grandMaster.setValue"), [doc, this](ApiSession *session, const QString &id, const QJsonObject &params)
     {
         int value = qBound(0, params.value(QStringLiteral("value")).toInt(), 255);
+        // setGrandMasterValue() is a no-op (and never emits) when value
+        // already matches the current one, so clear the pending origin
+        // again right after the call rather than relying on the slot to -
+        // it may never run. See m_pendingOriginClientId's own comment.
+        m_pendingOriginClientId = session->clientId();
         doc->inputOutputMap()->setGrandMasterValue(uchar(value));
+        m_pendingOriginClientId.clear();
         session->send(ApiEnvelope::buildOkResponse(id, QJsonObject()));
     });
 
@@ -352,16 +362,20 @@ void ApiIoDomain::registerMethods()
         session->send(ApiEnvelope::buildOkResponse(id, result));
     });
 
-    dispatcher->registerMethod(QStringLiteral("io.blackout.set"), [doc](ApiSession *session, const QString &id, const QJsonObject &params)
+    dispatcher->registerMethod(QStringLiteral("io.blackout.set"), [doc, this](ApiSession *session, const QString &id, const QJsonObject &params)
     {
+        m_pendingOriginClientId = session->clientId();
         doc->inputOutputMap()->setBlackout(params.value(QStringLiteral("blackout")).toBool());
+        m_pendingOriginClientId.clear();
         session->send(ApiEnvelope::buildOkResponse(id, QJsonObject()));
     });
 
-    dispatcher->registerMethod(QStringLiteral("io.blackout.toggle"), [doc](ApiSession *session, const QString &id, const QJsonObject &params)
+    dispatcher->registerMethod(QStringLiteral("io.blackout.toggle"), [doc, this](ApiSession *session, const QString &id, const QJsonObject &params)
     {
         Q_UNUSED(params)
+        m_pendingOriginClientId = session->clientId();
         bool newState = doc->inputOutputMap()->toggleBlackout();
+        m_pendingOriginClientId.clear();
         QJsonObject result;
         result.insert(QStringLiteral("blackout"), newState);
         session->send(ApiEnvelope::buildOkResponse(id, result));
