@@ -37,6 +37,8 @@ FixtureGroupEditor::FixtureGroupEditor(QQuickView *view, Doc *doc,
     , m_view(view)
     , m_doc(doc)
     , m_fixtureManager(fxMgr)
+    , m_editGroup(nullptr)
+    , m_editGroupId(FixtureGroup::invalidId())
 {
     Q_ASSERT(m_doc != nullptr);
 
@@ -49,6 +51,7 @@ FixtureGroupEditor::FixtureGroupEditor(QQuickView *view, Doc *doc,
     // displaying it (e.g. the 2D/3D groups bar) are always up to date
     connect(m_doc, SIGNAL(fixtureGroupAdded(quint32)), this, SIGNAL(groupsListModelChanged()));
     connect(m_doc, SIGNAL(fixtureGroupRemoved(quint32)), this, SIGNAL(groupsListModelChanged()));
+    connect(m_doc, SIGNAL(fixtureGroupRemoved(quint32)), this, SLOT(slotFixtureGroupRemoved(quint32)));
     connect(m_doc, SIGNAL(fixtureGroupChanged(quint32)), this, SLOT(slotFixtureGroupChanged(quint32)));
 }
 
@@ -176,6 +179,28 @@ void FixtureGroupEditor::slotFixtureGroupChanged(quint32 id)
     emit groupsListModelChanged();
 }
 
+void FixtureGroupEditor::slotFixtureGroupRemoved(quint32 id)
+{
+    // Compare by cached ID rather than dereferencing m_editGroup: some
+    // removal paths (Doc::clearContents()) delete the FixtureGroup *before*
+    // emitting this signal, unlike Doc::deleteFixtureGroup() which emits
+    // first - m_editGroup itself may already be dangling by the time this
+    // slot runs, so it must never be read, only compared/nulled.
+    if (m_editGroup == nullptr || m_editGroupId != id)
+        return;
+
+    m_editGroup = nullptr;
+    m_editGroupId = FixtureGroup::invalidId();
+    m_groupSelection.clear();
+    updateGroupMap(); // clears m_groupMap/m_groupLabels internally, but its own
+                       // null-guard skips emitting - do that explicitly below
+    emit groupNameChanged();
+    emit groupSizeChanged();
+    emit groupMapChanged();
+    emit groupLabelsChanged();
+    emit selectionDataChanged();
+}
+
 /*********************************************************************
  * Fixture Group Grid Editing
  *********************************************************************/
@@ -186,6 +211,7 @@ void FixtureGroupEditor::setEditGroup(QVariant reference)
         return;
 
     m_editGroup = reference.value<FixtureGroup *>();
+    m_editGroupId = m_editGroup == nullptr ? FixtureGroup::invalidId() : m_editGroup->id();
 
     emit groupNameChanged();
     emit groupSizeChanged();
@@ -455,6 +481,12 @@ void FixtureGroupEditor::deleteSelection()
             // and enqueues its own Tardis undo action for it, so the
             // resignHead() below is a no-op in this branch.
             m_fixtureManager->deleteFixtureInGroup(m_editGroup->id(), itemID, fxPath);
+            // deleteFixtureInGroup() can empty out and delete m_editGroup's
+            // underlying FixtureGroup synchronously (see
+            // slotFixtureGroupRemoved()), which already nulls m_editGroup -
+            // don't touch it any further in that case.
+            if (m_editGroup == nullptr)
+                break;
             m_editGroup->resignHead(point);
         }
         else
@@ -467,7 +499,8 @@ void FixtureGroupEditor::deleteSelection()
 
     m_groupSelection.clear();
 
-    updateGroupMap();
+    if (m_editGroup != nullptr)
+        updateGroupMap();
 }
 
 void FixtureGroupEditor::transformSelection(int transformation)

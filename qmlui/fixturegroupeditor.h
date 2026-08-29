@@ -68,6 +68,14 @@ public slots:
      *  if any, stays in sync */
     void slotFixtureGroupChanged(quint32 id);
 
+    /** Slot called whenever a FixtureGroup is removed from the Doc - by any
+     *  path (deleteSelection() emptying it out, an explicit group deletion,
+     *  or an undo/redo). Clears m_editGroup if it's the group being removed,
+     *  since Doc::deleteFixtureGroup() deletes the object immediately (not
+     *  deferred) right after emitting this signal - without this, m_editGroup
+     *  would dangle for any caller still using it. */
+    void slotFixtureGroupRemoved(quint32 id);
+
 signals:
     /** Notify the listeners that the FixtureGroup list model has changed */
     void groupsListModelChanged();
@@ -86,6 +94,13 @@ private:
      *  when a multi-head operation (move/transform/undo of one) fires
      *  FixtureGroup::changed() many times in a single gesture */
     bool m_pendingGroupRefresh = false;
+    /** ID of m_editGroup, cached separately so slotFixtureGroupRemoved() can
+     *  check "is this my group?" by ID alone, without dereferencing
+     *  m_editGroup - some removal paths (e.g. Doc::clearContents(), which
+     *  deletes each FixtureGroup *before* emitting fixtureGroupRemoved for
+     *  it, unlike Doc::deleteFixtureGroup()) would otherwise make that
+     *  dereference a use-after-free. */
+    quint32 m_editGroupId;
 
     /*********************************************************************
      * Fixture Group Grid Editing
