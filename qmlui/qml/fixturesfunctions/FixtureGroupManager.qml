@@ -221,6 +221,19 @@ Rectangle
 
                 IconButton
                 {
+                    id: invertGroupSelectionButton
+                    z: 2
+                    width: height
+                    height: topBar.height - 2
+                    faSource: FontAwesome.fa_retweet
+                    faColor: "white"
+                    tooltip: qsTr("Invert Selection in Group(s)") + " (CTRL+G)"
+                    enabled: contextManager.selectedFixturesCount > 0
+                    onClicked: contextManager.invertGroupSelection()
+                }
+
+                IconButton
+                {
                     id: delItemButton
                     visible: allowEditing
                     z: 2

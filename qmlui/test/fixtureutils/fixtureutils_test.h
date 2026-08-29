@@ -59,6 +59,11 @@ private slots:
     void fixturePositionDeltaUnaffectedByDefaultMonProps();
     void fixturePositionDeltaAppliesPerFixtureInvertAndScale();
     void fixtureRotationDeltaAppliesPerFixtureInvertAndScale();
+
+    void invertGroupSelectionWorkedExample();
+    void invertGroupSelectionNoOpWhenNothingSelected();
+    void invertGroupSelectionDropsUngroupedFixture();
+    void invertGroupSelectionEmptyWhenGroupFullySelected();
 };
 
 #endif

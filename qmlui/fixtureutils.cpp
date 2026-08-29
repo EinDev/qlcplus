@@ -18,6 +18,7 @@
 */
 
 #include <QDebug>
+#include <QSet>
 #include <Qt3DCore/QTransform>
 
 #include "monitorproperties.h"
@@ -288,6 +289,59 @@ bool FixtureUtils::isGroupFullySelected(const FixtureGroup *group, const Monitor
     }
 
     return true;
+}
+
+QList<quint32> FixtureUtils::invertGroupSelection(const QList<FixtureGroup *> &groups,
+                                                   const MonitorProperties *monProps,
+                                                   const QList<quint32> &selectedFixtures)
+{
+    QList<quint32> result;
+
+    if (selectedFixtures.isEmpty())
+        return result;
+
+    QSet<quint32> selectedSet(selectedFixtures.begin(), selectedFixtures.end());
+    QSet<quint32> resultSet;
+
+    for (const FixtureGroup *group : groups)
+    {
+        if (group == nullptr || group->fixtureList().isEmpty())
+            continue;
+
+        // Expand the group's member fixtures into their individual
+        // heads/linked sub-items, at the same itemID granularity used by
+        // $selectedFixtures, and figure out which of those are candidates
+        // (selected) versus complement (not selected) as we go.
+        QList<quint32> groupItemIDs;
+        bool hasSelectedMember = false;
+
+        for (quint32 fxID : group->fixtureList())
+        {
+            for (quint32 subID : monProps->fixtureIDList(fxID))
+            {
+                quint16 headIndex = monProps->fixtureHeadIndex(subID);
+                quint16 linkedIndex = monProps->fixtureLinkedIndex(subID);
+                quint32 itemID = FixtureUtils::fixtureItemID(fxID, headIndex, linkedIndex);
+
+                groupItemIDs.append(itemID);
+                if (selectedSet.contains(itemID))
+                    hasSelectedMember = true;
+            }
+        }
+
+        // Not a candidate group: none of its members are currently selected
+        if (hasSelectedMember == false)
+            continue;
+
+        for (quint32 itemID : std::as_const(groupItemIDs))
+        {
+            if (selectedSet.contains(itemID) == false)
+                resultSet.insert(itemID);
+        }
+    }
+
+    result = QList<quint32>(resultSet.begin(), resultSet.end());
+    return result;
 }
 
 QPointF FixtureUtils::available2DPosition(Doc *doc, int pointOfView, QRectF fxRect)
