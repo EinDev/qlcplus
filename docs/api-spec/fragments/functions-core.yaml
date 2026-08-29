@@ -2467,6 +2467,15 @@ messages:
           - sourceIndex
           - destIndex
           - baseRevision
+          description: 'A real editor''s bulk step operations (ChaserEditor multi-move, duplicate, shuffle)
+            have no single batch method here - they must be replicated as N sequential calls to removeStep/moveStep/addStep,
+            each individually gated by its own baseRevision (§4a). Any call in the middle of such a sequence
+            can CONFLICT (another client''s edit lands between two of the client''s own calls), leaving
+            the step list in a partially-applied state with no rollback - a client implementing "duplicate
+            3 steps" or "shuffle" should be prepared to detect this and re-fetch/retry/undo, not assume
+            the whole batch is atomic.
+
+            '
           properties:
             functionId:
               type: string
