@@ -275,6 +275,32 @@ void Function_Test::sources()
     QVERIFY(stub->stopped());
 }
 
+void Function_Test::scriptStopFunctionForceStop()
+{
+    Doc doc(this);
+    MasterTimer timer(&doc);
+
+    // A Function started by something other than a script (e.g. a Virtual
+    // Console button, modeled here as a container Function starting it -
+    // the Chaser/Collection/Show convention).
+    Function_Stub* stub = new Function_Stub(&doc);
+    FunctionParent vcWidgetSource(FunctionParent::AutoVCWidget, 7);
+    stub->start(&timer, vcWidgetSource);
+    QCOMPARE(stub->sources().size(), 1);
+    QVERIFY(stub->stopped() == false);
+
+    // A JS Script's "stopFunction(x)" command (or its own exit cleanup)
+    // must still force-stop this Function even though the script never
+    // started it itself - this is ScriptRunner's original, long-standing
+    // behavior (see FunctionParent::ScriptStopFunction's doc comment) and
+    // must NOT have been narrowed to "only stop what I started" by giving
+    // the script's start side its own FunctionParent(Function, scriptID)
+    // identity.
+    stub->stop(FunctionParent::master(FunctionParent::ScriptStopFunction));
+    QVERIFY(stub->sources().isEmpty());
+    QVERIFY(stub->stopped());
+}
+
 void Function_Test::adjustIntensity()
 {
     Doc doc(this);
