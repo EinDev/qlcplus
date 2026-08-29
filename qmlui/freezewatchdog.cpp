@@ -23,13 +23,16 @@
 #include <QDateTime>
 #include <QDebug>
 #include <QDir>
+#include <QFile>
 #include <QMutex>
 #include <QMutexLocker>
 #include <QThread>
 
 #ifdef Q_OS_WIN
 #include <windows.h>
+#include <cstring>
 #include <vector>
+#include "freezewatchdog_resource.h"
 #endif
 
 namespace {
@@ -79,6 +82,12 @@ void FreezeWatchdog::start()
     m_heartbeatTimer->start(kHeartbeatIntervalMs);
 
 #ifdef Q_OS_WIN
+    // Captured here (called from the GUI thread) so the watchdog thread can
+    // later pick this exact thread's section out of gdb's "thread apply all
+    // bt" output by matching gdb's "(Thread <pid>.0x<tid>)" header text -
+    // more robust than trusting gdb's own "Thread N" numbering, which is
+    // attach-order dependent, not identity.
+    m_mainThreadId = GetCurrentThreadId();
     m_thread = std::thread(&FreezeWatchdog::watchdogLoop, this);
 #endif
 }
@@ -136,6 +145,109 @@ QString resolveGdbPath()
     if (GetFileAttributesW(kKnownGdb) != INVALID_FILE_ATTRIBUTES)
         return QString::fromWCharArray(kKnownGdb);
     return QStringLiteral("gdb");
+}
+
+// Pulls just the blocked (main/GUI) thread's own section out of gdb's
+// "thread apply all bt" output, so the freeze dialog can show a short,
+// directly-relevant, copyable backtrace instead of every thread (which can
+// run to tens of KB across 30+ threads - see the full file for that).
+//
+// Matches on gdb's own "(Thread <pid>.0x<tid>)" header text, where <tid> is
+// literally the Windows thread ID in hex - i.e. exactly what
+// GetCurrentThreadId() returned when FreezeWatchdog::start() captured it on
+// the GUI thread. This is deliberately not based on gdb's "Thread N"
+// numbering, which just reflects attach/enumeration order, not identity.
+QString extractMainThreadSection(const QString &fullText, qint64 pid, unsigned long mainTid)
+{
+    const QString marker = QStringLiteral("Thread %1.0x%2)")
+                                .arg(pid)
+                                .arg(qulonglong(mainTid), 0, 16);
+    const int markerPos = fullText.indexOf(marker);
+    if (markerPos < 0)
+        return QString();
+
+    int lineStart = fullText.lastIndexOf(QLatin1Char('\n'), markerPos);
+    lineStart = (lineStart < 0) ? 0 : lineStart + 1;
+
+    const int nextThreadPos = fullText.indexOf(QStringLiteral("\nThread "), markerPos);
+    const int sectionEnd = (nextThreadPos < 0) ? fullText.length() : nextThreadPos;
+
+    return fullText.mid(lineStart, sectionEnd - lineStart).trimmed();
+}
+
+// Data handed into the freeze dialog (IDD_FREEZE_DIALOG, qmlui.rc) via
+// DialogBoxParamW's lParam; retrieved back in FreezeDialogProc via
+// GetWindowLongPtrW(hDlg, DWLP_USER) - the standard pattern for a plain
+// (non-C++-class-based) Win32 dialog proc.
+struct FreezeDialogData
+{
+    std::wstring reportText; // combined summary + backtrace, CRLF-normalized
+};
+
+INT_PTR CALLBACK FreezeDialogProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+    switch (msg)
+    {
+    case WM_INITDIALOG:
+    {
+        auto *data = reinterpret_cast<FreezeDialogData *>(lParam);
+        SetWindowLongPtrW(hDlg, DWLP_USER, reinterpret_cast<LONG_PTR>(data));
+
+        HWND hEdit = GetDlgItem(hDlg, IDC_FREEZE_EDIT);
+        SetWindowTextW(hEdit, data ? data->reportText.c_str() : L"");
+        // Select-all up front so a plain Ctrl+C works immediately, without
+        // the user needing to click/drag-select first.
+        SetFocus(hEdit);
+        SendMessageW(hEdit, EM_SETSEL, 0, -1);
+        return FALSE; // we already set focus ourselves
+    }
+    case WM_COMMAND:
+        switch (LOWORD(wParam))
+        {
+        case IDOK:
+        case IDCANCEL:
+            EndDialog(hDlg, LOWORD(wParam));
+            return TRUE;
+        case IDC_FREEZE_COPY:
+        {
+            auto *data = reinterpret_cast<FreezeDialogData *>(GetWindowLongPtrW(hDlg, DWLP_USER));
+            if (data && OpenClipboard(hDlg))
+            {
+                EmptyClipboard();
+                const size_t bytes = (data->reportText.size() + 1) * sizeof(wchar_t);
+                HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, bytes);
+                if (hMem)
+                {
+                    void *dst = GlobalLock(hMem);
+                    if (dst)
+                    {
+                        memcpy(dst, data->reportText.c_str(), bytes);
+                        GlobalUnlock(hMem);
+                        SetClipboardData(CF_UNICODETEXT, hMem);
+                    }
+                    else
+                    {
+                        GlobalFree(hMem);
+                    }
+                }
+                CloseClipboard();
+            }
+            return TRUE;
+        }
+        default:
+            break;
+        }
+        break;
+    case WM_CLOSE:
+        // DialogBoxParamW does NOT close on WM_CLOSE by default (unlike
+        // MessageBoxW/TaskDialogIndirect) - without this, Alt-F4/the title
+        // bar X/a scripted PostMessage(WM_CLOSE) would all do nothing.
+        EndDialog(hDlg, IDCANCEL);
+        return TRUE;
+    default:
+        break;
+    }
+    return FALSE;
 }
 
 } // namespace
@@ -259,18 +371,93 @@ void FreezeWatchdog::onFreezeDetected(qint64 heartbeatAgeMs)
 
     CloseHandle(hFile);
 
-    const QString msg = QStringLiteral(
-        "QLC+ appears to be frozen.\n\n"
-        "Diagnostic information has been saved to:\n%1\n\n"
-        "You can end the process now, or wait to see if it recovers.")
-        .arg(filePath);
+    // Read the report back so its text can be shown (selectable/copyable)
+    // directly in the dialog below, not just referenced by path.
+    QString fullReport;
+    {
+        QFile f(filePath);
+        if (f.open(QIODevice::ReadOnly))
+            fullReport = QString::fromUtf8(f.readAll());
+    }
 
-    MessageBoxW(nullptr, reinterpret_cast<const wchar_t *>(msg.utf16()),
-                L"QLC+ - Freeze detected", MB_OK | MB_ICONWARNING | MB_TOPMOST);
+    const QString mainThreadBacktrace = extractMainThreadSection(fullReport, QCoreApplication::applicationPid(), m_mainThreadId);
+
+    QString expanded;
+    bool usedFullDumpFallback = false;
+    if (!mainThreadBacktrace.isEmpty())
+    {
+        expanded = mainThreadBacktrace;
+    }
+    else if (!fullReport.isEmpty())
+    {
+        // Couldn't isolate the main thread's own section (unexpected gdb
+        // output format, thread already gone, etc.) - still show as much of
+        // the real text as reasonably fits rather than nothing.
+        usedFullDumpFallback = true;
+        constexpr int kFallbackCharLimit = 8000;
+        expanded = fullReport.left(kFallbackCharLimit);
+        if (fullReport.length() > kFallbackCharLimit)
+            expanded += QStringLiteral("\n\n... (truncated - see the full report file for the rest)");
+    }
+    else
+    {
+        expanded = QStringLiteral("(no backtrace text available - gdb may have failed to run; see the diagnostic file for details, if any)");
+    }
+
+    QString content = QStringLiteral(
+        "The main thread hasn't responded for about %1 seconds.\n\n"
+        "A full diagnostic report (every thread) was saved to:\n%2")
+        .arg(heartbeatAgeMs / 1000)
+        .arg(filePath);
+    if (usedFullDumpFallback)
+        content += QStringLiteral("\n\n(Could not isolate the frozen thread's own section below - showing the start of the full multi-thread dump instead.)");
+
+    // Custom dialog (IDD_FREEZE_DIALOG, qmlui.rc) with a read-only multiline
+    // EDIT control, rather than MessageBoxW or (as originally tried)
+    // TaskDialogIndirect: a Win32 EDIT control - even ES_READONLY - natively
+    // supports drag-select, double-click word-select, and Ctrl+A/Ctrl+C,
+    // which is the actual point of this dialog (paste the backtrace straight
+    // into a bug report). TaskDialogIndirect's content/expanded-information
+    // areas looked like they should support that too, but a live end-to-end
+    // test showed their text is NOT selectable, so that approach was
+    // dropped. Like MessageBoxW, DialogBoxParamW pumps its own message loop
+    // on the calling thread - confirmed working with the Qt main thread's
+    // own loop deadlocked (same live test). A Copy-to-clipboard button is
+    // included as a no-selection-required alternative.
+    QString combined = content + QStringLiteral("\r\n\r\n") + expanded;
+    // Normalize to CRLF: an EDIT control renders bare \n as one giant
+    // unwrapped line, and gdb's own output (unlike our own writeLine() calls
+    // above) is not guaranteed to already be CRLF.
+    combined.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
+    combined.replace(QLatin1Char('\n'), QStringLiteral("\r\n"));
+
+    FreezeDialogData dialogData;
+    dialogData.reportText = combined.toStdWString();
+
+    const INT_PTR dlgResult = DialogBoxParamW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(IDD_FREEZE_DIALOG),
+                                               nullptr, FreezeDialogProc, reinterpret_cast<LPARAM>(&dialogData));
+    const bool shownDialog = dlgResult > 0;
+    if (!shownDialog)
+        qWarning().noquote() << "[FreezeWatchdog] DialogBoxParamW failed, GetLastError=" << GetLastError();
+
+    if (!shownDialog)
+    {
+        const QString msg = QStringLiteral(
+            "QLC+ appears to be frozen.\n\n"
+            "Diagnostic information has been saved to:\n%1\n\n"
+            "You can end the process now, or wait to see if it recovers.")
+            .arg(filePath);
+
+        MessageBoxW(nullptr, reinterpret_cast<const wchar_t *>(msg.utf16()),
+                    L"QLC+ - Freeze detected", MB_OK | MB_ICONWARNING | MB_TOPMOST);
+    }
 }
 
 void FreezeWatchdog::appendRecoveryNote()
 {
+    // Note: onFreezeDetected() blocks the watchdog thread for as long as the
+    // dialog is on screen, so recovery can't be observed/logged until the
+    // user dismisses it, even if the main thread actually resumed earlier.
     if (m_diagnosticFilePath.isEmpty())
         return;
 
