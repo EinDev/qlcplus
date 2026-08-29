@@ -480,8 +480,10 @@ void VCCueList::setChaserID(quint32 fid)
                    this, SLOT(slotFunctionStopped(quint32)));
         disconnect(current, SIGNAL(currentStepChanged(int)),
                    this, SLOT(slotCurrentStepChanged(int)));
-        connect(current, SIGNAL(stepChanged(int)),
-                this, SLOT(slotStepChanged(int)));
+        disconnect(current, SIGNAL(stepChanged(int)),
+                   this, SLOT(slotStepChanged(int)));
+        disconnect(current, SIGNAL(stepsListChanged(quint32)),
+                   this, SLOT(slotStepsListChanged(quint32)));
 
         if (current->isRunning())
         {
@@ -545,8 +547,12 @@ void VCCueList::slotFunctionRemoved(quint32 fid)
 
 void VCCueList::slotStepChanged(int index)
 {
-    ChaserStep *step = chaser()->stepAt(index);
-    ChaserEditor::updateStepInListModel(m_doc, chaser(), m_stepsList, step, index);
+    Chaser *ch = chaser();
+    if (ch == nullptr)
+        return;
+
+    ChaserStep *step = ch->stepAt(index);
+    ChaserEditor::updateStepInListModel(m_doc, ch, m_stepsList, step, index);
 }
 
 void VCCueList::slotStepsListChanged(quint32 fid)
