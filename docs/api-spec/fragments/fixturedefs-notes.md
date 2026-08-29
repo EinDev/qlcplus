@@ -20,19 +20,15 @@ mutations on the show's global `docRevision` from 00-conventions.md §4a.
 Instead it introduces a two-tier scheme, visible in the schemas:
 
 - **`defRevision`** — per-definition (manufacturer+model) revision in the
-  shared library cache. `fixturedefs.session.create`/`.open` take a
-  `baseDefRevision` to detect if the library copy changed since the client
-  last looked.
+  shared library cache. `fixturedefs.delete` and `fixturedefs.save` take a
+  `baseRevision` (referring to this `defRevision`) to detect if the library
+  copy changed since the client last looked.
 - **`sessionRevision`** — an in-memory editing session (`fixturedefs.session.*`
   — create/open/close/import/list/forkToUser/setMetadata/setPhysical/
   validate) is a private draft cloned from the library, starting its own
   revision counter at 0. All the channel/mode/capability/alias mutation
-  methods operate against a `sessionId`, not the library definition
-  directly. `fixturedefs.save` is presumably the point where a session's
-  edits get committed back into the library (bumping `defRevision`) — worth
-  double-checking `fixturedefs.yaml`'s `FixtureDefsSaveRequest`/
-  `FixtureDefsSavedEvent` payloads to confirm this is exactly how it works
-  before finalizing the merged spec's prose description of the model.
+  methods operate against a `sessionId` and a `baseRevision` (referring
+  to this `sessionRevision`).
 - There's also a `forkToUser` method (a "Save As" for definitions, likely
   writing to the user's fixture directory rather than the system one, per
   QLC+'s usual manufacturer/model dual-lookup path) - confirm this

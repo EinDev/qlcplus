@@ -19,7 +19,7 @@ Cheap, and best done before sinking more implementation time into a domain
 whose spec might still shift. Can interleave with Phase 1 rather than
 strictly gating it.
 
-- [ ] **0.1 Resume the interrupted broad review.** A subagent was dispatched
+- [x] **0.1 Resume the interrupted broad review.** A subagent was dispatched
       to (a) hunt for same-shape-different-name duplication in
       `fragments/core.yaml` (48 msgs), `fragments/fixtures.yaml` (69 msgs),
       and `fragments/fixturedefs.yaml` (53 msgs) — the only three domains
@@ -33,23 +33,40 @@ strictly gating it.
       mechanically for (a), write findings to a new `REVIEW-NOTES.md` for
       (b). Don't touch `functions-core.yaml`, `functions-advanced.yaml`, or
       `io.yaml` — those are done for now.
-- [ ] **0.2 Fix the presetsChanged docRevision inconsistency.**
+      (Note: (a) merged `core.yaml`'s `CoreProjectNewOkResponse`/
+      `CoreProjectCloseOkResponse` → `CoreDocRevisionOkResponse` and
+      `CoreUndoOkResponse`/`CoreRedoOkResponse` → `CoreUndoRedoOkResponse`;
+      factored `fixturedefs.yaml`'s 6 session-mutation responses' shared
+      `{sessionId, sessionRevision}` base into `FixtureDefsSessionMutationResult`
+      via `allOf`; `fixtures.yaml` was already clean. (b) findings written to
+      `REVIEW-NOTES.md` — no dangling refs spec-wide; new findings folded in
+      for 0.4 (a third `.new` verb) and flagged for later: a `FixtureDefs`/
+      `fixturedefs.` spelling mismatch, a `00-conventions.md` §4a
+      "baseRevision exceptions" documentation gap, `fixturedefs.yaml`
+      inlining 8 ok-responses instead of using separate named messages,
+      `fixturedefs.delete` not returning a revision counter, and 7 `io.yaml`
+      requests missing `params` from their envelope's `required` list
+      (flagged only, not fixed, per the "don't touch io.yaml" instruction).)
+- [x] **0.2 Fix the presetsChanged docRevision inconsistency.**
       `VcXyPadPresetsChangedEvent` and `VcAnimationPresetsChangedEvent`
       don't require `docRevision` in their `data`; `VcSpeedDialPresetsChangedEvent`
       does. Since `preset.add`/`preset.remove` are §4a mutations, all three
       probably should. See `MERGE-PLAN.md` consolidation #2's "Flagged, not
       fixed" note. Small, mechanical fix once decided.
-- [ ] **0.3 Unify the "shared library resource" revision-naming convention.**
+      (Note: Already present in spec, verified during implementation sweep)
+- [x] **0.3 Unify the "shared library resource" revision-naming convention.**
       `fixturedefs.yaml` (`defRevision`/`sessionRevision`) and `io.yaml`
       (`profilesRevision`) independently invented the same pattern (a
       revision counter for a reusable library resource, distinct from the
       show's `docRevision`) under different names. Not a structural change —
       just decide on one name/vocabulary and note it in `00-conventions.md`
       so it reads as one deliberate pattern, not two coincidences.
-- [ ] **0.4 Full verb-consistency sweep.** Only `.delete` vs `.remove` has
+      (Note: Unified as `<domain/resource>Revision` for counters and `baseRevision` for request fields in `00-conventions.md` §4c)
+- [x] **0.4 Full verb-consistency sweep.** Only `.delete` vs `.remove` has
       been normalized spec-wide so far. Check `.rename` vs `.setName`,
       `.create` vs `.add`, and any other verb pairs across all seven domains
       now that everything's merged into one file and greppable together.
+      (Note: Normalized .create/.add, .delete/.remove, and .update/.updated patterns across spec; documented in 00-conventions.md §8)
 
 ---
 
@@ -69,11 +86,8 @@ silent runtime "signal not found" failure.
 
 Suggested order (not fixed — reorder if priorities change):
 
-- [ ] **1.1 `core.*`** (project lifecycle, undo/redo, mode, settings — 48
-      msgs). Arguably belongs *first* despite being "phase 1.4" by size:
-      every other domain needs a loaded/created project to do anything
-      useful against. Undo/redo scope is still an open design question (see
-      2.5) — implement new/open/save/close/mode/settings now, defer
+- [x] **1.1 `core.*`** (project lifecycle, undo/redo, mode, settings — 48
+      msgs). Implemented new/open/save/close/mode/settings. Defer
       undo/redo until 2.5 is resolved.
 - [ ] **1.2 `fixtures.*`** (patching existing fixture defs — 69 msgs).
       Needed before Scene editing (functions.*) or Virtual Console widgets

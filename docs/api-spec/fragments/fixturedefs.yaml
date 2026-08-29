@@ -97,11 +97,11 @@ messages:
         method: { const: fixturedefs.delete }
         params:
           type: object
-          required: [manufacturer, model, baseDefRevision]
+          required: [manufacturer, model, baseRevision]
           properties:
             manufacturer: { type: string }
             model: { type: string }
-            baseDefRevision:
+            baseRevision:
               type: integer
               description: "defRevision this client last observed for this manufacturer/model."
 
@@ -239,7 +239,7 @@ messages:
             ok: { const: true }
             result:
               type: object
-              required: [sessionId, definition, sessionRevision, isUser, baseDefRevision]
+              required: [sessionId, definition, sessionRevision, isUser, baseRevision]
               properties:
                 sessionId: { type: string }
                 definition:
@@ -248,7 +248,7 @@ messages:
                   type: integer
                   description: "Starts at 0. See fixturedefs-notes.md for the two-tier session-vs-library revision model."
                 isUser: { type: boolean }
-                baseDefRevision:
+                baseRevision:
                   type: [integer, "null"]
                   description: "The library's defRevision for this manufacturer/model at the moment the session was opened; null for a brand-new (never-saved) session. Echoed back at fixturedefs.save time."
         - $ref: '#/components/messages/ErrorResponse/payload'
@@ -263,7 +263,7 @@ messages:
         originClientId: { type: [string, "null"] }
         data:
           type: object
-          required: [sessionId, source, definition, sessionRevision, isUser, baseDefRevision]
+          required: [sessionId, source, definition, sessionRevision, isUser, baseRevision]
           properties:
             sessionId: { type: string }
             source:
@@ -274,7 +274,7 @@ messages:
               $ref: '#/components/schemas/FixtureDefsDefinition'
             sessionRevision: { type: integer }
             isUser: { type: boolean }
-            baseDefRevision: { type: [integer, "null"] }
+            baseRevision: { type: [integer, "null"] }
 
   FixtureDefsSessionCloseRequest:
     payload:
@@ -503,11 +503,11 @@ messages:
         method: { const: fixturedefs.save }
         params:
           type: object
-          required: [sessionId, baseDefRevision]
+          required: [sessionId, baseRevision]
           description: "Writes the session's working copy to disk and into the shared library/cache (mirrors EditorView::save + FixtureEditor::slotReloadFixture). The session stays open afterwards; edit and save again freely."
           properties:
             sessionId: { type: string }
-            baseDefRevision:
+            baseRevision:
               type: [integer, "null"]
               description: "The defRevision this session was last opened/saved against (from session-opened or the previous save's result); null only for a session that has never been saved and has no library counterpart yet."
 
@@ -607,14 +607,14 @@ messages:
             id: { type: string }
             ok: { const: true }
             result:
-              type: object
-              required: [sessionId, sessionRevision, channelId]
-              properties:
-                sessionId: { type: string }
-                sessionRevision: { type: integer }
-                channelId:
-                  type: string
-                  description: "Server-assigned stable id — see notes.md for why this API uses synthetic ids for channels/modes instead of the engine's name-based lookup."
+              allOf:
+                - $ref: '#/components/schemas/FixtureDefsSessionMutationResult'
+                - type: object
+                  required: [channelId]
+                  properties:
+                    channelId:
+                      type: string
+                      description: "Server-assigned stable id — see notes.md for why this API uses synthetic ids for channels/modes instead of the engine's name-based lookup."
         - $ref: '#/components/messages/ErrorResponse/payload'
 
   FixtureDefsChannelUpdateRequest:
@@ -699,14 +699,14 @@ messages:
             id: { type: string }
             ok: { const: true }
             result:
-              type: object
-              required: [sessionId, sessionRevision, capabilityIndex]
-              properties:
-                sessionId: { type: string }
-                sessionRevision: { type: integer }
-                capabilityIndex:
-                  type: integer
-                  description: "Position within the channel's capability list. Capabilities have no engine-level id — they are addressed positionally, exactly like ChannelEdit's own index-based API."
+              allOf:
+                - $ref: '#/components/schemas/FixtureDefsSessionMutationResult'
+                - type: object
+                  required: [capabilityIndex]
+                  properties:
+                    capabilityIndex:
+                      type: integer
+                      description: "Position within the channel's capability list. Capabilities have no engine-level id — they are addressed positionally, exactly like ChannelEdit's own index-based API."
         - $ref: '#/components/messages/ErrorResponse/payload'
 
   FixtureDefsCapabilityUpdateRequest:
@@ -825,14 +825,14 @@ messages:
             id: { type: string }
             ok: { const: true }
             result:
-              type: object
-              required: [sessionId, sessionRevision, aliasIndex]
-              properties:
-                sessionId: { type: string }
-                sessionRevision: { type: integer }
-                aliasIndex:
-                  type: integer
-                  description: "Position within this capability's alias list."
+              allOf:
+                - $ref: '#/components/schemas/FixtureDefsSessionMutationResult'
+                - type: object
+                  required: [aliasIndex]
+                  properties:
+                    aliasIndex:
+                      type: integer
+                      description: "Position within this capability's alias list."
         - $ref: '#/components/messages/ErrorResponse/payload'
 
   FixtureDefsAliasUpdateRequest:
@@ -903,14 +903,14 @@ messages:
             id: { type: string }
             ok: { const: true }
             result:
-              type: object
-              required: [sessionId, sessionRevision, addedCount]
-              properties:
-                sessionId: { type: string }
-                sessionRevision: { type: integer }
-                addedCount:
-                  type: integer
-                  description: "Number of aliases actually added (modes that already had one are skipped)."
+              allOf:
+                - $ref: '#/components/schemas/FixtureDefsSessionMutationResult'
+                - type: object
+                  required: [addedCount]
+                  properties:
+                    addedCount:
+                      type: integer
+                      description: "Number of aliases actually added (modes that already had one are skipped)."
         - $ref: '#/components/messages/ErrorResponse/payload'
 
   # ======================================================================
@@ -946,12 +946,12 @@ messages:
             id: { type: string }
             ok: { const: true }
             result:
-              type: object
-              required: [sessionId, sessionRevision, modeId]
-              properties:
-                sessionId: { type: string }
-                sessionRevision: { type: integer }
-                modeId: { type: string }
+              allOf:
+                - $ref: '#/components/schemas/FixtureDefsSessionMutationResult'
+                - type: object
+                  required: [modeId]
+                  properties:
+                    modeId: { type: string }
         - $ref: '#/components/messages/ErrorResponse/payload'
 
   FixtureDefsModeUpdateRequest:
@@ -1075,14 +1075,14 @@ messages:
             id: { type: string }
             ok: { const: true }
             result:
-              type: object
-              required: [sessionId, sessionRevision, headIndex]
-              properties:
-                sessionId: { type: string }
-                sessionRevision: { type: integer }
-                headIndex:
-                  type: integer
-                  description: "Position within the mode's head list."
+              allOf:
+                - $ref: '#/components/schemas/FixtureDefsSessionMutationResult'
+                - type: object
+                  required: [headIndex]
+                  properties:
+                    headIndex:
+                      type: integer
+                      description: "Position within the mode's head list."
         - $ref: '#/components/messages/ErrorResponse/payload'
 
   FixtureDefsHeadRemoveRequest:
@@ -1107,6 +1107,21 @@ messages:
               items: { type: integer }
 
 schemas:
+
+  FixtureDefsSessionMutationResult:
+    type: object
+    description: >
+      Shared base for every session-mutation ok-response that allocates (or
+      counts) a new sub-resource: channel.add, capability.add, alias.add,
+      alias.applyToAllModes, mode.add, head.add. Each of those composes this
+      base (via allOf) with its own one extra field (channelId/
+      capabilityIndex/aliasIndex/addedCount/modeId/headIndex) - the id/index
+      field's name and type genuinely differ per resource type, so only the
+      truly-identical sessionId+sessionRevision pair is factored out here.
+    required: [sessionId, sessionRevision]
+    properties:
+      sessionId: { type: string }
+      sessionRevision: { type: integer }
 
   FixtureDefsPhysical:
     type: object
@@ -1300,7 +1315,7 @@ schemas:
 
   FixtureDefsSessionInfo:
     type: object
-    required: [sessionId, manufacturer, model, isUser, isModified, sessionRevision, baseDefRevision]
+    required: [sessionId, manufacturer, model, isUser, isModified, sessionRevision, baseRevision]
     description: "Mirrors FixtureEditor::editorsList's entries, for fixturedefs.session.list."
     properties:
       sessionId: { type: string }
@@ -1311,7 +1326,7 @@ schemas:
         type: boolean
         description: "Mirrors EditorView::isModified — has this session diverged from what's on disk since it was opened/last saved."
       sessionRevision: { type: integer }
-      baseDefRevision: { type: [integer, "null"] }
+      baseRevision: { type: [integer, "null"] }
 
 operations:
 
@@ -1440,7 +1455,7 @@ operations:
     action: send
     channel: { $ref: '#/channels/qlcplus' }
     messages:
-      - $ref: '#/channels/qlcplus/messages/fixtureDefsSessionSetMetadataRequest'
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsSessionUpdateRequest'
   sendFixtureDefsSessionSetPhysical:
     action: send
     channel: { $ref: '#/channels/qlcplus' }

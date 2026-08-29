@@ -2336,7 +2336,7 @@ operations:
     channel:
       $ref: '#/channels/qlcplus'
     messages:
-    - $ref: '#/channels/qlcplus/messages/ioUniverseChangedEvent'
+    - $ref: '#/channels/qlcplus/messages/ioUniverseUpdatedEvent'
   sendIoUniverseSetMonitor:
     action: send
     channel:
@@ -2371,10 +2371,10 @@ operations:
     action: receive
     channel:
       $ref: '#/channels/qlcplus'
-    description: Same io.universe.changed event as io.universe.update — see IoUniverseChangedEvent; listed
+    description: Same io.universe.changed event as io.universe.update — see IoUniverseUpdatedEvent; listed
       again here since every io.patch.* mutation above broadcasts it too.
     messages:
-    - $ref: '#/channels/qlcplus/messages/ioUniverseChangedEvent'
+    - $ref: '#/channels/qlcplus/messages/ioUniverseUpdatedEvent'
   sendIoPatchOutputSetState:
     action: send
     channel:

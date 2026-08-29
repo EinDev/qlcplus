@@ -2,6 +2,7 @@ project(test)
 
 add_subdirectory(apienvelope)
 add_subdirectory(apiiodomain)
+add_subdirectory(apicoredomain)
 
 # Registered with CTest the same way engine/test/CMakeLists.txt does (see
 # that file for why enable_testing() itself only needs to be called once,
@@ -9,6 +10,7 @@ add_subdirectory(apiiodomain)
 set(QLCPLUS_CONTROLAPI_TESTS
     apienvelope_test
     apiiodomain_test
+    apicoredomain_test
 )
 foreach(_qlcplus_test_target ${QLCPLUS_CONTROLAPI_TESTS})
     add_test(NAME ${_qlcplus_test_target}
