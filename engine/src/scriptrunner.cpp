@@ -32,11 +32,12 @@
 #include "mastertimer.h"
 #include "universe.h"
 
-ScriptRunner::ScriptRunner(Doc *doc, const QString &content, QObject *parent)
+ScriptRunner::ScriptRunner(Doc *doc, const QString &content, QObject *parent, quint32 ownerFunctionID)
     : QThread(parent)
     , m_doc(doc)
     , m_content(content)
     , m_running(false)
+    , m_ownerFunctionID(ownerFunctionID)
     , m_engine(NULL)
     , m_stopOnExit(true)
     , m_waitCount(0)
@@ -47,6 +48,14 @@ ScriptRunner::ScriptRunner(Doc *doc, const QString &content, QObject *parent)
 ScriptRunner::~ScriptRunner()
 {
     stop();
+}
+
+FunctionParent ScriptRunner::functionSource() const
+{
+    if (m_ownerFunctionID != Function::invalidId())
+        return FunctionParent(FunctionParent::Function, m_ownerFunctionID);
+
+    return FunctionParent::master();
 }
 
 void ScriptRunner::execute()
@@ -78,7 +87,7 @@ void ScriptRunner::stop()
         if (function == NULL)
             continue;
 
-        function->stop(FunctionParent::master());
+        function->stop(functionSource());
     }
     m_startedFunctions.clear();
 
@@ -194,13 +203,13 @@ bool ScriptRunner::write(MasterTimer *timer, QList<Universe *> universes)
 
             if (operation == FunctionOperation::START || operation == FunctionOperation::START_DONT_STOP)
             {
-                function->start(timer, FunctionParent::master());
+                function->start(timer, functionSource());
                 if (operation == FunctionOperation::START)
                     m_startedFunctions << fID;
             }
             else if (operation == FunctionOperation::STOP)
             {
-                function->stop(FunctionParent::master());
+                function->stop(functionSource());
                 m_startedFunctions.removeAll(fID);
             }
             else if (operation == FunctionOperation::WAIT_START)

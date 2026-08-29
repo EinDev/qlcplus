@@ -351,7 +351,7 @@ void Video::slotFunctionRemoved(quint32 fid)
 void Video::stopFromUI()
 {
     if (isRunning())
-        stop(FunctionParent::master());
+        stop(FunctionParent::master(FunctionParent::VideoWindowClosed));
 }
 
 /*********************************************************************

@@ -57,6 +57,73 @@ public:
         Master = 0xffffffff,
     };
 
+    // When type() == Master, id() further identifies WHICH of a small,
+    // fixed set of non-VC, non-container callers requested the override -
+    // this keeps Type closed (Function/AutoVCWidget/ManualVCWidget/Master
+    // are the only values Function::start()/stop() branch on, see
+    // Function::stop()'s "clear all sources" rule) while still letting
+    // diagnostics such as SimpleDesk::debugChannelInfo() tell every
+    // Master-flavored caller apart. This mirrors how Tardis::ActionCodes
+    // (qmlui/tardis/tardis.h) enumerates a fixed, documented registry of
+    // callers rather than growing unrelated top-level types per caller.
+    //
+    // Adding a new caller: add a value here (never renumber/reuse
+    // existing ones - these are runtime-only, but code and log output
+    // may reference them by name), pass it via master(MasterId), and add
+    // a case to SimpleDesk::describeFunctionParent()'s Master switch.
+    enum MasterId
+    {
+        // Generic/unspecified use of the Master override - the default
+        // for any caller that hasn't been given its own identifier
+        // (engine/ui test facilities, and the legacy QLC+4 Qt Widgets UI
+        // call sites, which this MasterId registry does not cover).
+        GenericOverride = 0,
+        // A Function's own write()/postRun() logic decided, on its own,
+        // that it's done (reached the end of its steps/duration, hit an
+        // error condition such as a missing fixture group) and is
+        // stopping itself - not an external caller at all.
+        EngineSelfStop,
+        // MasterTimer::timerTickFunctions()'s stop-everything request
+        // (m_stopAllFunctions, e.g. Blackout/panic), not any specific
+        // Function's own choice.
+        MasterTimerStopAll,
+        // The project's configured "startup Function", auto-started when
+        // a project finishes loading or Doc switches into Operate mode.
+        ProjectAutostart,
+        // Function Manager's "preview" toggle/selection (the play
+        // button next to the function tree, with no editor open)
+        // starting/stopping the selected Function(s) directly.
+        FunctionManagerPreview,
+        // Function Manager's live "Scene preview" toggle, used while a
+        // Scene (or a Sequence's bound Scene) is open in an editor, so
+        // channel edits are written to the output immediately.
+        FunctionManagerScenePreview,
+        // Function Manager stopping a Function because it is about to
+        // be removed from the project (deleteFunction()/deleteFunctions()).
+        FunctionManagerDelete,
+        // A Function Editor's own generic preview toggle / function swap
+        // (base FunctionEditor::setPreviewEnabled()/setFunctionID(),
+        // shared by every function-type editor: Scene, EFX, Audio,
+        // Collection, Script, Video, Chaser, RGBMatrix) and
+        // RGBMatrixEditor's own preview restart after an internal
+        // operation (e.g. saveToSequence()).
+        FunctionEditorPreview,
+        // ChaserEditor's Sequence step-scrubbing preview, which
+        // starts/stops the Sequence's bound Scene directly (not the
+        // Chaser/Sequence itself) to show the selected step live.
+        ChaserEditorStepPreview,
+        // Show Manager's play/pause/stop transport controls.
+        ShowManagerPlayback,
+        // Tardis replaying a FunctionStart/FunctionStop action code
+        // during undo/redo.
+        TardisUndoRedo,
+        // WebAccess's "setFunctionStatus" web/OSC API command.
+        WebAccess,
+        // Video::stopFromUI() - the user closed a Video function's
+        // preview window from the 2D/3D view.
+        VideoWindowClosed,
+    };
+
 private:
     quint64 m_id;
 
@@ -82,9 +149,9 @@ public:
         return m_id & 0xffffffff;
     }
 
-    static FunctionParent master()
+    static FunctionParent master(MasterId subId = GenericOverride)
     {
-        return FunctionParent(Master, 0);
+        return FunctionParent(Master, quint32(subId));
     }
 };
 
