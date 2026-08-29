@@ -42,6 +42,13 @@ private slots:
     void writeDMXIgnoresUnknownFixture();
     void writeDMXSkipsChannelsBeyondAvailableUniverses();
 
+    void setDefaultsToUnspecifiedFeature();
+    void setStoresSpecificFeature();
+    void unsetClearsFeature();
+    void unsetAllViaWriteDMXClearsFeature();
+    void findFeatureForFaderMatchesOwningInstance();
+    void findFeatureForFaderFailsForForeignFader();
+
 private:
     Doc* m_doc;
     quint32 m_fxiId;

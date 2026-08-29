@@ -26,6 +26,9 @@
 
 #include <cmath>
 
+QMutex GenericDMXSource::s_registryMutex;
+QList<GenericDMXSource*> GenericDMXSource::s_instances;
+
 GenericDMXSource::GenericDMXSource(Doc* doc)
     : m_doc(doc)
     , m_outputEnabled(false)
@@ -34,10 +37,18 @@ GenericDMXSource::GenericDMXSource(Doc* doc)
 {
     Q_ASSERT(m_doc != NULL);
     m_doc->masterTimer()->registerDMXSource(this);
+
+    QMutexLocker registryLocker(&s_registryMutex);
+    s_instances.append(this);
 }
 
 GenericDMXSource::~GenericDMXSource()
 {
+    {
+        QMutexLocker registryLocker(&s_registryMutex);
+        s_instances.removeAll(this);
+    }
+
     foreach (QSharedPointer<GenericFader> fader, m_fadersMap)
     {
         if (!fader.isNull())
@@ -48,10 +59,12 @@ GenericDMXSource::~GenericDMXSource()
     m_doc->masterTimer()->unregisterDMXSource(this);
 }
 
-void GenericDMXSource::set(quint32 fxi, quint32 ch, uchar value)
+void GenericDMXSource::set(quint32 fxi, quint32 ch, uchar value, Feature feature)
 {
     QMutexLocker locker(&m_mutex);
-    m_values[QPair<quint32,quint32>(fxi, ch)] = value;
+    QPair<quint32,quint32> key(fxi, ch);
+    m_values[key] = value;
+    m_features[key] = feature;
     m_changed = true;
 }
 
@@ -59,6 +72,7 @@ void GenericDMXSource::unset(quint32 fxi, quint32 ch)
 {
     QMutexLocker locker(&m_mutex);
     m_values.remove(QPair<quint32,quint32>(fxi, ch));
+    m_features.remove(QPair<quint32,quint32>(fxi, ch));
     m_changed = true;
 
     // Removing the entry from m_values only stops *this* class from pushing
@@ -166,6 +180,7 @@ void GenericDMXSource::writeDMX(MasterTimer* timer, QList<Universe *> ua)
     {
         m_clearRequest = false;
         m_values.clear();
+        m_features.clear();
 
         QMapIterator <quint32, QSharedPointer<GenericFader> > it(m_fadersMap);
         while (it.hasNext() == true)
@@ -177,4 +192,46 @@ void GenericDMXSource::writeDMX(MasterTimer* timer, QList<Universe *> ua)
         }
         m_fadersMap.clear();
     }
+}
+
+bool GenericDMXSource::findFeatureForFader(const GenericFader *fader, quint32 fxi, quint32 ch, Feature &feature)
+{
+    if (fader == nullptr)
+        return false;
+
+    QMutexLocker registryLocker(&s_registryMutex);
+    for (GenericDMXSource *src : s_instances)
+    {
+        QMutexLocker locker(&src->m_mutex);
+
+        // Identify the owning instance by fader identity first - matching
+        // by fxi/ch alone would misattribute a channel that more than one
+        // live GenericDMXSource instance happens to have queued (e.g. a
+        // fixture being both dragged and previewed in a Scene editor at
+        // once), or one still queued in an instance with output disabled
+        // (whose fader for this universe may no longer even exist).
+        bool ownsFader = false;
+        for (const QSharedPointer<GenericFader> &f : src->m_fadersMap)
+        {
+            if (f.data() == fader)
+            {
+                ownsFader = true;
+                break;
+            }
+        }
+
+        if (!ownsFader)
+            continue;
+
+        QPair<quint32,quint32> key(fxi, ch);
+        if (src->m_features.contains(key))
+        {
+            feature = src->m_features.value(key);
+            return true;
+        }
+
+        return false;
+    }
+
+    return false;
 }
