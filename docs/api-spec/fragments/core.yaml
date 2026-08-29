@@ -33,24 +33,8 @@ messages:
   CoreProjectNewResponse:
     payload:
       oneOf:
-        - $ref: '#/components/messages/CoreProjectNewOkResponse/payload'
+        - $ref: '#/components/messages/CoreDocRevisionOkResponse/payload'
         - $ref: '#/components/messages/ErrorResponse/payload'
-
-  CoreProjectNewOkResponse:
-    payload:
-      type: object
-      required: [type, id, ok, result]
-      properties:
-        type: { const: response }
-        id: { type: string }
-        ok: { const: true }
-        result:
-          type: object
-          required: [docRevision]
-          properties:
-            docRevision:
-              type: integer
-              description: "Revision of the new blank document (see CoreProjectLoadedEvent for full state)."
 
   CoreProjectOpenRequest:
     payload:
@@ -139,22 +123,8 @@ messages:
   CoreProjectCloseResponse:
     payload:
       oneOf:
-        - $ref: '#/components/messages/CoreProjectCloseOkResponse/payload'
+        - $ref: '#/components/messages/CoreDocRevisionOkResponse/payload'
         - $ref: '#/components/messages/ErrorResponse/payload'
-
-  CoreProjectCloseOkResponse:
-    payload:
-      type: object
-      required: [type, id, ok, result]
-      properties:
-        type: { const: response }
-        id: { type: string }
-        ok: { const: true }
-        result:
-          type: object
-          required: [docRevision]
-          properties:
-            docRevision: { type: integer }
 
   CoreProjectLoadedEvent:
     payload:
@@ -550,29 +520,8 @@ messages:
   CoreUndoResponse:
     payload:
       oneOf:
-        - $ref: '#/components/messages/CoreUndoOkResponse/payload'
+        - $ref: '#/components/messages/CoreUndoRedoOkResponse/payload'
         - $ref: '#/components/messages/ErrorResponse/payload'
-
-  CoreUndoOkResponse:
-    payload:
-      type: object
-      required: [type, id, ok, result]
-      properties:
-        type: { const: response }
-        id: { type: string }
-        ok: { const: true }
-        result:
-          type: object
-          required: [docRevision, stepsApplied, canUndo, canRedo]
-          properties:
-            docRevision:
-              type: integer
-              description: "Only changes if at least one undone action was structural; unchanged if the undone step(s) were purely live/runtime actions."
-            stepsApplied:
-              type: integer
-              description: "May be less than requested steps if history ran out."
-            canUndo: { type: boolean }
-            canRedo: { type: boolean }
 
   CoreRedoRequest:
     payload:
@@ -593,25 +542,8 @@ messages:
   CoreRedoResponse:
     payload:
       oneOf:
-        - $ref: '#/components/messages/CoreRedoOkResponse/payload'
+        - $ref: '#/components/messages/CoreUndoRedoOkResponse/payload'
         - $ref: '#/components/messages/ErrorResponse/payload'
-
-  CoreRedoOkResponse:
-    payload:
-      type: object
-      required: [type, id, ok, result]
-      properties:
-        type: { const: response }
-        id: { type: string }
-        ok: { const: true }
-        result:
-          type: object
-          required: [docRevision, stepsApplied, canUndo, canRedo]
-          properties:
-            docRevision: { type: integer }
-            stepsApplied: { type: integer }
-            canUndo: { type: boolean }
-            canRedo: { type: boolean }
 
   CoreHistoryChangedEvent:
     payload:
@@ -779,6 +711,55 @@ messages:
               type: [integer, "null"]
             function:
               type: [string, "null"]
+
+  # -----------------------------------------------------------------------
+  # Shared response building blocks
+  # -----------------------------------------------------------------------
+
+  CoreDocRevisionOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      description: >
+        Shared ok-response for core.project.new and core.project.close:
+        both fully replace the document with a blank one and return only
+        the new docRevision (full state comes from the paired
+        CoreProjectLoadedEvent broadcast, not this response).
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          type: object
+          required: [docRevision]
+          properties:
+            docRevision:
+              type: integer
+              description: "Revision of the new blank document (see CoreProjectLoadedEvent for full state)."
+
+  CoreUndoRedoOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      description: >
+        Shared ok-response for core.undo and core.redo - identical result
+        shape for both directions.
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          type: object
+          required: [docRevision, stepsApplied, canUndo, canRedo]
+          properties:
+            docRevision:
+              type: integer
+              description: "Only changes if at least one undone/redone action was structural; unchanged if the affected step(s) were purely live/runtime actions."
+            stepsApplied:
+              type: integer
+              description: "May be less than requested steps if history ran out."
+            canUndo: { type: boolean }
+            canRedo: { type: boolean }
 
 schemas:
 
