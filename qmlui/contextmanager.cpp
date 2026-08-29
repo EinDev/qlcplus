@@ -1195,7 +1195,7 @@ void ContextManager::setFixturesOffset(qreal x, qreal y)
                 pushedDeltas.insert(fxID, newDelta);
             }
             if (m_2DView->isEnabled())
-                m_2DView->updateFixturePosition(itemID, gridCenter + (newDelta * 1000.0f));
+                m_2DView->updateFixturePosition(itemID, gridCenter + (newDelta * 1000.0f), true);
             continue;
         }
 
@@ -1280,13 +1280,18 @@ void ContextManager::pushPositionDelta(Fixture *fixture, QVector3D deltaMeters)
     m_fixturePositionDeltaCache.insert(fixture->id(), deltaMeters);
 
     // Also persist the equivalent absolute position into MonitorProperties,
-    // in the same millimetre/corner-origin convention every other fixture's
-    // fixturePosition() already uses (see gridCenterPosition()'s own doc
-    // comment) - this is otherwise unused for a fixture with its own
-    // PositionX/Y/Z channels (see the "is DMX-driven" branches in
-    // setFixturesOffset()/setFixturesPosition()/fixturesPosition(), which
-    // deliberately never call setFixturePosition()), so writing it here does
-    // not conflict with anything else that reads it.
+    // in the same millimetre units every other fixture's fixturePosition()
+    // uses (see gridCenterPosition()'s own doc comment) - this is otherwise
+    // unused for a fixture with its own PositionX/Y/Z channels (see the
+    // "is DMX-driven" branches in setFixturesOffset()/setFixturesPosition()/
+    // fixturesPosition(), which deliberately never call setFixturePosition()),
+    // so writing it here does not conflict with anything else that reads it.
+    // NOTE: unlike a normal fixture's fixturePosition() (a top-left/corner
+    // coordinate), the value stored here is the item's visual CENTER - every
+    // reader of a HasDmxPositionFlag fixture's position (MainView2D/3D's
+    // creation and live-update paths, ContextManager's own drag/position-tool
+    // paths) must pass isCenterPosition=true into updateFixturePosition() to
+    // render it correctly instead of anchoring the item's corner on it.
     //
     // Root-cause fix for a user report: dragging such a fixture only ever
     // pushed the position as a live DMX value (via setDumpValue() above),
@@ -1455,7 +1460,7 @@ void ContextManager::setFixturesPosition(QVector3D position)
             QVector3D gridCenter = FixtureUtils::gridCenterPosition(m_monProps);
             pushPositionDelta(fixture, (position - gridCenter) / 1000.0f);
             if (m_3DView->isEnabled())
-                m_3DView->updateFixturePosition(itemID, position);
+                m_3DView->updateFixturePosition(itemID, position, true);
         }
         else
         {
@@ -1491,7 +1496,7 @@ void ContextManager::setFixturesPosition(QVector3D position)
                 QVector3D newDelta = cachedPositionDelta(fxID, fixture) + (position / 1000.0f);
                 pushPositionDelta(fixture, newDelta);
                 if (m_3DView->isEnabled())
-                    m_3DView->updateFixturePosition(itemID, FixtureUtils::gridCenterPosition(m_monProps) + (newDelta * 1000.0f));
+                    m_3DView->updateFixturePosition(itemID, FixtureUtils::gridCenterPosition(m_monProps) + (newDelta * 1000.0f), true);
                 continue;
             }
 
@@ -2559,9 +2564,9 @@ void ContextManager::refreshFixtureDmxTransform(quint32 fxID)
         QVector3D newPos = FixtureUtils::gridCenterPosition(m_monProps) +
                            (cachedPositionDelta(fxID, fixture) * 1000.0f);
         if (m_2DView->isEnabled())
-            m_2DView->updateFixturePosition(itemID, newPos);
+            m_2DView->updateFixturePosition(itemID, newPos, true);
         if (m_3DView->isEnabled())
-            m_3DView->updateFixturePosition(itemID, newPos);
+            m_3DView->updateFixturePosition(itemID, newPos, true);
     }
 
     if (hasRotation)

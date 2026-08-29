@@ -257,8 +257,17 @@ public:
     /** Update the selection status of a Fixture with the provided $itemID */
     void updateFixtureSelection(quint32 itemID, bool enable);
 
-    /** Update the position of a Fixture with the provided $itemID */
-    void updateFixturePosition(quint32 itemID, QVector3D pos);
+    /** Update the position of a Fixture with the provided $itemID. $pos is a
+     *  top-left/corner-origin coordinate (matching MonitorProperties::
+     *  fixturePosition()'s convention - this method adds half the mesh's own
+     *  extents on each axis to turn that corner into the mesh's center, which
+     *  is what QEntity translation actually expects) unless $isCenterPosition
+     *  is set, in which case $pos already IS that center (e.g. a DMX
+     *  PositionX/Y/Z-driven fixture's stage-center-anchored coordinate - see
+     *  FixtureUtils::gridCenterPosition()) and the extents offset is skipped
+     *  so the item is centered on $pos instead of $pos landing half an extent
+     *  away from it. */
+    void updateFixturePosition(quint32 itemID, QVector3D pos, bool isCenterPosition = false);
 
     /** Update the rotation of a Fixture with the provided $itemID */
     void updateFixtureRotation(quint32 itemID, QVector3D degrees);
