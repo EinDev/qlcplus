@@ -86,7 +86,14 @@ Rectangle
       *   Image (z = 0): Main background image
       *   Canvas (z = 0): The actual grid graphics view
       *     DropArea (z = 0): allow to drop items from fixture browser
-      *     Rectangle (z = 1): multiple drag layer as big as the Canvas layer
+      *     Rectangle (z = 1): gesture-capture surface for dragging the current
+      *                        selection, as big as the Canvas layer - selected
+      *                        Fixture2DItems are NOT parented here (that used
+      *                        to be how they visually tracked a drag, but it
+      *                        doubled their on-screen movement once
+      *                        flushDragOffset() started also committing the
+      *                        drag live into their own position - see
+      *                        MainView2D::selectFixture()'s comment)
       *       MouseArea (z = 0): handles drag & drop of multiple fixture items
       *     MouseArea (z = 2): handles selection rectangle and mouse wheel for zooming
       *     Fixture2DItem (z = 2): the Fixture 2D items
