@@ -1221,6 +1221,12 @@ bool Function::startedAsChild() const
     return false;
 }
 
+QList<FunctionParent> Function::sources() const
+{
+    QMutexLocker sourcesLocker(const_cast<QMutex*>(&m_sourcesMutex));
+    return m_sources;
+}
+
 int Function::invalidAttributeId()
 {
     return -1;
