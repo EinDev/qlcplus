@@ -16,6 +16,7 @@
 */
 
 #include <QJsonArray>
+#include <QJsonValue>
 
 #include "apiiodomain.h"
 #include "apiserver.h"
@@ -23,18 +24,92 @@
 #include "apienvelope.h"
 #include "inputoutputmap.h"
 #include "grandmaster.h"
+#include "outputpatch.h"
+#include "inputpatch.h"
 #include "universe.h"
 #include "doc.h"
 
 namespace {
 
-QJsonObject universeToJson(Universe *universe)
+QJsonObject pluginParametersToJson(const QMap<QString, QVariant> &parameters)
+{
+    QJsonObject obj;
+    for (auto it = parameters.constBegin(); it != parameters.constEnd(); ++it)
+        obj.insert(it.key(), QJsonValue::fromVariant(it.value()));
+    return obj;
+}
+
+QJsonValue inputPatchToJson(InputPatch *patch)
+{
+    if (patch == nullptr)
+        return QJsonValue();
+
+    QJsonObject obj;
+    obj.insert(QStringLiteral("pluginName"), patch->pluginName());
+    obj.insert(QStringLiteral("input"), int(patch->input()));
+    obj.insert(QStringLiteral("inputUID"), patch->inputUID());
+    obj.insert(QStringLiteral("inputName"), patch->inputName());
+    // InputPatch::profileName() returns the translated "None" placeholder
+    // when unset (see KInputNone in inputpatch.h) rather than an empty
+    // string - check the actual profile pointer so the spec's
+    // [string, null] contract gets a real null instead of that placeholder.
+    obj.insert(QStringLiteral("profileName"), patch->profile() != nullptr
+               ? QJsonValue(patch->profileName())
+               : QJsonValue());
+    obj.insert(QStringLiteral("parameters"), pluginParametersToJson(patch->getPluginParameters()));
+    return obj;
+}
+
+QJsonObject outputPatchToJson(OutputPatch *patch, int index)
+{
+    QJsonObject obj;
+    obj.insert(QStringLiteral("index"), index);
+    obj.insert(QStringLiteral("pluginName"), patch->pluginName());
+    obj.insert(QStringLiteral("output"), int(patch->output()));
+    obj.insert(QStringLiteral("outputUID"), patch->outputUID());
+    obj.insert(QStringLiteral("outputName"), patch->outputName());
+    obj.insert(QStringLiteral("parameters"), pluginParametersToJson(patch->getPluginParameters()));
+    obj.insert(QStringLiteral("paused"), patch->paused());
+    obj.insert(QStringLiteral("blackout"), patch->blackout());
+    return obj;
+}
+
+QJsonObject universeSummaryToJson(Universe *universe)
 {
     QJsonObject obj;
     obj.insert(QStringLiteral("id"), int(universe->id()));
     obj.insert(QStringLiteral("name"), universe->name());
-    obj.insert(QStringLiteral("totalChannels"), universe->totalChannels());
     obj.insert(QStringLiteral("passthrough"), universe->passthrough());
+    obj.insert(QStringLiteral("monitor"), universe->monitor());
+    obj.insert(QStringLiteral("usedChannels"), universe->usedChannels());
+    obj.insert(QStringLiteral("totalChannels"), universe->totalChannels());
+    obj.insert(QStringLiteral("isPatched"), universe->isPatched());
+    obj.insert(QStringLiteral("inputPatched"), universe->inputPatch() != nullptr);
+    obj.insert(QStringLiteral("outputPatchesCount"), universe->outputPatchesCount());
+    obj.insert(QStringLiteral("hasFeedback"), universe->hasFeedback());
+    return obj;
+}
+
+QJsonObject universeDetailToJson(Universe *universe)
+{
+    QJsonObject obj = universeSummaryToJson(universe);
+
+    obj.insert(QStringLiteral("inputPatch"), inputPatchToJson(universe->inputPatch()));
+
+    QJsonArray outputPatches;
+    for (int i = 0; i < universe->outputPatchesCount(); i++)
+    {
+        OutputPatch *patch = universe->outputPatch(i);
+        if (patch != nullptr)
+            outputPatches.append(outputPatchToJson(patch, i));
+    }
+    obj.insert(QStringLiteral("outputPatches"), outputPatches);
+
+    OutputPatch *feedback = universe->feedbackPatch();
+    obj.insert(QStringLiteral("feedbackPatch"), feedback != nullptr
+               ? QJsonValue(outputPatchToJson(feedback, 0))
+               : QJsonValue());
+
     return obj;
 }
 
@@ -118,9 +193,20 @@ void ApiIoDomain::slotUniverseAdded(quint32 id)
     if (universe == nullptr)
         return;
 
+    if (m_hasPendingUniverseName)
+    {
+        universe->setName(m_pendingUniverseName);
+        m_hasPendingUniverseName = false;
+        m_pendingUniverseName.clear();
+    }
+
     watchUniverse(universe);
+
+    QJsonObject data;
+    data.insert(QStringLiteral("universe"), universeDetailToJson(universe));
+    data.insert(QStringLiteral("docRevision"), int(m_doc->docRevision()));
     // Structural (§4a): always delivered, not subscribe-gated.
-    m_server->broadcast(QStringLiteral("io.universe.created"), universeToJson(universe), QString(), false);
+    m_server->broadcast(QStringLiteral("io.universe.created"), data, QString(), false);
 }
 
 void ApiIoDomain::slotUniverseWritten(quint32 id, const QByteArray &postGMValues)
@@ -182,7 +268,7 @@ void ApiIoDomain::registerMethods()
         Q_UNUSED(params)
         QJsonArray universes;
         for (Universe *universe : doc->inputOutputMap()->universes())
-            universes.append(universeToJson(universe));
+            universes.append(universeSummaryToJson(universe));
 
         QJsonObject result;
         result.insert(QStringLiteral("universes"), universes);
@@ -200,10 +286,10 @@ void ApiIoDomain::registerMethods()
                                                             QStringLiteral("No such universe")));
             return;
         }
-        session->send(ApiEnvelope::buildOkResponse(id, universeToJson(universe)));
+        session->send(ApiEnvelope::buildOkResponse(id, universeDetailToJson(universe)));
     });
 
-    dispatcher->registerMethod(QStringLiteral("io.universe.create"), [doc](ApiSession *session, const QString &id, const QJsonObject &params)
+    dispatcher->registerMethod(QStringLiteral("io.universe.create"), [doc, this](ApiSession *session, const QString &id, const QJsonObject &params)
     {
         quint32 baseRevision = quint32(params.value(QStringLiteral("baseRevision")).toInt());
         if (baseRevision != doc->docRevision())
@@ -215,18 +301,32 @@ void ApiIoDomain::registerMethods()
             return;
         }
 
+        // InputOutputMap::addUniverse() (with no explicit id, as here) always
+        // assigns the next sequential id - universesCount() before the call.
+        quint32 newUniverseId = doc->inputOutputMap()->universesCount();
+
+        if (params.value(QStringLiteral("name")).isString())
+        {
+            m_pendingUniverseName = params.value(QStringLiteral("name")).toString();
+            m_hasPendingUniverseName = true;
+        }
+
         // universeAdded (relayed to Doc::setModified()/bumpRevision(), and to
-        // ApiIoDomain's own broadcast via slotUniverseAdded) fires synchronously
+        // ApiIoDomain's own broadcast via slotUniverseAdded, which also
+        // applies m_pendingUniverseName if set above) fires synchronously
         // within addUniverse() since InputOutputMap and Doc share this thread -
         // doc->docRevision() below already reflects the new value.
         if (doc->inputOutputMap()->addUniverse() == false)
         {
+            m_hasPendingUniverseName = false;
+            m_pendingUniverseName.clear();
             session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrUnsupported,
                                                             QStringLiteral("Could not add a universe")));
             return;
         }
 
         QJsonObject result;
+        result.insert(QStringLiteral("universeId"), int(newUniverseId));
         result.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
         session->send(ApiEnvelope::buildOkResponse(id, result));
     });
