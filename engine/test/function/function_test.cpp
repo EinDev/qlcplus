@@ -32,6 +32,7 @@
 #undef protected
 
 #include "doc.h"
+#include "mastertimer.h"
 
 void Function_Test::initTestCase()
 {
@@ -225,6 +226,53 @@ void Function_Test::stopAndWaitFail()
 
     QSignalSpy spyStopped(stub, SIGNAL(stopped(quint32)));
     QVERIFY(stub->stopAndWait() == false);
+}
+
+void Function_Test::sources()
+{
+    Doc doc(this);
+    MasterTimer timer(&doc);
+
+    Function_Stub* stub = new Function_Stub(&doc);
+    QVERIFY(stub->sources().isEmpty());
+
+    // Two distinct Master-flavored sources (different MasterId sub-values)
+    // are tracked as two separate entries, not silently merged into one -
+    // this is what lets SimpleDesk::debugChannelInfo() report every caller
+    // that is currently holding a Function running.
+    FunctionParent previewSource = FunctionParent::master(FunctionParent::FunctionManagerPreview);
+    FunctionParent webSource = FunctionParent::master(FunctionParent::WebAccess);
+
+    stub->start(&timer, previewSource);
+    QCOMPARE(stub->sources().size(), 1);
+    QVERIFY(stub->sources().contains(previewSource));
+
+    stub->start(&timer, webSource);
+    QCOMPARE(stub->sources().size(), 2);
+    QVERIFY(stub->sources().contains(previewSource));
+    QVERIFY(stub->sources().contains(webSource));
+
+    // Re-starting from a source already in the list is a no-op (same
+    // behavior as before this MasterId sub-typing existed).
+    stub->start(&timer, previewSource);
+    QCOMPARE(stub->sources().size(), 2);
+
+    // Stopping from any Master-typed source still force-clears every
+    // source (Function::stop()'s "override anything" rule for
+    // FunctionParent::Master), regardless of which MasterId it carries.
+    stub->stop(webSource);
+    QVERIFY(stub->sources().isEmpty());
+    QVERIFY(stub->stopped());
+
+    // A container Function (e.g. a Script) identifying itself via
+    // FunctionParent(Function, ownId) is tracked and removed precisely,
+    // like Chaser/Collection/Show already do for their own children.
+    FunctionParent scriptSource(FunctionParent::Function, 42);
+    stub->start(&timer, scriptSource);
+    QCOMPARE(stub->sources().size(), 1);
+    stub->stop(scriptSource);
+    QVERIFY(stub->sources().isEmpty());
+    QVERIFY(stub->stopped());
 }
 
 void Function_Test::adjustIntensity()

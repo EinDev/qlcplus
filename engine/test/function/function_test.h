@@ -36,6 +36,7 @@ private slots:
     void preRunPostRun();
     void stopAndWait();
     void stopAndWaitFail();
+    void sources();
     void adjustIntensity();
     void slotFixtureRemoved();
     void invalidId();
