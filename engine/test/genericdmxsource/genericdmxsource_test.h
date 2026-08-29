@@ -36,6 +36,11 @@ private slots:
     void setUnset();
     void unsetAll();
 
+    void writeDMXAppliesValueToUniverse();
+    void writeDMXSkipsWhenOutputDisabled();
+    void writeDMXIgnoresUnknownFixture();
+    void writeDMXSkipsChannelsBeyondAvailableUniverses();
+
 private:
     Doc* m_doc;
     quint32 m_fxiId;
