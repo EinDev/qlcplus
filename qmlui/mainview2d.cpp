@@ -262,7 +262,10 @@ void MainView2D::setFixtureFlags(quint32 itemID, quint32 flags)
 
     fxItem->setProperty("visible", (flags & MonitorProperties::HiddenFlag) ? false : true);
 
-    // re-evaluate the drag layer parenting in case the locked flag changed
+    // re-apply selectFixture() in case anything it sets depends on flags
+    // that just changed (kept even though selectFixture() no longer does
+    // any drag-layer reparenting based on the locked flag - see its own
+    // comment - since it's a harmless no-op otherwise)
     if (fxItem->property("isSelected").toBool())
         selectFixture(fxItem, true);
 }
@@ -615,27 +618,25 @@ void MainView2D::selectFixture(QQuickItem *fxItem, bool enable) const
 
     fxItem->setProperty("isSelected", enable);
 
-    quint32 itemID = fxItem->property("itemID").toUInt();
-    quint32 fxID = FixtureUtils::itemFixtureID(itemID);
-    quint16 headIndex = FixtureUtils::itemHeadIndex(itemID);
-    quint16 linkedIndex = FixtureUtils::itemLinkedIndex(itemID);
-    bool locked = m_monProps->fixtureFlags(fxID, headIndex, linkedIndex) & MonitorProperties::LockedFlag;
-
-    // a locked item must not follow the drag layer, so keep it parented to the grid
-    if (enable && !locked)
-    {
-        QQuickItem *rootObj = m_view->rootObject();
-        if (rootObj == nullptr)
-            return;
-
-        QQuickItem *dragArea = qobject_cast<QQuickItem*>(rootObj->findChild<QObject *>("contentsDragArea"));
-        if (dragArea)
-            fxItem->setParentItem(dragArea);
-    }
-    else
-    {
-        fxItem->setParentItem(m_gridItem);
-    }
+    // Selected (non-locked) items used to be reparented into 2DView.qml's
+    // "contentsDragArea" MouseArea so they'd visually ride along with it in
+    // real time - back when a drag's own offset was only ever committed into
+    // the fixture's actual position once, at release (setFixturesOffset() was
+    // only called from onReleased). Since 2DView.qml's flushDragOffset() now
+    // commits the drag's incremental offset into the fixture's own position
+    // live, on every single mouse-move tick (see commit "apply 2D fixture
+    // drag offset live, not only on release"), this item's own x/y already
+    // tracks the drag precisely on its own (Fixture2DItem.qml's x/y are bound
+    // to mmXPos/mmYPos, which ContextManager::setFixturesOffset() updates
+    // every tick). Reparenting on top of that made the item a child of an
+    // area whose own x/y ALSO tracks the full cumulative mouse offset since
+    // the drag started - so during a drag the two additively combined and the
+    // fixture visually moved at ~2x the actual mouse distance, snapping back
+    // to the correct 1x position only once contentsDragArea reset to 0 at
+    // release. Locked fixtures are already excluded from the live position
+    // update itself (see setFixturesOffset()'s own LockedFlag check), so
+    // nothing here needs to special-case them anymore either - always leave
+    // the item parented to the grid, exactly like a locked item always was.
 }
 
 void MainView2D::updateFixtureSelection(QList<quint32> fixtures)
