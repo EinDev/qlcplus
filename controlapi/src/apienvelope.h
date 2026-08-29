@@ -73,6 +73,9 @@ public:
     static const QString ErrInvalidParams;
     static const QString ErrUnauthorized;
     static const QString ErrUnsupported;
+    static const QString ErrInternal;
+    static const QString ErrInvalidState;
+    static const QString ErrNotImplemented;
 };
 
 #endif

@@ -25,6 +25,9 @@ const QString ApiEnvelope::ErrNotFound = QStringLiteral("NOT_FOUND");
 const QString ApiEnvelope::ErrInvalidParams = QStringLiteral("INVALID_PARAMS");
 const QString ApiEnvelope::ErrUnauthorized = QStringLiteral("UNAUTHORIZED");
 const QString ApiEnvelope::ErrUnsupported = QStringLiteral("UNSUPPORTED");
+const QString ApiEnvelope::ErrInternal = QStringLiteral("INTERNAL_ERROR");
+const QString ApiEnvelope::ErrInvalidState = QStringLiteral("INVALID_STATE");
+const QString ApiEnvelope::ErrNotImplemented = QStringLiteral("NOT_IMPLEMENTED");
 
 bool ApiEnvelope::parseRequest(const QString &rawJson, Request &outRequest, QString &outErrorMessage)
 {

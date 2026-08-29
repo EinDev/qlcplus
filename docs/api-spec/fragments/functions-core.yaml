@@ -471,7 +471,7 @@ messages:
   FunctionsSetCommonAttributesResponse:
     payload:
       oneOf:
-      - $ref: '#/components/messages/FunctionsSetCommonAttributesOkResponse/payload'
+      - $ref: '#/components/messages/FunctionsUpdateOkResponse/payload'
       - $ref: '#/components/messages/ErrorResponse/payload'
   FunctionsSetCommonAttributesOkResponse:
     payload:
@@ -3208,19 +3208,19 @@ operations:
     channel:
       $ref: '#/channels/qlcplus'
     messages:
-    - $ref: '#/channels/qlcplus/messages/functionsSetCommonAttributesRequest'
+    - $ref: '#/channels/qlcplus/messages/functionsUpdateRequest'
   receiveFunctionsSetCommonAttributesResponse:
     action: receive
     channel:
       $ref: '#/channels/qlcplus'
     messages:
-    - $ref: '#/channels/qlcplus/messages/functionsSetCommonAttributesResponse'
+    - $ref: '#/channels/qlcplus/messages/functionsUpdateResponse'
   receiveFunctionsCommonAttributesChanged:
     action: receive
     channel:
       $ref: '#/channels/qlcplus'
     messages:
-    - $ref: '#/channels/qlcplus/messages/functionsCommonAttributesChangedEvent'
+    - $ref: '#/channels/qlcplus/messages/functionsUpdatedEvent'
   sendFunctionsStart:
     action: send
     channel:
