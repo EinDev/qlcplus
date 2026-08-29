@@ -28,6 +28,10 @@ class QLCModifiersCache_Test final : public QObject
 
 private slots:
     void addAndRetrieve();
+
+    void loadFromNonExistentDirectoryFails();
+    void loadDirectoryPopulatesCache();
+    void loadIgnoresDuplicateNamedModifier();
 };
 
 #endif
