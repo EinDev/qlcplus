@@ -447,6 +447,53 @@ void Doc_Test::fixture()
     QVERIFY(f4->forcedLTPChannels().count() == 1);
 }
 
+void Doc_Test::fixtureForAddress()
+{
+    // Fixture occupying universe 0, addresses [10-14]
+    Fixture *f1 = new Fixture(m_doc);
+    f1->setName("One");
+    f1->setChannels(5);
+    f1->setAddress(10);
+    f1->setUniverse(0);
+    QVERIFY(m_doc->addFixture(f1) == true);
+
+    // Fixture occupying universe 2, addresses [20-24] within its own universe
+    // -> universeAddress() range [2*512+20 .. 2*512+24] = [1044..1048]
+    Fixture *f2 = new Fixture(m_doc);
+    f2->setName("Two");
+    f2->setChannels(5);
+    f2->setAddress(20);
+    f2->setUniverse(2);
+    QVERIFY(m_doc->addFixture(f2) == true);
+
+    // every address actually covered by f1 must resolve to f1, and nothing else
+    for (quint32 i = 10; i <= 14; i++)
+        QCOMPARE(m_doc->fixtureForAddress(i), f1->id());
+
+    // addresses just outside f1's range must NOT be misattributed to f1 -
+    // this is the "boundary bug" scenario: a naive implementation that just
+    // finds the fixture with the highest starting address <= the queried one,
+    // without checking the upper bound, would wrongly return f1 here too.
+    QCOMPARE(m_doc->fixtureForAddress(9), Fixture::invalidId());
+    QCOMPARE(m_doc->fixtureForAddress(15), Fixture::invalidId());
+    QCOMPARE(m_doc->fixtureForAddress(19), Fixture::invalidId());
+
+    // f2 lives in universe 2: it must be found via its universe-qualified
+    // address (universeAddress()), not its bare in-universe address()
+    QVERIFY(f2->address() == 20);
+    QVERIFY(f2->universeAddress() == 2 * 512 + 20);
+
+    for (quint32 i = 0; i < f2->channels(); i++)
+        QCOMPARE(m_doc->fixtureForAddress(f2->universeAddress() + i), f2->id());
+
+    // querying with the bare address() (as if universe 0) must NOT resolve to
+    // f2 - that address in universe 0 is unoccupied
+    QCOMPARE(m_doc->fixtureForAddress(f2->address()), Fixture::invalidId());
+
+    // and one past f2's real range must not resolve to f2 either
+    QCOMPARE(m_doc->fixtureForAddress(f2->universeAddress() + f2->channels()), Fixture::invalidId());
+}
+
 void Doc_Test::totalPowerConsumption()
 {
     int fuzzy = 0;
