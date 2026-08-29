@@ -1821,14 +1821,15 @@ messages:
           type: object
           required:
           - widgetId
-          - true
+          - "on"
           description: VCSlider::flashFunction() - Adjust mode's momentary flash button (adjustFlashEnabled
             must be true, see VcSliderConfig). Live, mirrors vc.button.press's Flash action semantics.
           properties:
             widgetId:
               type: string
-            true:
+            "on":
               type: boolean
+              description: Matches VCSlider::flashFunction(bool on) - true on press, false on release.
   VcSliderFlashResponse:
     payload:
       oneOf:
@@ -2919,8 +2920,7 @@ messages:
               type: integer
             primaryTop:
               type: boolean
-              description: Side-fader crossfade orientation
-              see VcCueListConfig.sideFaderMode.: null
+              description: Side-fader crossfade orientation, see VcCueListConfig.sideFaderMode.
   VcCueListSetSideFaderLevelRequest:
     payload:
       type: object
@@ -3874,14 +3874,12 @@ schemas:
         type:
         - string
         - 'null'
-        description: Hex
-        or null for the default (no custom color).: null
+        description: Hex or null for the default (no custom color).
       backgroundImage:
         type:
         - string
         - 'null'
-        description: Path/resource
-        or null for none.: null
+        description: Path/resource or null for none.
       foregroundColor:
         type:
         - string
@@ -3910,8 +3908,7 @@ schemas:
         type: integer
       parentId:
         type: string
-        description: Containing Frame/SoloFrame widget ID
-        absent when placed directly on the page root.: null
+        description: Containing Frame/SoloFrame widget ID, absent when placed directly on the page root.
       geometry:
         $ref: '#/components/schemas/VcGeometry'
       zIndex:
@@ -3932,10 +3929,14 @@ schemas:
       - typeConfig
       properties:
         typeConfig:
-          description: Type-specific config, discriminated by VcWidgetSummary.type. Label's type has no
-            dedicated Config schema (kept as an empty object, per the original {} case) - all others reference
-            their existing Vc<Type>Config schema directly.
-          oneOf:
+          description: Type-specific config, discriminated by VcWidgetSummary.widgetType (NOT a
+            self-describing union - none of these branches carry a type tag or a required field
+            unique to it, e.g. a bare Frame config also satisfies VcSoloFrameConfig, so this is
+            intentionally anyOf rather than oneOf; a strict oneOf validator would reject every
+            payload here). Interpret the object per widgetType, not by schema-matching. Label's
+            type has no dedicated Config schema (kept as an empty object, per the original {} case)
+            - all others reference their existing Vc<Type>Config schema directly.
+          anyOf:
           - $ref: '#/components/schemas/VcButtonConfig'
           - $ref: '#/components/schemas/VcSliderConfig'
           - $ref: '#/components/schemas/VcXyPadConfig'
@@ -4029,8 +4030,7 @@ schemas:
         - StopAll
       stopAllFadeOutTime:
         type: integer
-        description: ms
-        only meaningful for actionType=StopAll.: null
+        description: ms, only meaningful for actionType=StopAll.
       startupIntensityEnabled:
         type: boolean
       startupIntensity:
@@ -4260,8 +4260,8 @@ schemas:
       properties:
         soloframeMixing:
           type: boolean
-          description: When true
-          starting a new Function in this frame fades the previous one out instead of cutting it.: null
+          description: When true, starting a new Function in this frame fades the previous one out
+            instead of cutting it.
         excludeMonitoredFunctions:
           type: boolean
   VcClockConfig:
@@ -4276,8 +4276,7 @@ schemas:
         - Countdown
       targetTime:
         type: integer
-        description: ms
-        Stopwatch/Countdown only.: null
+        description: ms, Stopwatch/Countdown only.
       enableSchedule:
         type: boolean
   VcClockSchedule:
@@ -4368,8 +4367,7 @@ schemas:
         type: boolean
       controlBPM:
         type: boolean
-        description: When true
-        vc.speedDial.tap also sets the engine's global BPM - see notes.md.: null
+        description: When true, vc.speedDial.tap also sets the engine's global BPM - see notes.md.
       functions:
         type: array
         description: Functions controlled by this dial's Apply action, each with independent fadeIn/fadeOut/duration
