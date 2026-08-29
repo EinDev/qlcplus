@@ -27,6 +27,11 @@ Popup
 {
     id: menuRoot
     padding: 0
+    // Force in-scene rendering: on styles/platforms whose default
+    // popupType is Popup.Window, hover (MouseArea.containsMouse, used by
+    // ContextMenuEntry's highlight) does not reliably reach descendants
+    // of a popup rendered as a separate top-level window.
+    popupType: Popup.Item
 
     signal entryClicked(int fType)
 
