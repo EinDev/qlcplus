@@ -46,6 +46,7 @@ private slots:
     void deleteFixture();
     void replaceFixtures();
     void fixture();
+    void fixtureForAddress();
     void totalPowerConsumption();
 
     void addFixtureGroup();
