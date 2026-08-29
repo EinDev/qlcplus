@@ -175,8 +175,8 @@ void Doc::clearContents()
     {
         FixtureGroup* grp = m_fixtureGroups.take(grpit.next());
         quint32 grpID = grp->id();
-        delete grp;
         emit fixtureGroupRemoved(grpID);
+        delete grp;
     }
 
     // Delete all fixture instances
@@ -185,8 +185,8 @@ void Doc::clearContents()
     {
         Fixture* fxi = m_fixtures.take(fxit.next());
         quint32 fxID = fxi->id();
-        delete fxi;
         emit fixtureRemoved(fxID);
+        delete fxi;
     }
     m_fixturesListCacheUpToDate = false;
 
