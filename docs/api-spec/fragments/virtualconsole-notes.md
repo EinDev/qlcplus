@@ -4,14 +4,18 @@ Grounded in `qmlui/virtualconsole/*.h/.cpp` (every header read in full; .cpp
 read for `vcbutton`, `vcslider`, `vcxypad`, `vcspeeddial`, `vcframe` to
 confirm behaviour the headers alone didn't make clear) and cross-checked
 against `qmlui/qml/virtualconsole/*.qml`. Component-key prefix `Vc`,
-method/topic prefix `vc.`. 190 messages / 25 schemas / 182 operations.
+method/topic prefix `vc.`. 178 messages / 28 schemas / 170 operations (per a
+fresh `merge.py` run - re-derive with the same command if this fragment
+changes again, rather than trusting this number indefinitely; it has
+drifted from an original 190/25/182 at least once already, via
+MERGE-PLAN #2's consolidation passes).
 
 ## Channel message keys to add at merge time
 
 Per `_example.yaml`'s closing note, every `Vc*` key in `messages:` needs a
 matching lowerCamelCase entry added under `channels.qlcplus.messages` in the
 merged skeleton (e.g. `vcButtonPressRequest: { $ref: '#/components/messages/VcButtonPressRequest' }`).
-There are 190 of them (mechanical rename, first letter lowercased) - not
+There are 178 of them (mechanical rename, first letter lowercased) - not
 listing all individually here, but flagging that this fragment is large
 enough that the merge script should almost certainly generate this mapping
 rather than hand-transcribe it.
@@ -137,8 +141,11 @@ High-frequency or per-resource - clients must `subscribe` to receive:
   audio-capture rate (fastest stream in this fragment by far).
 - `vc.slider.monitorValueChanged` - Level-mode DMX monitor readback,
   effectively per-DMX-frame while monitoring is on.
-- `vc.clock.timeChanged` - 1Hz per clock widget, but many clocks * many
-  clients adds up; gate it.
+- `vc.clock.timeChanged` - 1Hz per clock widget for a plain wall-clock
+  display, but a RUNNING Stopwatch/Countdown ticks at 100ms/10Hz instead
+  (VCClock::playPauseTimer() switches the interval - confirmed in vcclock.cpp,
+  not just a documentation guess); many clocks * many clients adds up either
+  way, gate it.
 - `vc.xyPad.positionChanged` / `vc.xyPad.floorPositionChanged` - can be
   dragged continuously at pointer-move rate.
 - `vc.slider.valueChanged` - likewise, continuous drag.
