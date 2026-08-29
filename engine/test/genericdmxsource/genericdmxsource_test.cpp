@@ -23,6 +23,9 @@
 #define private public
 #include "genericdmxsource_test.h"
 #include "genericdmxsource.h"
+#include "genericfader.h"
+#include "mastertimer.h"
+#include "universe.h"
 #include "doc.h"
 #include "fixture.h"
 #undef private
@@ -79,6 +82,66 @@ void GenericDMXSource_Test::unsetAll()
     src.unsetAll();
     src.writeDMX(nullptr, m_doc->inputOutputMap()->universes());
     QCOMPARE(src.channelsCount(), quint32(0));
+}
+
+void GenericDMXSource_Test::writeDMXAppliesValueToUniverse()
+{
+    QList<Universe*> ua = m_doc->inputOutputMap()->universes();
+
+    GenericDMXSource src(m_doc);
+    src.setOutputEnabled(true);
+    src.set(m_fxiId, 0, 200);
+
+    src.writeDMX(nullptr, ua);
+
+    QSharedPointer<GenericFader> fader = src.m_fadersMap.value(ua[0]->id());
+    QVERIFY(!fader.isNull());
+    fader->write(ua[0], MasterTimer::tick());
+
+    QCOMPARE(uchar(ua[0]->preGMValues()[0]), uchar(200));
+}
+
+void GenericDMXSource_Test::writeDMXSkipsWhenOutputDisabled()
+{
+    QList<Universe*> ua = m_doc->inputOutputMap()->universes();
+
+    GenericDMXSource src(m_doc);
+    src.setOutputEnabled(false);
+    src.set(m_fxiId, 0, 200);
+
+    src.writeDMX(nullptr, ua);
+
+    // Nothing should be forwarded to the universe/fader while output is
+    // disabled - only the queued value itself is retained.
+    QVERIFY(src.m_fadersMap.isEmpty());
+    QCOMPARE(uchar(ua[0]->preGMValues()[0]), uchar(0));
+    QCOMPARE(src.channelsCount(), quint32(1));
+}
+
+void GenericDMXSource_Test::writeDMXIgnoresUnknownFixture()
+{
+    QList<Universe*> ua = m_doc->inputOutputMap()->universes();
+
+    GenericDMXSource src(m_doc);
+    src.setOutputEnabled(true);
+    src.set(m_fxiId + 999, 0, 200); // no such fixture exists in m_doc
+
+    src.writeDMX(nullptr, ua); // must not crash on a dangling fixture ID
+
+    QVERIFY(src.m_fadersMap.isEmpty());
+    QCOMPARE(src.channelsCount(), quint32(1)); // value stays queued, just never applied
+}
+
+void GenericDMXSource_Test::writeDMXSkipsChannelsBeyondAvailableUniverses()
+{
+    GenericDMXSource src(m_doc);
+    src.setOutputEnabled(true);
+    src.set(m_fxiId, 0, 200);
+
+    QList<Universe*> noUniverses; // simulate none of the target universes being available
+    src.writeDMX(nullptr, noUniverses); // must not crash or index out of bounds
+
+    QCOMPARE(src.channelsCount(), quint32(1)); // value stays queued, just never applied
 }
 
 QTEST_MAIN(GenericDMXSource_Test)
