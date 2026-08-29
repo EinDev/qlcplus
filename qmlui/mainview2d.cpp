@@ -145,7 +145,7 @@ void MainView2D::createFixtureItems(quint32 fxID, QVector3D pos, bool mmCoords)
 }
 
 void MainView2D::createFixtureItem(quint32 fxID, quint16 headIndex, quint16 linkedIndex,
-                                   QVector3D pos, bool mmCoords)
+                                   QVector3D pos, bool mmCoords, bool isCenterPosition)
 {
     if (isEnabled() == false)
         return;
@@ -209,6 +209,11 @@ void MainView2D::createFixtureItem(quint32 fxID, quint16 headIndex, quint16 link
     if (m_monProps->containsItem(fxID, headIndex, linkedIndex))
     {
         itemPos = FixtureUtils::item2DPosition(m_monProps, m_monProps->pointOfView(), pos);
+        if (isCenterPosition)
+        {
+            itemPos.setX(itemPos.x() - (size.width() / 2.0));
+            itemPos.setY(itemPos.y() - (size.height() / 2.0));
+        }
         newFixtureItem->setProperty("rotation",
                                     FixtureUtils::item2DRotation(m_monProps->pointOfView(),
                                                                  m_monProps->fixtureRotation(fxID, headIndex, linkedIndex)));
@@ -352,8 +357,16 @@ void MainView2D::slotRefreshView()
             {
                 quint16 headIndex = m_monProps->fixtureHeadIndex(subID);
                 quint16 linkedIndex = m_monProps->fixtureLinkedIndex(subID);
+                // A fixture flagged by a previous pushPositionDelta() has its
+                // persisted fixturePosition() stored as the stage-center-
+                // anchored coordinate (see that method's own doc comment),
+                // not a corner - matches every other DMX-driven
+                // updateFixturePosition()/createFixtureItem() call site.
+                bool isDmxCenter = m_monProps->fixtureFlags(fixture->id(), headIndex, linkedIndex) &
+                                   MonitorProperties::HasDmxPositionFlag;
                 createFixtureItem(fixture->id(), headIndex, linkedIndex,
-                                  m_monProps->fixturePosition(fixture->id(), headIndex, linkedIndex), true);
+                                  m_monProps->fixturePosition(fixture->id(), headIndex, linkedIndex),
+                                  true, isDmxCenter);
             }
         }
         else
@@ -600,7 +613,7 @@ void MainView2D::updateFixtureItem(Fixture *fixture, quint16 headIndex, quint16 
         QVector3D posDelta = FixtureUtils::fixturePositionDelta(fixture, m_monProps);
 
         updateFixturePosition(itemID, QVector3D(gridCenter.x() + (posDelta.x() * 1000.0f), gridCenter.y(),
-                                                gridCenter.z() + (posDelta.z() * 1000.0f)));
+                                                gridCenter.z() + (posDelta.z() * 1000.0f)), true);
     }
 
     if (setRotationOffset)
@@ -687,7 +700,7 @@ void MainView2D::updateFixtureRotation(quint32 itemID, QVector3D degrees)
     }
 }
 
-void MainView2D::updateFixturePosition(quint32 itemID, QVector3D pos)
+void MainView2D::updateFixturePosition(quint32 itemID, QVector3D pos, bool isCenterPosition)
 {
     if (isEnabled() == false)
         return;
@@ -697,12 +710,22 @@ void MainView2D::updateFixturePosition(quint32 itemID, QVector3D pos)
         quint32 fxID = FixtureUtils::itemFixtureID(itemID);
         quint16 headIndex = FixtureUtils::itemHeadIndex(itemID);
         quint16 linkedIndex = FixtureUtils::itemLinkedIndex(itemID);
-        createFixtureItem(fxID, headIndex, linkedIndex, pos, false);
+        createFixtureItem(fxID, headIndex, linkedIndex, pos, false, isCenterPosition);
     }
     else
     {
         QQuickItem *fxItem = m_itemsMap[itemID];
         QPointF point = FixtureUtils::item2DPosition(m_monProps, m_monProps->pointOfView(), pos);
+        if (isCenterPosition)
+        {
+            // $pos is the item's visual center (see this method's header doc
+            // comment) - convert it to the top-left/corner coordinate every
+            // Fixture2DItem.qml's x/y actually expects, using this item's own
+            // current mm size, exactly like Fixture2DItem's width/height are
+            // already point-of-view-aware (see item2DDimension()).
+            point.setX(point.x() - (fxItem->property("mmWidth").toReal() / 2.0));
+            point.setY(point.y() - (fxItem->property("mmHeight").toReal() / 2.0));
+        }
         fxItem->setProperty("mmXPos", point.x());
         fxItem->setProperty("mmYPos", point.y());
     }

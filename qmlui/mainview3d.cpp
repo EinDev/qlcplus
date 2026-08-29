@@ -1264,9 +1264,17 @@ void MainView3D::initializeFixture(quint32 itemID, QEntity *fxEntity, const QSce
 
     /* Set the fixture position */
     QVector3D fxPos;
+    bool fxPosIsDmxCenter = false;
     if (m_monProps->containsItem(fxID, headIndex, linkedIndex))
     {
         fxPos = m_monProps->fixturePosition(fxID, headIndex, linkedIndex);
+
+        // A fixture flagged by a previous pushPositionDelta() has this stored
+        // value as the stage-center-anchored coordinate (see that method's
+        // own doc comment), not a corner - matches every other DMX-driven
+        // updateFixturePosition() call in this file/ContextManager.
+        if (m_monProps->fixtureFlags(fxID, headIndex, linkedIndex) & MonitorProperties::HasDmxPositionFlag)
+            fxPosIsDmxCenter = true;
     }
     else
     {
@@ -1283,7 +1291,7 @@ void MainView3D::initializeFixture(quint32 itemID, QEntity *fxEntity, const QSce
     // scaling is not needed for dynamic meshes
     if (loader)
         updateFixtureScale(itemID, fxSize);
-    updateFixturePosition(itemID, fxPos);
+    updateFixturePosition(itemID, fxPos, fxPosIsDmxCenter);
     updateFixtureRotation(itemID, m_monProps->fixtureRotation(fxID, headIndex, linkedIndex));
 
     QLayer *selectionLayer = m_sceneRootEntity->property("selectionLayer").value<QLayer *>();
@@ -1614,7 +1622,7 @@ void MainView3D::updateFixtureItem(Fixture *fixture, quint16 headIndex, quint16 
 
         QVector3D gridCenter = FixtureUtils::gridCenterPosition(m_monProps);
 
-        updateFixturePosition(itemID, gridCenter + (posDelta * 1000.0f));
+        updateFixturePosition(itemID, gridCenter + (posDelta * 1000.0f), true);
         updateFixtureRotation(itemID, rotDelta);
     }
 
@@ -1654,7 +1662,7 @@ void MainView3D::updateFixtureSelection(quint32 itemID, bool enable)
     }
 }
 
-void MainView3D::updateFixturePosition(quint32 itemID, QVector3D pos)
+void MainView3D::updateFixturePosition(quint32 itemID, QVector3D pos, bool isCenterPosition)
 {
     if (isEnabled() == false)
         return;
@@ -1668,9 +1676,15 @@ void MainView3D::updateFixturePosition(quint32 itemID, QVector3D pos)
     float unitScale = m_monProps->gridUnits() == MonitorProperties::Meters ? 1.0f : 0.3048f;
     QVector3D gridMeters = m_monProps->gridSize() * unitScale;
 
-    float x = (pos.x() / 1000.0) - (gridMeters.x() / 2) + (mesh->m_volume.m_extents.x() / 2);
-    float y = (pos.y() / 1000.0) + (mesh->m_volume.m_extents.y() / 2);
-    float z = (pos.z() / 1000.0) - (gridMeters.z() / 2) + (mesh->m_volume.m_extents.z() / 2);
+    // $pos is already the mesh's center when isCenterPosition is set (see
+    // this method's header doc comment) - skip the extents/2 correction below
+    // in that case, since it exists solely to turn a corner-origin $pos into
+    // the center QEntity translation actually expects.
+    QVector3D halfExtents = isCenterPosition ? QVector3D(0, 0, 0) : (mesh->m_volume.m_extents / 2);
+
+    float x = (pos.x() / 1000.0) - (gridMeters.x() / 2) + halfExtents.x();
+    float y = (pos.y() / 1000.0) + halfExtents.y();
+    float z = (pos.z() / 1000.0) - (gridMeters.z() / 2) + halfExtents.z();
 
     /* move the root mesh first */
     mesh->m_rootTransform->setTranslation(QVector3D(x, y, z));
