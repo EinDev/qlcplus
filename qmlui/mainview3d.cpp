@@ -1609,8 +1609,8 @@ void MainView3D::updateFixtureItem(Fixture *fixture, quint16 headIndex, quint16 
     // m_monProps's static placement/rotation is intentionally not read here.
     if (setTransformOffset)
     {
-        QVector3D posDelta = FixtureUtils::fixturePositionDelta(fixture);
-        QVector3D rotDelta = FixtureUtils::fixtureRotationDelta(fixture);
+        QVector3D posDelta = FixtureUtils::fixturePositionDelta(fixture, m_monProps);
+        QVector3D rotDelta = FixtureUtils::fixtureRotationDelta(fixture, m_monProps);
 
         QVector3D gridCenter = FixtureUtils::gridCenterPosition(m_monProps);
 

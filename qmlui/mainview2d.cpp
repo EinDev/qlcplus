@@ -594,7 +594,7 @@ void MainView2D::updateFixtureItem(Fixture *fixture, quint16 headIndex, quint16 
         // (screen X/Y in TopView) are applied here - the vertical Y delta is
         // left out of this 2D-only composition.
         QVector3D gridCenter = FixtureUtils::gridCenterPosition(m_monProps);
-        QVector3D posDelta = FixtureUtils::fixturePositionDelta(fixture);
+        QVector3D posDelta = FixtureUtils::fixturePositionDelta(fixture, m_monProps);
 
         updateFixturePosition(itemID, QVector3D(gridCenter.x() + (posDelta.x() * 1000.0f), gridCenter.y(),
                                                 gridCenter.z() + (posDelta.z() * 1000.0f)));
@@ -602,7 +602,7 @@ void MainView2D::updateFixtureItem(Fixture *fixture, quint16 headIndex, quint16 
 
     if (setRotationOffset)
     {
-        QVector3D rotDelta = FixtureUtils::fixtureRotationDelta(fixture);
+        QVector3D rotDelta = FixtureUtils::fixtureRotationDelta(fixture, m_monProps);
 
         updateFixtureRotation(itemID, QVector3D(0, rotDelta.y(), 0));
     }
