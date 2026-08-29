@@ -844,6 +844,15 @@ public:
 
     bool startedAsChild() const;
 
+    /**
+     * Return the current list of sources that have started this Function
+     * and not yet stopped it (see start()/stop()). This is primarily meant
+     * for debug tooling that needs to explain why a Function is running -
+     * e.g. Simple Desk's per-channel debug report - since it's the only
+     * place the engine records "who" started a Function.
+     */
+    QList<FunctionParent> sources() const;
+
 private:
     /** Running state flags. The rules are:
      *  - m_stop resets also m_paused
