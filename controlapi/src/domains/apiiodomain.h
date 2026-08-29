@@ -59,6 +59,15 @@ private:
     /** Last-broadcast DMX snapshot per universe, so live events can be
      *  delta-only (docs/api-spec/fragments/io.yaml's io.dmx.universe.*.changed) */
     QHash<quint32, QByteArray> m_lastUniverseSnapshot;
+
+    /** io.universe.create's optional "name" param, stashed here just before
+     *  calling InputOutputMap::addUniverse() so slotUniverseAdded() - invoked
+     *  synchronously from within that call, see its own comment - can apply
+     *  it to the new Universe before broadcasting io.universe.created, so
+     *  the event (and every response built after addUniverse() returns)
+     *  reflects the requested name instead of the engine's default one. */
+    bool m_hasPendingUniverseName = false;
+    QString m_pendingUniverseName;
 };
 
 #endif
