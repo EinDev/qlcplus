@@ -37,6 +37,11 @@ private slots:
     void groupNotFullySelectedWhenOneMemberMissing();
     void emptyGroupIsNeverFullySelected();
     void groupNotFullySelectedWhenOnlySomeHeadsSelected();
+
+    void invertGroupSelectionWorkedExample();
+    void invertGroupSelectionNoOpWhenNothingSelected();
+    void invertGroupSelectionDropsUngroupedFixture();
+    void invertGroupSelectionEmptyWhenGroupFullySelected();
 };
 
 #endif
