@@ -62,6 +62,67 @@ void MonitorProperties_Test::fixtureItems()
     QCOMPARE(mp.containsFixture(10), false);
 }
 
+// Unlike lightItemsXML() below, there was previously no XML round-trip
+// coverage at all for fixture items - fixtureItems() above only exercises the
+// in-memory getters/setters, never saveXML()/loadXML(). Added while
+// investigating a user report of a moving fixture's position resetting to 0
+// after a save/reload: this test passes, which rules out MonitorProperties'
+// own save/load handling as the cause (see ContextManager::pushPositionDelta()/
+// slotUniverseWritten() instead, where the actual bug was found - a DMX
+// Position/Rotation-channel-driven fixture's delta was never written back
+// into MonitorProperties at all, so there was nothing here to load wrong).
+void MonitorProperties_Test::fixtureItemsXML()
+{
+    Doc doc(this);
+    MonitorProperties mp;
+
+    mp.setFixturePosition(10, 0, 0, QVector3D(1.5, 2.5, 3.5));
+    mp.setFixtureRotation(10, 0, 0, QVector3D(15, 90, 270));
+    mp.setFixtureGelColor(10, 0, 0, QColor(Qt::red));
+    mp.setFixtureFixedZoom(10, 0, 0, 25);
+    mp.setFixtureFlags(10, 0, 0, MonitorProperties::HiddenFlag | MonitorProperties::LockedFlag);
+
+    // A linked copy, to confirm sub-items round-trip independently of the
+    // base item (fixtureIDList()'s subID = 0 vs head/linked-packed subID
+    // path). Custom names are only ever set on linked copies in practice
+    // (see ContextManager::setLinkedFixture()) - save/load both gate the
+    // Name attribute on the Linked attribute being present, matching that.
+    mp.setFixturePosition(10, 0, 1, QVector3D(4, 5, 6));
+    mp.setFixtureName(10, 0, 1, "Linked 1");
+
+    QByteArray xmlData;
+    QBuffer buffer(&xmlData);
+    QVERIFY(buffer.open(QIODevice::WriteOnly));
+
+    QXmlStreamWriter writer(&buffer);
+    writer.writeStartDocument();
+    QVERIFY(mp.saveXML(&writer, &doc));
+    writer.writeEndDocument();
+    buffer.close();
+
+    MonitorProperties loaded;
+    QXmlStreamReader reader(xmlData);
+    while (reader.readNextStartElement())
+    {
+        if (reader.name() == KXMLQLCMonitorProperties)
+        {
+            QVERIFY(loaded.loadXML(reader, &doc));
+            break;
+        }
+        reader.skipCurrentElement();
+    }
+
+    QCOMPARE(loaded.fixturePosition(10, 0, 0), QVector3D(1.5, 2.5, 3.5));
+    QCOMPARE(loaded.fixtureRotation(10, 0, 0), QVector3D(15, 90, 270));
+    QCOMPARE(loaded.fixtureGelColor(10, 0, 0), QColor(Qt::red));
+    QCOMPARE(loaded.fixtureFixedZoom(10, 0, 0), 25);
+    QCOMPARE(loaded.fixtureFlags(10, 0, 0),
+             quint32(MonitorProperties::HiddenFlag | MonitorProperties::LockedFlag));
+
+    QCOMPARE(loaded.fixturePosition(10, 0, 1), QVector3D(4, 5, 6));
+    QCOMPARE(loaded.fixtureName(10, 0, 1), QString("Linked 1"));
+}
+
 void MonitorProperties_Test::lightItems()
 {
     MonitorProperties mp;
