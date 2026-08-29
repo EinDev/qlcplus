@@ -24,6 +24,7 @@
 #include <QList>
 #include <QMatrix4x4>
 #include <QPointF>
+#include <QSet>
 #include <QVector3D>
 
 class Doc;
@@ -62,6 +63,43 @@ public:
     static bool isGroupFullySelected(const FixtureGroup *group, const MonitorProperties *monProps,
                                       const QList<quint32> &selectedFixtures);
 
+    /** Returns the union of fixture IDs referenced by the Function with the
+     *  given $functionID in $doc, for the Function types this supports:
+     *   - Scene: every distinct fixture referenced by any of its SceneValues
+     *     (Function::components() already returns exactly this for a Scene).
+     *   - EFX: every distinct fixture named by any of its EFXFixtures
+     *     (likewise already what Function::components() returns for an EFX).
+     *   - RGBMatrix: every member of its associated Fixture Group (likewise
+     *     already what Function::components() returns for an RGBMatrix - the
+     *     group's own fixtureList()).
+     *   - Chaser: recursively, the fixtures of whatever Function each of its
+     *     steps references (Function::components() returns the steps' own
+     *     Function IDs for a Chaser, not fixture IDs - each one is resolved
+     *     through this same method). A step referencing a Function of any
+     *     other type (Show, Script, Sequence, Collection, Audio, Video, or
+     *     another Chaser whose own steps are still followed) that isn't
+     *     itself one of the four types above contributes no fixtures at that
+     *     point - it is not resolved any further.
+     *  Returns an empty list for a missing/invalid $functionID or for any
+     *  other (unsupported) Function type. Cycle-safe against a pathological
+     *  indirect Chaser reference cycle (A -> B -> A).
+     *
+     *  Fixture IDs, NOT itemIDs - a caller applying this to the 2D/3D
+     *  fixture-selection API still needs to expand each one to its own
+     *  heads/linked sub-items via MonitorProperties::fixtureIDList(), the
+     *  same way isGroupFullySelected()'s caller expands a Fixture Group's
+     *  members. */
+    static QList<quint32> functionFixtures(Doc *doc, quint32 functionID);
+
+    /** Same as functionFixtures(), for the union of fixture IDs referenced
+     *  across every Function ID in $functionIDs (e.g. every Function
+     *  currently selected in the Function Manager) - the result for "Select
+     *  Fixtures in Function(s)" when more than one Function is selected.
+     *  Deduplicated; order is not significant. A Function ID appearing more
+     *  than once (directly, or reachable through more than one Chaser step)
+     *  is only ever resolved once. */
+    static QList<quint32> functionsFixtures(Doc *doc, const QList<quint32> &functionIDs);
+
     /** Returns the first available space (in mm) for a rectangle
      * of the given width and height.
      * This method works with the monitor properties and the fixtures list */
@@ -99,6 +137,16 @@ public:
 
     /** Calculate the rise/fall periods for a shutter channel $ch, considering presets */
     static int shutterTimings(const QLCChannel *ch, uchar value, int &highTime, int &lowTime);
+
+private:
+    /** Recursive worker behind functionFixtures()/functionsFixtures(): resolves
+     *  $functionID the same way functionFixtures() documents, inserting every
+     *  referenced fixture ID into $fixtureIDs. $visitedFunctions guards against
+     *  a pathological indirect Chaser reference cycle and against resolving
+     *  the same Function more than once - $functionID is skipped if already
+     *  present in it. */
+    static void collectFunctionFixtures(Doc *doc, quint32 functionID,
+                                         QSet<quint32> &visitedFunctions, QSet<quint32> &fixtureIDs);
 };
 
 #endif // FIXTUREUTILS_H
