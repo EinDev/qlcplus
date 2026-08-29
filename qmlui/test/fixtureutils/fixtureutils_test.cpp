@@ -487,4 +487,57 @@ void FixtureUtils_Test::fixtureScaleFactorDefaultsToOneForAbsentAxes()
     QCOMPARE(factor.z(), 1.0f);
 }
 
+// A fixture with no per-fixture MonitorProperties entry at all (never
+// registered) must behave identically to passing no MonitorProperties* at
+// all - the whole point of the feature's default being backward compatible.
+void FixtureUtils_Test::fixturePositionDeltaUnaffectedByDefaultMonProps()
+{
+    Doc doc(this);
+    Fixture *fixture = createSingleChannelFixture(&doc, QLCChannel::PositionX, 0xFF);
+    MonitorProperties monProps;
+
+    QVector3D withoutMonProps = FixtureUtils::fixturePositionDelta(fixture);
+    QVector3D withDefaultMonProps = FixtureUtils::fixturePositionDelta(fixture, &monProps);
+
+    QCOMPARE(withDefaultMonProps, withoutMonProps);
+}
+
+// The core of the invert/scale feature: a fixture's own MonitorProperties
+// entry must flip the sign and apply the multiplier of exactly the axis its
+// flag/scale addresses, leaving the raw-to-delta conversion of every other
+// axis (and every other fixture) untouched.
+void FixtureUtils_Test::fixturePositionDeltaAppliesPerFixtureInvertAndScale()
+{
+    Doc doc(this);
+    Fixture *fixture = createSingleChannelFixture(&doc, QLCChannel::PositionX, 0xFF);
+    MonitorProperties monProps;
+    monProps.setFixtureFlags(fixture->id(), 0, 0, MonitorProperties::InvertedPositionXFlag);
+    monProps.setFixtureDmxScale(fixture->id(), 0, 0, 2.0f);
+
+    QVector3D delta = FixtureUtils::fixturePositionDelta(fixture, &monProps);
+
+    float rawDelta = FixtureUtils::positionDeltaFromRaw(0xFF << 8);
+    QCOMPARE(delta.x(), rawDelta * 2.0f * -1.0f);
+    // Axes with no channel at all must stay exactly 0 regardless of invert/scale.
+    QCOMPARE(delta.y(), 0.0f);
+    QCOMPARE(delta.z(), 0.0f);
+}
+
+// Same guarantee as above, for RotationX/Y/Z.
+void FixtureUtils_Test::fixtureRotationDeltaAppliesPerFixtureInvertAndScale()
+{
+    Doc doc(this);
+    Fixture *fixture = createSingleChannelFixture(&doc, QLCChannel::RotationZ, 0xFF);
+    MonitorProperties monProps;
+    monProps.setFixtureFlags(fixture->id(), 0, 0, MonitorProperties::InvertedRotationZFlag);
+    monProps.setFixtureDmxScale(fixture->id(), 0, 0, 0.5f);
+
+    QVector3D delta = FixtureUtils::fixtureRotationDelta(fixture, &monProps);
+
+    float rawDelta = FixtureUtils::rotationDeltaFromRaw(0xFF << 8);
+    QCOMPARE(delta.z(), rawDelta * 0.5f * -1.0f);
+    QCOMPARE(delta.x(), 0.0f);
+    QCOMPARE(delta.y(), 0.0f);
+}
+
 QTEST_APPLESS_MAIN(FixtureUtils_Test)

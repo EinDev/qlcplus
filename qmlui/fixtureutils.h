@@ -177,12 +177,24 @@ public:
      *  one axis at a time via accumulateChannelGroupValue(). An axis with no
      *  matching channel on the fixture contributes 0 (no offset) rather than
      *  positionDeltaFromRaw(0)'s -2.5m - "no channel" and "channel currently
-     *  at DMX 0" are different things and must not be conflated. */
-    static QVector3D fixturePositionDelta(Fixture *fixture);
+     *  at DMX 0" are different things and must not be conflated.
+     *
+     *  If $monProps is non-null, $fixture's per-fixture DMX-to-view invert
+     *  flags (MonitorProperties::InvertedPosition{X,Y,Z}Flag) and scale
+     *  multiplier (MonitorProperties::fixtureDmxScale()) are applied on top
+     *  of the raw-to-delta conversion, per axis: delta = rawDelta * scale *
+     *  (-1 if inverted). $monProps defaults to null for callers (and the
+     *  existing unit tests) that only care about the un-adjusted global
+     *  conversion; every real caller in qmlui passes its own MonitorProperties
+     *  so the setting actually takes effect - see ContextManager::
+     *  pushPositionDelta() for the exact-inverse write-back direction, which
+     *  must apply the same scale/invert or a drag will jump/drift. */
+    static QVector3D fixturePositionDelta(Fixture *fixture, const MonitorProperties *monProps = nullptr);
 
     /** Same as fixturePositionDelta(), for RotationX/Y/Z (degrees). An axis
-     *  with no matching channel contributes 0 degrees. */
-    static QVector3D fixtureRotationDelta(Fixture *fixture);
+     *  with no matching channel contributes 0 degrees. $monProps applies the
+     *  fixture's InvertedRotation{X,Y,Z}Flag and DMX scale the same way. */
+    static QVector3D fixtureRotationDelta(Fixture *fixture, const MonitorProperties *monProps = nullptr);
 
     /** Scans $fixture's current channel values for ScaleX/Y/Z and returns the
      *  resulting linear scale factor per axis (see scaleFactorFromRaw()). An

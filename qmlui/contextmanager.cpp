@@ -163,6 +163,8 @@ void ContextManager::setBatchSelection(bool enable)
         emit selectedDimmersCountChanged();
         emit fixturesPositionChanged();
         emit fixturesRotationChanged();
+        emit fixtureDmxTransformFlagsChanged();
+        emit fixtureDmxScaleChanged();
 
         if (m_DMXView->isEnabled())
             m_DMXView->updateFixtureSelection(m_selectedFixtures);
@@ -876,6 +878,8 @@ void ContextManager::setFixtureSelection(quint32 itemID, int headIndex, bool ena
     emit selectedFixturesChanged();
     emit fixturesPositionChanged();
     emit fixturesRotationChanged();
+    emit fixtureDmxTransformFlagsChanged();
+    emit fixtureDmxScaleChanged();
 
     // parachute if we get out of sync
     if (m_selectedFixtures.isEmpty())
@@ -1159,14 +1163,38 @@ void ContextManager::pushPositionDelta(Fixture *fixture, QVector3D deltaMeters)
     const QLCChannel::Group axisGroups[3] = {
         QLCChannel::PositionX, QLCChannel::PositionY, QLCChannel::PositionZ
     };
+    const MonitorProperties::ItemFlags invertFlags[3] = {
+        MonitorProperties::InvertedPositionXFlag,
+        MonitorProperties::InvertedPositionYFlag,
+        MonitorProperties::InvertedPositionZFlag
+    };
     const float deltaValues[3] = { deltaMeters.x(), deltaMeters.y(), deltaMeters.z() };
+
+    // $deltaMeters is in view space, i.e. already has this fixture's own
+    // invert/scale applied (it comes from cachedPositionDelta(), seeded from
+    // FixtureUtils::fixturePositionDelta() - see that function's own note).
+    // To write it back onto the raw DMX channel, undo the exact same
+    // transform: un-invert, then divide out the scale - the inverse of
+    // "rawDelta * scale * sign" is "(viewDelta / scale) * sign" (dividing and
+    // multiplying by the same +/-1 sign are identical). Getting this
+    // direction wrong (or skipping it) makes a drag jump or drift, since the
+    // read path (fixturePositionDelta()) and this write path would then
+    // disagree about what a given raw value means.
+    quint32 flags = m_monProps->fixtureFlags(fixture->id(), 0, 0);
+    float scale = m_monProps->fixtureDmxScale(fixture->id(), 0, 0);
+    if (qFuzzyIsNull(scale))
+        scale = 1.0f;
 
     for (int i = 0; i < 3; i++)
     {
         if (fixture->channelNumber(axisGroups[i], QLCChannel::MSB) == QLCChannel::invalid())
             continue;
 
-        int raw = FixtureUtils::positionRawFromDelta(deltaValues[i]);
+        float adjusted = deltaValues[i] / scale;
+        if (flags & invertFlags[i])
+            adjusted = -adjusted;
+
+        int raw = FixtureUtils::positionRawFromDelta(adjusted);
         QList<SceneValue> svList = fixture->axisValueToValues(axisGroups[i], raw);
         for (SceneValue &sv : svList)
         {
@@ -1181,6 +1209,41 @@ void ContextManager::pushPositionDelta(Fixture *fixture, QVector3D deltaMeters)
     // for why this must not be re-derived from the fixture's own channel
     // values on the next call instead.
     m_fixturePositionDeltaCache.insert(fixture->id(), deltaMeters);
+
+    // Also persist the equivalent absolute position into MonitorProperties,
+    // in the same millimetre/corner-origin convention every other fixture's
+    // fixturePosition() already uses (see gridCenterPosition()'s own doc
+    // comment) - this is otherwise unused for a fixture with its own
+    // PositionX/Y/Z channels (see the "is DMX-driven" branches in
+    // setFixturesOffset()/setFixturesPosition()/fixturesPosition(), which
+    // deliberately never call setFixturePosition()), so writing it here does
+    // not conflict with anything else that reads it.
+    //
+    // Root-cause fix for a user report: dragging such a fixture only ever
+    // pushed the position as a live DMX value (via setDumpValue() above),
+    // which Doc::saveXML() never persists (dumped/live channel values are
+    // runtime-only, unlike a Scene's stored values) - so the position was
+    // silently lost on every save, and reopening the project showed the
+    // fixture back at delta 0 (world center). MonitorProperties::saveXML()
+    // itself round-trips correctly (see the new fixtureItemsXML() test in
+    // monitorproperties_test) - the bug was that nothing upstream of it ever
+    // wrote this fixture's position into it in the first place.
+    //
+    // NOTE: this fixes the *save* side only. Restoring it on *load* still
+    // needs a decision this commit deliberately leaves unmade: either
+    // re-push the loaded value onto the fixture's live DMX channels at
+    // project load (correct, but physically moves real connected hardware
+    // the instant a project is opened - a "flag before implementing" case
+    // per this project's standing rule), or make the 2D/3D views prefer this
+    // persisted value over the live (still-default) DMX-derived one for a
+    // fixture's very first render after load, without touching DMX output
+    // (cosmetic-only, no hardware side effect, but touches the same
+    // updateFixtureItem() path slotUniverseWritten() drives on every single
+    // universe write, which is recently-hardened/cache-sensitive code not
+    // touched here). See the task report for the tradeoffs.
+    m_monProps->setFixturePosition(fixture->id(), 0, 0,
+                                   FixtureUtils::gridCenterPosition(m_monProps) + (deltaMeters * 1000.0f));
+    m_doc->setModified();
 }
 
 void ContextManager::pushRotationDelta(Fixture *fixture, QVector3D deltaDegrees)
@@ -1188,14 +1251,29 @@ void ContextManager::pushRotationDelta(Fixture *fixture, QVector3D deltaDegrees)
     const QLCChannel::Group axisGroups[3] = {
         QLCChannel::RotationX, QLCChannel::RotationY, QLCChannel::RotationZ
     };
+    const MonitorProperties::ItemFlags invertFlags[3] = {
+        MonitorProperties::InvertedRotationXFlag,
+        MonitorProperties::InvertedRotationYFlag,
+        MonitorProperties::InvertedRotationZFlag
+    };
     const float deltaValues[3] = { deltaDegrees.x(), deltaDegrees.y(), deltaDegrees.z() };
+
+    // See pushPositionDelta()'s equivalent note - same invert/scale inverse.
+    quint32 flags = m_monProps->fixtureFlags(fixture->id(), 0, 0);
+    float scale = m_monProps->fixtureDmxScale(fixture->id(), 0, 0);
+    if (qFuzzyIsNull(scale))
+        scale = 1.0f;
 
     for (int i = 0; i < 3; i++)
     {
         if (fixture->channelNumber(axisGroups[i], QLCChannel::MSB) == QLCChannel::invalid())
             continue;
 
-        int raw = FixtureUtils::rotationRawFromDelta(deltaValues[i]);
+        float adjusted = deltaValues[i] / scale;
+        if (flags & invertFlags[i])
+            adjusted = -adjusted;
+
+        int raw = FixtureUtils::rotationRawFromDelta(adjusted);
         QList<SceneValue> svList = fixture->axisValueToValues(axisGroups[i], raw);
         for (SceneValue &sv : svList)
         {
@@ -1208,6 +1286,12 @@ void ContextManager::pushRotationDelta(Fixture *fixture, QVector3D deltaDegrees)
 
     // See pushPositionDelta()'s equivalent note.
     m_fixtureRotationDeltaCache.insert(fixture->id(), deltaDegrees);
+
+    // Persist alongside the position fix above, for the same reason -
+    // fixtureRotation() already represents absolute degrees for a
+    // non-DMX-driven fixture, so no unit conversion is needed here.
+    m_monProps->setFixtureRotation(fixture->id(), 0, 0, deltaDegrees);
+    m_doc->setModified();
 }
 
 QVector3D ContextManager::cachedPositionDelta(quint32 fxID, Fixture *fixture) const
@@ -1216,7 +1300,7 @@ QVector3D ContextManager::cachedPositionDelta(quint32 fxID, Fixture *fixture) co
     if (it != m_fixturePositionDeltaCache.constEnd())
         return it.value();
 
-    QVector3D delta = FixtureUtils::fixturePositionDelta(fixture);
+    QVector3D delta = FixtureUtils::fixturePositionDelta(fixture, m_monProps);
     m_fixturePositionDeltaCache.insert(fxID, delta);
     return delta;
 }
@@ -1227,7 +1311,7 @@ QVector3D ContextManager::cachedRotationDelta(quint32 fxID, Fixture *fixture) co
     if (it != m_fixtureRotationDeltaCache.constEnd())
         return it.value();
 
-    QVector3D delta = FixtureUtils::fixtureRotationDelta(fixture);
+    QVector3D delta = FixtureUtils::fixtureRotationDelta(fixture, m_monProps);
     m_fixtureRotationDeltaCache.insert(fxID, delta);
     return delta;
 }
@@ -2281,6 +2365,134 @@ void ContextManager::setFixtureRotation(quint32 itemID, QVector3D degrees)
         m_3DView->updateFixtureRotation(itemID, degrees);
 }
 
+// The 6 axis-invert bits this feature owns within MonitorProperties'
+// combined flags bitmask - used to mask reads/writes so
+// setFixtureDmxTransformFlags() never clobbers Hidden/Locked/InvertedPan/
+// InvertedTiltFlag, which share the same underlying storage.
+static const quint32 kDmxTransformFlagsMask =
+        MonitorProperties::InvertedPositionXFlag | MonitorProperties::InvertedPositionYFlag |
+        MonitorProperties::InvertedPositionZFlag | MonitorProperties::InvertedRotationXFlag |
+        MonitorProperties::InvertedRotationYFlag | MonitorProperties::InvertedRotationZFlag;
+
+bool ContextManager::selectedFixtureHasDmxTransform() const
+{
+    if (m_selectedFixtures.count() != 1)
+        return false;
+
+    quint32 fxID = FixtureUtils::itemFixtureID(m_selectedFixtures.first());
+    Fixture *fixture = m_doc->fixture(fxID);
+    if (fixture == nullptr)
+        return false;
+
+    return fixture->channelNumber(QLCChannel::PositionX, QLCChannel::MSB) != QLCChannel::invalid() ||
+           fixture->channelNumber(QLCChannel::PositionY, QLCChannel::MSB) != QLCChannel::invalid() ||
+           fixture->channelNumber(QLCChannel::PositionZ, QLCChannel::MSB) != QLCChannel::invalid() ||
+           fixture->channelNumber(QLCChannel::RotationX, QLCChannel::MSB) != QLCChannel::invalid() ||
+           fixture->channelNumber(QLCChannel::RotationY, QLCChannel::MSB) != QLCChannel::invalid() ||
+           fixture->channelNumber(QLCChannel::RotationZ, QLCChannel::MSB) != QLCChannel::invalid();
+}
+
+quint32 ContextManager::fixtureDmxTransformFlags() const
+{
+    if (m_selectedFixtures.count() != 1)
+        return 0;
+
+    quint32 fxID = FixtureUtils::itemFixtureID(m_selectedFixtures.first());
+    return m_monProps->fixtureFlags(fxID, 0, 0) & kDmxTransformFlagsMask;
+}
+
+void ContextManager::setFixtureDmxTransformFlags(quint32 flags)
+{
+    if (m_selectedFixtures.count() != 1)
+        return;
+
+    quint32 fxID = FixtureUtils::itemFixtureID(m_selectedFixtures.first());
+    quint32 existing = m_monProps->fixtureFlags(fxID, 0, 0);
+    quint32 merged = (existing & ~kDmxTransformFlagsMask) | (flags & kDmxTransformFlagsMask);
+    if (merged == existing)
+        return;
+
+    m_monProps->setFixtureFlags(fxID, 0, 0, merged);
+    m_doc->setModified();
+    refreshFixtureDmxTransform(fxID);
+    emit fixtureDmxTransformFlagsChanged();
+}
+
+qreal ContextManager::fixtureDmxScale() const
+{
+    if (m_selectedFixtures.count() != 1)
+        return 1.0;
+
+    quint32 fxID = FixtureUtils::itemFixtureID(m_selectedFixtures.first());
+    return qreal(m_monProps->fixtureDmxScale(fxID, 0, 0));
+}
+
+void ContextManager::setFixtureDmxScale(qreal scale)
+{
+    if (m_selectedFixtures.count() != 1)
+        return;
+
+    // A zero/negative scale would make pushPositionDelta()/pushRotationDelta()
+    // divide by zero (or silently flip sign for a negative one, which invert
+    // already covers) - clamp to a small positive minimum instead of allowing it.
+    if (scale <= 0.0)
+        scale = 0.01;
+
+    quint32 fxID = FixtureUtils::itemFixtureID(m_selectedFixtures.first());
+    float newScale = float(scale);
+    if (qFuzzyCompare(newScale + 1.0f, m_monProps->fixtureDmxScale(fxID, 0, 0) + 1.0f))
+        return;
+
+    m_monProps->setFixtureDmxScale(fxID, 0, 0, newScale);
+    m_doc->setModified();
+    refreshFixtureDmxTransform(fxID);
+    emit fixtureDmxScaleChanged();
+}
+
+void ContextManager::refreshFixtureDmxTransform(quint32 fxID)
+{
+    // The setting change alone doesn't touch DMX, so the cached delta (which
+    // pre-dates the change) must be dropped rather than reused - see
+    // cachedPositionDelta()/cachedRotationDelta()'s own docs for why they
+    // can't simply be re-derived from the fixture's channel values on every
+    // call instead; here, unlike that general case, we know for certain the
+    // cache is now stale, so unconditionally dropping it is correct.
+    m_fixturePositionDeltaCache.remove(fxID);
+    m_fixtureRotationDeltaCache.remove(fxID);
+
+    Fixture *fixture = m_doc->fixture(fxID);
+    if (fixture == nullptr)
+        return;
+
+    quint32 itemID = FixtureUtils::fixtureItemID(fxID, 0, 0);
+
+    bool hasPosition = fixture->channelNumber(QLCChannel::PositionX, QLCChannel::MSB) != QLCChannel::invalid() ||
+                       fixture->channelNumber(QLCChannel::PositionY, QLCChannel::MSB) != QLCChannel::invalid() ||
+                       fixture->channelNumber(QLCChannel::PositionZ, QLCChannel::MSB) != QLCChannel::invalid();
+    bool hasRotation = fixture->channelNumber(QLCChannel::RotationX, QLCChannel::MSB) != QLCChannel::invalid() ||
+                       fixture->channelNumber(QLCChannel::RotationY, QLCChannel::MSB) != QLCChannel::invalid() ||
+                       fixture->channelNumber(QLCChannel::RotationZ, QLCChannel::MSB) != QLCChannel::invalid();
+
+    if (hasPosition)
+    {
+        QVector3D newPos = FixtureUtils::gridCenterPosition(m_monProps) +
+                           (cachedPositionDelta(fxID, fixture) * 1000.0f);
+        if (m_2DView->isEnabled())
+            m_2DView->updateFixturePosition(itemID, newPos);
+        if (m_3DView->isEnabled())
+            m_3DView->updateFixturePosition(itemID, newPos);
+    }
+
+    if (hasRotation)
+    {
+        QVector3D newRot = cachedRotationDelta(fxID, fixture);
+        if (m_2DView->isEnabled())
+            m_2DView->updateFixtureRotation(itemID, newRot);
+        if (m_3DView->isEnabled())
+            m_3DView->updateFixtureRotation(itemID, newRot);
+    }
+}
+
 void ContextManager::setFixtureGroupSelection(quint32 id, bool enable, bool isUniverse)
 {
     setBatchSelection(true);
@@ -2647,14 +2859,26 @@ void ContextManager::slotUniverseWritten(quint32 idx, const QByteArray &ua)
             // compound like the original un-cached bug did.
             quint32 fxID = fixture->id();
 
+            // The epsilons below are a few DMX raw steps wide *before* any
+            // per-fixture DMX scale is applied - since fixturePositionDelta()/
+            // fixtureRotationDelta() now multiply their result by that same
+            // scale (see MonitorProperties::fixtureDmxScale()), the epsilon
+            // must be scaled by the same factor here or a fixture with a
+            // scale far from 1.0 would compare its (now much smaller or
+            // larger) view-space quantization noise against an epsilon sized
+            // for scale 1.0, either false-triggering on noise or missing a
+            // real external change.
+            float dmxScale = m_monProps->fixtureDmxScale(fxID, 0, 0);
+
             QHash<quint32, QVector3D>::iterator posIt = m_fixturePositionDeltaCache.find(fxID);
             if (posIt != m_fixturePositionDeltaCache.end())
             {
-                QVector3D fresh = FixtureUtils::fixturePositionDelta(fixture);
+                QVector3D fresh = FixtureUtils::fixturePositionDelta(fixture, m_monProps);
                 QVector3D cached = posIt.value();
-                if (axisDeltaChanged(fixture, QLCChannel::PositionX, cached.x(), fresh.x(), 0.0005f) ||
-                    axisDeltaChanged(fixture, QLCChannel::PositionY, cached.y(), fresh.y(), 0.0005f) ||
-                    axisDeltaChanged(fixture, QLCChannel::PositionZ, cached.z(), fresh.z(), 0.0005f))
+                float posEpsilon = 0.0005f * qAbs(dmxScale);
+                if (axisDeltaChanged(fixture, QLCChannel::PositionX, cached.x(), fresh.x(), posEpsilon) ||
+                    axisDeltaChanged(fixture, QLCChannel::PositionY, cached.y(), fresh.y(), posEpsilon) ||
+                    axisDeltaChanged(fixture, QLCChannel::PositionZ, cached.z(), fresh.z(), posEpsilon))
                 {
                     m_fixturePositionDeltaCache.erase(posIt);
                 }
@@ -2663,11 +2887,12 @@ void ContextManager::slotUniverseWritten(quint32 idx, const QByteArray &ua)
             QHash<quint32, QVector3D>::iterator rotIt = m_fixtureRotationDeltaCache.find(fxID);
             if (rotIt != m_fixtureRotationDeltaCache.end())
             {
-                QVector3D fresh = FixtureUtils::fixtureRotationDelta(fixture);
+                QVector3D fresh = FixtureUtils::fixtureRotationDelta(fixture, m_monProps);
                 QVector3D cached = rotIt.value();
-                if (axisDeltaChanged(fixture, QLCChannel::RotationX, cached.x(), fresh.x(), 0.05f) ||
-                    axisDeltaChanged(fixture, QLCChannel::RotationY, cached.y(), fresh.y(), 0.05f) ||
-                    axisDeltaChanged(fixture, QLCChannel::RotationZ, cached.z(), fresh.z(), 0.05f))
+                float rotEpsilon = 0.05f * qAbs(dmxScale);
+                if (axisDeltaChanged(fixture, QLCChannel::RotationX, cached.x(), fresh.x(), rotEpsilon) ||
+                    axisDeltaChanged(fixture, QLCChannel::RotationY, cached.y(), fresh.y(), rotEpsilon) ||
+                    axisDeltaChanged(fixture, QLCChannel::RotationZ, cached.z(), fresh.z(), rotEpsilon))
                 {
                     m_fixtureRotationDeltaCache.erase(rotIt);
                 }
