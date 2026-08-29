@@ -622,7 +622,15 @@ private:
     BeatGeneratorType m_beatGeneratorType;
     int m_currentBPM;
     QElapsedTimer *m_beatTime;
-    AudioCapture *m_inputCapture;
+    /** Shared ownership is required here: this keeps the AudioCapture object
+     *  alive for as long as it is registered as the beat source, even if
+     *  something else (e.g. changing the audio input device/sample rate/
+     *  channels in the IO settings) calls Doc::destroyAudioCapture() on
+     *  Doc's own reference in the meantime. A bare pointer here previously
+     *  went dangling in that scenario, and later switching the beat type
+     *  away from Audio deadlocked the whole app trying to lock a QMutex
+     *  inside freed memory. */
+    QSharedPointer<AudioCapture> m_inputCapture;
 
     /*********************************************************************
      * Network server
