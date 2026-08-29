@@ -39,6 +39,11 @@ private:
     void registerMethods();
     App *app() const;
 
+    /** Broadcasts core.project.loaded ({reason, project: CoreProjectMetadata}),
+     *  the one event a spec-built client should refresh all its domain state
+     *  from - see core.project.new/open/close handlers, the only callers. */
+    void broadcastProjectLoaded(const QString &reason, const QString &originClientId);
+
 private slots:
     void slotModeChanged(Doc::Mode mode);
     void slotDocRevisionChanged(quint32 revision);
@@ -48,6 +53,17 @@ private slots:
 private:
     Doc *m_doc;
     ApiServer *m_server;
+
+    /** Requesting client's id, stashed by core.mode.set just before calling
+     *  Doc::setMode() so slotModeChanged() - fired synchronously from
+     *  within that call if the mode actually changed - can attribute
+     *  core.mode.changed to it instead of leaving originClientId null (see
+     *  00-conventions.md §3/§9). Doc::setMode() is a no-op (and never emits)
+     *  when the requested mode already matches the current one, so this is
+     *  unconditionally cleared again right after the call returns - the
+     *  same "set before, clear after" pattern as ApiIoDomain's
+     *  m_pendingOriginClientId, see its longer comment there. */
+    QString m_pendingOriginClientId;
 };
 
 #endif

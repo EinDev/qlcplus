@@ -50,7 +50,7 @@ private slots:
     void slotUniverseAdded(quint32 id);
     void slotUniverseWritten(quint32 id, const QByteArray &postGMValues);
     void slotGrandMasterValueChanged(uchar value);
-    void slotBlackoutChanged(bool state);
+    void slotBlackoutChanged(bool blackout);
 
 private:
     Doc *m_doc;
@@ -59,6 +59,30 @@ private:
     /** Last-broadcast DMX snapshot per universe, so live events can be
      *  delta-only (docs/api-spec/fragments/io.yaml's io.dmx.universe.*.changed) */
     QHash<quint32, QByteArray> m_lastUniverseSnapshot;
+
+    /** io.universe.create's optional "name" param, stashed here just before
+     *  calling InputOutputMap::addUniverse() so slotUniverseAdded() - invoked
+     *  synchronously from within that call, see its own comment - can apply
+     *  it to the new Universe before broadcasting io.universe.created, so
+     *  the event (and every response built after addUniverse() returns)
+     *  reflects the requested name instead of the engine's default one. */
+    bool m_hasPendingUniverseName = false;
+    QString m_pendingUniverseName;
+
+    /** Requesting client's id, stashed by a request handler just before
+     *  calling an InputOutputMap/GrandMaster mutator whose resulting signal
+     *  (relayed to a broadcast in one of the slots above) fires
+     *  synchronously on this same thread - see 00-conventions.md §3/§9 on
+     *  originClientId. Every setter that writes here is unconditionally
+     *  cleared again right after the mutator call returns, since several of
+     *  them (setGrandMasterValue, setBlackout, Doc::setMode) are no-ops that
+     *  never emit when the requested value already matches the current one
+     *  - otherwise a stale id could get attributed to a later, unrelated,
+     *  non-request-driven change. Empty (the default) means "not currently
+     *  inside a request that should be attributed" - broadcasts read it as
+     *  their originClientId either way, so an unrelated/engine-driven change
+     *  correctly gets a null origin. */
+    QString m_pendingOriginClientId;
 };
 
 #endif
