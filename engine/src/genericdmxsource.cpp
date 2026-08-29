@@ -60,6 +60,27 @@ void GenericDMXSource::unset(quint32 fxi, quint32 ch)
     QMutexLocker locker(&m_mutex);
     m_values.remove(QPair<quint32,quint32>(fxi, ch));
     m_changed = true;
+
+    // Removing the entry from m_values only stops *this* class from pushing
+    // fresh values on the next writeDMX() call. It does NOT, by itself, stop
+    // the channel from being driven: once set() has created a FadeChannel for
+    // this fxi/ch pair on some Universe's GenericFader (see writeDMX() below),
+    // that fader keeps writing its last known value on every single Universe
+    // tick forever, regardless of what GenericDMXSource itself still tracks.
+    // Without explicitly removing it here too, "unsetting" a channel left it
+    // latched at its last value indefinitely, with nothing about
+    // GenericDMXSource's own state indicating it was still driving anything.
+    Fixture *fixture = m_doc->fixture(fxi);
+    if (fixture != NULL)
+    {
+        quint32 universeIndex = quint32(floor((fixture->universeAddress() + ch) / 512));
+        QSharedPointer<GenericFader> fader = m_fadersMap.value(universeIndex, QSharedPointer<GenericFader>());
+        if (!fader.isNull())
+        {
+            FadeChannel fc(m_doc, fxi, ch);
+            fader->remove(&fc);
+        }
+    }
 }
 
 void GenericDMXSource::unsetAll()
