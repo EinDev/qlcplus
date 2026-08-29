@@ -266,20 +266,28 @@ Rectangle
                 {
                     if (selectionRect.visible == true)
                     {
-                        if (mouse.x !== initialXPos || mouse.y !== initialYPos)
+                        // initialXPos/initialYPos are stored in content-frame
+                        // coordinates (see onPressed above), so the current
+                        // position must be converted to the same frame before
+                        // comparing - otherwise a scrolled view (non-zero
+                        // contentX/contentY) picks the wrong quadrant here.
+                        var curXPos = mouse.x - twoDView.contentX
+                        var curYPos = mouse.y - twoDView.contentY
+
+                        if (curXPos !== initialXPos || curYPos !== initialYPos)
                         {
                             //console.log("startX: " + initialXPos + ", startY: " + initialYPos)
-                            //console.log("mouseX: " + mouse.x + ", mouseY: " + mouse.y)
-                            if (mouse.x >= initialXPos)
+                            //console.log("mouseX: " + curXPos + ", mouseY: " + curYPos)
+                            if (curXPos >= initialXPos)
                             {
-                                if (mouse.y >= initialYPos)
+                                if (curYPos >= initialYPos)
                                    selectionRect.rotation = 0
                                 else
                                    selectionRect.rotation = -90
                             }
                             else
                             {
-                                if (mouse.y >= initialYPos)
+                                if (curYPos >= initialYPos)
                                     selectionRect.rotation = 90
                                 else
                                     selectionRect.rotation = -180
