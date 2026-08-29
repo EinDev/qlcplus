@@ -59,6 +59,7 @@
 #include "functionmanager.h"
 #include "fixturegroupeditor.h"
 #include "inputoutputmanager.h"
+#include "freezewatchdog.h"
 
 #include "tardis.h"
 #include "networkmanager.h"
@@ -799,6 +800,7 @@ void App::slotItemReadyForPrinting()
 void App::setFileName(const QString &fileName)
 {
     m_fileName = fileName;
+    FreezeWatchdog::setCurrentProjectPath(fileName);
 }
 
 QString App::fileName() const
