@@ -937,6 +937,17 @@ bool App::loadWorkspace(const QString &fileName)
 
         m_doc->inputOutputMap()->startUniverses();
 
+        // Re-push any DMX-driven fixture's persisted position/rotation onto
+        // its live channels (including real connected hardware) now that
+        // both the Doc's fixtures and its MonitorProperties are fully loaded
+        // and universe output is running - see restorePersistedDmxTransforms()'s
+        // own doc comment. This calls pushPositionDelta()/pushRotationDelta(),
+        // which mark the project modified; undo that immediately after so a
+        // project that is opened and not otherwise touched still shows as
+        // unmodified.
+        m_contextManager->restorePersistedDmxTransforms();
+        m_doc->resetModified();
+
         /* The workspace is complete: let the connected clients request it */
         m_networkManager->notifyProjectLoaded();
 
@@ -990,6 +1001,11 @@ void App::slotLoadDocFromMemory(QByteArray &xmlData)
         m_doc->resetModified();
         m_doc->inputOutputMap()->startUniverses();
         m_contextManager->resetContexts();
+
+        // See loadWorkspace()'s equivalent call for why this runs here and
+        // why resetModified() follows it.
+        m_contextManager->restorePersistedDmxTransforms();
+        m_doc->resetModified();
     }
     else
         qDebug() << "XML doesn't have a Workspace tag";

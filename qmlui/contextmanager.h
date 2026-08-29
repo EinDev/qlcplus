@@ -140,6 +140,26 @@ public slots:
     /** Resets the data structures and update the currently enabled views */
     void resetContexts();
 
+    /** Re-pushes every DMX-driven fixture's persisted position/rotation
+     *  (see MonitorProperties::HasDmxPositionFlag/HasDmxRotationFlag) back
+     *  onto its live PositionX/Y/Z and/or RotationX/Y/Z channels, so a
+     *  fixture with its own position/rotation channels ends up back where it
+     *  was dragged to before the project was saved - including on real
+     *  connected hardware, since a project load never otherwise touches
+     *  these channels. Call this once, after a project has fully finished
+     *  loading (Doc's fixtures AND MonitorProperties both populated) - never
+     *  for a brand-new/empty document, since there is nothing to restore and
+     *  no fixture will have either flag set. See pushPositionDelta()/
+     *  pushRotationDelta() for why the flag (not just a non-default stored
+     *  value) is required: MonitorProperties::fixturePosition()/
+     *  fixtureRotation() are also written, in an unrelated placement
+     *  convention, by ordinary 2D/3D fixture placement code
+     *  (MainView2D::createFixtureItems(), MainView3D's equivalent, the
+     *  Universe Grid view) - without the flag, restoring from those values
+     *  would push an arbitrary, meaningless position/rotation onto a
+     *  fixture's real DMX channels every time such a project is opened. */
+    void restorePersistedDmxTransforms();
+
     /** Destroys the items of the currently enabled preview views, without
      *  recreating them. To be called before the Doc contents are cleared,
      *  since the view items reference Doc fixtures */
