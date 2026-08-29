@@ -2631,7 +2631,47 @@ void ContextManager::invertGroupSelection()
     if (m_selectedFixtures.isEmpty())
         return;
 
-    QList<quint32> newSelection = FixtureUtils::invertGroupSelection(m_doc->fixtureGroups(), m_monProps, m_selectedFixtures);
+    QList<FixtureGroup *> candidates =
+        FixtureUtils::candidateGroupsForSelection(m_doc->fixtureGroups(), m_monProps, m_selectedFixtures);
+
+    // 0 or 1 candidate group: unambiguous, apply immediately exactly as
+    // before - no dialog. More than one candidate: let the user pick which
+    // one(s) to use before touching the selection at all.
+    if (candidates.count() <= 1)
+    {
+        applyGroupSelectionInversion(candidates);
+        return;
+    }
+
+    QVariantList groupList;
+    for (FixtureGroup *group : std::as_const(candidates))
+    {
+        QVariantMap grpMap;
+        grpMap.insert("mLabel", group->name());
+        grpMap.insert("mValue", group->id());
+        groupList.append(grpMap);
+    }
+
+    emit candidateGroupsForInversionReady(groupList);
+}
+
+void ContextManager::confirmGroupSelectionInversion(QVariantList groupIds)
+{
+    QList<FixtureGroup *> groups;
+
+    for (const QVariant &idVar : std::as_const(groupIds))
+    {
+        FixtureGroup *group = m_doc->fixtureGroup(idVar.toUInt());
+        if (group != nullptr)
+            groups.append(group);
+    }
+
+    applyGroupSelectionInversion(groups);
+}
+
+void ContextManager::applyGroupSelectionInversion(const QList<FixtureGroup *> &groups)
+{
+    QList<quint32> newSelection = FixtureUtils::invertGroupSelection(groups, m_monProps, m_selectedFixtures);
 
     resetFixtureSelection();
 
