@@ -9607,6 +9607,11 @@ components:
             required:
             - type
             - baseRevision
+            description: Creating type=Sequence auto-creates a hidden bound Scene as part of the same
+              call (mirroring the Function Manager's "New Sequence" action) - there is no params field
+              to supply your own sceneId at creation time, since FunctionsSequenceDetail.boundSceneId
+              is required and non-null from the moment the Sequence exists. Read it back via the immediately
+              following functions.get, or repoint it afterward with functions.sequence.setBoundScene.
             properties:
               type:
                 $ref: '#/components/schemas/FunctionsTypeEnum'
@@ -9855,7 +9860,10 @@ components:
                   type: string
               path:
                 type: string
-                description: New folder path (see Function::setPath).
+                description: New folder path, in the same simplified/bare form as FunctionsSummary.path
+                  (no type prefix - see Function::setPath, which strips a redundant "<TypeString>/" prefix
+                  if one is given, so either form is technically accepted, but round-tripping a value
+                  read from FunctionsSummary.path is the intended usage).
               baseRevision:
                 type: integer
     FunctionsMoveResponse:
@@ -9944,13 +9952,19 @@ components:
               fadeInSpeed:
                 type: integer
                 minimum: 0
-                description: Milliseconds, or beats if tempoType is Beats.
+                description: Milliseconds, or beats if tempoType is Beats. Two non-duration sentinel values
+                  are valid here (Function::infiniteSpeed()/defaultSpeed()) - see FunctionsDetail.fadeInSpeed
+                  for the shared encoding.
               fadeOutSpeed:
                 type: integer
                 minimum: 0
+                description: See fadeInSpeed above for the sentinel encoding.
               duration:
                 type: integer
                 minimum: 0
+                description: See FunctionsDetail.duration for the sentinel encoding. A Chaser/Sequence's
+                  own duration here is normally overall/derived rather than set directly - see FunctionsChaserStep's
+                  description for how a step's own hold/duration relate.
               blendMode:
                 $ref: '#/components/schemas/FunctionsBlendModeEnum'
               baseRevision:
@@ -10163,19 +10177,35 @@ components:
             required:
             - functionId
             - value
+            anyOf:
+            - required:
+              - attributeIndex
+            - required:
+              - attributeName
+            description: Exactly one of attributeIndex/attributeName must be present (enforced above via
+              anyOf, not just prose). Writes the attribute's persisted base value directly (Function::adjustAttribute
+              with attributeId < the override-ID range) - the same thing a Function editor does, not a
+              live runtime override. The engine also supports a separate override-acquire/release mechanism
+              (Function::requestAttributeOverride/ releaseAttributeOverride, used e.g. by VC controls
+              layered on top of a function's own value) with no client-facing equivalent here - see FunctionsAttribute.overridden/overrideValue
+              for the read side of that gap.
             properties:
               functionId:
                 type: string
               attributeIndex:
                 type: integer
-                description: Index from FunctionsDetail.attributes (0 = Intensity). Either this or attributeName
-                  is required.
+                description: Index from FunctionsDetail.attributes. NOT reliably 0 = Intensity - true
+                  for most function types, but Show unregisters its Intensity attribute entirely (Show::Show,
+                  see engine/src/show.cpp), so index 0 on a Show is its first Track-mapped attribute.
+                  Always resolve by name or by walking FunctionsDetail.attributes, don't hardcode index
+                  0.
               attributeName:
                 type: string
               value:
                 type: number
-                minimum: 0
-                maximum: 1
+                description: Clamped server-side to the target attribute's own FunctionsAttribute.min/max
+                  (which varies per attribute and function type - e.g. EFX Width is 0-127, Video X-rotation
+                  is -360..360 - NOT a universal 0..1 range).
     FunctionsAdjustAttributeResponse:
       payload:
         oneOf:
@@ -10706,11 +10736,13 @@ components:
               width:
                 type: integer
                 minimum: 0
-                maximum: 255
+                maximum: 127
+                description: Clamped by the engine to 0-127 (EFX::setWidth), not 0-255.
               height:
                 type: integer
                 minimum: 0
-                maximum: 255
+                maximum: 127
+                description: Clamped by the engine to 0-127 (EFX::setHeight), not 0-255.
               rotation:
                 type: integer
                 minimum: 0
@@ -10732,11 +10764,14 @@ components:
               xFrequency:
                 type: integer
                 minimum: 0
-                maximum: 5
+                maximum: 32
+                description: Clamped by the engine to 0-32 (EFX::setXFrequency), not 0-5 - matches the
+                  real EFX editor's slider range.
               yFrequency:
                 type: integer
                 minimum: 0
-                maximum: 5
+                maximum: 32
+                description: See xFrequency above.
               xPhase:
                 type: integer
                 minimum: 0
@@ -11723,9 +11758,11 @@ components:
             - channelsGroupId
             - level
             - baseRevision
-            description: The group's master level is saved into the show file (see KXMLQLCChannelsGroupValue),
-              so it is modeled as document state here - see functions-core-notes.md for the tradeoff vs.
-              treating fader drags as 4b live updates.
+            description: 'The group''s master level is saved into the show file (see KXMLQLCChannelsGroupValue),
+              so - unlike a live fader drag - this is modeled as full §4a document state: baseRevision
+              is required above and every call is individually revision-gated. See functions-core-notes.md
+              for the resulting fast-fader-drag/conflict-storm tradeoff this implies, which a real-time
+              UI binding this to a VC slider should be aware of.'
             properties:
               channelsGroupId:
                 type: string
@@ -11898,6 +11935,13 @@ components:
             - sourceIndex
             - destIndex
             - baseRevision
+            description: A real editor's bulk step operations (ChaserEditor multi-move, duplicate, shuffle)
+              have no single batch method here - they must be replicated as N sequential calls to removeStep/moveStep/addStep,
+              each individually gated by its own baseRevision (§4a). Any call in the middle of such a
+              sequence can CONFLICT (another client's edit lands between two of the client's own calls),
+              leaving the step list in a partially-applied state with no rollback - a client implementing
+              "duplicate 3 steps" or "shuffle" should be prepared to detect this and re-fetch/retry/undo,
+              not assume the whole batch is atomic.
             properties:
               functionId:
                 type: string
@@ -12058,6 +12102,17 @@ components:
                     author:
                       type: string
                       description: Script author (type=script only)
+                    acceptedColors:
+                      type: integer
+                      enum:
+                      - 0
+                      - 1
+                      - 2
+                      description: RGBAlgorithm::acceptColors() - how many of FunctionsRgbMatrixConfig.colors'
+                        5 slots this algorithm actually uses. 0 = none (it generates its own colors),
+                        1 = only Color1/slot 0, 2 = Color1 and Color2/slots 0-1. Drives the real editor's
+                        dynamic color-slot count - a client showing all 5 slots regardless of this value
+                        will offer slots the algorithm silently ignores.
     FunctionsRgbMatrixGetScriptPropertiesRequest:
       payload:
         type: object
@@ -12412,10 +12467,21 @@ components:
                 type: array
                 items:
                   type: integer
-                description: 0-based line numbers that failed to parse
+                description: 1-based line numbers that failed to parse, counted over the full raw source
+                  text (Script::setData) INCLUDING blank lines - i.e. usable directly as a 1-based index
+                  into functions.script.setSource's source split on newlines. This is a DIFFERENT numbering
+                  space from functionRefs/fixtureRefs's `line` below - do not mix the two when highlighting
+                  source lines in an editor.
               functionRefs:
                 type: array
-                description: Functions referenced via startfunction/stopfunction/waitfunctionstart/waitfunctionstop
+                description: 'Functions referenced via startfunction. NOTE: despite the name, the engine''s
+                  Script::functionList() helper this is built from only recognizes the startfunction command
+                  - stopfunction/waitfunctionstart/waitfunctionstop references are NOT currently reported
+                  here even though the script language supports them; treat this as a known under-reporting
+                  gap, not full coverage of every function reference in the script. `line` here is a 0-based
+                  index into the engine''s blank-line-skipping tokenized line list (Script::m_lines),
+                  NOT the same numbering as syntaxErrorLines above - a client cannot use the two interchangeably
+                  to highlight the same source line.'
                 items:
                   type: object
                   required:
@@ -12428,7 +12494,9 @@ components:
                       type: integer
               fixtureRefs:
                 type: array
-                description: Fixtures referenced via setfixture
+                description: Fixtures referenced via setfixture. `line` here uses the same 0-based, blank-skipping
+                  tokenized-list numbering as functionRefs.line above - see its note on the two distinct
+                  line-number spaces in this response.
                 items:
                   type: object
                   required:
@@ -12661,7 +12729,9 @@ components:
                 $ref: '#/components/schemas/FunctionsShowTimeDivision'
               bpm:
                 type: integer
-                description: Required when timeDivisionType is one of the BPM_* values
+                description: Required when timeDivisionType is one of the bpm_4_4/bpm_3_4/bpm_2_4 values
+                  (see FunctionsShowTimeDivision) - not literally 'BPM_*', that's just the C++ enumerator
+                  naming style.
               baseRevision:
                 type: integer
     FunctionsShowSetTimeDivisionResponse:
@@ -13099,9 +13169,13 @@ components:
             - trackId
             - solo
             - baseRevision
-            description: Convenience mutation mirroring ShowManager::setTrackSolo - mutes every other
-              track in the Show and unmutes this one (solo=true), or just unmutes this one (solo=false).
-              Not a persisted 'solo' flag - it's sugar over multiple mute changes.
+            description: 'Convenience mutation mirroring ShowManager::setTrackSolo - mutes every other
+              track in the Show and unmutes this one (solo=true). solo=false is NOT the inverse of solo=true:
+              it unmutes EVERY track in the Show (verified against ShowManager::setTrackSolo), not just
+              this one - there is no per-track "was this soloed" state to restore, since solo isn''t a
+              persisted flag, just sugar over multiple mute changes. A client wanting "restore this show''s
+              mute pattern from before I soloed a track" must snapshot each track''s mute state itself
+              before calling solo=true.'
             properties:
               showId:
                 type: string
@@ -13207,8 +13281,8 @@ components:
         - topic
         - data
         description: Bulk track event for mutations that touch more than one track at once (functions.show.track.setSolo,
-          functions.show.track.move). Carries an RFC 6902 JSON Patch against the tracks array returned
-          by functions.show.get.
+          functions.show.track.move). Carries an RFC 6902 JSON Patch against the tracks array - i.e. functions.get's
+          typeDetail (FunctionsShowDetail.tracks), not the removed per-type functions.show.get.
         properties:
           type:
             const: event
@@ -13270,7 +13344,11 @@ components:
                 description: Milliseconds from the Show's start
               duration:
                 type: integer
-                description: Milliseconds; defaults to the placed function's own totalDuration if omitted
+                description: 'Milliseconds; defaults to the placed function''s own totalDuration if omitted
+                  AND that totalDuration is non-zero. Some function types (e.g. a looping Chaser/Scene)
+                  report totalDuration 0, which is not usable as a timeline duration - in that case the
+                  server falls back to a fixed default (mirrors qmlui''s ShowManager::addShowItem: 5000ms
+                  if the Show''s timeDivisionType is Time, 4000ms if Beats), not 0.'
               color:
                 type: string
                 description: Hex color; defaults to ShowFunction::defaultColor(type) if omitted
@@ -13450,8 +13528,10 @@ components:
             - trackId
             - startTime
             - baseRevision
-            description: Moves an item to a (possibly different) track and/or start time. Mirrors ShowManager::checkAndMoveItem,
-              including its overlap check.
+            description: 'Moves an item to a (possibly different) track and/or start time. Mirrors ShowManager::checkAndMoveItem,
+              including its overlap check: rejected with error.code INVALID_PARAMS (not CONFLICT - that
+              code is reserved for baseRevision mismatches per 00-conventions.md §7) if the destination
+              position would overlap an existing item on the target track.'
             properties:
               showId:
                 type: string
@@ -13555,8 +13635,16 @@ components:
                 type: string
               duration:
                 type: integer
-                description: New duration in ms; rejected (CONFLICT-style INVALID_PARAMS) if it would
-                  overlap a following item
+                description: New duration in ms; rejected with error.code INVALID_PARAMS (not CONFLICT
+                  - that code is reserved for baseRevision mismatches per 00-conventions.md §7) if it
+                  would overlap a following item. This only changes the ShowFunction wrapper's own duration/trim
+                  on the timeline (equivalent to the real editor's "stretch" toggle being off) - it has
+                  no counterpart to the real editor's stretch-resize mode (ShowManager.stretchFunctions),
+                  which instead proportionally rescales an underlying Chaser's per-step durations (converting
+                  its speed mode from Common to PerStep as needed, see ShowManager::convertChaserCommonToPerStep)
+                  so the Chaser's own content stretches to fill the new timeline duration rather than
+                  being trimmed/looped. A client wanting that behavior must replicate it itself via functions.chaser.setSpeedModes
+                  plus per-step duration writes.
               baseRevision:
                 type: integer
     FunctionsShowItemResizeResponse:
@@ -13928,7 +14016,8 @@ components:
         - data
         description: Bulk item event for mutations that can touch many items across many tracks at once
           (functions.show.rippleInsertTime, functions.show.rippleCutTime). Carries an RFC 6902 JSON Patch
-          against the flattened item list, per 00-conventions.md §4a's guidance for large nested resources.
+          against the nested tracks[].items arrays (paths like "/tracks/<trackIndex>/items/<itemIndex>",
+          matching FunctionsShowDetail's actual shape - NOT a separately flattened item list).
         properties:
           type:
             const: event
@@ -14033,7 +14122,10 @@ components:
                 type: array
                 items:
                   type: string
-                description: Supported source file extensions, e.g. 'wav', 'mp3'
+                description: Supported source file extensions, as glob patterns matching the engine decoder
+                  plugins' own reported form (e.g. AudioDecoderMad returns '*.mp3', not the bare extension
+                  'mp3') - a client filtering an Open dialog should match against these patterns, not
+                  treat them as bare suffixes.
     FunctionsAudioSetSourceRequest:
       payload:
         type: object
@@ -14478,10 +14570,13 @@ components:
                 type: array
                 items:
                   type: string
+                description: Glob patterns (e.g. '*.mp4'), not bare extensions - see functions.audio.listCapabilities.extensions
+                  for why.
               pictureExtensions:
                 type: array
                 items:
                   type: string
+                description: Glob patterns, same format as videoExtensions above.
               screens:
                 type: array
                 description: Displays available on the engine host machine for functions.video.setScreenTarget
@@ -14624,7 +14719,11 @@ components:
                 type:
                 - object
                 - 'null'
-                description: null clears custom geometry (renders at natural/fullscreen size)
+                description: Omitting this property entirely leaves the current geometry unchanged (standard
+                  partial-update semantics, like every other optional field in this params object). Sending
+                  it explicitly as null clears custom geometry (renders at natural/fullscreen size, Video::setCustomGeometry(QRect())).
+                  Sending an object sets it. These are the only two "no custom geometry" wire encodings
+                  a client should ever need to send here; omitted and null are NOT interchangeable.
                 properties:
                   x:
                     type: integer
@@ -14683,6 +14782,7 @@ components:
             type: object
             required:
             - functionId
+            - customGeometry
             - docRevision
             properties:
               functionId:
@@ -14691,6 +14791,9 @@ components:
                 type:
                 - object
                 - 'null'
+                description: Always present (required above) - the full current value, either an object
+                  or null for "no custom geometry". Unlike the request side, an event never omits this
+                  field to mean "unchanged" - it always reports the resulting state.
                 properties:
                   x:
                     type: integer
@@ -21670,8 +21773,13 @@ components:
       - Mask
       - Additive
       - Subtractive
-      description: Universe::BlendMode. Only meaningfully settable on some types (e.g. RGBMatrix, owned
-        by functions-advanced) but is a Function-level concept.
+      description: Universe::BlendMode, PascalCase matching Universe::blendModeToString()/stringToBlendMode()
+        verbatim. This is the single canonical schema for the one persisted blendMode field - RGBMatrix::setBlendMode
+        (functions-advanced.yaml, FunctionsRgbMatrixConfig.blendMode) overrides the generic Function-level
+        setter but writes the same underlying value, so functions-advanced.yaml references this schema
+        directly rather than redefining its own enum (previously a separate, differently-cased `FunctionsBlendMode`
+        schema there - fixed since a value read from functions.get's blendMode could not be written back
+        through functions.rgbmatrix.setConfig without a client-side case translation).
     FunctionsSpeedModeEnum:
       type: string
       enum:
@@ -21712,7 +21820,11 @@ components:
       - PanTilt
       - Dimmer
       - RGB
-      description: EFXFixture::Mode - which parameter(s) this fixture's participation animates.
+      description: EFXFixture::Mode - which parameter(s) this fixture's participation animates. A clean-slate
+        naming choice for the PanTilt value (every other enum in this fragment matches the engine's own
+        XML string verbatim) - the engine's on-wire/XML string for it is "Position" (KXMLQLCEFXFixtureModePanTilt
+        in engine/src/efxfixture.h), so a server implementation must map PanTilt<->"Position" explicitly
+        rather than passing the enum value straight through.
     FunctionsDocRevisionResult:
       type: object
       required:
@@ -21758,7 +21870,16 @@ components:
       - value
       - min
       - max
-      description: Function::Attribute (registerAttribute/attributes()). Index 0 is always Intensity.
+      description: 'Function::Attribute (registerAttribute/attributes()). Index 0 is Intensity for every
+        function type EXCEPT Show, which unregisters its own Intensity attribute in its constructor (Show::Show,
+        engine/src/show.cpp) so its attributes map 1:1 onto its tracks instead - resolve by name, don''t
+        hardcode index 0. overridden/overrideValue reflect the engine''s separate runtime attribute-override
+        mechanism (Function::requestAttributeOverride/adjustAttribute/releaseAttributeOverride) - e.g.
+        a VC control layered on top of this function''s own base value. This is read-only telemetry here:
+        functions.adjustAttribute only ever writes the base `value`, and there is currently no client-facing
+        way to request or release an override, or to know who holds one - a real gap (see functions.adjustAttribute''s
+        own description) worth a dedicated override-lifecycle API in a future revision, tracked rather
+        than silently implied by these two fields.'
       properties:
         index:
           type: integer
@@ -21774,6 +21895,21 @@ components:
           type: boolean
         overrideValue:
           type: number
+        flags:
+          type: array
+          description: Function::Attribute's registration flags (Function::OverrideFlags), informational
+            - describes how concurrent overrides on this attribute combine, not something a client sets.
+          items:
+            $ref: '#/components/schemas/FunctionsAttributeFlagEnum'
+    FunctionsAttributeFlagEnum:
+      type: string
+      enum:
+      - Multiply
+      - LastWins
+      - Single
+      description: 'Function::OverrideFlags (engine/src/function.h). Multiply: the base value is multiplied
+        by the overridden value(s). LastWins: the last-applied override replaces the base value outright.
+        Single: only one override ID is ever allowed for this attribute at a time.'
     FunctionsSummary:
       type: object
       required:
@@ -21791,7 +21927,10 @@ components:
           $ref: '#/components/schemas/FunctionsTypeEnum'
         path:
           type: string
-          description: Folder path, Function::path().
+          description: Folder path, always the simplified/bare form (Function::path(true) - no leading
+            "<TypeString>/" prefix). Use this form as-is when sending functions.move's path param; the
+            type-prefixed form Function::path() returns by default in the engine (e.g. "Scene/MyFolder")
+            is never what's on the wire here.
         hidden:
           type: boolean
           description: Function::isVisible() negated.
@@ -21812,8 +21951,10 @@ components:
       - totalDuration
       - blendMode
       - attributes
+      - typeDetail
       description: Generic Function base detail, valid for all 10 types. Type-specific detail (values/steps/geometry/members)
-        comes from the matching functions.<type>.get call.
+        is always present as typeDetail below (the old per-type functions.<type>.get calls were consolidated
+        away on the premise that it's never absent).
       properties:
         id:
           type: string
@@ -21823,6 +21964,7 @@ components:
           $ref: '#/components/schemas/FunctionsTypeEnum'
         path:
           type: string
+          description: See FunctionsSummary.path - always the simplified/bare form.
         hidden:
           type: boolean
         runOrder:
@@ -21833,10 +21975,20 @@ components:
           $ref: '#/components/schemas/FunctionsTempoTypeEnum'
         fadeInSpeed:
           type: integer
+          description: 'Milliseconds, or beats if tempoType is Beats. Two sentinel values are valid on
+            this and every other speed/duration field in this fragment (fadeOutSpeed, duration below,
+            ChaserStep/SequenceStep fadeIn/hold/fadeOut/duration, functions.update''s speed params): 4294967294
+            ((uint)-2, Function::infiniteSpeed()) means "infinite"/"hold forever" - one of the most common
+            real step configurations - and 4294967295 ((uint)-1, Function::defaultSpeed()) means "use
+            the default" (only meaningful in specific contexts, e.g. as a Chaser/Sequence speed-mode fallback).
+            Clients send/receive these as plain (large) integers, not a separate null/"infinite" wire
+            form.'
         fadeOutSpeed:
           type: integer
+          description: See fadeInSpeed above for the sentinel encoding.
         duration:
           type: integer
+          description: See fadeInSpeed above for the sentinel encoding.
         totalDuration:
           type: integer
           description: Function::totalDuration() - considers steps/stretch, may differ from duration.
@@ -21966,7 +22118,15 @@ components:
       - hold
       - fadeOut
       - duration
-      description: ChaserStep, without the .values field (that's Sequence-only, see FunctionsSequenceStep).
+      additionalProperties: false
+      description: 'ChaserStep, without the .values field (that''s Sequence-only, see FunctionsSequenceStep).
+        `additionalProperties: false` is deliberate: it''s what makes this schema and FunctionsSequenceStep
+        mutually exclusive under the `step` oneOf in functions.steps.addStep/replaceStep (a Sequence step''s
+        `values` field would otherwise be silently accepted here too, and vice versa for `targetFunctionId`,
+        letting both oneOf branches match the same object). hold is the authoritative field; duration
+        is fadeIn + hold, with the same infinite-sentinel propagation described on FunctionsSequenceStep.hold
+        below. If a client sends inconsistent fadeIn/hold/duration, the server recomputes duration from
+        fadeIn+hold (ChaserStep::loadXML''s behavior).'
       properties:
         targetFunctionId:
           type: string
@@ -21974,15 +22134,23 @@ components:
         fadeIn:
           type: integer
           minimum: 0
+          description: Milliseconds. See FunctionsDetail.fadeInSpeed for the infinite/default sentinel
+            encoding - fadeIn itself is not normally infinite, but is included in duration's derivation
+            below.
         hold:
           type: integer
           minimum: 0
+          description: Milliseconds, or the infinite sentinel (Function::infiniteSpeed(), see FunctionsDetail.fadeInSpeed)
+            meaning "hold forever" - one of the most common real step configurations. Authoritative over
+            duration - see the schema description above.
         fadeOut:
           type: integer
           minimum: 0
         duration:
           type: integer
           minimum: 0
+          description: Derived as fadeIn + hold (or mirrors hold's infinite sentinel when hold is infinite)
+            - see the schema description above for which field wins if a client's values disagree.
         note:
           type: string
     FunctionsChaserDetail:
@@ -21993,6 +22161,7 @@ components:
       - fadeInMode
       - fadeOutMode
       - durationMode
+      additionalProperties: false
       properties:
         functionId:
           type: string
@@ -22014,9 +22183,11 @@ components:
       - fadeOut
       - duration
       - values
-      description: A Sequence step (ChaserStep in sequence mode). Unlike a Chaser step it has no targetFunctionId
-        of its own - every step implicitly targets the Sequence's boundSceneId, and instead carries its
-        own value overrides.
+      additionalProperties: false
+      description: 'A Sequence step (ChaserStep in sequence mode). Unlike a Chaser step it has no targetFunctionId
+        of its own - every step implicitly targets the Sequence''s boundSceneId, and instead carries its
+        own value overrides. `additionalProperties: false` is deliberate - see FunctionsChaserStep''s
+        description for why.'
       properties:
         fadeIn:
           type: integer
@@ -22024,12 +22195,14 @@ components:
         hold:
           type: integer
           minimum: 0
+          description: Same authoritative-over-duration and infinite-sentinel semantics as FunctionsChaserStep.hold.
         fadeOut:
           type: integer
           minimum: 0
         duration:
           type: integer
           minimum: 0
+          description: See FunctionsChaserStep.duration.
         note:
           type: string
         values:
@@ -22043,6 +22216,13 @@ components:
       - fadeInMode
       - fadeOutMode
       - durationMode
+      additionalProperties: false
+      description: '`additionalProperties: false` is deliberate: without it, a freshly-created 0-step
+        Sequence (which has every field FunctionsChaserDetail requires, plus boundSceneId) would validate
+        against *both* branches of FunctionsDetail.typeDetail''s oneOf, since FunctionsChaserDetail''s
+        required set is a strict subset of this schema''s and neither closed out extra properties - failing
+        oneOf''s "exactly one match" rule for every empty Sequence. Closing both schemas makes them mutually
+        exclusive instead.'
       properties:
         functionId:
           type: string
@@ -22122,7 +22302,7 @@ components:
           type: integer
         xFrequency:
           type: integer
-          description: Lissajous X frequency (0-5).
+          description: Lissajous X frequency, 0-32 (see functions.efx.setParameters.xFrequency).
         yFrequency:
           type: integer
         xPhase:
@@ -22248,7 +22428,12 @@ components:
           description: type=text only
         font:
           type: object
-          description: type=text only
+          description: type=text only. Deliberate subset of the engine's full QFont (RGBText stores/round-trips
+            a complete QFont, and the real editor exposes it via a native font picker, qmlui/rgbmatrixeditor.h's
+            algoTextFont) - only family/pointSize/bold/italic are exposed here. Other QFont attributes
+            the editor lets you set (underline, weight values beyond plain bold/regular, stretch, letter
+            spacing, etc.) are not represented in this schema; a client-authored functions.rgbmatrix.setConfig
+            silently drops/resets them rather than preserving whatever the file already had.
           properties:
             family:
               type: string
@@ -22317,14 +22502,6 @@ components:
       - dimmer
       - shutter
       description: RGBMatrix::ControlMode
-    FunctionsBlendMode:
-      type: string
-      enum:
-      - normal
-      - mask
-      - additive
-      - subtractive
-      description: Universe::BlendMode
     FunctionsRgbMatrixConfig:
       type: object
       required:
@@ -22351,7 +22528,12 @@ components:
         controlMode:
           $ref: '#/components/schemas/FunctionsRgbMatrixControlMode'
         blendMode:
-          $ref: '#/components/schemas/FunctionsBlendMode'
+          $ref: '#/components/schemas/FunctionsBlendModeEnum'
+          description: Same schema and PascalCase casing as functions-core.yaml's FunctionsDetail.blendMode
+            - this is the same persisted Function-level field (RGBMatrix::setBlendMode overrides the generic
+            setter but writes the same value), previously duplicated here under a different, lowercase-cased
+            local schema; a value read from functions.get can now be written back here directly with no
+            case translation.
         dimmerControl:
           type: boolean
           description: Legacy flag, superseded by controlMode=dimmer. See notes.md.
@@ -22435,6 +22617,7 @@ components:
       type: object
       required:
       - sourceUrl
+      - customGeometry
       - zIndex
       - screen
       - fullscreen

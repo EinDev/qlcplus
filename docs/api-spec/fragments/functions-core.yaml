@@ -2830,7 +2830,7 @@ schemas:
         type: integer
         description: 'Milliseconds, or beats if tempoType is Beats. Two sentinel values are valid on
           this and every other speed/duration field in this fragment (fadeOutSpeed, duration below,
-          ChaserStep/SequenceStep fadeIn/hold/fadeOut/duration, functions.setCommonAttributes''s speed
+          ChaserStep/SequenceStep fadeIn/hold/fadeOut/duration, functions.update''s speed
           params): 4294967294 ((uint)-2, Function::infiniteSpeed()) means "infinite"/"hold forever" -
           one of the most common real step configurations - and 4294967295 ((uint)-1, Function::defaultSpeed())
           means "use the default" (only meaningful in specific contexts, e.g. as a Chaser/Sequence speed-mode
