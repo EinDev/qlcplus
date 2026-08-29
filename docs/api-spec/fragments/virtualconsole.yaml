@@ -682,19 +682,34 @@ messages:
         params:
           type: object
           required:
-          - parentId
+          - page
           - matrixType
           - position
           - matrixSize
           - widgetSize
           - baseRevision
           description: VCFrame::addWidgetMatrix() - bulk-creates a grid of identical widgets, optionally
-            wrapped in a container Frame/SoloFrame.
+            wrapped in a container Frame/SoloFrame. $parentId is the containing Frame/SoloFrame widget
+            ID, or absent to place the matrix directly on $page's root - mirrors vc.widget.create's
+            handling of the same case (VCPage IS-A VCFrame, so the server resolves "page N's root" to
+            that page's own VCFrame internally). $page is required even when $parentId is given, since
+            it is otherwise the only way to reach the root of an empty page (there is no message that
+            exposes a page-root widget ID to pass as $parentId instead).
           properties:
             parentId:
               type: string
+            page:
+              type: integer
             matrixType:
-              $ref: '#/components/schemas/VcWidgetType'
+              type: string
+              enum:
+              - Button
+              - Slider
+              description: Only these two widget types are supported by the engine (VCFrame::addWidgetMatrix()
+                creates Button widgets for "buttonmatrix" and Slider widgets for anything else) - NOT the
+                full VcWidgetType enum used elsewhere in this fragment. A server implementing this literally
+                treats every other value as a slider matrix, so validate client-side against exactly these
+                two.
             position:
               type: object
               required:
@@ -781,7 +796,7 @@ messages:
         params:
           type: object
           required:
-          - parentId
+          - page
           - functionIds
           - position
           - widgetHint
@@ -789,12 +804,18 @@ messages:
           description: 'VCFrame::addFunctions() - the "drop Functions from the Function Manager onto the
             VC" gesture. $widgetHint mirrors the drag''s keyModifiers: "button" creates one VCButton per
             Function; "adjustSlider" creates one VCSlider per Function in Adjust mode controlling Intensity;
-            "cueList" creates a single VCCueList (only valid when every functionId is a Chaser).
+            "cueList" creates a single VCCueList (only valid when every functionId is a Chaser). $parentId
+            is the containing Frame/SoloFrame widget ID, or absent to place the result(s) directly on
+            $page''s root - mirrors vc.widget.create''s handling of the same case (VCPage IS-A VCFrame,
+            resolved server-side from $page). $page is required even when $parentId is given, for the
+            same reason as vc.widget.createMatrix above.
 
             '
           properties:
             parentId:
               type: string
+            page:
+              type: integer
             functionIds:
               type: array
               items:
@@ -1376,6 +1397,20 @@ messages:
               type: integer
               minimum: 0
               maximum: 255
+            lowerChannel:
+              type: integer
+              description: VCWidget::updateInputSourceExtraParams() feedback-routing override, only
+                meaningful for input plugins that expose a per-channel feedback table (MIDI - see
+                VCWidget::inputSourceFullInfo()'s hasMIDIChannelTable/midiChannelTable). 0 (or absent)
+                means "use the input profile's own routing for lowerValue's feedback"; N>0 selects
+                midiChannelTable[N] explicitly (wire value is 1-based; the engine stores N-1
+                internally). Omit entirely for plugins with no such table (most non-MIDI plugins).
+            upperChannel:
+              type: integer
+              description: Same encoding as lowerChannel, for upperValue's feedback routing.
+            monitorChannel:
+              type: integer
+              description: Same encoding as lowerChannel, for monitorValue's feedback routing.
             baseRevision:
               type: integer
   VcWidgetInputSourceSetResponse:
@@ -1649,6 +1684,20 @@ messages:
             global blackout (mirrors io.blackout.toggle - see notes.md); StopAll fades/stops every running
             Function.
 
+            IMPORTANT - one message per click, NOT a press/release pair, for every actionType except
+            Flash: for Toggle and Blackout, the engine flips its own current state on every single
+            invocation of this method regardless of the $pressed value (Toggle reads its own
+            Function::isRunning-equivalent state; Blackout calls toggleBlackout() unconditionally
+            every call) - sending a press(pressed=true) then a release(pressed=false) for one physical
+            click, the way a naive client modeling "press" and "release" as two edges would, toggles
+            twice and is a net no-op (a Blackout button would visibly not blackout). StopAll likewise
+            fires unconditionally on every call and ignores $pressed entirely. The real qmlui client
+            (VCButtonItem.qml) sends exactly one requestStateChange call per click for these three
+            actionTypes (from the mouse/touch "released" handler, with $pressed set to the button''s
+            *new* target state purely for the state()-bookkeeping side effect, not as a toggle trigger).
+            Flash is the sole exception and is genuinely edge-triggered: send pressed=true on
+            press-down and pressed=false on release, mirroring vc.slider.flash''s "on" param.
+
             '
           properties:
             widgetId:
@@ -1901,20 +1950,24 @@ messages:
           - widgetId
           - x
           - y
-          description: VCXYPad::setCurrentPosition() - live (§4b). x/y are normalized 0.0-1.0 fractions
-            of the pad's range window, regardless of displayMode (Percentage/Degrees/DMX are display-only
-            conversions - see VcXyPadConfig).
+          description: VCXYPad::setCurrentPosition() - live (§4b). x/y are in the engine's native
+            0..255.996 DMX-with-fraction domain (VCXYPad's internal m_currentPosition units, MSB.LSB
+            expanded to 16-bit internally), the SAME units used by VcXyPadPositionChangedEvent.data,
+            VcXyPadConfig.horizontalRange/verticalRange, and VcXyPadPreset.position - NOT normalized
+            0.0-1.0. displayMode (Percentage/Degrees/DMX, see VcXyPadConfig) only affects how the
+            engine's own UI *labels* the axes; it does not change these wire units. A client must
+            convert to/from Percentage or Degrees itself if it wants to render those labels.
           properties:
             widgetId:
               type: string
             x:
               type: number
               minimum: 0
-              maximum: 1
+              maximum: 255.99609375
             y:
               type: number
               minimum: 0
-              maximum: 1
+              maximum: 255.99609375
   VcXyPadSetPositionResponse:
     payload:
       oneOf:
@@ -1948,8 +2001,10 @@ messages:
               type: string
             x:
               type: number
+              description: Same 0..255.996 units as VcXyPadSetPositionRequest.params.x - see there.
             y:
               type: number
+              description: Same units as x above.
   VcXyPadSetFloorPositionRequest:
     payload:
       type: object
@@ -2650,8 +2705,15 @@ messages:
           - widgetId
           - index
           - baseRevision
-          description: VCClockSchedule setters - startTime/stopTime are seconds-since-midnight, weekFlags
-            a Mon..Sun bitmask.
+          description: 'VCClockSchedule setters - startTime/stopTime are seconds-since-midnight;
+            stopTime=-1 means "no stop time" (run to completion / indefinitely, only cut off by
+            weekFlags repeat gating below - see VCClock::checkSchedules()). weekFlags bits 0-6
+            (0x7F) are a Mon..Sun day-of-week mask where all-zero means "every day", and bit 7
+            (0x80) is a separate repeat flag: 0 = play this schedule once then stop re-triggering
+            it until reset, 1 = re-trigger every matching day. Bit 7 is easy to omit by only
+            reading/writing bits 0-6 - it is a live engine gate, not just a UI label.
+
+            '
           properties:
             widgetId:
               type: string
@@ -2661,8 +2723,11 @@ messages:
               type: integer
             stopTime:
               type: integer
+              description: -1 means no stop time - see the params description above.
             weekFlags:
               type: integer
+              description: Mon=bit0..Sun=bit6 day mask (0x7F, all-zero = every day) PLUS bit7 (0x80)
+                = repeat flag - see the params description above. Do not treat this as a 7-bit value.
             baseRevision:
               type: integer
   VcClockScheduleUpdateResponse:
@@ -3740,8 +3805,27 @@ messages:
           required:
           - widgetId
           - presetId
-          description: VCXYPad::applyPreset() - live activation (moves the cursor and, for an EFX/Scene
-            preset, starts the underlying Function fitted to the pad's range window).
+          description: 'Live activation of a stored preset - server-side behavior depends entirely on
+            $widgetId''s widgetType, since this one method serves multiple engine calls with different
+            semantics and, for one widget type, no server-side effect at all:
+
+            - XYPad: VCXYPad::applyPreset() - moves the cursor and, for an EFX/Scene preset, starts
+            the underlying Function fitted to the pad''s range window.
+
+            - Animation: VCAnimation::applyPreset() - for Color1..Color5/Color1Reset..Color5Reset
+            presets, sets/clears that color slot; for Animation/Text presets, selects the algorithm
+            and (if the fader level is already > 0) applies the preset''s content immediately. Knob-type
+            presets are the one exception: applyPreset() no-ops for them server-side (they have no
+            single "apply" moment) - use vc.animation.setPresetKnobValue instead, which is the actual
+            live control for a Knob preset.
+
+            - SpeedDial: NOT SUPPORTED. VCSpeedDial has no applyPreset counterpart in the engine at
+            all (only add/remove/rename/setValue on the preset list itself). "Applying" a SpeedDial
+            preset is purely a client-side gesture: look up the preset''s stored value in
+            VcSpeedDialPreset and send that value via vc.speedDial.setCurrentTime - do not send
+            vc.widget.preset.apply for a SpeedDial widgetId, it has no defined effect.
+
+            '
           properties:
             widgetId:
               type: string
@@ -4002,6 +4086,15 @@ schemas:
         type: integer
       monitorValue:
         type: integer
+      lowerChannel:
+        type: integer
+        description: See VcWidgetInputSourceSetRequest.params.lowerChannel - absent when not overridden.
+      upperChannel:
+        type: integer
+        description: See VcWidgetInputSourceSetRequest.params.upperChannel - absent when not overridden.
+      monitorChannel:
+        type: integer
+        description: See VcWidgetInputSourceSetRequest.params.monitorChannel - absent when not overridden.
   VcPage:
     type: object
     required:
@@ -4135,6 +4228,8 @@ schemas:
         - DMX
       horizontalRange:
         type: object
+        description: Bounds of the pad's X axis, in the same 0..255.996 units as
+          VcXyPadSetPositionRequest.params.x (default 0..255 - see VCXYPad's m_horizontalRange).
         required:
         - min
         - max
@@ -4145,6 +4240,7 @@ schemas:
             type: number
       verticalRange:
         type: object
+        description: Bounds of the pad's Y axis, same units as horizontalRange above.
         required:
         - min
         - max
@@ -4209,6 +4305,7 @@ schemas:
         type: string
       position:
         type: object
+        description: presetType=position only. Same 0..255.996 units as VcXyPadSetPositionRequest.params.x/y.
         properties:
           x:
             type: number
@@ -4297,9 +4394,13 @@ schemas:
         description: Seconds since midnight.
       stopTime:
         type: integer
+        description: Seconds since midnight, or -1 meaning no stop time - see
+          VcClockScheduleUpdateRequest.params for the full stop/repeat interaction.
       weekFlags:
         type: integer
-        description: Mon=bit0..Sun=bit6 bitmask.
+        description: Mon=bit0..Sun=bit6 day mask (0x7F, all-zero = every day) PLUS bit7 (0x80) =
+          repeat flag - see VcClockScheduleUpdateRequest.params for the full semantics. NOT a plain
+          7-bit day bitmask.
   VcCueListConfig:
     type: object
     description: VCCueList document-state config. chaserID selects which Chaser Function's steps are displayed/played
