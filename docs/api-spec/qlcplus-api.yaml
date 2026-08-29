@@ -366,8 +366,8 @@ channels:
         $ref: '#/components/messages/FixtureDefsModeAddRequest'
       fixtureDefsModeAddResponse:
         $ref: '#/components/messages/FixtureDefsModeAddResponse'
-      fixtureDefsModeUpdateRequest:
-        $ref: '#/components/messages/FixtureDefsModeUpdateRequest'
+      fixtureDefsModeRenameRequest:
+        $ref: '#/components/messages/FixtureDefsModeRenameRequest'
       fixtureDefsModeRemoveRequest:
         $ref: '#/components/messages/FixtureDefsModeRemoveRequest'
       fixtureDefsModeSetChannelsRequest:
@@ -2213,12 +2213,12 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/fixtureDefsAliasRemoveRequest'
-  sendFixtureDefsModeUpdate:
+  sendFixtureDefsModeRename:
     action: send
     channel:
       $ref: '#/channels/qlcplus'
     messages:
-    - $ref: '#/channels/qlcplus/messages/fixtureDefsModeUpdateRequest'
+    - $ref: '#/channels/qlcplus/messages/fixtureDefsModeRenameRequest'
   sendFixtureDefsModeRemove:
     action: send
     channel:
@@ -2249,7 +2249,7 @@ operations:
       $ref: '#/channels/qlcplus'
     description: Shared response for every "sendFixtureDefs*" mutation above that doesn't allocate a new
       id (ForkToUser, Update, SetPhysical, ChannelUpdate, ChannelRemove, CapabilityUpdate, CapabilityRemove,
-      CapabilityAutoPatchColors, AliasUpdate, AliasRemove, ModeUpdate, ModeRemove, ModeSetChannels, ModeSetPhysical,
+      CapabilityAutoPatchColors, AliasUpdate, AliasRemove, ModeRename, ModeRemove, ModeSetChannels, ModeSetPhysical,
       HeadRemove).
     messages:
     - $ref: '#/channels/qlcplus/messages/fixtureDefsSessionAckResponse'
@@ -6740,9 +6740,13 @@ components:
                 $ref: '#/components/schemas/FixturesDefinitionRef'
               name:
                 type: string
-                description: Base friendly name. When quantity > 1, the engine appends " [<n>]" per instance
-                  (Fixture::setName(), see FixtureManager::addFixture()) — mirror that suffixing server-side
-                  for parity with the current UI.
+                description: 'Base friendly name. The engine appends " [<n>]" unconditionally — even for
+                  a single fixture (quantity == 1) — using the new fixture''s own id + 1 as <n>, not a
+                  per-batch instance ordinal starting at 1 (FixtureManager::addFixture(): `fxi->setName(QString("%1
+                  [%2]").arg(name).arg(fxi->id() + 1))`). Mirror this exactly server-side for parity with
+                  the current UI: a bulk-patch of quantity=3 does NOT necessarily produce "[1]", "[2]",
+                  "[3]" — it produces "[<id0+1>]", "[<id0+2>]", "[<id0+3>]", which only coincide with
+                  1/2/3 if fixture ids happen to be contiguous from 0.'
               quantity:
                 type: integer
                 default: 1
@@ -7881,6 +7885,21 @@ components:
             - manufacturer
             - model
             - baseRevision
+            description: 'Deletes a definition from the shared library. Two things a server implementer
+              must know that the engine doesn''t spell out: (1) QLCFixtureDefCache has NO removal method
+              at all (engine/src/qlcfixturedefcache.h only exposes addFixtureDef/ storeFixtureDef/reloadFixtureDef/reloadOrAddFixtureDef
+              — there is no removeFixtureDef counterpart, for user OR system definitions), so the server
+              must implement deletion itself: delete the definition''s source .qxf file from disk (only
+              possible/meaningful for a user definition — QLCFixtureDef:: isUser()) and drop it from the
+              in-memory cache list. (2) A bundled/system definition (isUser:false) can never be deleted
+              this way — its file lives in the read-only system fixtures directory, and there is no engine
+              concept of "hide/disable a system definition" either. For isUser:false, the server MUST
+              reject with error.code FIXTUREDEFS_SYSTEM_READONLY (the same code fixturedefs.save uses
+              when a session opened from a system definition hasn''t been forked via fixturedefs.session.forkToUser
+              first — see that method''s description). Deleting a definition still in use by a patched
+              fixture in the current project is also undefined at the engine level; a conservative server
+              should reject that case too (e.g. NOT_FOUND-adjacent FIXTUREDEFS_IN_USE) rather than leave
+              a Fixture with a dangling definition reference.'
             properties:
               manufacturer:
                 type: string
@@ -8338,8 +8357,11 @@ components:
                 type: string
               type:
                 type: string
-                description: One of QLCFixtureDef::FixtureType's names, e.g. MovingHead, ColorChanger,
-                  Scanner, Dimmer, LEDBarPixels, Other, ...
+                description: One of QLCFixtureDef::FixtureType's names, as serialized by typeToString()/parsed
+                  by stringToType() — the engine's real strings are spaced, e.g. "Moving Head", "Color
+                  Changer", "Scanner", "Dimmer", "LED Bar (Pixels)", "LED Bar (Beams)", "Other", ... (see
+                  the FixtureDefsDefinition.type enum below for the exhaustive list). Any string stringToType()
+                  doesn't recognize silently maps to "Other".
               author:
                 type: string
     FixtureDefsSessionSetPhysicalRequest:
@@ -8485,7 +8507,7 @@ components:
                 description: What kind of mutation triggered this event, e.g. 'metadata', 'physical',
                   'channel.add', 'channel.update', 'channel.remove', 'capability.add', 'capability.update',
                   'capability.remove', 'capability.autoPatchColors', 'alias.add', 'alias.update', 'alias.remove',
-                  'alias.applyToAllModes', 'mode.add', 'mode.update', 'mode.remove', 'mode.setChannels',
+                  'alias.applyToAllModes', 'mode.add', 'mode.rename', 'mode.remove', 'mode.setChannels',
                   'mode.setPhysical', 'head.add', 'head.remove', 'forkToUser'.
               definition:
                 $ref: '#/components/schemas/FixtureDefsDefinition'
@@ -8638,12 +8660,19 @@ components:
                 description: Defaults to 'New channel N' if omitted.
               group:
                 type: string
-                description: 'One of QLCChannel::Group''s names: Intensity, Colour, Gobo, Speed, Pan,
-                  Tilt, Shutter, Prism, Beam, Effect, Maintenance, Nothing.'
+                description: 'One of QLCChannel::Group''s names, as serialized by groupToString()/parsed
+                  by stringToGroup(): Intensity, Colour, Gobo, Speed, Pan, Tilt, Shutter, Prism, Beam,
+                  Effect, Maintenance, Nothing, plus the 3D-position/rotation/scale groups used by matrix/pixel-bar
+                  fixtures — "Position X", "Position Y", "Position Z", "Rotation X", "Rotation Y", "Rotation
+                  Z", "Scale X", "Scale Y", "Scale Z" (note the space; these are NOT "PositionX"-style
+                  compact tokens — see the FixtureDefsChannel.group enum below for the exhaustive, schema-enforced
+                  list).'
               colour:
                 type: string
-                description: One of QLCChannel::PrimaryColour's names (NoColour, Red, Green, Blue, Cyan,
-                  Magenta, Yellow, Amber, White, UV, Lime, Indigo); only meaningful when group is Intensity.
+                description: 'One of QLCChannel::PrimaryColour''s names, as serialized by colourToString():
+                  Generic (the "no specific primary colour" value — colourToString() returns the literal
+                  string "Generic" for this case, not "NoColour"), Red, Green, Blue, Cyan, Magenta, Yellow,
+                  Amber, White, UV, Lime, Indigo; only meaningful when group is Intensity.'
               preset:
                 type: string
                 description: Optional shortcut preset name (e.g. IntensityRed, PositionPan, ColorMacro)
@@ -8709,6 +8738,11 @@ components:
                 type: string
               name:
                 type: string
+                description: Renaming a channel does NOT retarget any alias whose targetChannel references
+                  its old name — aliases are name-addressed (see FixtureDefsAlias), and neither the engine
+                  nor fixturedefs.session.validate updates or flags stale targetChannel references on
+                  a channel rename. Same invariant as fixturedefs.mode.rename for targetMode; see that
+                  method's description for the full explanation.
               group:
                 type: string
               colour:
@@ -9208,7 +9242,7 @@ components:
                   modeId:
                     type: string
         - $ref: '#/components/messages/ErrorResponse/payload'
-    FixtureDefsModeUpdateRequest:
+    FixtureDefsModeRenameRequest:
       payload:
         type: object
         required:
@@ -9222,7 +9256,7 @@ components:
           id:
             type: string
           method:
-            const: fixturedefs.mode.update
+            const: fixturedefs.mode.rename
           params:
             type: object
             required:
@@ -9230,8 +9264,16 @@ components:
             - baseRevision
             - modeId
             - name
-            description: Renames a mode. A rename also re-validates/refreshes any aliases that reference
-              this mode by name, mirroring EditorView::modeNameChanged.
+            description: Renames a mode (named `.rename`/`fixturedefs.mode.rename` per 00-conventions.md
+              §8's rename convention — this method only ever renames, it never touches channels/physical/heads,
+              unlike a true partial `.update`). Mirrors EditorView::modeNameChanged, which calls updateAliasList()
+              after the rename — but that only rebuilds qmlui's own display list of alias rows; it does
+              NOT rewrite any alias's stored targetMode string. Since aliases address modes by name (FixtureDefsAlias.targetMode),
+              renaming a mode silently orphans every alias whose targetMode equals the old name — they
+              keep pointing at a mode name that no longer exists. Neither the engine nor fixturedefs.session.validate
+              currently detects or flags this; a client should re-point affected aliases itself (fixturedefs.channel.capability.alias.update)
+              after a mode rename if it cares about keeping them valid. See fixturedefs. channel.update's
+              `name` property for the equivalent invariant on channel rename.
             properties:
               sessionId:
                 type: string
@@ -20773,9 +20815,23 @@ components:
           type: integer
         focusTiltMax:
           type: integer
+        layoutWidth:
+          type: integer
+          description: Head arrangement grid width, for matrix/pixel fixtures (QLCPhysical::layoutSize()).
+            Previously missing here despite being present on FixtureDefsPhysical in fixturedefs.yaml —
+            same QLCPhysical field; fixtures.defs.getMode needs it to preview a matrix fixture's head
+            layout in the patch dialog.
+        layoutHeight:
+          type: integer
+          description: Head arrangement grid height, for matrix/pixel fixtures. See layoutWidth.
     FixturesCapability:
       type: object
-      description: QLCCapability — one DMX value sub-range of a channel.
+      description: QLCCapability — one DMX value sub-range of a channel. This is a read-oriented summary
+        shape (min/max/name/preset plus derived presetType/color1/color2 for direct UI rendering), distinct
+        from FixtureDefsCapability in fixturedefs.yaml, which exposes the same engine object's raw authoring
+        shape (resources/aliases/warning) for the definition editor. The two intentionally differ because
+        they serve different consumers of the same QLCCapability — see fixturedefs.yaml's FixtureDefsCapability
+        schema doc and fixturedefs-notes.md for why they aren't unified into one schema.
       required:
       - min
       - max
@@ -20908,7 +20964,10 @@ components:
           description: Fixture::channels() — the instance's channel footprint.
         fixtureType:
           type: string
-          description: QLCFixtureDef::FixtureType as string, or "Generic Dimmer" when isGeneric is true.
+          description: 'Fixture::typeString() — QLCFixtureDef::typeToString(fixtureDef()->type()) when
+            a real definition is attached, otherwise the literal string "Dimmer". There is no separate
+            "Generic Dimmer" string anywhere in the engine: a generic fixture''s fixtureType reads exactly
+            "Dimmer", same as a real dimmer definition — use isGeneric to tell them apart, not this field.'
         manufacturer:
           type: string
         model:
@@ -20917,8 +20976,13 @@ components:
           type: string
         isGeneric:
           type: boolean
-          description: true if this fixture has no real QLCFixtureDef (Fixture::fixtureDef() == null),
-            i.e. a generic dimmer.
+          description: 'true if this fixture is a generic dimmer. qmlui always attaches a procedural QLCFixtureDef
+            to generic fixtures (Fixture:: genericDimmerDef(), fixture.cpp), so "no definition at all"
+            is never the actual runtime state to test for — Fixture::fixtureDef() is never null for a
+            live-patched fixture. The real discriminator, matching the engine''s own check (fixture.cpp,
+            e.g. around the generic-def-ownership check in Fixture::setFixtureDefinition), is whether
+            the attached definition''s manufacturer AND model are both the literal string "Generic" (QLCFixtureDef::manufacturer()
+            == "Generic" && model() == "Generic") — not identity/nullness of the definition pointer.'
         crossUniverse:
           type: boolean
           description: Fixture::crossUniverse().
@@ -21032,9 +21096,12 @@ components:
           example: MSR 1200
         bulbLumens:
           type: integer
-        bulbColorTemperature:
+        bulbColourTemperature:
           type: integer
-          description: Kelvin
+          description: Kelvin. Named to match the engine field (QLCPhysical::bulbColourTemperature())
+            and fixtures.yaml's FixturesPhysical.bulbColourTemperature — this schema previously spelled
+            it "bulbColorTemperature" (American spelling), which disagreed with both the engine and the
+            sibling fixtures.yaml schema.
         weight:
           type: number
           description: kg
@@ -21047,9 +21114,12 @@ components:
         depth:
           type: integer
           description: mm
-        lensType:
+        lensName:
           type: string
           example: PC
+          description: Named to match the engine field (QLCPhysical::lensName()) and fixtures.yaml's FixturesPhysical.lensName
+            — this schema previously called it "lensType", which disagreed with both the engine and the
+            sibling fixtures.yaml schema.
         lensDegreesMin:
           type: number
         lensDegreesMax:
@@ -21080,6 +21150,13 @@ components:
       required:
       - targetMode
       - targetChannel
+      description: 'Both fields are name-addressed (there is no mode-id/channel-id addressing for aliases,
+        mirroring AliasEdit''s own string-based targeting), which means an alias survives reordering but
+        NOT renaming: fixturedefs.mode.rename and fixturedefs.channel.update''s `name` field do not retarget
+        any alias whose targetMode/targetChannel matches the old name — see fixturedefs.mode.rename''s
+        description for the full invariant. A client that renames a mode or channel with aliases pointing
+        at it should immediately re-point them via fixturedefs.channel.capability.alias.update, or expect
+        those aliases to silently stop resolving.'
       properties:
         targetMode:
           type: string
@@ -21098,6 +21175,14 @@ components:
       - resources
       - aliases
       - warning
+      description: 'The full authoring/raw shape of QLCCapability, for the definition editor (fixturedefs.*
+        session mutations read/write this exact shape). fixtures.yaml''s FixturesCapability schema represents
+        the SAME engine object but as a lighter read-oriented summary for browsing a patched fixture''s
+        modes (derived color1/color2/presetType instead of raw resources, and it omits aliases/warning
+        entirely since those are authoring-time-only concerns). The two are deliberately not unified:
+        a browsing client (fixtures.defs.getMode) shouldn''t have to parse `resources` itself just to
+        show a color swatch, while the definition editor (fixturedefs.*) needs the raw, round-trippable
+        form. See fixtures.yaml''s FixturesCapability schema doc for the reverse cross-reference.'
       properties:
         min:
           type: integer
@@ -21134,11 +21219,12 @@ components:
         warning:
           type: string
           enum:
-          - None
+          - NoWarning
           - EmptyName
           - Overlapping
-          description: Server-computed (QLCCapability::WarningType), mirrors ChannelEdit::checkCapabilities.
-            Informational only, never blocks a mutation or save.
+          description: Server-computed (QLCCapability::WarningType — the no-warning value is literally
+            named NoWarning in the engine enum, not None), mirrors ChannelEdit::checkCapabilities. Informational
+            only, never blocks a mutation or save.
     FixtureDefsChannel:
       type: object
       required:
@@ -21171,10 +21257,24 @@ components:
           - Effect
           - Maintenance
           - Nothing
+          - Position X
+          - Position Y
+          - Position Z
+          - Rotation X
+          - Rotation Y
+          - Rotation Z
+          - Scale X
+          - Scale Y
+          - Scale Z
+          description: QLCChannel::Group as serialized by groupToString() (engine/src/ qlcchannel.h/.cpp).
+            Previously missing the 9 3D-position/rotation/ scale groups used by matrix/pixel-bar fixtures
+            with per-head spatial placement — their wire strings have a space ("Position X", not "PositionX")
+            because groupToString() returns them that way; a definition using them was previously unrepresentable
+            via this API and failed schema validation on read.
         colour:
           type: string
           enum:
-          - NoColour
+          - Generic
           - Red
           - Green
           - Blue
@@ -21187,7 +21287,10 @@ components:
           - Lime
           - Indigo
           description: Meaningful only when group is Intensity (an Intensity channel represents one primary
-            color's dimmer).
+            color's dimmer). The "no specific primary colour" value is Generic, matching QLCChannel::colourToString()'s
+            actual output for NoColour — the enum previously used the literal token "NoColour", which
+            colourToString() never produces on the wire and stringToColour() only accepts by falling through
+            its default case, not by recognizing the string "NoColour" itself.
         preset:
           type: string
           description: One of QLCChannel::Preset's names (Custom, IntensityDimmer, PositionPan, ColorMacro,
@@ -21286,20 +21389,28 @@ components:
         type:
           type: string
           enum:
-          - ColorChanger
+          - Color Changer
           - Dimmer
           - Effect
           - Fan
           - Flower
           - Hazer
           - Laser
-          - LEDBarBeams
-          - LEDBarPixels
-          - MovingHead
+          - LED Bar (Beams)
+          - LED Bar (Pixels)
+          - Moving Head
           - Other
           - Scanner
           - Smoke
           - Strobe
+          description: QLCFixtureDef::FixtureType as serialized by typeToString() / parsed by stringToType()
+            (engine/src/qlcfixturedef.cpp). These are the engine's real wire strings — spaced, e.g. "Moving
+            Head", "Color Changer", "LED Bar (Beams)" — matching what fixtures.yaml's FixturesPatchedFixture.fixtureType
+            already documents correctly. Previously this enum used compact tokens (MovingHead, ColorChanger,
+            LEDBarBeams, ...) that stringToType() does not recognize — any value in that old form silently
+            falls through to "Other" when parsed by the engine, and a client comparing a fixturedefs.list
+            entry's type against the same definition's fixtures.get/ fixtures.defs.getModel type would
+            never see them match.
         author:
           type: string
         isUser:
@@ -21334,7 +21445,25 @@ components:
       - channelCount
       - modeCount
       - defRevision
-      description: Lightweight summary row for fixturedefs.list — mirrors QLCFixtureDefCache::fixtureCache().
+      description: 'Lightweight summary row for fixturedefs.list — mirrors QLCFixtureDefCache::fixtureCache().
+        Cost warning: fixtureCache() only holds manufacturer/model/isUser; channelCount/modeCount/defRevision
+        are NOT free, since QLCFixtureDefCache lazy-loads each definition''s full QXF only on first real
+        access (QLCFixtureDef::checkLoaded(), engine/src/qlcfixturedef.cpp). Serving a single fixturedefs.list
+        call with these three fields populated for every row means the server must force-load (parse XML
+        for) every not-yet-loaded definition in the cache — potentially thousands of files on a fully-populated
+        install — not just read an in-memory map. Implementers should budget for this (e.g. background-warm
+        the cache at startup, or cache the summary rows themselves) rather than treating fixturedefs.list
+        as a cheap call. Generic placeholder definitions (manufacturer="Generic", model= "Generic" or
+        "RGBPanel" — the in-memory-only defs Fixture:: genericDimmerDef()/genericRGBPanelDef() build for
+        a fixture patched with no real library definition) NEVER appear here: nothing ever registers them
+        into QLCFixtureDefCache via addFixtureDef(), so they are absent from fixtureCache() and from this
+        list. They are a distinct concept from the real bundled fixtures under manufacturer "Generic"
+        that DO live on disk and DO appear here (e.g. model "Generic RGB", "Generic RGBW", "Generic Smoke"
+        — resources/fixtures/Generic/*.qxf — real, non-placeholder model names). fixturedefs.get({manufacturer:
+        "Generic", model: "Generic"}) or model:"RGBPanel" therefore returns NOT_FOUND, same as any other
+        nonexistent manufacturer/model pair — there is no library-level way to fetch/list a fixture''s
+        generic procedural definition through this domain; see fixtures.yaml''s isGeneric/FixturesDefinitionRef.generic
+        for how the fixtures domain represents a generic-dimmer patch instead.'
       properties:
         manufacturer:
           type: string
@@ -21343,20 +21472,21 @@ components:
         type:
           type: string
           enum:
-          - ColorChanger
+          - Color Changer
           - Dimmer
           - Effect
           - Fan
           - Flower
           - Hazer
           - Laser
-          - LEDBarBeams
-          - LEDBarPixels
-          - MovingHead
+          - LED Bar (Beams)
+          - LED Bar (Pixels)
+          - Moving Head
           - Other
           - Scanner
           - Smoke
           - Strobe
+          description: See FixtureDefsDefinition.type — same engine typeToString()/stringToType() strings.
         author:
           type: string
         isUser:
