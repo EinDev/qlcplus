@@ -493,6 +493,30 @@ Rectangle
                             PopupArrangeFixtures { id: arrangeFixturesPopup }
                         }
                     }
+
+                    // row 7
+                    RobotoText
+                    {
+                        height: UISettings.listItemHeight;
+                        label: qsTr("Groups")
+                    }
+
+                    Row
+                    {
+                        Layout.fillWidth: true
+
+                        IconButton
+                        {
+                            id: invertGroupSelectionBtn
+                            width: UISettings.iconSizeDefault
+                            height: width
+                            bgColor: UISettings.bgLighter
+                            faSource: FontAwesome.fa_retweet
+                            faColor: "white"
+                            tooltip: qsTr("Invert Selection in Group(s)") + " (CTRL+G)"
+                            onClicked: contextManager.invertGroupSelection()
+                        }
+                    }
                 } // GridLayout
         } // SectionBox
 

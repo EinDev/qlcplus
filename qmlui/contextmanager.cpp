@@ -650,6 +650,9 @@ void ContextManager::handleKeyPress(QKeyEvent *e)
             case Qt::Key_A:
                 toggleFixturesSelection();
             break;
+            case Qt::Key_G:
+                invertGroupSelection();
+            break;
             case Qt::Key_Tab:
                 selectNextFixtureGroup();
             break;
@@ -2621,6 +2624,21 @@ bool ContextManager::isGroupFullySelected(quint32 id) const
 {
     FixtureGroup *group = m_doc->fixtureGroup(id);
     return FixtureUtils::isGroupFullySelected(group, m_monProps, m_selectedFixtures);
+}
+
+void ContextManager::invertGroupSelection()
+{
+    if (m_selectedFixtures.isEmpty())
+        return;
+
+    QList<quint32> newSelection = FixtureUtils::invertGroupSelection(m_doc->fixtureGroups(), m_monProps, m_selectedFixtures);
+
+    resetFixtureSelection();
+
+    setBatchSelection(true);
+    for (quint32 itemID : std::as_const(newSelection))
+        setFixtureSelection(itemID, -1, true);
+    setBatchSelection(false);
 }
 
 void ContextManager::selectNextFixtureGroup()

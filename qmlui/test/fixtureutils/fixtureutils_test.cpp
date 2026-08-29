@@ -20,6 +20,7 @@
 #include <QtTest>
 
 #include <algorithm>
+#include <QSet>
 
 #include "fixtureutils_test.h"
 #include "fixtureutils.h"
@@ -538,6 +539,142 @@ void FixtureUtils_Test::fixtureRotationDeltaAppliesPerFixtureInvertAndScale()
     QCOMPARE(delta.z(), rawDelta * 0.5f * -1.0f);
     QCOMPARE(delta.x(), 0.0f);
     QCOMPARE(delta.y(), 0.0f);
+}
+
+// FixtureUtils::invertGroupSelection() backs ContextManager::invertGroupSelection()
+// (the "Invert Selection in Group(s)" action). This reproduces the worked
+// example from the feature spec exactly: Group A = {1,2,3,4}, Group B =
+// {5,6,7}, fixture 8 belongs to no group. Selection = {2,5,8}. Both A and B
+// are candidate groups (each has a selected member); the result must be the
+// union of their complements relative to the selection - {1,3,4} u {6,7} -
+// with fixture 8 (ungrouped) and the originally-selected 2/5 all absent.
+void FixtureUtils_Test::invertGroupSelectionWorkedExample()
+{
+    Doc doc(this);
+    QList<Fixture *> fixtures;
+
+    for (int i = 1; i <= 8; i++)
+    {
+        Fixture *fx = new Fixture(&doc);
+        fx->setChannels(1);
+        fx->setAddress(i);
+        doc.addFixture(fx);
+        fixtures.append(fx);
+    }
+
+    // fixtures[0..7] correspond to fixture numbers 1..8 in the spec
+    FixtureGroup grpA(&doc);
+    grpA.assignFixture(fixtures.at(0)->id()); // 1
+    grpA.assignFixture(fixtures.at(1)->id()); // 2
+    grpA.assignFixture(fixtures.at(2)->id()); // 3
+    grpA.assignFixture(fixtures.at(3)->id()); // 4
+
+    FixtureGroup grpB(&doc);
+    grpB.assignFixture(fixtures.at(4)->id()); // 5
+    grpB.assignFixture(fixtures.at(5)->id()); // 6
+    grpB.assignFixture(fixtures.at(6)->id()); // 7
+
+    // fixture 8 (fixtures.at(7)) is deliberately in no group
+
+    MonitorProperties monProps;
+    QList<quint32> selected = {
+        FixtureUtils::fixtureItemID(fixtures.at(1)->id(), 0, 0), // 2
+        FixtureUtils::fixtureItemID(fixtures.at(4)->id(), 0, 0), // 5
+        FixtureUtils::fixtureItemID(fixtures.at(7)->id(), 0, 0), // 8
+    };
+
+    QList<FixtureGroup *> groups = { &grpA, &grpB };
+    QList<quint32> result = FixtureUtils::invertGroupSelection(groups, &monProps, selected);
+
+    QSet<quint32> resultSet(result.begin(), result.end());
+    QSet<quint32> expected = {
+        FixtureUtils::fixtureItemID(fixtures.at(0)->id(), 0, 0), // 1
+        FixtureUtils::fixtureItemID(fixtures.at(2)->id(), 0, 0), // 3
+        FixtureUtils::fixtureItemID(fixtures.at(3)->id(), 0, 0), // 4
+        FixtureUtils::fixtureItemID(fixtures.at(5)->id(), 0, 0), // 6
+        FixtureUtils::fixtureItemID(fixtures.at(6)->id(), 0, 0), // 7
+    };
+
+    QCOMPARE(resultSet, expected);
+}
+
+// No selection at all means no candidate groups can even be found - this
+// must be a strict no-op (empty result), never e.g. "select everything".
+void FixtureUtils_Test::invertGroupSelectionNoOpWhenNothingSelected()
+{
+    Doc doc(this);
+
+    Fixture *fx = new Fixture(&doc);
+    fx->setChannels(1);
+    fx->setAddress(1);
+    doc.addFixture(fx);
+
+    FixtureGroup grp(&doc);
+    grp.assignFixture(fx->id());
+
+    MonitorProperties monProps;
+    QList<FixtureGroup *> groups = { &grp };
+
+    QVERIFY(FixtureUtils::invertGroupSelection(groups, &monProps, QList<quint32>()).isEmpty());
+}
+
+// A selected fixture belonging to no group must not make any group a
+// candidate on its own, and must never appear in the result either.
+void FixtureUtils_Test::invertGroupSelectionDropsUngroupedFixture()
+{
+    Doc doc(this);
+
+    Fixture *fxGrouped = new Fixture(&doc);
+    fxGrouped->setChannels(1);
+    fxGrouped->setAddress(1);
+    doc.addFixture(fxGrouped);
+
+    Fixture *fxUngrouped = new Fixture(&doc);
+    fxUngrouped->setChannels(1);
+    fxUngrouped->setAddress(2);
+    doc.addFixture(fxUngrouped);
+
+    FixtureGroup grp(&doc);
+    grp.assignFixture(fxGrouped->id());
+
+    MonitorProperties monProps;
+    // Only the ungrouped fixture is selected - no group has a selected
+    // member, so there are no candidate groups at all.
+    QList<quint32> selected = { FixtureUtils::fixtureItemID(fxUngrouped->id(), 0, 0) };
+    QList<FixtureGroup *> groups = { &grp };
+
+    QVERIFY(FixtureUtils::invertGroupSelection(groups, &monProps, selected).isEmpty());
+}
+
+// A candidate group where every member is already selected has an empty
+// complement - it must contribute nothing to the result (not be treated as
+// an error or fall back to something else).
+void FixtureUtils_Test::invertGroupSelectionEmptyWhenGroupFullySelected()
+{
+    Doc doc(this);
+
+    Fixture *fxA = new Fixture(&doc);
+    fxA->setChannels(1);
+    fxA->setAddress(1);
+    doc.addFixture(fxA);
+
+    Fixture *fxB = new Fixture(&doc);
+    fxB->setChannels(1);
+    fxB->setAddress(2);
+    doc.addFixture(fxB);
+
+    FixtureGroup grp(&doc);
+    grp.assignFixture(fxA->id());
+    grp.assignFixture(fxB->id());
+
+    MonitorProperties monProps;
+    QList<quint32> selected = {
+        FixtureUtils::fixtureItemID(fxA->id(), 0, 0),
+        FixtureUtils::fixtureItemID(fxB->id(), 0, 0)
+    };
+    QList<FixtureGroup *> groups = { &grp };
+
+    QVERIFY(FixtureUtils::invertGroupSelection(groups, &monProps, selected).isEmpty());
 }
 
 QTEST_APPLESS_MAIN(FixtureUtils_Test)
