@@ -122,10 +122,10 @@ void ApiIoDomain::slotGrandMasterValueChanged(uchar value)
     m_server->broadcast(QStringLiteral("io.grandMaster.changed"), data, QString(), false);
 }
 
-void ApiIoDomain::slotBlackoutChanged(bool state)
+void ApiIoDomain::slotBlackoutChanged(bool blackout)
 {
     QJsonObject data;
-    data.insert(QStringLiteral("state"), state);
+    data.insert(QStringLiteral("blackout"), blackout);
     m_server->broadcast(QStringLiteral("io.blackout.changed"), data, QString(), false);
 }
 
@@ -207,13 +207,13 @@ void ApiIoDomain::registerMethods()
     {
         Q_UNUSED(params)
         QJsonObject result;
-        result.insert(QStringLiteral("state"), doc->inputOutputMap()->blackout());
+        result.insert(QStringLiteral("blackout"), doc->inputOutputMap()->blackout());
         session->send(ApiEnvelope::buildOkResponse(id, result));
     });
 
     dispatcher->registerMethod(QStringLiteral("io.blackout.set"), [doc](ApiSession *session, const QString &id, const QJsonObject &params)
     {
-        doc->inputOutputMap()->setBlackout(params.value(QStringLiteral("state")).toBool());
+        doc->inputOutputMap()->setBlackout(params.value(QStringLiteral("blackout")).toBool());
         session->send(ApiEnvelope::buildOkResponse(id, QJsonObject()));
     });
 
@@ -222,7 +222,7 @@ void ApiIoDomain::registerMethods()
         Q_UNUSED(params)
         bool newState = doc->inputOutputMap()->toggleBlackout();
         QJsonObject result;
-        result.insert(QStringLiteral("state"), newState);
+        result.insert(QStringLiteral("blackout"), newState);
         session->send(ApiEnvelope::buildOkResponse(id, result));
     });
 
