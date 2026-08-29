@@ -50,6 +50,14 @@ struct PreviewItem
     QColor m_color;             ///< Generic: item color, Fixture: gel color
     int m_zoom = 0;             ///< Fixture: fixed zoom in degrees
     quint32 m_flags = 0;        ///< Item flags as specified in the ItemsFlags enum
+    /** Fixture: per-fixture multiplier applied on top of the global DMX
+     *  position/rotation delta conversion (FixtureUtils::positionDeltaFromRaw()/
+     *  rotationDeltaFromRaw()) for a fixture with its own PositionX/Y/Z or
+     *  RotationX/Y/Z channels - how far it moves/rotates in the 2D/3D view per
+     *  unit of DMX channel change. Default 1.0 (no adjustment), matching the
+     *  global conversion exactly - must stay backward compatible for every
+     *  fixture that never sets it explicitly. */
+    float m_dmxScale = 1.0f;
 };
 
 struct FixturePreviewItem
@@ -142,11 +150,23 @@ private:
 public:
     enum ItemFlags
     {
-        HiddenFlag          = (1 << 0),
-        InvertedPanFlag     = (1 << 1),
-        InvertedTiltFlag    = (1 << 2),
-        MeshZUpFlag         = (1 << 3),
-        LockedFlag          = (1 << 4)
+        HiddenFlag            = (1 << 0),
+        InvertedPanFlag       = (1 << 1),
+        InvertedTiltFlag      = (1 << 2),
+        MeshZUpFlag           = (1 << 3),
+        LockedFlag            = (1 << 4),
+        /** Per-axis invert flags for a fixture's own PositionX/Y/Z and
+         *  RotationX/Y/Z DMX channels (2D/3D preview + drag-to-move), so a
+         *  fixture mounted/oriented differently than the view assumes can be
+         *  corrected per axis without touching the fixture definition or any
+         *  other fixture. Independent of InvertedPan/TiltFlag above, which
+         *  only affect the separate Pan/Tilt mechanical channels. */
+        InvertedPositionXFlag = (1 << 5),
+        InvertedPositionYFlag = (1 << 6),
+        InvertedPositionZFlag = (1 << 7),
+        InvertedRotationXFlag = (1 << 8),
+        InvertedRotationYFlag = (1 << 9),
+        InvertedRotationZFlag = (1 << 10)
     };
 #if QT_VERSION >= 0x050500
     Q_ENUM(ItemFlags)
@@ -191,6 +211,13 @@ public:
     /** Get/Set the fixed zoom degrees used to render a Fixture with with the given $fid, $head and $linked index */
     void setFixtureFixedZoom(quint32 fid, quint16 head, quint16 linked, int degrees);
     int fixtureFixedZoom(quint32 fid, quint16 head, quint16 linked) const;
+
+    /** Get/Set the per-fixture DMX-to-view position/rotation scale multiplier
+     *  of a Fixture with the given $fid, $head and $linked index - see
+     *  PreviewItem::m_dmxScale. Default 1.0 (no adjustment) for any fixture
+     *  that never sets it explicitly. */
+    void setFixtureDmxScale(quint32 fid, quint16 head, quint16 linked, float scale);
+    float fixtureDmxScale(quint32 fid, quint16 head, quint16 linked) const;
 
     /** Get/Set the name of a Fixture with with the given $fid, $head and $linked index */
     void setFixtureName(quint32 fid, quint16 head, quint16 linked, QString name);

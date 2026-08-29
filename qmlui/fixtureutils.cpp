@@ -548,7 +548,7 @@ int FixtureUtils::scaleRawFromFactor(float factor)
     return qBound(0, raw, RAW_16BIT_MAX);
 }
 
-QVector3D FixtureUtils::fixturePositionDelta(Fixture *fixture)
+QVector3D FixtureUtils::fixturePositionDelta(Fixture *fixture, const MonitorProperties *monProps)
 {
     QVector3D delta(0, 0, 0);
 
@@ -575,14 +575,30 @@ QVector3D FixtureUtils::fixturePositionDelta(Fixture *fixture)
         }
     }
 
-    if (hasX) delta.setX(positionDeltaFromRaw(posX));
-    if (hasY) delta.setY(positionDeltaFromRaw(posY));
-    if (hasZ) delta.setZ(positionDeltaFromRaw(posZ));
+    // Per-fixture invert/scale (see MonitorProperties::InvertedPosition{X,Y,Z}Flag
+    // and fixtureDmxScale()) is applied here, on top of the raw-to-delta
+    // conversion, and inverted back out by ContextManager::pushPositionDelta()
+    // on the write-back direction - both must agree or a drag will jump/drift.
+    // Default (monProps null, or fixture not yet registered in it) is
+    // scale 1.0 / no invert, i.e. exactly today's behavior.
+    quint32 flags = (monProps != nullptr) ? monProps->fixtureFlags(fixture->id(), 0, 0) : 0;
+    float scale = (monProps != nullptr) ? monProps->fixtureDmxScale(fixture->id(), 0, 0) : 1.0f;
+    // A zero (or hand-edited-to-zero-in-the-XML) scale must not silently
+    // collapse every delta to 0 here while ContextManager::pushPositionDelta()/
+    // pushRotationDelta() fall back to 1.0 for the exact same case (there, to
+    // avoid a divide-by-zero) - falling back the same way here keeps both
+    // conversion directions agreeing on what a zero scale means.
+    if (qFuzzyIsNull(scale))
+        scale = 1.0f;
+
+    if (hasX) delta.setX(positionDeltaFromRaw(posX) * scale * ((flags & MonitorProperties::InvertedPositionXFlag) ? -1.0f : 1.0f));
+    if (hasY) delta.setY(positionDeltaFromRaw(posY) * scale * ((flags & MonitorProperties::InvertedPositionYFlag) ? -1.0f : 1.0f));
+    if (hasZ) delta.setZ(positionDeltaFromRaw(posZ) * scale * ((flags & MonitorProperties::InvertedPositionZFlag) ? -1.0f : 1.0f));
 
     return delta;
 }
 
-QVector3D FixtureUtils::fixtureRotationDelta(Fixture *fixture)
+QVector3D FixtureUtils::fixtureRotationDelta(Fixture *fixture, const MonitorProperties *monProps)
 {
     QVector3D delta(0, 0, 0);
 
@@ -609,9 +625,21 @@ QVector3D FixtureUtils::fixtureRotationDelta(Fixture *fixture)
         }
     }
 
-    if (hasX) delta.setX(rotationDeltaFromRaw(rotX));
-    if (hasY) delta.setY(rotationDeltaFromRaw(rotY));
-    if (hasZ) delta.setZ(rotationDeltaFromRaw(rotZ));
+    // See fixturePositionDelta()'s equivalent note - same invert/scale
+    // convention, using the Rotation flags/scale instead.
+    quint32 flags = (monProps != nullptr) ? monProps->fixtureFlags(fixture->id(), 0, 0) : 0;
+    float scale = (monProps != nullptr) ? monProps->fixtureDmxScale(fixture->id(), 0, 0) : 1.0f;
+    // A zero (or hand-edited-to-zero-in-the-XML) scale must not silently
+    // collapse every delta to 0 here while ContextManager::pushPositionDelta()/
+    // pushRotationDelta() fall back to 1.0 for the exact same case (there, to
+    // avoid a divide-by-zero) - falling back the same way here keeps both
+    // conversion directions agreeing on what a zero scale means.
+    if (qFuzzyIsNull(scale))
+        scale = 1.0f;
+
+    if (hasX) delta.setX(rotationDeltaFromRaw(rotX) * scale * ((flags & MonitorProperties::InvertedRotationXFlag) ? -1.0f : 1.0f));
+    if (hasY) delta.setY(rotationDeltaFromRaw(rotY) * scale * ((flags & MonitorProperties::InvertedRotationYFlag) ? -1.0f : 1.0f));
+    if (hasZ) delta.setZ(rotationDeltaFromRaw(rotZ) * scale * ((flags & MonitorProperties::InvertedRotationZFlag) ? -1.0f : 1.0f));
 
     return delta;
 }

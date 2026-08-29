@@ -62,6 +62,125 @@ void MonitorProperties_Test::fixtureItems()
     QCOMPARE(mp.containsFixture(10), false);
 }
 
+// Unlike lightItemsXML() below, there was previously no XML round-trip
+// coverage at all for fixture items - fixtureItems() above only exercises the
+// in-memory getters/setters, never saveXML()/loadXML(). Added while
+// investigating a user report of a moving fixture's position resetting to 0
+// after a save/reload: this test passes, which rules out MonitorProperties'
+// own save/load handling as the cause (see ContextManager::pushPositionDelta()/
+// slotUniverseWritten() instead, where the actual bug was found - a DMX
+// Position/Rotation-channel-driven fixture's delta was never written back
+// into MonitorProperties at all, so there was nothing here to load wrong).
+void MonitorProperties_Test::fixtureItemsXML()
+{
+    Doc doc(this);
+    MonitorProperties mp;
+
+    mp.setFixturePosition(10, 0, 0, QVector3D(1.5, 2.5, 3.5));
+    mp.setFixtureRotation(10, 0, 0, QVector3D(15, 90, 270));
+    mp.setFixtureGelColor(10, 0, 0, QColor(Qt::red));
+    mp.setFixtureFixedZoom(10, 0, 0, 25);
+    mp.setFixtureFlags(10, 0, 0, MonitorProperties::HiddenFlag | MonitorProperties::LockedFlag);
+
+    // A linked copy, to confirm sub-items round-trip independently of the
+    // base item (fixtureIDList()'s subID = 0 vs head/linked-packed subID
+    // path). Custom names are only ever set on linked copies in practice
+    // (see ContextManager::setLinkedFixture()) - save/load both gate the
+    // Name attribute on the Linked attribute being present, matching that.
+    mp.setFixturePosition(10, 0, 1, QVector3D(4, 5, 6));
+    mp.setFixtureName(10, 0, 1, "Linked 1");
+
+    QByteArray xmlData;
+    QBuffer buffer(&xmlData);
+    QVERIFY(buffer.open(QIODevice::WriteOnly));
+
+    QXmlStreamWriter writer(&buffer);
+    writer.writeStartDocument();
+    QVERIFY(mp.saveXML(&writer, &doc));
+    writer.writeEndDocument();
+    buffer.close();
+
+    MonitorProperties loaded;
+    QXmlStreamReader reader(xmlData);
+    while (reader.readNextStartElement())
+    {
+        if (reader.name() == KXMLQLCMonitorProperties)
+        {
+            QVERIFY(loaded.loadXML(reader, &doc));
+            break;
+        }
+        reader.skipCurrentElement();
+    }
+
+    QCOMPARE(loaded.fixturePosition(10, 0, 0), QVector3D(1.5, 2.5, 3.5));
+    QCOMPARE(loaded.fixtureRotation(10, 0, 0), QVector3D(15, 90, 270));
+    QCOMPARE(loaded.fixtureGelColor(10, 0, 0), QColor(Qt::red));
+    QCOMPARE(loaded.fixtureFixedZoom(10, 0, 0), 25);
+    QCOMPARE(loaded.fixtureFlags(10, 0, 0),
+             quint32(MonitorProperties::HiddenFlag | MonitorProperties::LockedFlag));
+
+    QCOMPARE(loaded.fixturePosition(10, 0, 1), QVector3D(4, 5, 6));
+    QCOMPARE(loaded.fixtureName(10, 0, 1), QString("Linked 1"));
+}
+
+// Per-fixture DMX position/rotation invert + scale (added for the "moving
+// fixtures don't move the way the view assumes" feature): a fixture that
+// never sets these must keep behaving exactly as before (default flags = 0,
+// default scale = 1.0, matching PreviewItem::m_dmxScale's own default
+// member initializer) - and both must round-trip through save/load exactly
+// like every other per-fixture flag/value already does.
+void MonitorProperties_Test::fixtureDmxTransformDefaults()
+{
+    MonitorProperties mp;
+
+    // A fixture never touched at all - containsFixture() is false, but the
+    // getters must still return the same defaults as an explicitly-set one.
+    QCOMPARE(mp.fixtureDmxScale(99, 0, 0), 1.0f);
+    QCOMPARE(mp.fixtureFlags(99, 0, 0) & (MonitorProperties::InvertedPositionXFlag |
+                                          MonitorProperties::InvertedPositionYFlag |
+                                          MonitorProperties::InvertedPositionZFlag |
+                                          MonitorProperties::InvertedRotationXFlag |
+                                          MonitorProperties::InvertedRotationYFlag |
+                                          MonitorProperties::InvertedRotationZFlag), quint32(0));
+}
+
+void MonitorProperties_Test::fixtureDmxTransformXML()
+{
+    Doc doc(this);
+    MonitorProperties mp;
+
+    quint32 flags = MonitorProperties::InvertedPositionXFlag |
+                    MonitorProperties::InvertedPositionZFlag |
+                    MonitorProperties::InvertedRotationYFlag;
+    mp.setFixtureFlags(20, 0, 0, flags);
+    mp.setFixtureDmxScale(20, 0, 0, 2.5f);
+
+    QByteArray xmlData;
+    QBuffer buffer(&xmlData);
+    QVERIFY(buffer.open(QIODevice::WriteOnly));
+
+    QXmlStreamWriter writer(&buffer);
+    writer.writeStartDocument();
+    QVERIFY(mp.saveXML(&writer, &doc));
+    writer.writeEndDocument();
+    buffer.close();
+
+    MonitorProperties loaded;
+    QXmlStreamReader reader(xmlData);
+    while (reader.readNextStartElement())
+    {
+        if (reader.name() == KXMLQLCMonitorProperties)
+        {
+            QVERIFY(loaded.loadXML(reader, &doc));
+            break;
+        }
+        reader.skipCurrentElement();
+    }
+
+    QCOMPARE(loaded.fixtureFlags(20, 0, 0), flags);
+    QCOMPARE(loaded.fixtureDmxScale(20, 0, 0), 2.5f);
+}
+
 void MonitorProperties_Test::lightItems()
 {
     MonitorProperties mp;

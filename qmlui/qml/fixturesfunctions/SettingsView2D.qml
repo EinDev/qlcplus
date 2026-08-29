@@ -40,6 +40,18 @@ Rectangle
     property vector3d fxRotation: selFixturesCount === 1 ? contextManager.fixturesRotation : lastRotation
     property vector3d lastRotation
     property int previousGridUnits: MonitorProperties.Meters
+    // Only meaningful for a single selected fixture with its own PositionX/Y/Z
+    // or RotationX/Y/Z DMX channels - see ContextManager::selectedFixtureHasDmxTransform().
+    property bool fxHasDmxTransform: contextManager && selFixturesCount === 1 &&
+                                     contextManager.selectedFixtureHasDmxTransform
+
+    // Toggles one bit of contextManager.fixtureDmxTransformFlags on/off,
+    // leaving every other bit (the other 5 axes) untouched.
+    function setDmxTransformFlag(flag, enable)
+    {
+        var flags = contextManager.fixtureDmxTransformFlags
+        contextManager.fixtureDmxTransformFlags = enable ? (flags | flag) : (flags & ~flag)
+    }
 
     Component.onCompleted:
     {
@@ -480,6 +492,98 @@ Rectangle
 
                             PopupArrangeFixtures { id: arrangeFixturesPopup }
                         }
+                    }
+                } // GridLayout
+        } // SectionBox
+
+        SectionBox
+        {
+            visible: fxHasDmxTransform
+            width: parent.width
+            isExpanded: fxHasDmxTransform
+            sectionLabel: qsTr("DMX Position/Rotation")
+
+            sectionContents:
+                GridLayout
+                {
+                    width: parent.width
+                    columns: 2
+                    columnSpacing: 5
+                    rowSpacing: 2
+
+                    // row 1
+                    RobotoText { height: UISettings.listItemHeight; label: qsTr("Invert Position X") }
+                    CustomCheckBox
+                    {
+                        implicitHeight: UISettings.listItemHeight
+                        implicitWidth: implicitHeight
+                        checked: (contextManager.fixtureDmxTransformFlags & MonitorProperties.InvertedPositionXFlag) !== 0
+                        onToggled: setDmxTransformFlag(MonitorProperties.InvertedPositionXFlag, checked)
+                    }
+
+                    // row 2
+                    RobotoText { height: UISettings.listItemHeight; label: qsTr("Invert Position Y") }
+                    CustomCheckBox
+                    {
+                        implicitHeight: UISettings.listItemHeight
+                        implicitWidth: implicitHeight
+                        checked: (contextManager.fixtureDmxTransformFlags & MonitorProperties.InvertedPositionYFlag) !== 0
+                        onToggled: setDmxTransformFlag(MonitorProperties.InvertedPositionYFlag, checked)
+                    }
+
+                    // row 3
+                    RobotoText { height: UISettings.listItemHeight; label: qsTr("Invert Position Z") }
+                    CustomCheckBox
+                    {
+                        implicitHeight: UISettings.listItemHeight
+                        implicitWidth: implicitHeight
+                        checked: (contextManager.fixtureDmxTransformFlags & MonitorProperties.InvertedPositionZFlag) !== 0
+                        onToggled: setDmxTransformFlag(MonitorProperties.InvertedPositionZFlag, checked)
+                    }
+
+                    // row 4
+                    RobotoText { height: UISettings.listItemHeight; label: qsTr("Invert Rotation X") }
+                    CustomCheckBox
+                    {
+                        implicitHeight: UISettings.listItemHeight
+                        implicitWidth: implicitHeight
+                        checked: (contextManager.fixtureDmxTransformFlags & MonitorProperties.InvertedRotationXFlag) !== 0
+                        onToggled: setDmxTransformFlag(MonitorProperties.InvertedRotationXFlag, checked)
+                    }
+
+                    // row 5
+                    RobotoText { height: UISettings.listItemHeight; label: qsTr("Invert Rotation Y") }
+                    CustomCheckBox
+                    {
+                        implicitHeight: UISettings.listItemHeight
+                        implicitWidth: implicitHeight
+                        checked: (contextManager.fixtureDmxTransformFlags & MonitorProperties.InvertedRotationYFlag) !== 0
+                        onToggled: setDmxTransformFlag(MonitorProperties.InvertedRotationYFlag, checked)
+                    }
+
+                    // row 6
+                    RobotoText { height: UISettings.listItemHeight; label: qsTr("Invert Rotation Z") }
+                    CustomCheckBox
+                    {
+                        implicitHeight: UISettings.listItemHeight
+                        implicitWidth: implicitHeight
+                        checked: (contextManager.fixtureDmxTransformFlags & MonitorProperties.InvertedRotationZFlag) !== 0
+                        onToggled: setDmxTransformFlag(MonitorProperties.InvertedRotationZFlag, checked)
+                    }
+
+                    // row 7 - the spin box works in whole percent (10% to
+                    // 1000%, i.e. 0.1x to 10.0x) since CustomSpinBox only
+                    // supports integer values/steps.
+                    RobotoText { height: UISettings.listItemHeight; label: qsTr("DMX scale") }
+                    CustomSpinBox
+                    {
+                        Layout.fillWidth: true
+                        height: UISettings.listItemHeight
+                        from: 10
+                        to: 1000
+                        suffix: "%"
+                        value: Math.round(contextManager.fixtureDmxScale * 100)
+                        onValueModified: contextManager.fixtureDmxScale = value / 100.0
                     }
                 } // GridLayout
         } // SectionBox

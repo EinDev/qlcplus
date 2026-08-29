@@ -55,6 +55,10 @@ private slots:
     void fixturePositionDeltaIgnoresAbsentAxes();
     void fixtureRotationDeltaIgnoresAbsentAxes();
     void fixtureScaleFactorDefaultsToOneForAbsentAxes();
+
+    void fixturePositionDeltaUnaffectedByDefaultMonProps();
+    void fixturePositionDeltaAppliesPerFixtureInvertAndScale();
+    void fixtureRotationDeltaAppliesPerFixtureInvertAndScale();
 };
 
 #endif
