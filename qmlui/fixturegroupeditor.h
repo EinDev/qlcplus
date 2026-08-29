@@ -83,6 +83,13 @@ private:
     FixtureManager *m_fixtureManager;
     /** Reference to the Fixture Group currently being edited */
     FixtureGroup *m_editGroup;
+    /** ID of m_editGroup, cached separately so slotFixtureGroupRemoved() can
+     *  check "is this my group?" by ID alone, without dereferencing
+     *  m_editGroup - some removal paths (e.g. Doc::clearContents(), which
+     *  deletes each FixtureGroup *before* emitting fixtureGroupRemoved for
+     *  it, unlike Doc::deleteFixtureGroup()) would otherwise make that
+     *  dereference a use-after-free. */
+    quint32 m_editGroupId;
 
     /*********************************************************************
      * Fixture Group Grid Editing

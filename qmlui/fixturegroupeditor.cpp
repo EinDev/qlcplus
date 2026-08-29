@@ -36,6 +36,7 @@ FixtureGroupEditor::FixtureGroupEditor(QQuickView *view, Doc *doc,
     , m_doc(doc)
     , m_fixtureManager(fxMgr)
     , m_editGroup(nullptr)
+    , m_editGroupId(FixtureGroup::invalidId())
 {
     Q_ASSERT(m_doc != nullptr);
 
@@ -141,10 +142,16 @@ void FixtureGroupEditor::slotDocLoaded()
 
 void FixtureGroupEditor::slotFixtureGroupRemoved(quint32 id)
 {
-    if (m_editGroup == nullptr || m_editGroup->id() != id)
+    // Compare by cached ID rather than dereferencing m_editGroup: some
+    // removal paths (Doc::clearContents()) delete the FixtureGroup *before*
+    // emitting this signal, unlike Doc::deleteFixtureGroup() which emits
+    // first - m_editGroup itself may already be dangling by the time this
+    // slot runs, so it must never be read, only compared/nulled.
+    if (m_editGroup == nullptr || m_editGroupId != id)
         return;
 
     m_editGroup = nullptr;
+    m_editGroupId = FixtureGroup::invalidId();
     m_groupSelection.clear();
     updateGroupMap(); // clears m_groupMap/m_groupLabels internally, but its own
                        // null-guard skips emitting - do that explicitly below
@@ -165,6 +172,7 @@ void FixtureGroupEditor::setEditGroup(QVariant reference)
         return;
 
     m_editGroup = reference.value<FixtureGroup *>();
+    m_editGroupId = m_editGroup == nullptr ? FixtureGroup::invalidId() : m_editGroup->id();
 
     emit groupNameChanged();
     emit groupSizeChanged();
