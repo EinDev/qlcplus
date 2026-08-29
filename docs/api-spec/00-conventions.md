@@ -153,6 +153,15 @@ If you're not sure which tier something in your domain belongs to: does it
 get saved into the `.qxw` show file? → 4a. Does it only exist while the
 engine is running? → 4b.
 
+### 4c. Shared library resources (revisioning for non-project files)
+
+Certain resources (fixture definitions in `fixturedefs.yaml`, input profiles in `io.yaml`) live in a shared library on disk rather than inside the `.qxw` show file. These use a **domain-local** revision counter instead of the global `docRevision`.
+
+- Convention: the authoritative counter uses the suffix `Revision` prefixed by the domain or resource name (e.g. `defRevision` for fixture definitions, `profilesRevision` for the input profile library).
+- Regardless of the counter name, all structural mutation requests **must** include the field `"baseRevision": <int>` — exactly like §4a, the request field name is unified even if the underlying counter it refers to is domain-specific.
+- `fixturedefs.yaml` also uses a `sessionRevision` for ephemeral editing sessions; this is also a local revision counter that follows the same pattern but is scoped to a single `sessionId`.
+- Note: a mutation to a library resource does NOT increment the global `docRevision` unless it also causes a side-effect in the current project (e.g. auto-updating a patched fixture).
+
 ## 5. Subscriptions
 
 Structural (4a) events are always delivered to every connected client — low
@@ -201,7 +210,17 @@ prefixed by domain, e.g. `FIXTURES_ADDRESS_OVERLAP`):
 - `UNAUTHORIZED` — session not authenticated / lacks permission
 - `UNSUPPORTED` — e.g. plugin/hardware feature not available on this engine build
 
-## 8. Session handshake, identity, auth
+## 8. Verb and Topic naming conventions
+
+To maintain consistency across all domains, use these standard verb pairs:
+
+- **Create vs. Add**: Use `.create` (and `.created` event) for top-level domain entities (e.g. `fixtures.create`, `functions.create`, `vc.widget.create`). Use `.add` (and `.added` event) for adding items to a collection or sub-resources (e.g. `functions.steps.add`, `fixturedefs.channel.add`).
+- **Delete vs. Remove**: Use `.delete` (and `.deleted` event) for top-level entities. Use `.remove` (and `.removed` event) for removing items from a collection or sub-resources.
+- **Rename**: Use `.rename` (and `.renamed` event) consistently for all resource types. Avoid `setName`.
+- **Update vs. Set**: Use `.update` (and `.updated` event) for general or partial updates to a resource's attributes (e.g. `fixtures.update`, `functions.update`, `vc.widget.update`). Use `.set<Property>` (and `.changed` event if specific, or `.updated` if general) for specific, non-partial property assignments or domain-specific actions (e.g. `core.mode.set`, `io.patch.setParameters`).
+- **Move/Reorder**: Use `.move` / `.moved` for changing position in a list or hierarchy. Use `.reorder` for bulk position updates.
+
+## 9. Session handshake, identity, auth
 
 Already defined in the skeleton (don't redefine): client connects, sends
 `hello` request (`{ apiVersion, clientName, authToken? }`), server responds

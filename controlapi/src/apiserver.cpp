@@ -23,6 +23,7 @@
 #include "apisession.h"
 #include "apienvelope.h"
 #include "domains/apiiodomain.h"
+#include "domains/apicoredomain.h"
 #include "qlcconfig.h"
 #include "doc.h"
 
@@ -41,6 +42,7 @@ ApiServer::ApiServer(QObject *parent, Doc *doc)
     registerSessionMethods();
 
     m_ioDomain = new ApiIoDomain(m_doc, this, this);
+    m_coreDomain = new ApiCoreDomain(m_doc, this, this);
 }
 
 ApiServer::~ApiServer()
