@@ -18,6 +18,7 @@
 */
 
 #include <QDebug>
+#include <QSet>
 #include <Qt3DCore/QTransform>
 
 #include "monitorproperties.h"
@@ -25,6 +26,7 @@
 #include "qlccapability.h"
 #include "fixtureutils.h"
 #include "qlcmacros.h"
+#include "function.h"
 #include "fixture.h"
 #include "doc.h"
 
@@ -263,6 +265,69 @@ bool FixtureUtils::isGroupFullySelected(const FixtureGroup *group, const Monitor
     }
 
     return true;
+}
+
+void FixtureUtils::collectFunctionFixtures(Doc *doc, quint32 functionID,
+                                            QSet<quint32> &visitedFunctions, QSet<quint32> &fixtureIDs)
+{
+    if (doc == nullptr || visitedFunctions.contains(functionID))
+        return;
+
+    Function *function = doc->function(functionID);
+    if (function == nullptr)
+        return;
+
+    visitedFunctions.insert(functionID);
+
+    switch (function->type())
+    {
+        // Scene/EFX/RGBMatrix::components() already return exactly the
+        // fixture IDs each of these Function types references.
+        case Function::SceneType:
+        case Function::EFXType:
+        case Function::RGBMatrixType:
+        {
+            for (quint32 fxID : function->components())
+                fixtureIDs.insert(fxID);
+        }
+        break;
+
+        // Chaser::components() returns the Function ID of each step instead
+        // (not fixture IDs) - resolve each one recursively.
+        case Function::ChaserType:
+        {
+            for (quint32 stepFunctionID : function->components())
+                collectFunctionFixtures(doc, stepFunctionID, visitedFunctions, fixtureIDs);
+        }
+        break;
+
+        default:
+            // Any other Function type (Show, Script, Sequence, Collection,
+            // Audio, Video, ...) is not supported by this feature and
+            // contributes no fixtures.
+        break;
+    }
+}
+
+QList<quint32> FixtureUtils::functionFixtures(Doc *doc, quint32 functionID)
+{
+    QSet<quint32> visitedFunctions;
+    QSet<quint32> fixtureIDs;
+
+    collectFunctionFixtures(doc, functionID, visitedFunctions, fixtureIDs);
+
+    return QList<quint32>(fixtureIDs.begin(), fixtureIDs.end());
+}
+
+QList<quint32> FixtureUtils::functionsFixtures(Doc *doc, const QList<quint32> &functionIDs)
+{
+    QSet<quint32> visitedFunctions;
+    QSet<quint32> fixtureIDs;
+
+    for (quint32 functionID : functionIDs)
+        collectFunctionFixtures(doc, functionID, visitedFunctions, fixtureIDs);
+
+    return QList<quint32>(fixtureIDs.begin(), fixtureIDs.end());
 }
 
 QPointF FixtureUtils::available2DPosition(Doc *doc, int pointOfView, QRectF fxRect)

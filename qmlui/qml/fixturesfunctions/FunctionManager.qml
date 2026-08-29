@@ -213,6 +213,19 @@ Rectangle
 
             IconButton
             {
+                id: selectFixturesInFunctionsButton
+                z: 2
+                width: height
+                height: topBar.height - 2
+                faSource: FontAwesome.fa_crosshairs
+                faColor: "white"
+                tooltip: qsTr("Select Fixtures in Function(s)")
+                enabled: functionManager.selectedFunctionCount > 0
+                onClicked: contextManager.selectFixturesInFunctions()
+            }
+
+            IconButton
+            {
                 id: searchFunc
                 z: 2
                 width: height
