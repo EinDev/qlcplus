@@ -31,6 +31,13 @@
 #include "qlcchannel.h"
 #include "fixture.h"
 #include "doc.h"
+#include "scene.h"
+#include "chaser.h"
+#include "chaserstep.h"
+#include "efx.h"
+#include "efxfixture.h"
+#include "grouphead.h"
+#include "collection.h"
 
 // Builds a Fixture with a single, MSB-only (coarse) channel of $group set to
 // $value - just enough to exercise FixtureUtils::fixturePositionDelta()/
@@ -848,6 +855,252 @@ void FixtureUtils_Test::invertGroupSelectionOnPreFilteredSubsetMatchesScopedCand
         FixtureUtils::fixtureItemID(fixtures.at(2)->id(), 0, 0), // 3
         FixtureUtils::fixtureItemID(fixtures.at(3)->id(), 0, 0), // 4
     };
+
+    QCOMPARE(resultSet, expected);
+}
+
+// FixtureUtils::functionFixtures()/functionsFixtures() back
+// ContextManager::selectFixturesInFunctions() (the "Select Fixtures in
+// Function(s)" Function Manager toolbar action). A Scene's own components()
+// already returns exactly the distinct fixture IDs referenced by its
+// SceneValues - this pins that down through the wrapper.
+void FixtureUtils_Test::functionFixturesForScene()
+{
+    Doc doc(this);
+
+    Fixture *fxA = new Fixture(&doc);
+    fxA->setChannels(2);
+    fxA->setAddress(1);
+    doc.addFixture(fxA);
+
+    Fixture *fxB = new Fixture(&doc);
+    fxB->setChannels(2);
+    fxB->setAddress(3);
+    doc.addFixture(fxB);
+
+    Scene *scene = new Scene(&doc);
+    scene->setValue(fxA->id(), 0, 255);
+    scene->setValue(fxA->id(), 1, 128); // second channel of the same fixture - must not duplicate fxA
+    scene->setValue(fxB->id(), 0, 64);
+    doc.addFunction(scene);
+
+    QList<quint32> result = FixtureUtils::functionFixtures(&doc, scene->id());
+    QSet<quint32> resultSet(result.begin(), result.end());
+    QSet<quint32> expected = { fxA->id(), fxB->id() };
+
+    QCOMPARE(resultSet, expected);
+}
+
+// EFX::components() already returns exactly the distinct fixture IDs named
+// by its EFXFixtures.
+void FixtureUtils_Test::functionFixturesForEFX()
+{
+    Doc doc(this);
+
+    Fixture *fxA = new Fixture(&doc);
+    fxA->setChannels(1);
+    fxA->setAddress(1);
+    doc.addFixture(fxA);
+
+    Fixture *fxB = new Fixture(&doc);
+    fxB->setChannels(1);
+    fxB->setAddress(2);
+    doc.addFixture(fxB);
+
+    EFX *efx = new EFX(&doc);
+    efx->addFixture(fxA->id(), 0);
+    efx->addFixture(fxB->id(), 0);
+    doc.addFunction(efx);
+
+    QList<quint32> result = FixtureUtils::functionFixtures(&doc, efx->id());
+    QSet<quint32> resultSet(result.begin(), result.end());
+    QSet<quint32> expected = { fxA->id(), fxB->id() };
+
+    QCOMPARE(resultSet, expected);
+}
+
+// NOTE: RGBMatrix::components() (which the RGBMatrixType case in
+// FixtureUtils::collectFunctionFixtures() dispatches to verbatim, same as
+// Scene/EFX - it already returns the associated Fixture Group's own
+// fixtureList()) is NOT covered by a test here. Unlike Scene/EFX, merely
+// constructing a real RGBMatrix - even just to reach that dispatch, with no
+// RGBMatrix-specific logic of this feature's own left to exercise - pulls in
+// RGBAlgorithm::algorithms(doc), which unconditionally constructs an
+// RGBImage, whose constructor requires a live QGuiApplication (confirmed via
+// gdb backtrace: RGBImage::RGBImage -> ... -> QPixmap ctor -> fatal
+// "Must construct a QGuiApplication before a QPixmap"). This test suite runs
+// under QTEST_APPLESS_MAIN (a bare QCoreApplication, matching every other
+// test here and the project's documented "no QQuickView/GUI" constraint for
+// qmlui/test) and switching the whole suite to QTEST_MAIN just for this one
+// case was judged out of scope for this feature - a real, pre-existing
+// engine-level constructibility constraint on RGBMatrix, not something this
+// feature's own logic introduced.
+
+// The one genuinely open question this feature needed investigating: a
+// Chaser's own components() returns its steps' Function IDs, NOT fixture
+// IDs (unlike Scene/EFX/RGBMatrix) - so a Chaser with two Scene steps must
+// have both step Scenes resolved and unioned, not just the Chaser's own
+// (empty, for fixture purposes) direct fixture list.
+void FixtureUtils_Test::functionFixturesRecursesIntoChaserSteps()
+{
+    Doc doc(this);
+
+    Fixture *fxA = new Fixture(&doc);
+    fxA->setChannels(1);
+    fxA->setAddress(1);
+    doc.addFixture(fxA);
+
+    Fixture *fxB = new Fixture(&doc);
+    fxB->setChannels(1);
+    fxB->setAddress(2);
+    doc.addFixture(fxB);
+
+    Scene *sceneA = new Scene(&doc);
+    sceneA->setValue(fxA->id(), 0, 255);
+    doc.addFunction(sceneA);
+
+    Scene *sceneB = new Scene(&doc);
+    sceneB->setValue(fxB->id(), 0, 255);
+    doc.addFunction(sceneB);
+
+    Chaser *chaser = new Chaser(&doc);
+    chaser->addStep(ChaserStep(sceneA->id()));
+    chaser->addStep(ChaserStep(sceneB->id()));
+    doc.addFunction(chaser);
+
+    QList<quint32> result = FixtureUtils::functionFixtures(&doc, chaser->id());
+    QSet<quint32> resultSet(result.begin(), result.end());
+    QSet<quint32> expected = { fxA->id(), fxB->id() };
+
+    QCOMPARE(resultSet, expected);
+}
+
+// A Chaser step referencing a Function type this feature doesn't support
+// (here, a Collection) contributes no fixtures from that step, but must not
+// prevent the Chaser's other, supported steps from still being resolved.
+void FixtureUtils_Test::functionFixturesSkipsUnsupportedChaserStepType()
+{
+    Doc doc(this);
+
+    Fixture *fxA = new Fixture(&doc);
+    fxA->setChannels(1);
+    fxA->setAddress(1);
+    doc.addFixture(fxA);
+
+    Fixture *fxUnreachable = new Fixture(&doc);
+    fxUnreachable->setChannels(1);
+    fxUnreachable->setAddress(2);
+    doc.addFixture(fxUnreachable);
+
+    Scene *sceneA = new Scene(&doc);
+    sceneA->setValue(fxA->id(), 0, 255);
+    doc.addFunction(sceneA);
+
+    // A Collection referencing sceneA too - not itself a supported type, so
+    // its own fixtures (here, transitively sceneA's) must not surface when
+    // reached only via this Collection step.
+    Collection *collection = new Collection(&doc);
+    doc.addFunction(collection);
+
+    Chaser *chaser = new Chaser(&doc);
+    chaser->addStep(ChaserStep(sceneA->id()));
+    chaser->addStep(ChaserStep(collection->id()));
+    doc.addFunction(chaser);
+
+    QList<quint32> result = FixtureUtils::functionFixtures(&doc, chaser->id());
+    QSet<quint32> resultSet(result.begin(), result.end());
+    QSet<quint32> expected = { fxA->id() };
+
+    QCOMPARE(resultSet, expected);
+    QVERIFY(resultSet.contains(fxUnreachable->id()) == false);
+}
+
+// A pathological indirect Chaser reference cycle (A's steps include B, B's
+// steps include A) must not infinite-loop or crash - each Function is only
+// ever resolved once, and every fixture reachable before the cycle closes
+// is still returned.
+void FixtureUtils_Test::functionFixturesIsCycleSafeAcrossChasers()
+{
+    Doc doc(this);
+
+    Fixture *fxA = new Fixture(&doc);
+    fxA->setChannels(1);
+    fxA->setAddress(1);
+    doc.addFixture(fxA);
+
+    Fixture *fxB = new Fixture(&doc);
+    fxB->setChannels(1);
+    fxB->setAddress(2);
+    doc.addFixture(fxB);
+
+    Scene *sceneA = new Scene(&doc);
+    sceneA->setValue(fxA->id(), 0, 255);
+    doc.addFunction(sceneA);
+
+    Scene *sceneB = new Scene(&doc);
+    sceneB->setValue(fxB->id(), 0, 255);
+    doc.addFunction(sceneB);
+
+    Chaser *chaserA = new Chaser(&doc);
+    doc.addFunction(chaserA);
+
+    Chaser *chaserB = new Chaser(&doc);
+    chaserB->addStep(ChaserStep(sceneB->id()));
+    chaserB->addStep(ChaserStep(chaserA->id()));
+    doc.addFunction(chaserB);
+
+    chaserA->addStep(ChaserStep(sceneA->id()));
+    chaserA->addStep(ChaserStep(chaserB->id()));
+
+    QList<quint32> result = FixtureUtils::functionFixtures(&doc, chaserA->id());
+    QSet<quint32> resultSet(result.begin(), result.end());
+    QSet<quint32> expected = { fxA->id(), fxB->id() };
+
+    QCOMPARE(resultSet, expected);
+}
+
+// A missing Function ID, and a Function of an unsupported type queried
+// directly (not just as an unresolved Chaser step), both yield an empty
+// result rather than an error.
+void FixtureUtils_Test::functionFixturesReturnsEmptyForInvalidOrUnsupportedFunction()
+{
+    Doc doc(this);
+
+    QVERIFY(FixtureUtils::functionFixtures(&doc, Function::invalidId()).isEmpty());
+
+    Collection *collection = new Collection(&doc);
+    doc.addFunction(collection);
+    QVERIFY(FixtureUtils::functionFixtures(&doc, collection->id()).isEmpty());
+}
+
+// functionsFixtures() is the union across every Function currently selected
+// in the Function Manager - here a directly selected Scene and a directly
+// selected EFX, each referencing a different fixture.
+void FixtureUtils_Test::functionsFixturesUnionsAcrossSelectedFunctions()
+{
+    Doc doc(this);
+
+    Fixture *fxA = new Fixture(&doc);
+    fxA->setChannels(1);
+    fxA->setAddress(1);
+    doc.addFixture(fxA);
+
+    Fixture *fxB = new Fixture(&doc);
+    fxB->setChannels(1);
+    fxB->setAddress(2);
+    doc.addFixture(fxB);
+
+    Scene *scene = new Scene(&doc);
+    scene->setValue(fxA->id(), 0, 255);
+    doc.addFunction(scene);
+
+    EFX *efx = new EFX(&doc);
+    efx->addFixture(fxB->id(), 0);
+    doc.addFunction(efx);
+
+    QList<quint32> result = FixtureUtils::functionsFixtures(&doc, QList<quint32>{ scene->id(), efx->id() });
+    QSet<quint32> resultSet(result.begin(), result.end());
+    QSet<quint32> expected = { fxA->id(), fxB->id() };
 
     QCOMPARE(resultSet, expected);
 }

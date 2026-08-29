@@ -431,6 +431,17 @@ public:
      *  dialog was open) is silently skipped. */
     Q_INVOKABLE void confirmGroupSelectionInversion(QVariantList groupIds);
 
+    /** "Select Fixtures in Function(s)": replaces the current fixture
+     *  selection with every fixture referenced by the Function(s) currently
+     *  selected in the Function Manager (see FixtureUtils::functionsFixtures()
+     *  for exactly which Function types are supported and how a Chaser's
+     *  steps are resolved), each one expanded to its own heads/linked
+     *  sub-items via $m_monProps - the same expansion setFixtureGroupSelection()
+     *  applies to a Fixture Group's members. A no-op when no Function is
+     *  currently selected in the Function Manager, or when the selected
+     *  Function(s) reference no fixtures. */
+    Q_INVOKABLE void selectFixturesInFunctions();
+
     Q_INVOKABLE void setChannelValueByType(int type, int value, bool isRelative = false, quint32 channel = UINT_MAX);
 
     Q_INVOKABLE void setColorValue(QColor col, QColor wauv);

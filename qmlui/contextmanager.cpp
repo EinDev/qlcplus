@@ -2686,6 +2686,36 @@ void ContextManager::applyGroupSelectionInversion(const QList<FixtureGroup *> &g
     setBatchSelection(false);
 }
 
+void ContextManager::selectFixturesInFunctions()
+{
+    QVariantList selectedFunctionIDs = m_functionManager->selectedFunctionsID();
+    if (selectedFunctionIDs.isEmpty())
+        return;
+
+    QList<quint32> functionIDs;
+    for (QVariant &fID : selectedFunctionIDs)
+        functionIDs.append(fID.toUInt());
+
+    QList<quint32> fixtureIDs = FixtureUtils::functionsFixtures(m_doc, functionIDs);
+    if (fixtureIDs.isEmpty())
+        return;
+
+    resetFixtureSelection();
+
+    setBatchSelection(true);
+    for (quint32 &fxID : fixtureIDs)
+    {
+        for (quint32 &subID : m_monProps->fixtureIDList(fxID))
+        {
+            quint16 headIndex = m_monProps->fixtureHeadIndex(subID);
+            quint16 linkedIndex = m_monProps->fixtureLinkedIndex(subID);
+            quint32 itemID = FixtureUtils::fixtureItemID(fxID, headIndex, linkedIndex);
+            setFixtureSelection(itemID, -1, true);
+        }
+    }
+    setBatchSelection(false);
+}
+
 void ContextManager::selectNextFixtureGroup()
 {
     QList<FixtureGroup *> groups = m_doc->fixtureGroups();
