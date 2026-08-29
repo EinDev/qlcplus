@@ -96,18 +96,27 @@ Rectangle
     }
 
     /** Closes any floating channel-tool popup currently open anywhere in
-     *  this view (the bottom panel's Scene fixture console, and/or the
-     *  active preview sub-view, e.g. DMX View). Called from MainView.qml
+     *  this view (the bottom panel's Scene fixture console, the active
+     *  preview sub-view e.g. DMX View, and the left panel's capability
+     *  tools e.g. Color Wheel/Gobos/Maintenance). Called from MainView.qml
      *  when the Fixtures & Functions tab itself is being hidden by a
      *  top-level tab switch - since that tab's Loader is now kept alive
      *  rather than destroyed (see MainView.qml), anything that used to
      *  rely on that destruction to implicitly close itself needs this
-     *  explicit call instead. */
+     *  explicit call instead.
+     *
+     *  leftPanel.closeChannelTools() is not just belt-and-braces here like
+     *  the other two calls: LeftPanel's capability tools (see LeftPanel.qml)
+     *  explicitly reparent themselves to mainView, so unlike the plain-Item
+     *  ChannelToolLoader popups covered by the other two calls, hiding this
+     *  tab's Loader does NOT hide them - without this call they stay
+     *  rendered on top of whichever tab is switched to. */
     function closeChannelTools()
     {
         bottomPanel.closeChannelTools()
         if (previewLoader.item && typeof previewLoader.item.closeChannelTools === "function")
             previewLoader.item.closeChannelTools()
+        leftPanel.closeChannelTools()
     }
 
     LeftPanel
