@@ -15,7 +15,8 @@ td = d["components"]["schemas"]["FunctionsDetail"]["properties"]["typeDetail"]["
 print("functions typeDetail branches:", len(td))
 
 vc_extra = next(b for b in d["components"]["schemas"]["VcWidgetDetail"]["allOf"] if "properties" in b)
-vctd = vc_extra["properties"]["typeConfig"]["oneOf"]
+typeConfig = vc_extra["properties"]["typeConfig"]
+vctd = typeConfig.get("oneOf") or typeConfig["anyOf"]
 print("vc widget typeConfig branches:", len(vctd))
 
 cm = d["channels"]["qlcplus"]["messages"]
