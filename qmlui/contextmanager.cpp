@@ -1134,6 +1134,22 @@ void ContextManager::setFixturePosition(quint32 itemID, qreal x, qreal y, qreal 
 
 void ContextManager::setFixturesOffset(qreal x, qreal y)
 {
+    // A fixture's PositionX/PositionZ channels (the TopView/DMX branch just
+    // below) describe ONE physical location for the whole fixture, shared by
+    // every one of its selected sub-items (multiple heads/linked placements
+    // - see MonitorProperties::fixtureIDList()), not one location per
+    // sub-item. cachedPositionDelta()/pushPositionDelta() are keyed purely by
+    // fxID for exactly that reason. Without this guard, selecting more than
+    // one sub-item of the same DMX-position-driven fixture at once (e.g. a
+    // rectangle selection spanning several of its heads) would read the
+    // fixture's own just-updated cached delta again on each subsequent
+    // sub-item and add this call's offset on top of it a second (or Nth)
+    // time - the same doubling symptom as the drag-layer bug fixed alongside
+    // this, just for a rarer selection shape. Track which fixtures already
+    // had their delta pushed by this call so it happens exactly once, while
+    // every sub-item's own visual position is still updated below.
+    QHash<quint32, QVector3D> pushedDeltas;
+
     for (quint32 &itemID : m_selectedFixtures)
     {
         quint32 fxID = FixtureUtils::itemFixtureID(itemID);
@@ -1163,8 +1179,18 @@ void ContextManager::setFixturesOffset(qreal x, qreal y)
              fixture->channelNumber(QLCChannel::PositionZ, QLCChannel::MSB) != QLCChannel::invalid()))
         {
             QVector3D gridCenter = FixtureUtils::gridCenterPosition(m_monProps);
-            QVector3D newDelta = cachedPositionDelta(fxID, fixture) + QVector3D(x, 0, y) / 1000.0f;
-            pushPositionDelta(fixture, newDelta);
+            QHash<quint32, QVector3D>::iterator pushedIt = pushedDeltas.find(fxID);
+            QVector3D newDelta;
+            if (pushedIt != pushedDeltas.end())
+            {
+                newDelta = pushedIt.value();
+            }
+            else
+            {
+                newDelta = cachedPositionDelta(fxID, fixture) + QVector3D(x, 0, y) / 1000.0f;
+                pushPositionDelta(fixture, newDelta);
+                pushedDeltas.insert(fxID, newDelta);
+            }
             if (m_2DView->isEnabled())
                 m_2DView->updateFixturePosition(itemID, gridCenter + (newDelta * 1000.0f));
             continue;
