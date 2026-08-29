@@ -197,7 +197,7 @@ void ApiIoDomain_Test::blackoutToggleBroadcastsLiveEvent()
         if (obj.value(QStringLiteral("type")).toString() == QStringLiteral("event"))
         {
             QCOMPARE(obj.value(QStringLiteral("topic")).toString(), QStringLiteral("io.blackout.changed"));
-            QCOMPARE(obj.value(QStringLiteral("data")).toObject().value(QStringLiteral("state")).toBool(), !before);
+            QCOMPARE(obj.value(QStringLiteral("data")).toObject().value(QStringLiteral("blackout")).toBool(), !before);
             sawEvent = true;
         }
     }
