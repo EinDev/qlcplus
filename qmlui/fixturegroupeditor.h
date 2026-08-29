@@ -62,6 +62,14 @@ public slots:
     /** Slot called whenever a new workspace has been loaded */
     void slotDocLoaded();
 
+    /** Slot called whenever a FixtureGroup is removed from the Doc - by any
+     *  path (deleteSelection() emptying it out, an explicit group deletion,
+     *  or an undo/redo). Clears m_editGroup if it's the group being removed,
+     *  since Doc::deleteFixtureGroup() deletes the object immediately (not
+     *  deferred) right after emitting this signal - without this, m_editGroup
+     *  would dangle for any caller still using it. */
+    void slotFixtureGroupRemoved(quint32 id);
+
 signals:
     /** Notify the listeners that the FixtureGroup list model has changed */
     void groupsListModelChanged();
