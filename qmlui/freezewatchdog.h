@@ -47,10 +47,20 @@
  *         the raw Win32 API (CreateProcessW - this runs from a thread with
  *         no event loop, so QProcess is not an option) with output
  *         redirected into that same file,
- *      3. shows a plain Win32 MessageBoxW pointing at the file. A native
- *         message box pumps its own message loop on the calling thread, so
- *         it still works even though the Qt main thread is the one that's
- *         stuck - anything routed through Qt's own event loop would not.
+ *      3. shows the blocked (main/GUI) thread's own backtrace text directly
+ *         in a custom dialog (IDD_FREEZE_DIALOG, qmlui.rc) built around a
+ *         read-only multiline EDIT control - which, unlike a MessageBoxW's
+ *         static text (or, as tried and dropped during development,
+ *         TaskDialogIndirect's content areas - looked promising but its text
+ *         turned out not to be genuinely selectable), natively supports
+ *         drag-select and Ctrl+A/Ctrl+C, plus a Copy-to-clipboard button as a
+ *         no-selection alternative - so the backtrace can be pasted straight
+ *         into a bug report rather than having to go open the file. Falls
+ *         back to a plain MessageBoxW if the dialog resource somehow fails
+ *         to create. Like MessageBoxW, DialogBoxParamW pumps its own message
+ *         loop on the calling thread, so it still works even though the Qt
+ *         main thread is the one that's stuck - anything routed through
+ *         Qt's own event loop would not.
  *
  * This class deliberately shares nothing with the rest of the app besides
  * the heartbeat atomic and (optionally) the current project path - it must
@@ -119,6 +129,13 @@ private:
     qint64 m_startMs { 0 };
     qint64 m_freezeStartMs { 0 };   // watchdog-thread-only after firing
     QString m_diagnosticFilePath;   // watchdog-thread-only after firing
+
+    // Windows thread ID of the GUI thread, captured via GetCurrentThreadId()
+    // in start() (called on that thread). Used to pick the blocked thread's
+    // own section out of gdb's "thread apply all bt" output - see
+    // extractMainThreadSection() in freezewatchdog.cpp. Plain `unsigned long`
+    // (matches DWORD) so this header doesn't need <windows.h>.
+    unsigned long m_mainThreadId { 0 };
 };
 
 #endif // FREEZEWATCHDOG_H

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Minimal application manifest for qlcplus5.exe.
+
+  Opts into the side-by-side v6 Common Controls assembly (comctl32.dll
+  v6.0.0.0). Not load-bearing for any single feature at the moment (an
+  earlier version of the freeze dialog - see qmlui/freezewatchdog.cpp - used
+  TaskDialogIndirect, which requires v6; that was dropped because its text
+  turned out not to be genuinely selectable, in favour of a plain dialog
+  resource with a read-only EDIT control, which needs no manifest at all).
+  Kept anyway because it costs nothing and gives every standard control in
+  this app (including that dialog's own buttons) the modern themed look
+  instead of classic gray, which every unmanifested pre-Vista-era win32 app
+  is stuck with otherwise.
+
+  requestedExecutionLevel is set explicitly to "asInvoker" - the same default
+  Windows already uses for an unmanifested exe - purely so adding this
+  manifest doesn't inadvertently change UAC/elevation or file-system
+  virtualization behavior as a side effect.
+-->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
+    <security>
+      <requestedPrivileges>
+        <requestedExecutionLevel level="asInvoker" uiAccess="false" />
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+  <dependency>
+    <dependentAssembly>
+      <assemblyIdentity
+        type="win32"
+        name="Microsoft.Windows.Common-Controls"
+        version="6.0.0.0"
+        processorArchitecture="*"
+        publicKeyToken="6595b64144ccf1df"
+        language="*"
+      />
+    </dependentAssembly>
+  </dependency>
+</assembly>
