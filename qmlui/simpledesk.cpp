@@ -29,6 +29,10 @@
 #include "tardis.h"
 #include "app.h"
 #include "doc.h"
+#include "function.h"
+#include "qlcchannel.h"
+#include "virtualconsole.h"
+#include "chaser.h"
 
 #define UserRoleClassReference  (Qt::UserRole + 1)
 #define UserRoleChannelIndex    (Qt::UserRole + 2)
@@ -253,6 +257,223 @@ bool SimpleDesk::hasChannel(uint channel)
     QMutexLocker locker(&m_mutex);
     quint32 start = (m_universeFilter * 512);
     return m_values.contains(start + channel);
+}
+
+static QString fadeChannelFlagsToString(int flags)
+{
+    QStringList list;
+    if (flags & FadeChannel::HTP) list << "HTP";
+    if (flags & FadeChannel::LTP) list << "LTP";
+    if (flags & FadeChannel::Fine) list << "Fine";
+    if (flags & FadeChannel::Intensity) list << "Intensity";
+    if (flags & FadeChannel::CanFade) list << "CanFade";
+    if (flags & FadeChannel::Flashing) list << "Flashing";
+    if (flags & FadeChannel::Relative) list << "Relative";
+    if (flags & FadeChannel::Override) list << "Override";
+    if (flags & FadeChannel::SetTarget) list << "SetTarget";
+    if (flags & FadeChannel::AutoRemove) list << "AutoRemove";
+    if (flags & FadeChannel::CrossFade) list << "CrossFade";
+    if (flags & FadeChannel::ForceLTP) list << "ForceLTP";
+
+    return list.isEmpty() ? QStringLiteral("none") : list.join("|");
+}
+
+// Describes a single FunctionParent as precisely as the engine's actually
+// tracked data allows. $childFunctionID is the ID of the Function that this
+// source started (i.e. the Function owning the fader being reported on) -
+// used to try to resolve which Chaser/Sequence step is currently active.
+static QString describeFunctionParent(const FunctionParent &source, Doc *doc,
+                                       QQuickView *view, quint32 childFunctionID)
+{
+    switch (source.type())
+    {
+        case FunctionParent::Function:
+        {
+            Function *parent = doc->function(source.id());
+            if (parent == nullptr)
+                return QString("a Function (ID %1) that no longer exists").arg(source.id());
+
+            QString stepInfo;
+            if (parent->type() & (Function::ChaserType | Function::SequenceType))
+            {
+                Chaser *chaser = qobject_cast<Chaser *>(parent);
+                if (chaser != nullptr)
+                {
+                    ChaserRunnerStep step = chaser->currentRunningStep();
+                    if (step.m_function != nullptr && step.m_function->id() == childFunctionID)
+                        stepInfo = QString(", step %1 (0-based)").arg(step.m_index);
+                    else
+                        stepInfo = ", step undetermined (not the Chaser's first currently-running step)";
+                }
+            }
+            return QString("%1 \"%2\" (ID %3)%4")
+                    .arg(parent->typeString()).arg(parent->name()).arg(parent->id()).arg(stepInfo);
+        }
+
+        case FunctionParent::AutoVCWidget:
+        case FunctionParent::ManualVCWidget:
+        {
+            QString kind = source.type() == FunctionParent::ManualVCWidget ? "manual" : "automatic";
+            VirtualConsole *vc = view != nullptr
+                    ? qobject_cast<VirtualConsole *>(view->rootContext()->contextProperty("virtualConsole").value<QObject *>())
+                    : nullptr;
+            VCWidget *widget = vc != nullptr ? vc->widget(source.id()) : nullptr;
+            if (widget != nullptr)
+            {
+                return QString("Virtual Console %1 widget \"%2\" (ID %3), page %4")
+                        .arg(kind).arg(widget->caption()).arg(widget->id()).arg(widget->page());
+            }
+            return QString("a Virtual Console %1 widget (ID %2) that no longer exists").arg(kind).arg(source.id());
+        }
+
+        case FunctionParent::Master:
+            return QStringLiteral(
+                "a generic override source (FunctionParent::Master, ID 0) - this exact sentinel is used "
+                "identically by Function Manager preview, the Function/Scene/Chaser/RGBMatrix editors' live "
+                "preview, Show Manager, project-load autostart, Tardis undo/redo, web/OSC quick actions, and "
+                "a Function's own internal self-restart, so the engine's tracked data cannot distinguish "
+                "which of these actually started it");
+
+        default:
+            return QString("an unrecognized source type %1 (ID %2)").arg(source.type()).arg(source.id());
+    }
+}
+
+QString SimpleDesk::debugChannelInfo(int channel) const
+{
+    QMutexLocker locker(&m_mutex);
+    quint32 start = (m_universeFilter * 512);
+    quint32 address = start + quint32(channel);
+
+    quint32 fxID = m_doc->fixtureForAddress(address);
+    Fixture *fixture = m_doc->fixture(fxID);
+    // NOTE: Fixture::address() returns only the low 9 bits (the address
+    // within the fixture's own universe, 0-511), while m_doc->fixtureForAddress()
+    // and this method's own "address" are keyed by the full universe-qualified
+    // address (universe << 9 | address). Subtracting fixture->address() from
+    // "address" here is only correct for universe 0; for any other universe it
+    // undercounts the subtraction by (universe * 512), producing a bogus,
+    // way-too-large relative channel. Use fixture->universeAddress(), which is
+    // in the same domain as "address", instead.
+    quint32 relChannel = fixture != nullptr ? address - fixture->universeAddress() : address;
+
+    QString info;
+    QTextStream out(&info);
+
+    out << "===== Simple Desk channel debug =====\n";
+    out << "Universe " << m_universeFilter << ", channel " << channel
+        << " (absolute address " << address << ")\n";
+
+    if (fixture != nullptr)
+    {
+        const QLCChannel *ch = fixture->channel(relChannel);
+        out << "Fixture: " << fixture->name() << " (ID " << fixture->id()
+            << "), relative channel " << relChannel;
+        if (ch != nullptr)
+            out << " \"" << ch->name() << "\" [" << QLCChannel::groupToString(ch->group()) << "]";
+        out << "\n";
+    }
+    else
+    {
+        out << "No fixture at this address\n";
+    }
+
+    bool overridden = m_values.contains(address);
+    out << "Simple Desk override: " << (overridden ? "YES" : "no");
+    if (overridden)
+        out << ", value = " << int(m_values.value(address));
+    out << "\n";
+
+    bool dumped = false;
+    for (const SceneValue &scv : m_dumpValues)
+    {
+        if (scv.fxi == fxID && scv.channel == relChannel)
+        {
+            out << "Queued for Scene dump: value = " << int(scv.value) << "\n";
+            dumped = true;
+            break;
+        }
+    }
+    if (dumped == false)
+        out << "Queued for Scene dump: no\n";
+
+    QList<Universe *> ua = m_doc->inputOutputMap()->claimUniverses();
+    if (int(m_universeFilter) < ua.count())
+    {
+        Universe *uni = ua.at(int(m_universeFilter));
+        out << "Universe pre-GM value: " << int(uni->preGMValue(channel)) << "\n";
+        out << "Universe post-GM value (actual DMX output): " << int(uni->postGMValue(channel)) << "\n";
+
+        quint32 hash = GenericFader::channelHash(fixture != nullptr ? fxID : Fixture::invalidId(), relChannel);
+        QList<QSharedPointer<GenericFader> > faders = uni->faders();
+        bool anyFader = false;
+
+        out << "Active faders touching this channel:\n";
+        for (QSharedPointer<GenericFader> fader : faders)
+        {
+            if (fader.isNull())
+                continue;
+
+            QHash<quint32, FadeChannel> channels = fader->channels();
+            if (channels.contains(hash) == false)
+                continue;
+
+            anyFader = true;
+            FadeChannel fc = channels.value(hash);
+            QString funcName = "(none)";
+            Function *f = nullptr;
+            if (fader->parentFunctionID() != Function::invalidId())
+            {
+                f = m_doc->function(fader->parentFunctionID());
+                if (f != nullptr)
+                    funcName = QString("%1 (ID %2)").arg(f->name()).arg(f->id());
+            }
+
+            out << "  - fader \"" << fader->name() << "\", function " << funcName
+                << ", priority " << fader->priority()
+                << ", intensity " << fader->intensity();
+            if (fader->isPaused())
+                out << ", PAUSED";
+            if (fader->isFadingOut())
+                out << ", FADING OUT";
+            out << "\n";
+            out << "    start=" << int(fc.start()) << " current=" << int(fc.current())
+                << " target=" << int(fc.target())
+                << " fadeTime=" << fc.fadeTime() << "ms elapsed=" << fc.elapsed() << "ms"
+                << " ready=" << (fc.isReady() ? "yes" : "no")
+                << " flags=[" << fadeChannelFlagsToString(fc.flags()) << "]\n";
+
+            // WHO started the Function driving this fader? GenericFader::parentFunctionID()
+            // above is only WHICH Function owns the fader (e.g. a Scene's own ID) - the actual
+            // start source is tracked separately on the Function itself, via Function::start()'s
+            // FunctionParent argument (see Function::sources()).
+            if (f != nullptr)
+            {
+                QList<FunctionParent> sources = f->sources();
+                if (sources.isEmpty())
+                {
+                    out << "    Started by: (none currently recorded on the Function - "
+                           "its stop is likely already pending, e.g. fading out)\n";
+                }
+                else
+                {
+                    for (const FunctionParent &source : sources)
+                        out << "    Started by: " << describeFunctionParent(source, m_doc, m_view, f->id()) << "\n";
+                }
+            }
+        }
+        if (anyFader == false)
+            out << "  (none)\n";
+    }
+    else
+    {
+        out << "Universe pre/post-GM value: universe not available\n";
+    }
+    m_doc->inputOutputMap()->releaseUniverses(false);
+
+    qDebug().noquote() << info;
+
+    return info;
 }
 
 void SimpleDesk::resetUniverse(int universe)
