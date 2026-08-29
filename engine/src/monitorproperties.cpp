@@ -69,11 +69,18 @@
 
 #define KXMLQLCMonitorFixtureGelColor   QStringLiteral("GelColor")
 #define KXMLQLCMonitorFixtureFixedZoom  QStringLiteral("FixedZoom")
+#define KXMLQLCMonitorFixtureDmxScale   QStringLiteral("DmxScale")
 
 #define KXMLQLCMonitorFixtureHiddenFlag     QStringLiteral("Hidden")
 #define KXMLQLCMonitorFixtureInvPanFlag     QStringLiteral("InvertedPan")
 #define KXMLQLCMonitorFixtureInvTiltFlag    QStringLiteral("InvertedTilt")
 #define KXMLQLCMonitorFixtureLockedFlag     QStringLiteral("Locked")
+#define KXMLQLCMonitorFixtureInvPosXFlag    QStringLiteral("InvertedPosX")
+#define KXMLQLCMonitorFixtureInvPosYFlag    QStringLiteral("InvertedPosY")
+#define KXMLQLCMonitorFixtureInvPosZFlag    QStringLiteral("InvertedPosZ")
+#define KXMLQLCMonitorFixtureInvRotXFlag    QStringLiteral("InvertedRotX")
+#define KXMLQLCMonitorFixtureInvRotYFlag    QStringLiteral("InvertedRotY")
+#define KXMLQLCMonitorFixtureInvRotZFlag    QStringLiteral("InvertedRotZ")
 
 #define GRID_DEFAULT_WIDTH  5
 #define GRID_DEFAULT_HEIGHT 3
@@ -328,6 +335,32 @@ int MonitorProperties::fixtureFixedZoom(quint32 fid, quint16 head, quint16 linke
     {
         quint32 subID = fixtureSubID(head, linked);
         return m_fixtureItems[fid].m_subItems[subID].m_zoom;
+    }
+}
+
+void MonitorProperties::setFixtureDmxScale(quint32 fid, quint16 head, quint16 linked, float scale)
+{
+    if (head == 0 && linked == 0)
+    {
+        m_fixtureItems[fid].m_baseItem.m_dmxScale = scale;
+    }
+    else
+    {
+        quint32 subID = fixtureSubID(head, linked);
+        m_fixtureItems[fid].m_subItems[subID].m_dmxScale = scale;
+    }
+}
+
+float MonitorProperties::fixtureDmxScale(quint32 fid, quint16 head, quint16 linked) const
+{
+    if (head == 0 && linked == 0)
+    {
+        return m_fixtureItems[fid].m_baseItem.m_dmxScale;
+    }
+    else
+    {
+        quint32 subID = fixtureSubID(head, linked);
+        return m_fixtureItems[fid].m_subItems[subID].m_dmxScale;
     }
 }
 
@@ -763,6 +796,9 @@ bool MonitorProperties::loadXML(QXmlStreamReader &root, const Doc *mainDocument)
             if (tAttrs.hasAttribute(KXMLQLCMonitorFixtureFixedZoom))
                 item.m_zoom = tAttrs.value(KXMLQLCMonitorFixtureFixedZoom).toString().toInt();
 
+            if (tAttrs.hasAttribute(KXMLQLCMonitorFixtureDmxScale))
+                item.m_dmxScale = tAttrs.value(KXMLQLCMonitorFixtureDmxScale).toString().toFloat();
+
             if (tAttrs.hasAttribute(KXMLQLCMonitorFixtureHiddenFlag))
                 item.m_flags |= HiddenFlag;
             if (tAttrs.hasAttribute(KXMLQLCMonitorFixtureInvPanFlag))
@@ -771,6 +807,18 @@ bool MonitorProperties::loadXML(QXmlStreamReader &root, const Doc *mainDocument)
                 item.m_flags |= InvertedTiltFlag;
             if (tAttrs.hasAttribute(KXMLQLCMonitorFixtureLockedFlag))
                 item.m_flags |= LockedFlag;
+            if (tAttrs.hasAttribute(KXMLQLCMonitorFixtureInvPosXFlag))
+                item.m_flags |= InvertedPositionXFlag;
+            if (tAttrs.hasAttribute(KXMLQLCMonitorFixtureInvPosYFlag))
+                item.m_flags |= InvertedPositionYFlag;
+            if (tAttrs.hasAttribute(KXMLQLCMonitorFixtureInvPosZFlag))
+                item.m_flags |= InvertedPositionZFlag;
+            if (tAttrs.hasAttribute(KXMLQLCMonitorFixtureInvRotXFlag))
+                item.m_flags |= InvertedRotationXFlag;
+            if (tAttrs.hasAttribute(KXMLQLCMonitorFixtureInvRotYFlag))
+                item.m_flags |= InvertedRotationYFlag;
+            if (tAttrs.hasAttribute(KXMLQLCMonitorFixtureInvRotZFlag))
+                item.m_flags |= InvertedRotationZFlag;
 
             setFixtureItem(fid, headIndex, linkedIndex, item);
             root.skipCurrentElement();
@@ -951,6 +999,22 @@ bool MonitorProperties::saveXML(QXmlStreamWriter *doc, const Doc *mainDocument) 
                 doc->writeAttribute(KXMLQLCMonitorFixtureInvTiltFlag, KXMLQLCTrue);
             if (item.m_flags & LockedFlag)
                 doc->writeAttribute(KXMLQLCMonitorFixtureLockedFlag, KXMLQLCTrue);
+            if (item.m_flags & InvertedPositionXFlag)
+                doc->writeAttribute(KXMLQLCMonitorFixtureInvPosXFlag, KXMLQLCTrue);
+            if (item.m_flags & InvertedPositionYFlag)
+                doc->writeAttribute(KXMLQLCMonitorFixtureInvPosYFlag, KXMLQLCTrue);
+            if (item.m_flags & InvertedPositionZFlag)
+                doc->writeAttribute(KXMLQLCMonitorFixtureInvPosZFlag, KXMLQLCTrue);
+            if (item.m_flags & InvertedRotationXFlag)
+                doc->writeAttribute(KXMLQLCMonitorFixtureInvRotXFlag, KXMLQLCTrue);
+            if (item.m_flags & InvertedRotationYFlag)
+                doc->writeAttribute(KXMLQLCMonitorFixtureInvRotYFlag, KXMLQLCTrue);
+            if (item.m_flags & InvertedRotationZFlag)
+                doc->writeAttribute(KXMLQLCMonitorFixtureInvRotZFlag, KXMLQLCTrue);
+
+            // write the DMX-to-view scale multiplier, if not the 1.0 default
+            if (!qFuzzyCompare(item.m_dmxScale, 1.0f))
+                doc->writeAttribute(KXMLQLCMonitorFixtureDmxScale, QString::number(item.m_dmxScale));
 
             // always write position
             doc->writeAttribute(KXMLQLCMonitorItemXPosition, QString::number(item.m_position.x()));
