@@ -327,6 +327,14 @@ public:
      *  not disqualify it). False for an empty or non-existent group. */
     Q_INVOKABLE bool isGroupFullySelected(quint32 id) const;
 
+    /** "Invert Selection in Group(s)": replaces the current fixture selection
+     *  with the union, across every Fixture Group that has at least one
+     *  currently-selected member, of that group's complement (the group's
+     *  own members that are NOT currently selected). A selected fixture that
+     *  belongs to no group contributes nothing and is simply dropped. A
+     *  no-op (selection left untouched) when nothing is currently selected. */
+    Q_INVOKABLE void invertGroupSelection();
+
     Q_INVOKABLE void setChannelValueByType(int type, int value, bool isRelative = false, quint32 channel = UINT_MAX);
 
     Q_INVOKABLE void setColorValue(QColor col, QColor wauv);
