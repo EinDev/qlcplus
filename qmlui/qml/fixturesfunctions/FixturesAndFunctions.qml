@@ -95,6 +95,21 @@ Rectangle
         contextManager.currentSubContext = ctx
     }
 
+    /** Closes any floating channel-tool popup currently open anywhere in
+     *  this view (the bottom panel's Scene fixture console, and/or the
+     *  active preview sub-view, e.g. DMX View). Called from MainView.qml
+     *  when the Fixtures & Functions tab itself is being hidden by a
+     *  top-level tab switch - since that tab's Loader is now kept alive
+     *  rather than destroyed (see MainView.qml), anything that used to
+     *  rely on that destruction to implicitly close itself needs this
+     *  explicit call instead. */
+    function closeChannelTools()
+    {
+        bottomPanel.closeChannelTools()
+        if (previewLoader.item && typeof previewLoader.item.closeChannelTools === "function")
+            previewLoader.item.closeChannelTools()
+    }
+
     LeftPanel
     {
         id: leftPanel

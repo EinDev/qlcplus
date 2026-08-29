@@ -52,6 +52,16 @@ Rectangle
         fixtureList.currentIndex = fxIdx
     }
 
+    /** Closes any floating channel-tool popup currently open on this
+     *  console. Called from BottomPanel.qml when the Fixtures & Functions
+     *  tab itself is being hidden (top-level tab switch) - see the
+     *  onCurrentSubContextChanged handler below for the narrower
+     *  sub-context-switch case this doesn't cover. */
+    function closeChannelTools()
+    {
+        channelToolLoader.closeChannelTool()
+    }
+
     /** Refresh the channel highlights when the external controller
      *  mapping changes. Scrolling and Fixture selection are handled
      *  by the Scene editor through the standard Fixture selection */
