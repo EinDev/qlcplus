@@ -37,6 +37,20 @@ Item
 
     signal valueChanged(int fixtureID, int channelIndex, int value)
 
+    // Positions this floating tool adjacent to targetItem (the channel icon that
+    // opened it) on whichever side fits within parentItem's bounds, without
+    // overlapping targetItem itself. Each of the four candidates must be
+    // computed from targetItem's own position/size so it sits flush against the
+    // icon's near edge:
+    //   rightX = icon's right edge (posInParent.x + targetItem.width)
+    //   leftX  = icon's left edge minus the tool's own width (posInParent.x - toolWidth)
+    //   belowY = icon's bottom edge (posInParent.y + targetItem.height)
+    //   aboveY = icon's top edge minus the tool's own height (posInParent.y - toolHeight)
+    // It's easy to get one of these backwards - e.g. reusing a fixed icon size
+    // instead of targetItem.width/height, or basing an offset on the icon's own
+    // near edge instead of its far edge - and end up with the popup rendered on
+    // top of (rather than beside) the icon that triggered it, since nothing here
+    // will visibly fail; it just silently overlaps.
     function adjustToolPosition()
     {
         var parentItem = itemRoot.parent

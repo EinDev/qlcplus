@@ -48,6 +48,21 @@ public:
     /** Returns the linked index from the given itemID composite ID */
     static quint16 itemLinkedIndex(quint32 itemID);
 
+    /** Projects a fixture's 3D doc-space position (mm; X=width, Y=height/up,
+     *  Z=depth) onto the 2D coordinates of one of the 2D view's points of view.
+     *  Each case is a different, easy-to-invert combination: TopView keeps X and
+     *  maps doc Z onto screen Y, dropping height (Y) entirely - a fixture's
+     *  height never affects its Top View position. Front/RightSide/LeftSide
+     *  views instead use doc Y, but flip it (gridSize.y * units - pos.y) since
+     *  screen Y grows downward while doc height grows upward; RightSideView
+     *  additionally flips X the same way, using doc Z. Mixing up which axis a
+     *  view drops vs. flips vs. keeps as-is silently mispositions fixtures in
+     *  just that one view, e.g. see MainView3D::updateFixturePosition()/
+     *  updateFixtureRotation() (mainview3d.cpp) for the 3D side of the same
+     *  fixture, which follows its own related-but-different convention: X/Z are
+     *  centered on the grid (gridMeters/2 subtracted) but Y is not, and all
+     *  three rotation angles are applied negated relative to the degrees doc
+     *  value passed in. */
     static QPointF item2DPosition(const MonitorProperties *monProps, int pointOfView, QVector3D pos);
     static float item2DRotation(int pointOfView, QVector3D rot);
     static QSizeF item2DDimension(const QLCFixtureMode *fxMode, int pointOfView);

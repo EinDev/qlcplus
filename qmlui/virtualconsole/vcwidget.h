@@ -112,6 +112,16 @@ public:
 
     virtual void setupLookAndFeel(qreal pixelDensity, int page);
 
+    /** Create this widget's onscreen QQuickItem (m_item) under $parent and
+     *  store it. The base implementation does nothing - every concrete
+     *  subclass (VCButton, VCFrame, VCSlider, VCXYPad, VCLabel, VCClock,
+     *  VCSpeedDial, VCAudioTriggers, VCAnimation, VCCueList) must reimplement
+     *  this to instantiate its own QML component AND is independently
+     *  responsible for deleting m_item in its own destructor - VCWidget's own
+     *  destructor is empty and never touches m_item. There is nothing that
+     *  enforces this: a new widget subclass that forgets the "delete m_item in
+     *  ~MyWidget()" half of this pair leaks its whole QQuickItem subtree
+     *  silently, with no crash or warning. */
     virtual void render(QQuickView *view, QQuickItem *parent);
 
     QQuickItem *renderItem() const;
