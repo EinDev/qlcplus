@@ -181,6 +181,55 @@ void MonitorProperties_Test::fixtureDmxTransformXML()
     QCOMPARE(loaded.fixtureDmxScale(20, 0, 0), 2.5f);
 }
 
+// HasDmxPositionFlag/HasDmxRotationFlag mark a fixture's persisted position/
+// rotation as a genuine dragged DMX delta (see ContextManager::
+// pushPositionDelta()/pushRotationDelta() and restorePersistedDmxTransforms()
+// for why this distinction matters), set independently of each other and of
+// every other flag - added while implementing the "restore on load" half of
+// the position-resets-to-0 fix, to guard against a silent XML round-trip
+// regression the way fixtureDmxTransformXML() already does for invert/scale.
+void MonitorProperties_Test::hasDmxTransformFlagsXML()
+{
+    Doc doc(this);
+    MonitorProperties mp;
+
+    // Position-only on one fixture, rotation-only on another, to confirm
+    // neither flag implies the other.
+    mp.setFixturePosition(30, 0, 0, QVector3D(10, 20, 30));
+    mp.setFixtureFlags(30, 0, 0, MonitorProperties::HasDmxPositionFlag);
+
+    mp.setFixtureRotation(31, 0, 0, QVector3D(45, 0, 0));
+    mp.setFixtureFlags(31, 0, 0, MonitorProperties::HasDmxRotationFlag);
+
+    QByteArray xmlData;
+    QBuffer buffer(&xmlData);
+    QVERIFY(buffer.open(QIODevice::WriteOnly));
+
+    QXmlStreamWriter writer(&buffer);
+    writer.writeStartDocument();
+    QVERIFY(mp.saveXML(&writer, &doc));
+    writer.writeEndDocument();
+    buffer.close();
+
+    MonitorProperties loaded;
+    QXmlStreamReader reader(xmlData);
+    while (reader.readNextStartElement())
+    {
+        if (reader.name() == KXMLQLCMonitorProperties)
+        {
+            QVERIFY(loaded.loadXML(reader, &doc));
+            break;
+        }
+        reader.skipCurrentElement();
+    }
+
+    QCOMPARE(loaded.fixtureFlags(30, 0, 0), quint32(MonitorProperties::HasDmxPositionFlag));
+    QCOMPARE(loaded.fixturePosition(30, 0, 0), QVector3D(10, 20, 30));
+
+    QCOMPARE(loaded.fixtureFlags(31, 0, 0), quint32(MonitorProperties::HasDmxRotationFlag));
+    QCOMPARE(loaded.fixtureRotation(31, 0, 0), QVector3D(45, 0, 0));
+}
+
 void MonitorProperties_Test::lightItems()
 {
     MonitorProperties mp;
