@@ -2333,6 +2333,14 @@ void ContextManager::unsetDumpValue(quint32 fxID, quint32 channel)
         m_dumpValues.removeAt(valIndex);
         emit dumpValuesCountChanged();
     }
+
+    // setDumpValue() (with output == true, the default used by every caller
+    // except undo/redo replay) also pushes the value live via m_source. That
+    // live output has to be withdrawn here too, or this channel keeps being
+    // driven at its last dumped value forever even though it no longer shows
+    // up in m_dumpValues at all.
+    if (m_source)
+        m_source->unset(fxID, channel);
 }
 
 QList<quint32> ContextManager::selectedFixtureIDList() const
