@@ -77,6 +77,16 @@ public:
     static bool isGroupFullySelected(const FixtureGroup *group, const MonitorProperties *monProps,
                                       const QList<quint32> &selectedFixtures);
 
+    /** Returns every Fixture Group in $groups that has at least one
+     *  currently-selected member ("candidate group" for "Invert Selection in
+     *  Group(s)") - i.e. at least one of the group's members, expanded to
+     *  heads/linked sub-items via $monProps, has its itemID present in
+     *  $selectedFixtures. Order follows $groups. Returns an empty list if
+     *  $selectedFixtures is empty or no group has a selected member. */
+    static QList<FixtureGroup *> candidateGroupsForSelection(const QList<FixtureGroup *> &groups,
+                                                               const MonitorProperties *monProps,
+                                                               const QList<quint32> &selectedFixtures);
+
     /** Computes the "Invert Selection in Group(s)" result for the current
      *  fixture selection: every Fixture Group in $groups that has at least
      *  one currently-selected member ("candidate group") contributes its own
@@ -86,7 +96,9 @@ public:
      *  every candidate group (deduplicated). A fixture selected but belonging
      *  to no group contributes nothing and never appears in the result.
      *  Returns an empty list if $selectedFixtures is empty or no group has a
-     *  selected member. */
+     *  selected member. Passing a $groups subset (e.g. the result of
+     *  candidateGroupsForSelection() minus any groups a user has deselected)
+     *  scopes the inversion to just that subset. */
     static QList<quint32> invertGroupSelection(const QList<FixtureGroup *> &groups,
                                                 const MonitorProperties *monProps,
                                                 const QList<quint32> &selectedFixtures);

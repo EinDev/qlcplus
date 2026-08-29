@@ -92,6 +92,7 @@
     <file alias="PopupDisclaimer.qml">qml/popup/PopupDisclaimer.qml</file>
     <file alias="PopupFolderBrowser.qml">qml/popup/PopupFolderBrowser.qml</file>
     <file alias="PopupImportProject.qml">qml/popup/PopupImportProject.qml</file>
+    <file alias="PopupInvertGroupSelection.qml">qml/popup/PopupInvertGroupSelection.qml</file>
     <file alias="ImportGroupsFlatDelegate.qml">qml/popup/ImportGroupsFlatDelegate.qml</file>
     <file alias="ImportFunctionsFlatDelegate.qml">qml/popup/ImportFunctionsFlatDelegate.qml</file>
     <file alias="PopupPINRequest.qml">qml/popup/PopupPINRequest.qml</file>
