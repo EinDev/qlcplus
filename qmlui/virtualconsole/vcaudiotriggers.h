@@ -163,6 +163,9 @@ public:
 protected slots:
     void slotSpectrumDataChanged(double *spectrumBands, int size, double maxMagnitude, quint32 power);
 
+    /** Invalidate any cached Function pointer referring to the removed Function */
+    void slotFunctionRemoved(quint32 fid);
+
 signals:
     void barsInfoChanged();
     /** Notify the listeners that the fixture tree model has changed */
