@@ -329,7 +329,7 @@ bool Script::saveXML(QXmlStreamWriter *doc) const
 
 void Script::preRun(MasterTimer* timer)
 {
-    m_runner = new ScriptRunner(doc(), m_data);
+    m_runner = new ScriptRunner(doc(), m_data, nullptr, id());
     m_runner->execute();
 
     Function::preRun(timer);
@@ -345,7 +345,7 @@ void Script::write(MasterTimer *timer, QList<Universe *> universes)
     if (m_runner)
     {
         if (m_runner->write(timer, universes) == false)
-            stop(FunctionParent::master());
+            stop(FunctionParent::master(FunctionParent::EngineSelfStop));
     }
 }
 

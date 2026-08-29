@@ -822,10 +822,14 @@ public:
      * Mark the function to be stopped and block the calling thread until it is
      * actually stopped. To prevent deadlocks the function only waits for 2s.
      *
+     * @param source Identifies the caller requesting the stop, recorded the
+     *               same way as stop()'s argument (see Function::sources()).
+     *               Defaults to a generic Master override for callers that
+     *               don't (yet) pass their own identity.
      * @return true if the function was stopped. false if the function did not
      *              stop within two seconds
      */
-    bool stopAndWait();
+    bool stopAndWait(FunctionParent source = FunctionParent::master());
 
     /**
      * Check, whether the function is currently running (preRun() has been run)

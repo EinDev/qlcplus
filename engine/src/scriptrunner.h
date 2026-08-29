@@ -50,7 +50,22 @@ class ScriptRunner final : public QThread
      * Initialization
      ************************************************************************/
 public:
-    ScriptRunner(Doc *doc, const QString &content, QObject *parent = 0);
+    /**
+     * @param doc The project Doc
+     * @param content The script source
+     * @param ownerFunctionID The ID of the Script Function that owns this
+     *        runner, if any. Used to identify, in Function::start()/stop()'s
+     *        FunctionParent argument, this Script itself as the source when
+     *        a "startFunction"/"stopFunction" script command starts/stops
+     *        another Function (see startFunction()/stopFunction() below) -
+     *        the same FunctionParent(Function, containerID) convention
+     *        already used by Chaser/Collection/Show for their own children.
+     *        Defaults to Function::invalidId() for runner instances that
+     *        never actually start/stop other Functions (totalDuration(),
+     *        syntaxErrorsLines()).
+     */
+    ScriptRunner(Doc *doc, const QString &content, QObject *parent = 0,
+                 quint32 ownerFunctionID = Function::invalidId());
     ~ScriptRunner();
 
     /** Start the thread execution and therefore the JavaScript code */
@@ -239,6 +254,17 @@ private:
     /** Common code to check if script is running and if function exists */
     Function* getFunctionIfRunning(quint32 fID) const;
 
+    /**
+     * The FunctionParent to use when this script's "startFunction"/
+     * "stopFunction" commands start/stop another Function - identifies
+     * this script itself (FunctionParent(Function, m_ownerFunctionID)),
+     * the same way a Chaser/Collection/Show identifies itself to its own
+     * children. Falls back to a generic Master override if this runner
+     * was never given an owner (shouldn't happen for a runner that
+     * actually starts/stops Functions - see the constructor).
+     */
+    FunctionParent functionSource() const;
+
     /** ScriptRunner function operations enum to handle start/stop/wait commands */
     enum FunctionOperation
     {
@@ -256,6 +282,9 @@ private:
     Doc *m_doc;
     QString m_content;
     bool m_running;
+    // ID of the Script Function that owns this runner - see the
+    // ownerFunctionID constructor parameter above.
+    quint32 m_ownerFunctionID;
 
     QJSEngine *m_engine;
     // Queue holding the Function IDs to start/stop

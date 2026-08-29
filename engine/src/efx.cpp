@@ -1198,7 +1198,7 @@ void EFX::write(MasterTimer *timer, QList<Universe*> universes)
 
     /* Check for stop condition */
     if (done == m_fixtures.count())
-        stop(FunctionParent::master());
+        stop(FunctionParent::master(FunctionParent::EngineSelfStop));
 }
 
 void EFX::postRun(MasterTimer *timer, QList<Universe *> universes)
