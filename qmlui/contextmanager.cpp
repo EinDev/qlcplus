@@ -577,6 +577,46 @@ void ContextManager::resetContexts()
     /** TODO: nothing to do on the other contexts ? */
 }
 
+void ContextManager::restorePersistedDmxTransforms()
+{
+    for (Fixture *fixture : m_doc->fixtures())
+    {
+        if (fixture == nullptr)
+            continue;
+
+        quint32 fxID = fixture->id();
+        quint32 flags = m_monProps->fixtureFlags(fxID, 0, 0);
+
+        // Only a fixture explicitly flagged by a previous pushPositionDelta()/
+        // pushRotationDelta() call (see HasDmxPositionFlag/HasDmxRotationFlag's
+        // own doc comment) carries a genuine dragged delta in this convention -
+        // every other fixture's fixturePosition()/fixtureRotation() holds
+        // unrelated 2D/3D placement data that must never be pushed onto a
+        // DMX channel.
+        if (flags & MonitorProperties::HasDmxPositionFlag)
+        {
+            if (fixture->channelNumber(QLCChannel::PositionX, QLCChannel::MSB) != QLCChannel::invalid() ||
+                fixture->channelNumber(QLCChannel::PositionY, QLCChannel::MSB) != QLCChannel::invalid() ||
+                fixture->channelNumber(QLCChannel::PositionZ, QLCChannel::MSB) != QLCChannel::invalid())
+            {
+                QVector3D gridCenter = FixtureUtils::gridCenterPosition(m_monProps);
+                QVector3D persisted = m_monProps->fixturePosition(fxID, 0, 0);
+                pushPositionDelta(fixture, (persisted - gridCenter) / 1000.0f);
+            }
+        }
+
+        if (flags & MonitorProperties::HasDmxRotationFlag)
+        {
+            if (fixture->channelNumber(QLCChannel::RotationX, QLCChannel::MSB) != QLCChannel::invalid() ||
+                fixture->channelNumber(QLCChannel::RotationY, QLCChannel::MSB) != QLCChannel::invalid() ||
+                fixture->channelNumber(QLCChannel::RotationZ, QLCChannel::MSB) != QLCChannel::invalid())
+            {
+                pushRotationDelta(fixture, m_monProps->fixtureRotation(fxID, 0, 0));
+            }
+        }
+    }
+}
+
 void ContextManager::resetViewItems()
 {
     m_channelsMap.clear();
@@ -1243,6 +1283,14 @@ void ContextManager::pushPositionDelta(Fixture *fixture, QVector3D deltaMeters)
     // touched here). See the task report for the tradeoffs.
     m_monProps->setFixturePosition(fixture->id(), 0, 0,
                                    FixtureUtils::gridCenterPosition(m_monProps) + (deltaMeters * 1000.0f));
+
+    // Mark that the position just written above is a genuine dragged delta,
+    // not just this fixture's ordinary 2D/3D placement value (which reuses
+    // the same underlying storage - see HasDmxPositionFlag's own doc
+    // comment) - restorePersistedDmxTransforms() relies on this flag to know
+    // it is safe to push this value back onto live DMX channels on the next
+    // project load.
+    m_monProps->setFixtureFlags(fixture->id(), 0, 0, flags | MonitorProperties::HasDmxPositionFlag);
     m_doc->setModified();
 }
 
@@ -1291,6 +1339,10 @@ void ContextManager::pushRotationDelta(Fixture *fixture, QVector3D deltaDegrees)
     // fixtureRotation() already represents absolute degrees for a
     // non-DMX-driven fixture, so no unit conversion is needed here.
     m_monProps->setFixtureRotation(fixture->id(), 0, 0, deltaDegrees);
+
+    // See pushPositionDelta()'s equivalent note - marks this as a genuine
+    // dragged rotation delta rather than ordinary fixture placement data.
+    m_monProps->setFixtureFlags(fixture->id(), 0, 0, flags | MonitorProperties::HasDmxRotationFlag);
     m_doc->setModified();
 }
 

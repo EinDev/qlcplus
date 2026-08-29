@@ -81,6 +81,8 @@
 #define KXMLQLCMonitorFixtureInvRotXFlag    QStringLiteral("InvertedRotX")
 #define KXMLQLCMonitorFixtureInvRotYFlag    QStringLiteral("InvertedRotY")
 #define KXMLQLCMonitorFixtureInvRotZFlag    QStringLiteral("InvertedRotZ")
+#define KXMLQLCMonitorFixtureHasDmxPosFlag  QStringLiteral("HasDmxPosition")
+#define KXMLQLCMonitorFixtureHasDmxRotFlag  QStringLiteral("HasDmxRotation")
 
 #define GRID_DEFAULT_WIDTH  5
 #define GRID_DEFAULT_HEIGHT 3
@@ -819,6 +821,10 @@ bool MonitorProperties::loadXML(QXmlStreamReader &root, const Doc *mainDocument)
                 item.m_flags |= InvertedRotationYFlag;
             if (tAttrs.hasAttribute(KXMLQLCMonitorFixtureInvRotZFlag))
                 item.m_flags |= InvertedRotationZFlag;
+            if (tAttrs.hasAttribute(KXMLQLCMonitorFixtureHasDmxPosFlag))
+                item.m_flags |= HasDmxPositionFlag;
+            if (tAttrs.hasAttribute(KXMLQLCMonitorFixtureHasDmxRotFlag))
+                item.m_flags |= HasDmxRotationFlag;
 
             setFixtureItem(fid, headIndex, linkedIndex, item);
             root.skipCurrentElement();
@@ -1011,6 +1017,10 @@ bool MonitorProperties::saveXML(QXmlStreamWriter *doc, const Doc *mainDocument) 
                 doc->writeAttribute(KXMLQLCMonitorFixtureInvRotYFlag, KXMLQLCTrue);
             if (item.m_flags & InvertedRotationZFlag)
                 doc->writeAttribute(KXMLQLCMonitorFixtureInvRotZFlag, KXMLQLCTrue);
+            if (item.m_flags & HasDmxPositionFlag)
+                doc->writeAttribute(KXMLQLCMonitorFixtureHasDmxPosFlag, KXMLQLCTrue);
+            if (item.m_flags & HasDmxRotationFlag)
+                doc->writeAttribute(KXMLQLCMonitorFixtureHasDmxRotFlag, KXMLQLCTrue);
 
             // write the DMX-to-view scale multiplier, if not the 1.0 default
             if (!qFuzzyCompare(item.m_dmxScale, 1.0f))
