@@ -538,7 +538,7 @@ void VCFrame::addFunctions(QQuickItem *parent, QVariantList idsList, QPoint pos,
         {
             Function *f = m_doc->function(funcID);
             if (f->type() != Function::ChaserType)
-                return;
+                continue;
 
             VCCueList *cuelist = new VCCueList(m_doc, this);
             QQmlEngine::setObjectOwnership(cuelist, QQmlEngine::CppOwnership);
