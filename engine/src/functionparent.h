@@ -122,6 +122,19 @@ public:
         // Video::stopFromUI() - the user closed a Video function's
         // preview window from the 2D/3D view.
         VideoWindowClosed,
+        // A JS Script's "stopFunction" command, or a Script's own exit
+        // cleanup stopping the Functions it started. Deliberately kept on
+        // Master (rather than FunctionParent(Function, scriptID), which
+        // the same Script uses to *start* a Function - see
+        // ScriptRunner::startFunctionSource()) so it keeps its original,
+        // long-standing force-stop-regardless-of-who-else-started-it
+        // behavior: Function::stop()'s "override anything" rule only
+        // fires for type() == Master, not for a same-id-mismatched
+        // Function-typed source, so using Function-typed sources for both
+        // start AND stop (the Chaser/Collection/Show convention) would
+        // have silently narrowed a script's stopFunction() to "only stop
+        // what I started".
+        ScriptStopFunction,
     };
 
 private:

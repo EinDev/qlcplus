@@ -50,7 +50,7 @@ ScriptRunner::~ScriptRunner()
     stop();
 }
 
-FunctionParent ScriptRunner::functionSource() const
+FunctionParent ScriptRunner::startFunctionSource() const
 {
     if (m_ownerFunctionID != Function::invalidId())
         return FunctionParent(FunctionParent::Function, m_ownerFunctionID);
@@ -87,7 +87,9 @@ void ScriptRunner::stop()
         if (function == NULL)
             continue;
 
-        function->stop(functionSource());
+        // Force-stop regardless of who else started it (preserves this
+        // command's original semantics - see FunctionParent::ScriptStopFunction).
+        function->stop(FunctionParent::master(FunctionParent::ScriptStopFunction));
     }
     m_startedFunctions.clear();
 
@@ -203,13 +205,19 @@ bool ScriptRunner::write(MasterTimer *timer, QList<Universe *> universes)
 
             if (operation == FunctionOperation::START || operation == FunctionOperation::START_DONT_STOP)
             {
-                function->start(timer, functionSource());
+                function->start(timer, startFunctionSource());
                 if (operation == FunctionOperation::START)
                     m_startedFunctions << fID;
             }
             else if (operation == FunctionOperation::STOP)
             {
-                function->stop(functionSource());
+                // "stopFunction" command: force-stop regardless of who
+                // else started it - this has always been able to stop a
+                // Function this script didn't itself start (e.g. one
+                // running via a VC button), unlike Chaser/Collection/Show
+                // stopping their own children. See
+                // FunctionParent::ScriptStopFunction.
+                function->stop(FunctionParent::master(FunctionParent::ScriptStopFunction));
                 m_startedFunctions.removeAll(fID);
             }
             else if (operation == FunctionOperation::WAIT_START)

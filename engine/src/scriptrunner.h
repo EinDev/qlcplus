@@ -255,15 +255,28 @@ private:
     Function* getFunctionIfRunning(quint32 fID) const;
 
     /**
-     * The FunctionParent to use when this script's "startFunction"/
-     * "stopFunction" commands start/stop another Function - identifies
-     * this script itself (FunctionParent(Function, m_ownerFunctionID)),
-     * the same way a Chaser/Collection/Show identifies itself to its own
-     * children. Falls back to a generic Master override if this runner
-     * was never given an owner (shouldn't happen for a runner that
-     * actually starts/stops Functions - see the constructor).
+     * The FunctionParent to use when this script's "startFunction" command
+     * (or the queued START/START_DONT_STOP operation on script exit)
+     * starts another Function - identifies this script itself
+     * (FunctionParent(Function, m_ownerFunctionID)), the same way a
+     * Chaser/Collection/Show identifies itself to its own children. Falls
+     * back to a generic Master override if this runner was never given an
+     * owner (shouldn't happen for a runner that actually starts/stops
+     * Functions - see the constructor).
+     *
+     * NOTE: this is deliberately NOT used for stopping a Function (see
+     * FunctionParent::master(FunctionParent::ScriptStopFunction) at the
+     * "stopFunction" command's and script-exit cleanup's stop() call
+     * sites instead) - unlike Chaser/Collection/Show, a script's
+     * "stopFunction" command has always been able to force-stop a
+     * Function regardless of who started it (Function::stop()'s
+     * "override anything" rule only fires for FunctionParent::Master,
+     * not for a Function-typed source unless the ids match). Using
+     * FunctionParent(Function, m_ownerFunctionID) for stop() as well
+     * would have silently narrowed that to "only stop what I started" -
+     * a real behavior change this project's users rely on not having.
      */
-    FunctionParent functionSource() const;
+    FunctionParent startFunctionSource() const;
 
     /** ScriptRunner function operations enum to handle start/stop/wait commands */
     enum FunctionOperation

@@ -356,6 +356,8 @@ static QString describeFunctionParent(const FunctionParent &source, Doc *doc,
                     return QStringLiteral("a WebAccess/OSC \"setFunctionStatus\" API request");
                 case FunctionParent::VideoWindowClosed:
                     return QStringLiteral("the user closing a Video function's preview window");
+                case FunctionParent::ScriptStopFunction:
+                    return QStringLiteral("a Script's \"stopFunction\" command (or its own exit cleanup)");
                 case FunctionParent::GenericOverride:
                 default:
                     return QString(
