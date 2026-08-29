@@ -781,7 +781,7 @@ int Tardis::processAction(TardisAction &action, bool undo)
         case FixtureSetDumpValue:
         {
             SceneValue scv = value->value<SceneValue>();
-            m_contextManager->setDumpValue(scv.fxi, scv.channel, scv.value);
+            m_contextManager->setDumpValue(scv.fxi, scv.channel, scv.value, true, GenericDMXSource::DumpUndoRedo);
         }
         break;
         case FixtureResetDumpValues:
@@ -801,7 +801,7 @@ int Tardis::processAction(TardisAction &action, bool undo)
             for (const QVariant &dumpVal : dumpValues)
             {
                 SceneValue scv = dumpVal.value<SceneValue>();
-                m_contextManager->setDumpValue(scv.fxi, scv.channel, scv.value);
+                m_contextManager->setDumpValue(scv.fxi, scv.channel, scv.value, true, GenericDMXSource::DumpUndoRedo);
             }
         }
         break;

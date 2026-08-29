@@ -174,4 +174,105 @@ void GenericDMXSource_Test::unsetRemovesFaderChannel()
     QCOMPARE(fader->channelsCount(), 0);
 }
 
+void GenericDMXSource_Test::setDefaultsToUnspecifiedFeature()
+{
+    // Backward compatibility: every pre-existing caller that doesn't pass a
+    // Feature (like all of the tests above) must keep behaving exactly as
+    // before, and be tagged with the Unspecified fallback.
+    GenericDMXSource src(m_doc);
+    src.setOutputEnabled(true);
+    src.set(m_fxiId, 0, 100);
+
+    QPair<quint32,quint32> key(m_fxiId, quint32(0));
+    QVERIFY(src.m_features.contains(key));
+    QCOMPARE(src.m_features.value(key), GenericDMXSource::Unspecified);
+}
+
+void GenericDMXSource_Test::setStoresSpecificFeature()
+{
+    GenericDMXSource src(m_doc);
+    src.setOutputEnabled(true);
+    src.set(m_fxiId, 0, 100, GenericDMXSource::DragPositionPush);
+
+    QPair<quint32,quint32> key(m_fxiId, quint32(0));
+    QCOMPARE(src.m_features.value(key), GenericDMXSource::DragPositionPush);
+
+    // Overwriting the same channel with a different Feature must replace,
+    // not merge, the tag - same convention as m_values.
+    src.set(m_fxiId, 0, 50, GenericDMXSource::PalettePreview);
+    QCOMPARE(src.m_features.value(key), GenericDMXSource::PalettePreview);
+    QCOMPARE(src.channels().first().value, uchar(50));
+}
+
+void GenericDMXSource_Test::unsetClearsFeature()
+{
+    GenericDMXSource src(m_doc);
+    src.setOutputEnabled(true);
+    src.set(m_fxiId, 0, 100, GenericDMXSource::ColorTool);
+
+    QPair<quint32,quint32> key(m_fxiId, quint32(0));
+    QVERIFY(src.m_features.contains(key));
+
+    src.unset(m_fxiId, 0);
+    QVERIFY(src.m_features.contains(key) == false);
+}
+
+void GenericDMXSource_Test::unsetAllViaWriteDMXClearsFeature()
+{
+    QList<Universe*> ua = m_doc->inputOutputMap()->universes();
+
+    GenericDMXSource src(m_doc);
+    src.setOutputEnabled(true);
+    src.set(m_fxiId, 0, 100, GenericDMXSource::BeamTool);
+    src.writeDMX(nullptr, ua);
+
+    QPair<quint32,quint32> key(m_fxiId, quint32(0));
+    QVERIFY(src.m_features.contains(key));
+
+    // unsetAll() only queues the clear request - it is processed on the
+    // next writeDMX(), same as m_values (see GenericDMXSource_Test::unsetAll()).
+    src.unsetAll();
+    src.writeDMX(nullptr, ua);
+    QVERIFY(src.m_features.isEmpty());
+}
+
+void GenericDMXSource_Test::findFeatureForFaderMatchesOwningInstance()
+{
+    QList<Universe*> ua = m_doc->inputOutputMap()->universes();
+
+    // Two live instances, mirroring e.g. ContextManager's m_source and a
+    // SceneEditor's m_source both being alive at once.
+    GenericDMXSource dragSrc(m_doc);
+    dragSrc.setOutputEnabled(true);
+    dragSrc.set(m_fxiId, 0, 10, GenericDMXSource::DragPositionPush);
+    dragSrc.writeDMX(nullptr, ua);
+
+    QSharedPointer<GenericFader> dragFader = dragSrc.m_fadersMap.value(ua[0]->id());
+    QVERIFY(!dragFader.isNull());
+
+    GenericDMXSource::Feature feature;
+    QVERIFY(GenericDMXSource::findFeatureForFader(dragFader.data(), m_fxiId, 0, feature));
+    QCOMPARE(feature, GenericDMXSource::DragPositionPush);
+}
+
+void GenericDMXSource_Test::findFeatureForFaderFailsForForeignFader()
+{
+    QList<Universe*> ua = m_doc->inputOutputMap()->universes();
+
+    GenericDMXSource src(m_doc);
+    src.setOutputEnabled(true);
+    src.set(m_fxiId, 0, 10, GenericDMXSource::ColorTool);
+    src.writeDMX(nullptr, ua);
+
+    // A fader nobody registered (e.g. a Function's own, or one already
+    // dismissed) must not be misattributed to this - or any other live -
+    // GenericDMXSource instance.
+    GenericFader foreignFader;
+    GenericDMXSource::Feature feature;
+    QVERIFY(GenericDMXSource::findFeatureForFader(&foreignFader, m_fxiId, 0, feature) == false);
+
+    // Same channel/value, but on a fader this instance never created at all.
+    QVERIFY(GenericDMXSource::findFeatureForFader(nullptr, m_fxiId, 0, feature) == false);
+}
+
 QTEST_MAIN(GenericDMXSource_Test)
