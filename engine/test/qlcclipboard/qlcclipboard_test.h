@@ -36,6 +36,9 @@ private slots:
     void copySteps();
     void copyValues();
     void copyFunction();
+    void copyFunctionNullIsNoOp();
+    void copyFunctionReplacesPreviousOrphanCopy();
+    void resetContentsDoesNotDeleteCopyThatWasAddedToDoc();
     void reset();
 
 private:
