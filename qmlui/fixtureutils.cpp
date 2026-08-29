@@ -291,6 +291,50 @@ bool FixtureUtils::isGroupFullySelected(const FixtureGroup *group, const Monitor
     return true;
 }
 
+QList<FixtureGroup *> FixtureUtils::candidateGroupsForSelection(const QList<FixtureGroup *> &groups,
+                                                                 const MonitorProperties *monProps,
+                                                                 const QList<quint32> &selectedFixtures)
+{
+    QList<FixtureGroup *> candidates;
+
+    if (selectedFixtures.isEmpty())
+        return candidates;
+
+    QSet<quint32> selectedSet(selectedFixtures.begin(), selectedFixtures.end());
+
+    for (FixtureGroup *group : groups)
+    {
+        if (group == nullptr || group->fixtureList().isEmpty())
+            continue;
+
+        bool hasSelectedMember = false;
+
+        for (quint32 fxID : group->fixtureList())
+        {
+            for (quint32 subID : monProps->fixtureIDList(fxID))
+            {
+                quint16 headIndex = monProps->fixtureHeadIndex(subID);
+                quint16 linkedIndex = monProps->fixtureLinkedIndex(subID);
+                quint32 itemID = FixtureUtils::fixtureItemID(fxID, headIndex, linkedIndex);
+
+                if (selectedSet.contains(itemID))
+                {
+                    hasSelectedMember = true;
+                    break;
+                }
+            }
+
+            if (hasSelectedMember)
+                break;
+        }
+
+        if (hasSelectedMember)
+            candidates.append(group);
+    }
+
+    return candidates;
+}
+
 QList<quint32> FixtureUtils::invertGroupSelection(const QList<FixtureGroup *> &groups,
                                                    const MonitorProperties *monProps,
                                                    const QList<quint32> &selectedFixtures)
@@ -303,18 +347,14 @@ QList<quint32> FixtureUtils::invertGroupSelection(const QList<FixtureGroup *> &g
     QSet<quint32> selectedSet(selectedFixtures.begin(), selectedFixtures.end());
     QSet<quint32> resultSet;
 
-    for (const FixtureGroup *group : groups)
+    // $groups may already be a pre-filtered candidate subset (e.g. the
+    // caller resolved candidateGroupsForSelection() and let the user narrow
+    // it down); re-deriving candidacy here as well keeps this function safe
+    // to call with the unfiltered group list too, exactly as before.
+    QList<FixtureGroup *> candidates = candidateGroupsForSelection(groups, monProps, selectedFixtures);
+
+    for (const FixtureGroup *group : std::as_const(candidates))
     {
-        if (group == nullptr || group->fixtureList().isEmpty())
-            continue;
-
-        // Expand the group's member fixtures into their individual
-        // heads/linked sub-items, at the same itemID granularity used by
-        // $selectedFixtures, and figure out which of those are candidates
-        // (selected) versus complement (not selected) as we go.
-        QList<quint32> groupItemIDs;
-        bool hasSelectedMember = false;
-
         for (quint32 fxID : group->fixtureList())
         {
             for (quint32 subID : monProps->fixtureIDList(fxID))
@@ -323,20 +363,9 @@ QList<quint32> FixtureUtils::invertGroupSelection(const QList<FixtureGroup *> &g
                 quint16 linkedIndex = monProps->fixtureLinkedIndex(subID);
                 quint32 itemID = FixtureUtils::fixtureItemID(fxID, headIndex, linkedIndex);
 
-                groupItemIDs.append(itemID);
-                if (selectedSet.contains(itemID))
-                    hasSelectedMember = true;
+                if (selectedSet.contains(itemID) == false)
+                    resultSet.insert(itemID);
             }
-        }
-
-        // Not a candidate group: none of its members are currently selected
-        if (hasSelectedMember == false)
-            continue;
-
-        for (quint32 itemID : std::as_const(groupItemIDs))
-        {
-            if (selectedSet.contains(itemID) == false)
-                resultSet.insert(itemID);
         }
     }
 

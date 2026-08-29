@@ -64,6 +64,12 @@ private slots:
     void invertGroupSelectionNoOpWhenNothingSelected();
     void invertGroupSelectionDropsUngroupedFixture();
     void invertGroupSelectionEmptyWhenGroupFullySelected();
+
+    void candidateGroupsForSelectionFindsSingleCandidate();
+    void candidateGroupsForSelectionFindsMultipleCandidates();
+    void candidateGroupsForSelectionEmptyWhenNothingSelected();
+    void candidateGroupsForSelectionEmptyWhenSelectionUngrouped();
+    void invertGroupSelectionOnPreFilteredSubsetMatchesScopedCandidate();
 };
 
 #endif
