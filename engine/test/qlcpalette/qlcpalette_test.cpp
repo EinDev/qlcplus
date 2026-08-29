@@ -23,6 +23,7 @@
 
 #include "qlcpalette_test.h"
 #include "qlcpalette.h"
+#include "doc.h"
 
 void QLCPalette_Test::initialization()
 {
@@ -271,6 +272,61 @@ void QLCPalette_Test::save()
     QVERIFY(xmlReader.attributes().value("Name").toString() == "Center up");
     QVERIFY(xmlReader.attributes().value("Type").toString() == "PanTilt");
     QVERIFY(xmlReader.attributes().value("Value").toString() == "90,145");
+}
+
+void QLCPalette_Test::saveLoadRoundTrip()
+{
+    // Tardis's PaletteDelete/PaletteCreate actions snapshot a palette via
+    // saveXML() and later recreate an equivalent one via the static loader().
+    // Verify that round trip actually reproduces an equivalent object, and
+    // that the reconstructed copy is independent of the original.
+    Doc doc(this);
+
+    QLCPalette *original = new QLCPalette(QLCPalette::PanTilt);
+    original->setID(7);
+    original->setName("Round Trip");
+    original->setValue(90, 145);
+    original->setFanningType(QLCPalette::Linear);
+    original->setFanningLayout(QLCPalette::YAscending);
+    original->setFanningAmount(55);
+    original->setFanningValue(30);
+
+    QBuffer buffer;
+    buffer.open(QIODevice::WriteOnly | QIODevice::Text);
+    QXmlStreamWriter xmlWriter(&buffer);
+
+    QVERIFY(original->saveXML(&xmlWriter) == true);
+
+    xmlWriter.setDevice(NULL);
+    buffer.close();
+
+    buffer.open(QIODevice::ReadOnly | QIODevice::Text);
+    QXmlStreamReader xmlReader(&buffer);
+    xmlReader.readNextStartElement();
+    QVERIFY(xmlReader.name().toString() == "Palette");
+
+    QVERIFY(QLCPalette::loader(xmlReader, &doc) == true);
+
+    QLCPalette *copy = doc.palette(7);
+    QVERIFY(copy != NULL);
+    QVERIFY(copy != original);
+
+    QCOMPARE(copy->id(), original->id());
+    QCOMPARE(copy->name(), original->name());
+    QCOMPARE(copy->type(), original->type());
+    QCOMPARE(copy->values(), original->values());
+    QCOMPARE(copy->fanningType(), original->fanningType());
+    QCOMPARE(copy->fanningLayout(), original->fanningLayout());
+    QCOMPARE(copy->fanningAmount(), original->fanningAmount());
+    QCOMPARE(copy->fanningValue().toInt(), original->fanningValue().toInt());
+
+    // The reconstructed copy must be a fully independent object: destroying
+    // the original (as Tardis does after snapshotting it) must not affect it.
+    delete original;
+
+    QCOMPARE(copy->id(), quint32(7));
+    QCOMPARE(copy->name(), QString("Round Trip"));
+    QCOMPARE(copy->values(), QVariantList() << QVariant(90) << QVariant(145));
 }
 
 QTEST_APPLESS_MAIN(QLCPalette_Test)
