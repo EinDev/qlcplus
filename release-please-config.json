@@ -1,0 +1,12 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bootstrap-sha": "0574a6bafc4b18349511192ce2bbf691b256aee8",
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "component": "eindev",
+      "include-component-in-tag": true,
+      "include-v-in-tag": true
+    }
+  }
+}
