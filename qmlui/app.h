@@ -25,6 +25,7 @@
 #include <QQuickItem>
 #include <QObject>
 #include "doc.h"
+#include "apiprojecthost.h"
 
 class MainView2D;
 class ShowManager;
@@ -50,11 +51,9 @@ class StageWizard;
 class Tardis;
 class QMouseEvent;
 
-#define SETTINGS_LANGUAGE "ui/language"
-
 #define KXMLQLCWorkspace QStringLiteral("Workspace")
 
-class App final : public QQuickView
+class App final : public QQuickView, public ApiProjectHost
 {
     Q_OBJECT
     Q_DISABLE_COPY(App)
@@ -337,8 +336,8 @@ private:
      *********************************************************************/
 public:
     /** Get/Set the name of the current workspace file */
-    Q_INVOKABLE QString fileName() const;
-    void setFileName(const QString& fileName);
+    Q_INVOKABLE QString fileName() const override;
+    void setFileName(const QString& fileName) override;
 
     /**
      * Get the autosave version of the name
@@ -347,23 +346,23 @@ public:
     QString autoSaveFileName() const;
 
     /** Return the list of the recently opened files */
-    QStringList recentFiles() const;
+    QStringList recentFiles() const override;
 
     /** Open the file from last session */
     void loadLastWorkspace();
 
     /** Get/Set the path currently used by QLC+ to access projects and resources */
-    QString workingPath() const;
-    void setWorkingPath(QString workingPath);
+    QString workingPath() const override;
+    void setWorkingPath(QString workingPath) override;
 
     /** Reset everything and start a new workspace */
-    Q_INVOKABLE bool newWorkspace();
+    Q_INVOKABLE bool newWorkspace() override;
 
     /** Load the workspace with the given $fileName */
-    Q_INVOKABLE bool loadWorkspace(const QString& fileName);
+    Q_INVOKABLE bool loadWorkspace(const QString& fileName) override;
 
     /** Save the current workspace with the given $fileName */
-    Q_INVOKABLE bool saveWorkspace(const QString& fileName);
+    Q_INVOKABLE bool saveWorkspace(const QString& fileName) override;
 
     /**
      * Load workspace contents from a XML file with the given name.
@@ -402,7 +401,7 @@ signals:
     void workingPathChanged(QString workingPath);
 
 public slots:
-    void slotLoadDocFromMemory(QByteArray &xmlData);
+    void slotLoadDocFromMemory(QByteArray &xmlData) override;
 
     /** Clear the whole workspace on request of the connected server, which
      *  is about to replace its own project */
