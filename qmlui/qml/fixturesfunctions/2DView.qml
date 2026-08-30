@@ -367,32 +367,36 @@ Rectangle
                 z: 3
                 acceptedButtons: Qt.MiddleButton
 
-                // Deltas are computed from screen coordinates, not
-                // mouse.x/mouse.y - those are in twoDContents' own content
-                // space, which itself shifts as contentX/contentY change
-                // below, so using them here would feed the pan's own output
-                // back into its input on the very next event (the same
-                // coordinate-frame trap documented for fixture dragging
-                // elsewhere in this file).
-                property point lastScreenPos
+                // Deltas are computed via mapToItem(null, ...) (window
+                // coordinates), not mouse.x/mouse.y - those are in
+                // twoDContents' own content space, which itself shifts as
+                // contentX/contentY change below, so using them here would
+                // feed the pan's own output back into its input on the very
+                // next event (the same coordinate-frame trap documented for
+                // fixture dragging elsewhere in this file). MouseEvent has
+                // no screenX/screenY in QML (confirmed via debug logging -
+                // both come back undefined), so mapToItem is the only
+                // reliably scroll-independent frame available here.
+                property point lastWindowPos
 
                 onPressed: (mouse) =>
                 {
-                    lastScreenPos = Qt.point(mouse.screenX, mouse.screenY)
+                    lastWindowPos = panMouseArea.mapToItem(null, mouse.x, mouse.y)
                 }
 
                 onPositionChanged: (mouse) =>
                 {
-                    var dx = mouse.screenX - lastScreenPos.x
-                    var dy = mouse.screenY - lastScreenPos.y
+                    var windowPos = panMouseArea.mapToItem(null, mouse.x, mouse.y)
+                    var dx = windowPos.x - lastWindowPos.x
+                    var dy = windowPos.y - lastWindowPos.y
 
-                    var maxX = Math.max(0, twoDView.contentWidth - twoDView.width)
-                    var maxY = Math.max(0, twoDView.contentHeight - twoDView.height)
+                    // Deliberately unclamped - panning past the grid's own
+                    // edges (into empty space) is allowed, same as the 3D
+                    // view's camera translate has no bounds either.
+                    twoDView.contentX = twoDView.contentX - dx
+                    twoDView.contentY = twoDView.contentY - dy
 
-                    twoDView.contentX = Math.max(0, Math.min(maxX, twoDView.contentX - dx))
-                    twoDView.contentY = Math.max(0, Math.min(maxY, twoDView.contentY - dy))
-
-                    lastScreenPos = Qt.point(mouse.screenX, mouse.screenY)
+                    lastWindowPos = windowPos
                 }
             }
 
