@@ -76,6 +76,8 @@ Rectangle
 
     onTimeDivisionChanged: timeHeader.requestPaint()
 
+    property int dbgLastLoggedSecond: -1
+
     onCurrentTimeChanged:
     {
         if (cursorHeight)
@@ -84,6 +86,15 @@ Rectangle
                 cursor.x = TimeUtils.timeToSize(currentTime, timeScale, tickSize)
             else
                 cursor.x = TimeUtils.timeToBeatPosition(currentTime, tickSize, bpmNumber, beatsDivision)
+
+            var dbgSecond = Math.floor(currentTime / 1000)
+            if (dbgSecond !== dbgLastLoggedSecond)
+            {
+                dbgLastLoggedSecond = dbgSecond
+                console.log("[DBG QML-CURSOR] currentTime:", currentTime, "timeDivision:", timeDivision,
+                            "bpmNumber:", bpmNumber, "beatsDivision:", beatsDivision, "tickSize:", tickSize,
+                            "timeScale:", timeScale, "-> cursor.x:", cursor.x)
+            }
         }
     }
 

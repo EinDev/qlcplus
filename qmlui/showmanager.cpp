@@ -508,6 +508,10 @@ void ShowManager::addItems(QQuickItem *parent, int trackIdx, int startTime, QVar
                 func->setTotalDuration(func->duration());
             showFunc->setDuration(func->totalDuration() ? func->totalDuration() : 4000);
         }
+        qDebug() << "[DBG SHOWMGR] addItems: functionID" << functionID << "type" << func->type()
+                 << "timeDivision" << (int)timeDivision() << "-> tempoType" << (int)func->tempoType()
+                 << "totalDuration" << func->totalDuration() << "showFunc duration" << showFunc->duration()
+                 << "startTime" << startTime;
         showFunc->setStartTime(startTime);
         showFunc->setColor(ShowFunction::defaultColor(func->type()));
 
@@ -1538,6 +1542,12 @@ void ShowManager::setSelectedItemsLock(bool lock)
 
 void ShowManager::slotTimeChanged(quint32 msec_time)
 {
+    static int dbgLastLogged = -1000;
+    if ((int)msec_time - dbgLastLogged >= 1000 || (int)msec_time < dbgLastLogged)
+    {
+        dbgLastLogged = (int)msec_time;
+        qDebug() << "[DBG SHOWMGR-TIME] slotTimeChanged" << msec_time << "prev m_currentTime" << m_currentTime;
+    }
     m_currentTime = (int)msec_time;
     emit currentTimeChanged(m_currentTime);
 }
