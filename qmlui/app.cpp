@@ -902,7 +902,12 @@ void App::keyPressEvent(QKeyEvent *e)
         return;
     }
 
-    if (m_contextManager)
+    // While a ShortcutsEditor.qml rebinding capture is in progress, the key
+    // is meant for that capture alone - let it fall through to QML (below)
+    // but don't also hand it to ContextManager, which could otherwise start
+    // a VC widget/function or move a fixture selection off a key the user is
+    // only trying to record as a new binding
+    if (m_contextManager && (m_shortcutManager == nullptr || m_shortcutManager->isCapturing() == false))
         m_contextManager->handleKeyPress(e);
 
     QQuickView::keyPressEvent(e);
@@ -910,7 +915,7 @@ void App::keyPressEvent(QKeyEvent *e)
 
 void App::keyReleaseEvent(QKeyEvent *e)
 {
-    if (m_contextManager)
+    if (m_contextManager && (m_shortcutManager == nullptr || m_shortcutManager->isCapturing() == false))
         m_contextManager->handleKeyRelease(e);
 
     QQuickView::keyReleaseEvent(e);
