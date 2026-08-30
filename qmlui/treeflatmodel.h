@@ -86,6 +86,7 @@ public:
 
         DepthRole
     };
+    Q_ENUM(FlatRoles)
 
     TreeFlatModel(QObject *parent = 0);
     ~TreeFlatModel();
