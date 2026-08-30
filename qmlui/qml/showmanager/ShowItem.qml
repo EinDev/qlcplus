@@ -497,6 +497,8 @@ Item
 
                 if (newTrackIdx >= 0)
                 {
+                    console.log("[DBG QML-MOVE] calling checkAndMoveItem: itemSnapped:", itemSnapped,
+                                "gridEnabled:", showManager.gridEnabled, "newTime:", newTime)
                     var res = showManager.checkAndMoveItem(sfRef, trackIndex, newTrackIdx, newTime, itemSnapped)
 
                     if (res === true)
@@ -658,12 +660,15 @@ Item
                         itemRoot.x = 0
                     }
 
+                    console.log("[DBG QML-RESIZE-LEFT] itemSnapped:", itemSnapped, "gridEnabled:", showManager.gridEnabled,
+                                "itemRoot.x:", itemRoot.x, "tickSize:", tickSize)
                     // check grid snapping (skip if item-snapped)
                     if (!itemSnapped && itemRoot.x && showManager.gridEnabled)
                     {
                         var currX = itemRoot.x
                         itemRoot.x = Math.round(itemRoot.x / tickSize) * tickSize
                         itemRoot.width += (currX - itemRoot.x)
+                        console.log("[DBG QML-RESIZE-LEFT] grid-snapped x:", currX, "->", itemRoot.x)
                     }
 
                     var newDuration, newStartTime
@@ -801,11 +806,14 @@ Item
 
                 if (sfRef)
                 {
+                    console.log("[DBG QML-RESIZE-RIGHT] itemSnapped:", itemSnapped, "gridEnabled:", showManager.gridEnabled,
+                                "itemRoot.x:", itemRoot.x, "itemRoot.width:", itemRoot.width, "tickSize:", tickSize)
                     // check grid snapping (skip if item-snapped)
                     if (!itemSnapped && showManager.gridEnabled)
                     {
                         var snappedEndPos = Math.round((itemRoot.x + itemRoot.width) / tickSize) * tickSize
                         itemRoot.width = snappedEndPos - itemRoot.x
+                        console.log("[DBG QML-RESIZE-RIGHT] grid-snapped width ->", itemRoot.width)
                     }
 
                     var newDuration
