@@ -215,6 +215,7 @@ Rectangle
             var rChIdx = flatGroupsModel.data(rIdx, TreeFlatModel.ChIdxRole)
             var rInGroup = flatGroupsModel.data(rIdx, TreeFlatModel.InGroupRole)
             var rLabel = flatGroupsModel.data(rIdx, TreeFlatModel.LabelRole)
+            var rPath = flatGroupsModel.data(rIdx, TreeFlatModel.PathRole)
 
             switch (rType)
             {
@@ -245,7 +246,8 @@ Rectangle
                 headIndex: rChIdx,
                 chIndex: rChIdx,
                 textLabel: rLabel,
-                inGroup: rInGroup
+                inGroup: rInGroup,
+                nodePath: rPath
             })
         }
     }
