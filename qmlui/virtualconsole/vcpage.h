@@ -115,8 +115,9 @@ public:
     QList<QKeySequence> pageKeySequences();
 
     /** Method invoked by the Virtual Console when an key press/release signal is received.
-     *  This is in charge of delivering the event to the children widgets expecting it. */
-    void handleKeyEvent(QKeySequence &seq, bool pressed);
+     *  This is in charge of delivering the event to the children widgets expecting it.
+     *  Returns true if $seq matched at least one bound widget */
+    bool handleKeyEvent(QKeySequence &seq, bool pressed);
 
 private:
     /** This variable represents the map of all the key bindings for every
