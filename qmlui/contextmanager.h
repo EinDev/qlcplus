@@ -55,7 +55,8 @@ class ContextManager final : public QObject
     Q_PROPERTY(QVector3D fixturesRotation READ fixturesRotation WRITE setFixturesRotation NOTIFY fixturesRotationChanged)
     Q_PROPERTY(bool selectedFixtureHasDmxTransform READ selectedFixtureHasDmxTransform NOTIFY selectedFixturesChanged)
     Q_PROPERTY(quint32 fixtureDmxTransformFlags READ fixtureDmxTransformFlags WRITE setFixtureDmxTransformFlags NOTIFY fixtureDmxTransformFlagsChanged)
-    Q_PROPERTY(qreal fixtureDmxScale READ fixtureDmxScale WRITE setFixtureDmxScale NOTIFY fixtureDmxScaleChanged)
+    Q_PROPERTY(qreal fixtureRotationScale READ fixtureRotationScale WRITE setFixtureRotationScale NOTIFY fixtureRotationScaleChanged)
+    Q_PROPERTY(qreal fixturePositionRange READ fixturePositionRange WRITE setFixturePositionRange NOTIFY fixturePositionRangeChanged)
     Q_PROPERTY(int dumpValuesCount READ dumpValuesCount NOTIFY dumpValuesCountChanged)
     Q_PROPERTY(quint32 dumpChannelMask READ dumpChannelMask NOTIFY dumpChannelMaskChanged)
     Q_PROPERTY(bool multipleSelection READ multipleSelection WRITE setMultipleSelection NOTIFY multipleSelectionChanged)
@@ -379,25 +380,40 @@ public:
     void setFixturesRotation(QVector3D degrees);
     void setFixtureRotation(quint32 itemID, QVector3D degrees);
 
-    /** True when exactly one fixture is selected and it has its own
-     *  PositionX/Y/Z or RotationX/Y/Z DMX channels - i.e. whether the
-     *  per-fixture DMX invert/scale properties below are meaningful for the
-     *  current selection. False for no selection, a multiple selection, or a
-     *  fixture with none of those channels. */
+    /** True when at least one selected fixture has its own PositionX/Y/Z or
+     *  RotationX/Y/Z DMX channels - i.e. whether the per-fixture DMX
+     *  invert/scale/range properties below are meaningful for the current
+     *  selection. False for no selection, or a selection where no fixture
+     *  has any of those channels. */
     bool selectedFixtureHasDmxTransform() const;
 
     /** Get/Set the per-fixture DMX position/rotation invert flags (any
      *  combination of MonitorProperties::InvertedPosition/RotationXYZFlag)
-     *  for the currently selected single fixture. Reads back 0 and no-ops on
-     *  write for no/multiple selection. */
+     *  for every currently selected fixture that has a DMX position/rotation
+     *  transform (see selectedFixtureHasDmxTransform()). The getter reads
+     *  back the first qualifying selected fixture's value (0 if none
+     *  qualify); the setter applies to every qualifying fixture, preserving
+     *  each fixture's own other flag bits (Hidden/Locked/InvertedPan/
+     *  InvertedTilt). No-ops if no selected fixture qualifies. */
     quint32 fixtureDmxTransformFlags() const;
     void setFixtureDmxTransformFlags(quint32 flags);
 
-    /** Get/Set the per-fixture DMX-to-view position/rotation scale multiplier
-     *  (default 1.0) for the currently selected single fixture. Reads back
-     *  1.0 and no-ops on write for no/multiple selection. */
-    qreal fixtureDmxScale() const;
-    void setFixtureDmxScale(qreal scale);
+    /** Get/Set the per-fixture DMX-to-view rotation scale multiplier
+     *  (default 1.0) for every currently selected fixture that has a DMX
+     *  position/rotation transform. The getter reads back the first
+     *  qualifying selected fixture's value (1.0 if none qualify); the setter
+     *  applies to every qualifying fixture. Rotation-only - position uses
+     *  the independent fixturePositionRange below. */
+    qreal fixtureRotationScale() const;
+    void setFixtureRotationScale(qreal scale);
+
+    /** Get/Set the per-fixture absolute position range, in meters (default
+     *  800.0), for every currently selected fixture that has a DMX
+     *  position/rotation transform. The getter reads back the first
+     *  qualifying selected fixture's value (800.0 if none qualify); the
+     *  setter applies to every qualifying fixture. */
+    qreal fixturePositionRange() const;
+    void setFixturePositionRange(qreal range);
 
     /** Select/Deselect all the fixtures of the Group/Universe with the provided $id */
     Q_INVOKABLE void setFixtureGroupSelection(quint32 id, bool enable, bool isUniverse);
@@ -496,7 +512,8 @@ signals:
     void fixturesPositionChanged();
     void fixturesRotationChanged();
     void fixtureDmxTransformFlagsChanged();
-    void fixtureDmxScaleChanged();
+    void fixtureRotationScaleChanged();
+    void fixturePositionRangeChanged();
 
     /** Emitted by invertGroupSelection() instead of applying immediately,
      *  whenever the current selection spans more than one candidate Fixture
@@ -512,6 +529,18 @@ private:
      *  replaces the current fixture selection with
      *  FixtureUtils::invertGroupSelection()'s result for $groups. */
     void applyGroupSelectionInversion(const QList<FixtureGroup *> &groups);
+
+    /** Returns the distinct Fixture IDs (deduplicated - a multi-head/linked
+     *  fixture contributes several itemIDs to m_selectedFixtures but must
+     *  only be processed once) among the current selection that have their
+     *  own DMX position/rotation transform - i.e. the same per-fixture
+     *  channel check selectedFixtureHasDmxTransform() does, applied across
+     *  the whole selection instead of just the first fixture. Shared by
+     *  fixtureDmxTransformFlags()/setFixtureDmxTransformFlags(),
+     *  fixtureRotationScale()/setFixtureRotationScale() and
+     *  fixturePositionRange()/setFixturePositionRange() so they don't each
+     *  duplicate this loop. Order follows m_selectedFixtures. */
+    QList<quint32> qualifyingDmxTransformFixtures() const;
 
     /** Returns the world axis indices (0=X, 1=Y, 2=Z) that represent the
      *  horizontal ($hAxis) and vertical ($vAxis) directions on screen for
@@ -595,7 +624,8 @@ private:
     /** Drops $fxID's cached position/rotation delta (see cachedPositionDelta()/
      *  cachedRotationDelta() above) and re-renders its 2D/3D preview from a
      *  freshly re-derived one - called after changing this fixture's own
-     *  invert/scale settings (setFixtureDmxTransformFlags()/setFixtureDmxScale()),
+     *  invert/scale/range settings (setFixtureDmxTransformFlags()/
+     *  setFixtureRotationScale()/setFixturePositionRange()),
      *  since those settings change what a given DMX value *means* without the
      *  DMX value itself changing, so the cache and the on-screen position/
      *  rotation would otherwise silently keep showing the pre-change result
