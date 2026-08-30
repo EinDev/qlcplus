@@ -88,24 +88,13 @@ ShowRunner::ShowRunner(const Doc* doc, quint32 showID, quint32 startTime)
     std::sort(m_beatFunctions.begin(), m_beatFunctions.end(), compareShowFunctions);
 
 #if 1
-    qDebug() << "[DBG SHOWRUN] Show tempoType:" << (int)m_show->tempoType() << "startTime:" << startTime;
     qDebug() << "Ordered list of ShowFunctions (time):";
     foreach (ShowFunction *sfunc, m_timeFunctions)
-    {
-        Function *dbgF = m_doc->function(sfunc->functionID());
-        qDebug() << "[Show] Function ID:" << sfunc->functionID() << "start time:" << sfunc->startTime() << "duration:" << sfunc->duration(m_doc)
-                 << "[DBG] type:" << (dbgF ? dbgF->type() : -1) << "tempoType:" << (dbgF ? (int)dbgF->tempoType() : -1)
-                 << "func totalDuration:" << (dbgF ? dbgF->totalDuration() : 0);
-    }
+        qDebug() << "[Show] Function ID:" << sfunc->functionID() << "start time:" << sfunc->startTime() << "duration:" << sfunc->duration(m_doc);
 
     qDebug() << "Ordered list of ShowFunctions (beats):";
     foreach (ShowFunction *sfunc, m_beatFunctions)
-    {
-        Function *dbgF = m_doc->function(sfunc->functionID());
-        qDebug() << "[Show] Function ID:" << sfunc->functionID() << "start time:" << sfunc->startTime() << "duration:" << sfunc->duration(m_doc)
-                 << "[DBG] type:" << (dbgF ? dbgF->type() : -1) << "tempoType:" << (dbgF ? (int)dbgF->tempoType() : -1)
-                 << "func totalDuration:" << (dbgF ? dbgF->totalDuration() : 0);
-    }
+        qDebug() << "[Show] Function ID:" << sfunc->functionID() << "start time:" << sfunc->startTime() << "duration:" << sfunc->duration(m_doc);
 #endif
     m_runningQueue.clear();
 
@@ -218,10 +207,6 @@ void ShowRunner::write(MasterTimer *timer)
 
             f->start(m_doc->masterTimer(), functionParent(), functionTimeOffset);
             m_runningQueue.append(QPair<Function *, quint32>(f, sf->startTime() + sf->duration(m_doc)));
-            qDebug() << "[DBG SHOWRUN] START (time-path) functionID:" << f->id() << "type:" << f->type()
-                     << "tempoType:" << (int)f->tempoType() << "m_elapsedTime:" << m_elapsedTime
-                     << "sf->startTime:" << sf->startTime() << "sf->duration:" << sf->duration(m_doc)
-                     << "-> stopTime:" << (sf->startTime() + sf->duration(m_doc)) << "offset:" << functionTimeOffset;
             m_currentTimeFunctionIndex++;
         }
         else
@@ -267,10 +252,6 @@ void ShowRunner::write(MasterTimer *timer)
 
             f->start(m_doc->masterTimer(), functionParent(), functionTimeOffset);
             m_runningQueue.append(QPair<Function *, quint32>(f, sf->startTime() + sf->duration(m_doc)));
-            qDebug() << "[DBG SHOWRUN] START (beat-path) functionID:" << f->id() << "type:" << f->type()
-                     << "tempoType:" << (int)f->tempoType() << "m_elapsedBeats:" << m_elapsedBeats
-                     << "sf->startTime:" << sf->startTime() << "sf->duration:" << sf->duration(m_doc)
-                     << "-> stopTime:" << (sf->startTime() + sf->duration(m_doc)) << "offset:" << functionTimeOffset;
             m_currentBeatFunctionIndex++;
         }
         else
@@ -290,9 +271,6 @@ void ShowRunner::write(MasterTimer *timer)
         // if we passed the function stop time
         if (currTime >= stopTime)
         {
-            qDebug() << "[DBG SHOWRUN] STOP functionID:" << func->id() << "type:" << func->type()
-                     << "tempoType:" << (int)func->tempoType() << "currTime:" << currTime << "stopTime:" << stopTime
-                     << "m_elapsedTime:" << m_elapsedTime << "m_elapsedBeats:" << m_elapsedBeats;
             // stop the function
             func->stop(functionParent());
             // remove it from the running queue
@@ -303,20 +281,10 @@ void ShowRunner::write(MasterTimer *timer)
     // Phase 3. Check if this is the end of the Show
     if (m_elapsedTime >= m_totalRunTime)
     {
-        qDebug() << "[DBG SHOWRUN] Show finished. m_elapsedTime:" << m_elapsedTime << "m_totalRunTime:" << m_totalRunTime;
         if (m_show != NULL)
             m_show->stop(functionParent());
         emit showFinished();
         return;
-    }
-
-    static quint32 dbgLastHeartbeat = 0;
-    if (m_elapsedTime - dbgLastHeartbeat >= 1000 || m_elapsedTime < dbgLastHeartbeat)
-    {
-        dbgLastHeartbeat = m_elapsedTime;
-        qDebug() << "[DBG SHOWRUN-TICK] m_elapsedTime:" << m_elapsedTime << "m_elapsedBeats:" << m_elapsedBeats
-                  << "isBeat:" << timer->isBeat() << "runningQueue size:" << m_runningQueue.count()
-                  << "totalRunTime:" << m_totalRunTime;
     }
 
     m_elapsedTime += MasterTimer::tick();

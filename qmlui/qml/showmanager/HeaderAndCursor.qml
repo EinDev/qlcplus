@@ -93,8 +93,6 @@ Rectangle
         timeHeader.requestPaint()
     }
 
-    property int dbgLastLoggedSecond: -1
-
     // cursor.x is an imperative assignment, not a live binding, so every
     // input it depends on (currentTime, timeScale, timeDivision,
     // beatsDivision, bpmNumber) needs its own explicit call to this -
@@ -119,22 +117,7 @@ Rectangle
                 : TimeUtils.timeToBeatPosition(time, tickSize, bpmNumber, beatsDivision)
     }
 
-    onCurrentTimeChanged:
-    {
-        updateCursorPosition()
-
-        if (cursorHeight)
-        {
-            var dbgSecond = Math.floor(currentTime / 1000)
-            if (dbgSecond !== dbgLastLoggedSecond)
-            {
-                dbgLastLoggedSecond = dbgSecond
-                console.log("[DBG QML-CURSOR] currentTime:", currentTime, "timeDivision:", timeDivision,
-                            "bpmNumber:", bpmNumber, "beatsDivision:", beatsDivision, "tickSize:", tickSize,
-                            "timeScale:", timeScale, "-> cursor.x:", cursor.x)
-            }
-        }
-    }
+    onCurrentTimeChanged: updateCursorPosition()
 
     onDurationChanged:
     {
