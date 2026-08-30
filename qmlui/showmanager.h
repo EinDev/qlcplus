@@ -345,6 +345,34 @@ public:
     Q_INVOKABLE void copyToClipboard();
     Q_INVOKABLE void pasteFromClipboard();
 
+    /*********************************************************************
+      * Legacy beat-pseudo-count timeline conversion (ADR 0001 decision 4)
+      ********************************************************************/
+public:
+    /** Return { name, bpm, beatsDivision, itemCount } for the given Show,
+     *  used to prefill the conversion dialog. bpm/beatsDivision come from
+     *  the Show's own current settings, not the global BPM - the ADR is
+     *  explicit these are only a starting guess, editable by the user. */
+    Q_INVOKABLE QVariantMap legacyShowConversionInfo(int showId) const;
+
+    /** Return a list of { name, oldStart, newStart, oldDuration, newDuration }
+     *  for a sample of the Show's items (all of them if there are few),
+     *  applying the given $bpmNumber to the legacy beat-pseudo-count formula,
+     *  without changing anything - used for the dialog's before/after preview. */
+    Q_INVOKABLE QVariantList legacyShowConversionPreview(int showId, int bpmNumber) const;
+
+    /** Convert every ShowFunction in the given Show from the legacy
+     *  beat-pseudo-count encoding to real milliseconds, using $bpmNumber.
+     *  Goes through Tardis exactly like every other ShowFunction start/duration
+     *  change in this class, so it is a normal, undoable operation. */
+    Q_INVOKABLE bool convertLegacyBeatShow(int showId, int bpmNumber);
+
+private:
+    /** ms represented by one legacy "beat-pseudo-count" unit (the old
+     *  encoding stored beatCount * 1000) - the exact inverse of
+     *  TimingUtils.qml's msToBeatPseudo(). Returns 0 for bpmNumber <= 0. */
+    static double legacyBeatPseudoUnitToMs(int bpmNumber);
+
 protected slots:
     void slotTimeChanged(quint32 msec_time);
     void slotShowFinished();

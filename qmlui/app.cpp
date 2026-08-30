@@ -44,6 +44,7 @@
 #include "uimanager.h"
 #include "simpledesk.h"
 #include "showmanager.h"
+#include "show.h"
 #include "fixtureeditor.h"
 #include "modelselector.h"
 #include "folderbrowser.h"
@@ -1609,6 +1610,7 @@ bool App::loadXML(QXmlStreamReader &doc, bool goToConsole, bool fromMemory)
     }
 
     QString contextName = doc.attributes().value(KXMLQLCWorkspaceWindow).toString();
+    QString creatorVersion;
 
     while (doc.readNextStartElement())
     {
@@ -1628,8 +1630,15 @@ bool App::loadXML(QXmlStreamReader &doc, bool goToConsole, bool fromMemory)
 #endif
         else if (doc.name() == KXMLQLCCreator)
         {
-            /* Ignore creator information */
-            doc.skipCurrentElement();
+            // Only the Version is needed (for possiblyAffectedLegacyBeatShows()
+            // below); Name/Author are still ignored.
+            while (doc.readNextStartElement())
+            {
+                if (doc.name() == KXMLQLCCreatorVersion)
+                    creatorVersion = doc.readElementText();
+                else
+                    doc.skipCurrentElement();
+            }
         }
         else
         {
@@ -1658,6 +1667,30 @@ bool App::loadXML(QXmlStreamReader &doc, bool goToConsole, bool fromMemory)
                         QMessageBox::Ok);
         msg.exec();
         */
+    }
+
+    // ADR 0001 decision 4: warn once per file-open about Shows that may still
+    // hold legacy beat-pseudo-count timeline values. Excluded for
+    // fromMemory == true (network project sync), same as the errorLog
+    // notification above - this is about files opened from disk.
+    if (fromMemory == false)
+    {
+        QList<Show *> flaggedShows = m_doc->possiblyAffectedLegacyBeatShows(creatorVersion);
+        if (flaggedShows.isEmpty() == false && rootObject() != nullptr)
+        {
+            QVariantList shows;
+            foreach (Show *show, flaggedShows)
+            {
+                QVariantMap entry;
+                entry["id"] = show->id();
+                entry["name"] = show->name();
+                shows << entry;
+            }
+
+            QMetaObject::invokeMethod(rootObject(), "showLegacyShowTimingWarning",
+                                       Qt::QueuedConnection,
+                                       Q_ARG(QVariant, QVariant(shows)));
+        }
     }
 
     return true;
