@@ -18,6 +18,7 @@
 */
 
 #include <QtTest>
+#include <QFileInfo>
 
 #define private public
 #include "rgbscript_test.h"
@@ -291,7 +292,7 @@ void RGBScript_Test::runScripts()
         qDebug() << "Evaluating script" << name;
         QScopedPointer<RGBScript> s(m_doc->rgbScriptsCache()->script(name));
         QString fileName = s->fileName();
-        QString scriptName = fileName.split(QDir::separator()).last();
+        QString scriptName = QFileInfo(fileName).fileName();
 
         // Check naming conventions
         QVERIFY(fileName.endsWith(".js"));
