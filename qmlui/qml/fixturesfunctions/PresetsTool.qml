@@ -91,8 +91,8 @@ Rectangle
             {
                 id: prList
                 anchors.fill: parent
-                anchors.leftMargin: prevTabButton.visible ? prevTabButton.width : 0
-                anchors.rightMargin: nextTabButton.visible ? nextTabButton.width : 0
+                anchors.leftMargin: presetToolBar.tabsOverflow ? prevTabButton.width : 0
+                anchors.rightMargin: presetToolBar.tabsOverflow ? nextTabButton.width : 0
                 orientation: ListView.Horizontal
                 boundsBehavior: Flickable.StopAtBounds
 
