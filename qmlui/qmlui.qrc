@@ -49,6 +49,7 @@
     <file alias="QLCPlusKnob.qml">qml/QLCPlusKnob.qml</file>
     <file alias="RobotoText.qml">qml/RobotoText.qml</file>
     <file alias="SectionBox.qml">qml/SectionBox.qml</file>
+    <file alias="ShortcutsEditor.qml">qml/ShortcutsEditor.qml</file>
     <file alias="SidePanel.qml">qml/SidePanel.qml</file>
     <file alias="SimpleDesk.qml">qml/SimpleDesk.qml</file>
     <file alias="SingleAxisTool.qml">qml/SingleAxisTool.qml</file>
