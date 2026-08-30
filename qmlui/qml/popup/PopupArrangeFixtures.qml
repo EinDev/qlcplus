@@ -173,7 +173,9 @@ CustomPopupDialog
                     Layout.fillWidth: true
                     enabled: !popupRoot.detectFromPlacement
                     from: 100
-                    to: 10000
+                    // Was capped at 10000mm (10m) - too narrow for large-scale
+                    // rigs (e.g. drone swarms spanning hundreds of meters).
+                    to: 2000000
                     value: popupRoot.circleDiameter
                     onValueChanged: popupRoot.circleDiameter = value
                 }
