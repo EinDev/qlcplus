@@ -666,6 +666,9 @@ bool ShowManager::checkAndMoveItem(ShowFunction *sf, int originalTrackIdx, int n
 
     int newTime = newStartTime;
 
+    qDebug() << "[DBG SHOWMGR] checkAndMoveItem: m_gridEnabled" << m_gridEnabled << "itemSnapped" << itemSnapped
+             << "newStartTime" << newStartTime << "m_tickSize" << m_tickSize << "m_timeScale" << m_timeScale;
+
     if (m_gridEnabled && !itemSnapped)
     {
         // calculate the X position from time and time scale
@@ -676,6 +679,7 @@ bool ShowManager::checkAndMoveItem(ShowFunction *sf, int originalTrackIdx, int n
         // recalculate the time from pixels
         // xPos : time = tickSize : timescale * 1000
         newTime = xPos * (1000 * m_timeScale) / m_tickSize;
+        qDebug() << "[DBG SHOWMGR] checkAndMoveItem: grid-snapped newStartTime" << newStartTime << "-> newTime" << newTime;
     }
 
     Tardis::instance()->enqueueAction(Tardis::ShowManagerItemSetStartTime, sf->id(), sf->startTime(), newTime);
