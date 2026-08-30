@@ -17,16 +17,18 @@ add_library(${module_name} STATIC ${CONTROLAPI_SOURCES})
 target_include_directories(${module_name} PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ../../engine/src
-    ../../qmlui
 )
 
-find_package(Qt${QT_MAJOR_VERSION} REQUIRED COMPONENTS WebSockets Quick)
+find_package(Qt${QT_MAJOR_VERSION} REQUIRED COMPONENTS WebSockets)
 
 # Deliberately minimal: no Quick/Widgets/Multimedia/qmlui dependency. This
-# module must build and run without qmlui (or any UI) present at all.
+# module must build and run without qmlui (or any UI) present at all -
+# ApiCoreDomain reaches project-lifecycle operations (new/open/save
+# workspace, recent files, working path) through the plain ApiProjectHost
+# interface (apiprojecthost.h), which qmlui's App implements, rather than
+# through App/QQuickView directly.
 target_link_libraries(${module_name} PUBLIC
     Qt${QT_MAJOR_VERSION}::Core
     Qt${QT_MAJOR_VERSION}::WebSockets
-    Qt${QT_MAJOR_VERSION}::Quick
     qlcplusengine
 )

@@ -26,7 +26,7 @@
 #include "apisession.h"
 #include "apidispatcher.h"
 #include "apienvelope.h"
-#include "app.h"
+#include "apiprojecthost.h"
 #include "mastertimer.h"
 
 #define MASTERTIMER_FREQUENCY "mastertimer/frequency"
@@ -35,10 +35,10 @@ namespace {
 
 // Shared by core.project.get and the core.project.loaded broadcast - see
 // CoreProjectMetadata in docs/api-spec/fragments/core.yaml.
-QJsonObject projectMetadataToJson(Doc *doc, App *app)
+QJsonObject projectMetadataToJson(Doc *doc, ApiProjectHost *host)
 {
     QJsonObject obj;
-    QString path = app != nullptr ? app->fileName() : QString();
+    QString path = host != nullptr ? host->fileName() : QString();
     obj.insert(QStringLiteral("filePath"), path.isEmpty() ? QJsonValue() : QJsonValue(path));
     obj.insert(QStringLiteral("fileName"), path.isEmpty() ? QJsonValue() : QJsonValue(QFileInfo(path).fileName()));
     obj.insert(QStringLiteral("isModified"), doc->isModified());
@@ -67,19 +67,24 @@ ApiCoreDomain::ApiCoreDomain(Doc *doc, ApiServer *server, QObject *parent)
     connect(m_doc, SIGNAL(docRevisionChanged(quint32)),
             this, SLOT(slotDocRevisionChanged(quint32)));
 
-    App *a = app();
-    if (a != nullptr)
+    // Connected via the QObject the domain's methods actually live on
+    // (whatever ApiServer's parent is, normally qmlui's App) rather than
+    // through the ApiProjectHost interface, which - being a plain, non-
+    // QObject interface so this module needn't link App itself - can't be
+    // the target of a signal/slot connection.
+    QObject *host = m_server->parent();
+    if (host != nullptr)
     {
-        connect(a, SIGNAL(recentFilesChanged()),
+        connect(host, SIGNAL(recentFilesChanged()),
                 this, SLOT(slotRecentFilesChanged()));
-        connect(a, SIGNAL(workingPathChanged(QString)),
+        connect(host, SIGNAL(workingPathChanged(QString)),
                 this, SLOT(slotWorkingPathChanged(QString)));
     }
 }
 
-App *ApiCoreDomain::app() const
+ApiProjectHost *ApiCoreDomain::projectHost() const
 {
-    return qobject_cast<App *>(m_server->parent());
+    return dynamic_cast<ApiProjectHost *>(m_server->parent());
 }
 
 void ApiCoreDomain::registerMethods()
@@ -90,7 +95,7 @@ void ApiCoreDomain::registerMethods()
     d->registerMethod(QStringLiteral("core.project.new"), [this](ApiSession *session, const QString &id, const QJsonObject &params)
     {
         Q_UNUSED(params)
-        App *a = app();
+        ApiProjectHost *a = projectHost();
         if (a == nullptr)
         {
             session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInternal, QStringLiteral("App instance not available")));
@@ -109,7 +114,7 @@ void ApiCoreDomain::registerMethods()
     // core.project.open
     d->registerMethod(QStringLiteral("core.project.open"), [this](ApiSession *session, const QString &id, const QJsonObject &params)
     {
-        App *a = app();
+        ApiProjectHost *a = projectHost();
         if (a == nullptr)
         {
             session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInternal, QStringLiteral("App instance not available")));
@@ -159,7 +164,7 @@ void ApiCoreDomain::registerMethods()
     d->registerMethod(QStringLiteral("core.project.close"), [this](ApiSession *session, const QString &id, const QJsonObject &params)
     {
         Q_UNUSED(params)
-        App *a = app();
+        ApiProjectHost *a = projectHost();
         if (a == nullptr)
         {
             session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInternal, QStringLiteral("App instance not available")));
@@ -179,7 +184,7 @@ void ApiCoreDomain::registerMethods()
     d->registerMethod(QStringLiteral("core.project.save"), [this](ApiSession *session, const QString &id, const QJsonObject &params)
     {
         Q_UNUSED(params)
-        App *a = app();
+        ApiProjectHost *a = projectHost();
         if (a == nullptr)
         {
             session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInternal, QStringLiteral("App instance not available")));
@@ -215,7 +220,7 @@ void ApiCoreDomain::registerMethods()
     // core.project.saveAs
     d->registerMethod(QStringLiteral("core.project.saveAs"), [this](ApiSession *session, const QString &id, const QJsonObject &params)
     {
-        App *a = app();
+        ApiProjectHost *a = projectHost();
         if (a == nullptr)
         {
             session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInternal, QStringLiteral("App instance not available")));
@@ -264,14 +269,14 @@ void ApiCoreDomain::registerMethods()
     d->registerMethod(QStringLiteral("core.project.get"), [this](ApiSession *session, const QString &id, const QJsonObject &params)
     {
         Q_UNUSED(params)
-        session->send(ApiEnvelope::buildOkResponse(id, projectMetadataToJson(m_doc, app())));
+        session->send(ApiEnvelope::buildOkResponse(id, projectMetadataToJson(m_doc, projectHost())));
     });
 
     // core.project.recentFiles
     d->registerMethod(QStringLiteral("core.project.recentFiles"), [this](ApiSession *session, const QString &id, const QJsonObject &params)
     {
         Q_UNUSED(params)
-        App *a = app();
+        ApiProjectHost *a = projectHost();
         QJsonArray files;
         if (a)
         {
@@ -320,7 +325,7 @@ void ApiCoreDomain::registerMethods()
     d->registerMethod(QStringLiteral("core.settings.get"), [this](ApiSession *session, const QString &id, const QJsonObject &params)
     {
         Q_UNUSED(params)
-        App *a = app();
+        ApiProjectHost *a = projectHost();
         QSettings settings;
         QJsonObject result;
         result.insert(QStringLiteral("locale"), settings.value(QStringLiteral(SETTINGS_LANGUAGE)).toString());
@@ -333,7 +338,7 @@ void ApiCoreDomain::registerMethods()
     // core.settings.set
     d->registerMethod(QStringLiteral("core.settings.set"), [this](ApiSession *session, const QString &id, const QJsonObject &params)
     {
-        App *a = app();
+        ApiProjectHost *a = projectHost();
         QSettings settings;
 
         if (params.contains(QStringLiteral("locale")))
@@ -377,13 +382,13 @@ void ApiCoreDomain::broadcastProjectLoaded(const QString &reason, const QString 
 {
     QJsonObject data;
     data.insert(QStringLiteral("reason"), reason);
-    data.insert(QStringLiteral("project"), projectMetadataToJson(m_doc, app()));
+    data.insert(QStringLiteral("project"), projectMetadataToJson(m_doc, projectHost()));
     m_server->broadcast(QStringLiteral("core.project.loaded"), data, originClientId, false);
 }
 
 void ApiCoreDomain::slotRecentFilesChanged()
 {
-    App *a = app();
+    ApiProjectHost *a = projectHost();
     QJsonArray files;
     if (a)
     {
