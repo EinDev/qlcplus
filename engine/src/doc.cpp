@@ -28,6 +28,8 @@
 #include <QDir>
 #if QT_VERSION >= QT_VERSION_CHECK(5, 10, 0)
 #include <QRandomGenerator>
+#include <QRegularExpression>
+#include <QVersionNumber>
 #endif
 
 #include "qlcfixturemode.h"
@@ -1090,6 +1092,67 @@ QList<Function *> Doc::functionsByType(Function::Type type) const
             list.append(f);
     }
     return list;
+}
+
+QList<Show *> Doc::possiblyAffectedLegacyBeatShows(const QString &creatorVersion) const
+{
+    QList<Show *> result;
+
+    // ADR 0001 decision 4: files saved before the canonical-ms fix (398388c7a)
+    // may hold Show timeline values written under the old, ambiguous
+    // beat-pseudo-count convention. The fix itself did not bump APPVERSION,
+    // so "APPVERSION < 5.3.1" (the bump introduced alongside this detection)
+    // is the best available cutoff, not "< the version the fix actually
+    // landed in" - this is intentionally coarse and over-inclusive:
+    // - Files saved by a fixed build between 398388c7a and the 5.3.1 bump
+    //   are flagged unnecessarily (harmless: the user can pick "already
+    //   correct" per Show).
+    // - Missing/unparseable Creator/Version info (very old files, or files
+    //   from a non-standard build) is treated the same as "older than
+    //   cutoff" rather than skipped.
+    // - Re-saving with a build carrying this fix rewrites Creator/Version
+    //   to the current APPVERSION, so a project stops being flagged on its
+    //   next load even if the user never opened/acknowledged this dialog -
+    //   there is no separate persisted "acknowledged" marker (see the QML
+    //   dialog side for why).
+    static const QVersionNumber cutoff(5, 3, 1);
+
+    QRegularExpression re(QStringLiteral("^(\\d+)\\.(\\d+)\\.(\\d+)"));
+    QRegularExpressionMatch match = re.match(creatorVersion);
+    if (match.hasMatch())
+    {
+        QVersionNumber parsed(match.captured(1).toInt(),
+                               match.captured(2).toInt(),
+                               match.captured(3).toInt());
+        if (parsed >= cutoff)
+            return result;
+    }
+
+    foreach (Function *f, functionsByType(Function::ShowType))
+    {
+        Show *show = qobject_cast<Show *>(f);
+        if (show == nullptr)
+            continue;
+
+        bool hasShowFunction = false;
+        bool hasBeatsTempoFunction = false;
+
+        foreach (Track *track, show->tracks())
+        {
+            foreach (ShowFunction *sf, track->showFunctions())
+            {
+                hasShowFunction = true;
+                Function *target = function(sf->functionID());
+                if (target != nullptr && target->tempoType() == Function::Beats)
+                    hasBeatsTempoFunction = true;
+            }
+        }
+
+        if (hasShowFunction && (show->timeDivisionType() != Show::Time || hasBeatsTempoFunction))
+            result << show;
+    }
+
+    return result;
 }
 
 Function *Doc::functionByName(QString name)

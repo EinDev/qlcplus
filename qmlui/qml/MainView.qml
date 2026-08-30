@@ -178,6 +178,16 @@ Rectangle
         shortcutCollisionPopup.open()
     }
 
+    // ADR 0001 decision 4 - called once per file-open by App::loadXML() when
+    // Doc::possiblyAffectedLegacyBeatShows() found at least one Show that may
+    // still hold legacy beat-pseudo-count timeline values. $shows is a list
+    // of { id, name }.
+    function showLegacyShowTimingWarning(shows)
+    {
+        legacyShowTimingDialog.shows = shows
+        legacyShowTimingDialog.open()
+    }
+
     function saveBeforeExit()
     {
         //actionsMenu.open()
@@ -792,6 +802,33 @@ Rectangle
         id: shortcutCollisionPopup
         standardButtons: Dialog.Ok
         title: qsTr("Keyboard shortcut already in use")
+    }
+
+    // ADR 0001 decision 4 - legacy Show timeline beat-value warning + its
+    // per-Show conversion step. See showLegacyShowTimingWarning() above.
+    LegacyShowTimingDialog
+    {
+        id: legacyShowTimingDialog
+        onConvertRequested: (showId, showName) => legacyShowTimingConvertDialog.openFor(showId, showName)
+    }
+
+    LegacyShowTimingConvertDialog
+    {
+        id: legacyShowTimingConvertDialog
+        onConverted: (showId) =>
+        {
+            var idx = -1
+            for (var i = 0; i < legacyShowTimingDialog.shows.length; i++)
+            {
+                if (legacyShowTimingDialog.shows[i].id === showId)
+                {
+                    idx = i
+                    break
+                }
+            }
+            if (idx >= 0)
+                legacyShowTimingDialog.dismissAt(idx)
+        }
     }
 
     Connections

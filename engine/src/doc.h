@@ -43,6 +43,7 @@ class AudioCapture;
 class RGBScriptsCache;
 class AudioPluginCache;
 class MonitorProperties;
+class Show;
 
 /** @addtogroup engine Engine
  * @{
@@ -544,6 +545,17 @@ public:
      * @return List of functions by type
      */
     QList <Function*> functionsByType(Function::Type type) const;
+
+    /**
+     * Return the Shows in this Doc that may still hold Show timeline values
+     * written under the old, ambiguous beat-pseudo-count convention
+     * (ADR 0001 decision 4) - see the .cpp for the exact, deliberately
+     * coarse detection criteria and their consequences.
+     *
+     * @param creatorVersion the Version text read from the loaded file's
+     *        Creator element (may be empty)
+     */
+    QList <Show*> possiblyAffectedLegacyBeatShows(const QString &creatorVersion) const;
 
     /**
      * Get a pointer to a Function with the given name
