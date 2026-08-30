@@ -1711,17 +1711,61 @@ QVector3D ContextManager::selectedFixturesCentroid() const
     QVector3D sum(0, 0, 0);
 
     for (quint32 itemID : m_selectedFixtures)
-    {
-        quint32 fxID = FixtureUtils::itemFixtureID(itemID);
-        quint16 headIndex = FixtureUtils::itemHeadIndex(itemID);
-        quint16 linkedIndex = FixtureUtils::itemLinkedIndex(itemID);
-        sum += m_monProps->fixturePosition(fxID, headIndex, linkedIndex);
-    }
+        sum += effectiveFixturePosition(itemID);
 
     if (m_selectedFixtures.isEmpty())
         return sum;
 
     return sum / m_selectedFixtures.count();
+}
+
+QVector3D ContextManager::effectiveFixturePosition(quint32 itemID) const
+{
+    quint32 fxID = FixtureUtils::itemFixtureID(itemID);
+    quint16 headIndex = FixtureUtils::itemHeadIndex(itemID);
+    quint16 linkedIndex = FixtureUtils::itemLinkedIndex(itemID);
+    Fixture *fixture = m_doc->fixture(fxID);
+
+    if (fixture != nullptr &&
+        (fixture->channelNumber(QLCChannel::PositionX, QLCChannel::MSB) != QLCChannel::invalid() ||
+         fixture->channelNumber(QLCChannel::PositionY, QLCChannel::MSB) != QLCChannel::invalid() ||
+         fixture->channelNumber(QLCChannel::PositionZ, QLCChannel::MSB) != QLCChannel::invalid()))
+    {
+        return FixtureUtils::gridCenterPosition(m_monProps) + (cachedPositionDelta(fxID, fixture) * 1000.0f);
+    }
+
+    return m_monProps->fixturePosition(fxID, headIndex, linkedIndex);
+}
+
+void ContextManager::applyArrangedFixturePosition(quint32 itemID, const QVector3D &newPos)
+{
+    quint32 fxID = FixtureUtils::itemFixtureID(itemID);
+    quint16 headIndex = FixtureUtils::itemHeadIndex(itemID);
+    quint16 linkedIndex = FixtureUtils::itemLinkedIndex(itemID);
+    Fixture *fixture = m_doc->fixture(fxID);
+
+    if (fixture != nullptr &&
+        (fixture->channelNumber(QLCChannel::PositionX, QLCChannel::MSB) != QLCChannel::invalid() ||
+         fixture->channelNumber(QLCChannel::PositionY, QLCChannel::MSB) != QLCChannel::invalid() ||
+         fixture->channelNumber(QLCChannel::PositionZ, QLCChannel::MSB) != QLCChannel::invalid()))
+    {
+        QVector3D gridCenter = FixtureUtils::gridCenterPosition(m_monProps);
+        pushPositionDelta(fixture, (newPos - gridCenter) / 1000.0f);
+        if (m_2DView->isEnabled())
+            m_2DView->updateFixturePosition(itemID, newPos, true);
+        if (m_3DView->isEnabled())
+            m_3DView->updateFixturePosition(itemID, newPos, true);
+        return;
+    }
+
+    QVector3D currPos = m_monProps->fixturePosition(fxID, headIndex, linkedIndex);
+    Tardis::instance()->enqueueAction(Tardis::FixtureSetPosition, itemID, QVariant(currPos), QVariant(newPos));
+    m_monProps->setFixturePosition(fxID, headIndex, linkedIndex, newPos);
+
+    if (m_2DView->isEnabled())
+        m_2DView->updateFixturePosition(itemID, newPos);
+    if (m_3DView->isEnabled())
+        m_3DView->updateFixturePosition(itemID, newPos);
 }
 
 QList<quint32> ContextManager::sortedSelectedFixtures() const
@@ -1958,14 +2002,7 @@ void ContextManager::arrangeFixturesInCircle(qreal diameter, bool lookAtCenter)
         setVecAxis(newPos, hAxis, vecAxis(centroid, hAxis) + radius * qCos(angleRad));
         setVecAxis(newPos, vAxis, vecAxis(centroid, vAxis) + radius * qSin(angleRad));
 
-        QVector3D currPos = m_monProps->fixturePosition(fxID, headIndex, linkedIndex);
-        Tardis::instance()->enqueueAction(Tardis::FixtureSetPosition, itemID, QVariant(currPos), QVariant(newPos));
-        m_monProps->setFixturePosition(fxID, headIndex, linkedIndex, newPos);
-
-        if (m_2DView->isEnabled())
-            m_2DView->updateFixturePosition(itemID, newPos);
-        if (m_3DView->isEnabled())
-            m_3DView->updateFixturePosition(itemID, newPos);
+        applyArrangedFixturePosition(itemID, newPos);
 
         if (lookAtCenter)
             faceFixtureTowards(itemID, newPos, centroid, hAxis, vAxis, dAxis);
@@ -2021,14 +2058,7 @@ void ContextManager::arrangeFixturesInGrid(qreal width, qreal height, int column
         setVecAxis(newPos, hAxis, vecAxis(centroid, hAxis) + rh);
         setVecAxis(newPos, vAxis, vecAxis(centroid, vAxis) + rv);
 
-        QVector3D currPos = m_monProps->fixturePosition(fxID, headIndex, linkedIndex);
-        Tardis::instance()->enqueueAction(Tardis::FixtureSetPosition, itemID, QVariant(currPos), QVariant(newPos));
-        m_monProps->setFixturePosition(fxID, headIndex, linkedIndex, newPos);
-
-        if (m_2DView->isEnabled())
-            m_2DView->updateFixturePosition(itemID, newPos);
-        if (m_3DView->isEnabled())
-            m_3DView->updateFixturePosition(itemID, newPos);
+        applyArrangedFixturePosition(itemID, newPos);
     }
 
     m_doc->setModified();
@@ -2065,14 +2095,7 @@ void ContextManager::arrangeFixturesInLine(qreal length, qreal angleDegrees, boo
         setVecAxis(newPos, hAxis, vecAxis(centroid, hAxis) + dist * qCos(angleRad));
         setVecAxis(newPos, vAxis, vecAxis(centroid, vAxis) + dist * qSin(angleRad));
 
-        QVector3D currPos = m_monProps->fixturePosition(fxID, headIndex, linkedIndex);
-        Tardis::instance()->enqueueAction(Tardis::FixtureSetPosition, itemID, QVariant(currPos), QVariant(newPos));
-        m_monProps->setFixturePosition(fxID, headIndex, linkedIndex, newPos);
-
-        if (m_2DView->isEnabled())
-            m_2DView->updateFixturePosition(itemID, newPos);
-        if (m_3DView->isEnabled())
-            m_3DView->updateFixturePosition(itemID, newPos);
+        applyArrangedFixturePosition(itemID, newPos);
 
         if (lookAtCenter)
             faceFixtureTowards(itemID, newPos, centroid, hAxis, vAxis, dAxis);

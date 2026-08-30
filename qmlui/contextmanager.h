@@ -552,6 +552,33 @@ private:
     /** Returns the average position (mm) of the currently selected fixtures */
     QVector3D selectedFixturesCentroid() const;
 
+    /** Returns $itemID's actual visual position (mm), matching whichever
+     *  storage is authoritative for it: gridCenter + cachedPositionDelta()
+     *  for a fixture with its own PositionX/Y/Z DMX channels (see
+     *  pushPositionDelta()'s doc comment), or plain MonitorProperties
+     *  fixturePosition() otherwise. Same branch fixturesPosition()'s
+     *  single-selection case and setFixturesOffset()/setFixturesPosition()
+     *  already use - selectedFixturesCentroid() and the arrangeFixturesIn*()
+     *  methods must read through this rather than MonitorProperties
+     *  directly, or they silently operate on stale/meaningless data for a
+     *  DMX-position-driven fixture (root cause of a user report: arranging a
+     *  group of such fixtures looked correct, but the next group move
+     *  snapped them back near their pre-arrange positions, since nothing
+     *  had told the DMX delta cache about the arrangement). */
+    QVector3D effectiveFixturePosition(quint32 itemID) const;
+
+    /** Writes $newPos (mm) as $itemID's new visual position through the same
+     *  storage effectiveFixturePosition() reads from - i.e. pushPositionDelta()
+     *  for a DMX-position-driven fixture, or MonitorProperties::setFixturePosition()
+     *  otherwise - and refreshes whichever of the 2D/3D views are enabled.
+     *  Used by the arrangeFixturesIn*() methods so they commit through the
+     *  same path setFixturesOffset()/setFixturesPosition() use instead of
+     *  writing MonitorProperties directly (see effectiveFixturePosition()'s
+     *  doc comment for why that went wrong before). Tardis undo is only
+     *  recorded for the non-DMX branch, matching setFixturesOffset()/
+     *  setFixturesPosition()'s own DMX branches, which don't record it either. */
+    void applyArrangedFixturePosition(quint32 itemID, const QVector3D &newPos);
+
     /** Computes the principal-axis orientation ($angleRadians) and matching
      *  span ($length, mm) of the currently selected fixtures' current
      *  positions, in the plane the user is looking at. Shared by
