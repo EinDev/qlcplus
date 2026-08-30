@@ -21,6 +21,7 @@
 #include <QWebSocket>
 #include <QtTest>
 #include <QSettings>
+#include <QCoreApplication>
 
 #include "apicoredomain_test.h"
 #include "apiserver.h"
@@ -35,6 +36,20 @@ static QString buildRequest(const QString &method, const QJsonObject &params, co
     obj.insert(QStringLiteral("method"), method);
     obj.insert(QStringLiteral("params"), params);
     return QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact));
+}
+
+void ApiCoreDomain_Test::initTestCase()
+{
+    // core.settings.set/get round-trip through a default-constructed
+    // QSettings, which needs an organization name to resolve to a real
+    // backing store (registry key on Windows) - QCoreApplication never
+    // gets one outside a full App instance. Point QSettings at a private,
+    // per-run temp location so this doesn't touch the developer's real
+    // QLC+ settings.
+    QVERIFY(m_settingsDir.isValid());
+    QCoreApplication::setOrganizationName(QStringLiteral("qlcplus-test"));
+    QSettings::setDefaultFormat(QSettings::IniFormat);
+    QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, m_settingsDir.path());
 }
 
 void ApiCoreDomain_Test::init()
