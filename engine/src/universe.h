@@ -26,6 +26,8 @@
 #include <QByteArray>
 #include <QThread>
 #include <QSet>
+#include <QHash>
+#include <QMutex>
 #include <atomic>
 
 #include "inputpatch.h"
@@ -569,6 +571,51 @@ public:
      * @return true if successful, otherwise false
      */
     bool writeBlended(int address, quint32 value, int channelCount, BlendMode blend);
+
+    /************************************************************************
+     * Last write tracking (debugging aid)
+     ************************************************************************/
+public:
+    /** Snapshot of the most recent value a GenericFader wrote to a single
+     *  DMX address. Kept around after the fader that wrote it is removed,
+     *  so a channel debug tool can still report who last drove a channel
+     *  (e.g. a Scene that faded out) even though nothing is touching it
+     *  any more - relevant for LTP-type channels (Shutter, Colour, Gobo...),
+     *  which are never automatically zeroed the way intensity channels are
+     *  (see zeroIntensityChannels()), so they keep outputting this value
+     *  indefinitely once nothing else overwrites it. */
+    struct LastChannelWrite
+    {
+        uchar value = 0;
+        bool hasFixture = false;
+        quint32 fixtureID = 0;
+        quint32 channel = 0;
+        quint32 parentFunctionID = 0;
+        QString faderName;
+        qint64 timestampMs = 0;
+    };
+
+    /**
+     * Record that $faderName (owned by Function $parentFunctionID, or
+     * Function::invalidId() if the fader has no owning Function) wrote
+     * $value to $address. $hasFixture/$fixtureID/$channel identify the
+     * fixture and its relative channel the write belongs to, if any.
+     * Called from GenericFader::write() for every channel it touches.
+     */
+    void recordLastWrite(int address, uchar value, bool hasFixture, quint32 fixtureID,
+                          quint32 channel, quint32 parentFunctionID, const QString &faderName);
+
+    /**
+     * Retrieve the last recorded write for $address.
+     *
+     * @return true and fills $info if a write was ever recorded for this
+     *         address, false (leaving $info untouched) otherwise
+     */
+    bool lastChannelWrite(int address, LastChannelWrite &info) const;
+
+protected:
+    QHash<int, LastChannelWrite> m_lastChannelWrites;
+    mutable QMutex m_lastChannelWritesMutex;
 
     /*********************************************************************
      * Load & Save

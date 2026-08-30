@@ -19,6 +19,7 @@
 
 #include <QQmlContext>
 #include <QTextStream>
+#include <QDateTime>
 
 #include "simpledesk.h"
 #include "keypadparser.h"
@@ -584,7 +585,64 @@ QString SimpleDesk::debugChannelInfo(int channel) const
             }
         }
         if (anyFader == false)
+        {
             out << "  (none)\n";
+
+            // No fader is currently touching this channel, but it may still be
+            // outputting a stale, latched value - LTP-type channels (Shutter,
+            // Colour, Gobo...) are never automatically zeroed the way intensity
+            // channels are (see Universe::zeroIntensityChannels()), so whatever
+            // was last written here keeps being output indefinitely once the
+            // fader that wrote it is gone. Report that last write, if recorded.
+            Universe::LastChannelWrite lastWrite;
+            if (uni->lastChannelWrite(channel, lastWrite))
+            {
+                qint64 ageMs = QDateTime::currentMSecsSinceEpoch() - lastWrite.timestampMs;
+                out << "Last recorded write to this channel (may explain a stale/latched value "
+                       "above - see \"Active faders\" being empty):\n";
+                out << "  value = " << int(lastWrite.value)
+                    << ", fader \"" << lastWrite.faderName << "\""
+                    << ", " << (ageMs / 1000) << "s ago"
+                    << " (" << QDateTime::fromMSecsSinceEpoch(lastWrite.timestampMs).toString(Qt::ISODate) << ")\n";
+
+                if (lastWrite.parentFunctionID != Function::invalidId())
+                {
+                    Function *f = m_doc->function(lastWrite.parentFunctionID);
+                    if (f != nullptr)
+                    {
+                        out << "  Function: " << f->typeString() << " \"" << f->name()
+                            << "\" (ID " << f->id() << "), currently "
+                            << (f->isRunning() ? "still running" : "stopped") << "\n";
+                        QList<FunctionParent> sources = f->sources();
+                        if (f->isRunning() && !sources.isEmpty())
+                        {
+                            for (const FunctionParent &source : sources)
+                                out << "    Started by: " << describeFunctionParent(source, m_doc, m_view, f->id()) << "\n";
+                        }
+                        else
+                        {
+                            out << "    (Function is no longer running, so its start source is no "
+                                   "longer tracked)\n";
+                        }
+                    }
+                    else
+                    {
+                        out << "  Function (ID " << lastWrite.parentFunctionID << ") no longer exists\n";
+                    }
+                }
+                else
+                {
+                    out << "  No owning Function recorded for that fader - likely a Virtual Console "
+                           "widget, CueStack/Script fader, Simple Desk override, or a GenericDMXSource "
+                           "feature (2D/3D drag, tools, ...), none of which are individually "
+                           "attributable here once their fader is gone\n";
+                }
+            }
+            else
+            {
+                out << "No write to this channel has been recorded since the last full engine reset\n";
+            }
+        }
     }
     else
     {

@@ -20,6 +20,7 @@
 #include <QXmlStreamReader>
 #include <QXmlStreamWriter>
 #include <QElapsedTimer>
+#include <QDateTime>
 #include <QDebug>
 #include <math.h>
 
@@ -409,6 +410,9 @@ void Universe::reset()
 
     m_modifiers.fill(NULL, UNIVERSE_SIZE);
     m_passthrough = false; // not releasing m_passthroughValues, see comment in setPassthrough
+
+    QMutexLocker locker(&m_lastChannelWritesMutex);
+    m_lastChannelWrites.clear();
 }
 
 void Universe::reset(int address, int range)
@@ -1080,6 +1084,36 @@ bool Universe::writeBlended(int address, quint32 value, int channelCount, Univer
 
     writeMultiple(address, value, channelCount);
 
+    return true;
+}
+
+void Universe::recordLastWrite(int address, uchar value, bool hasFixture, quint32 fixtureID,
+                                quint32 channel, quint32 parentFunctionID, const QString &faderName)
+{
+    if (address < 0 || address >= UNIVERSE_SIZE)
+        return;
+
+    LastChannelWrite info;
+    info.value = value;
+    info.hasFixture = hasFixture;
+    info.fixtureID = fixtureID;
+    info.channel = channel;
+    info.parentFunctionID = parentFunctionID;
+    info.faderName = faderName;
+    info.timestampMs = QDateTime::currentMSecsSinceEpoch();
+
+    QMutexLocker locker(&m_lastChannelWritesMutex);
+    m_lastChannelWrites[address] = info;
+}
+
+bool Universe::lastChannelWrite(int address, LastChannelWrite &info) const
+{
+    QMutexLocker locker(&m_lastChannelWritesMutex);
+    auto it = m_lastChannelWrites.constFind(address);
+    if (it == m_lastChannelWrites.constEnd())
+        return false;
+
+    info = it.value();
     return true;
 }
 

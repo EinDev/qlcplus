@@ -21,6 +21,7 @@
 
 #include "genericfader.h"
 #include "fadechannel.h"
+#include "fixture.h"
 #include "doc.h"
 
 GenericFader::GenericFader(QObject *parent)
@@ -276,6 +277,18 @@ void GenericFader::write(Universe *universe, uint elapsedMs)
             {
                 value = fc.current(compIntensity);
             }
+        }
+
+        // Remember who last drove this channel, even past this FadeChannel's own
+        // removal - LTP-type channels (Shutter, Colour, Gobo...) are never
+        // automatically zeroed the way intensity channels are, so once nothing
+        // else writes to them they keep outputting this value indefinitely.
+        // See Universe::recordLastWrite()/SimpleDesk::debugChannelInfo().
+        for (int i = 0; i < channelCount; i++)
+        {
+            uchar byteValue = channelCount > 1 ? ((uchar *)&value)[channelCount - 1 - i] : uchar(value);
+            universe->recordLastWrite(address + i, byteValue, fc.fixture() != Fixture::invalidId(),
+                                       fc.fixture(), fc.channel() + i, m_fid, m_name);
         }
 
         //qDebug() << "[GenericFader] >>> uni:" << universe->id() << ", address:" << address << ", value:" << value << "int:" << compIntensity;
