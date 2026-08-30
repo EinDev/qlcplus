@@ -215,7 +215,7 @@ void QLCFixtureDef::checkLoaded(QString mapPath)
     // check if path is relative (from map) or absolute (user def)
     QDir defPath(m_fileAbsolutePath);
     if (defPath.isRelative())
-        m_fileAbsolutePath = QString("%1%2%3").arg(mapPath).arg(QDir::separator()).arg(m_fileAbsolutePath);
+        m_fileAbsolutePath = QString("%1%2%3").arg(mapPath).arg(QLatin1Char('/')).arg(m_fileAbsolutePath);
 
     qDebug() << "Loading fixture definition now... " << m_fileAbsolutePath;
     bool error = loadXML(m_fileAbsolutePath);

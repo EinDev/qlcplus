@@ -309,6 +309,52 @@ with `build/engine/src` and `build/engine/audio` (not just
 controlapi/test on this checkout; `dev-test-run.ps1` and
 `.github/workflows/build.yml`'s Windows `Test` step both rely on this.
 
+**Update - `resources/fixtures/` confirmed to have the same gap, now fixed
+(2026-08-30)**: `qlcfixturedefcache_test` was failing on both Windows and macOS
+CI with `cache.loadMap(dir) == true` returning false and `QLCFile::getXMLReader`
+unable to open `<build>/resources/fixtures/FixturesMap.xml` - exactly the
+predicted-but-unverified gap noted above, this time hit directly rather than
+inferred. `resources/fixtures/CMakeLists.txt` now has the same
+`copy_directory`/`add_custom_command`/`add_custom_target ALL` pattern as
+`resources/rgbscripts/CMakeLists.txt` (target name `copy_fixtures_for_tests`),
+copying the whole source directory (including `FixturesMap.xml` and the
+Android-only `scripts/` subfolder, harmlessly) into
+`${CMAKE_BINARY_DIR}/resources/fixtures`, refreshed via `file(GLOB_RECURSE)`
+over all files under `resources/fixtures/` as the `DEPENDS` list. Like the
+rgbscripts target, this only runs as part of building the `ALL` target (a full
+`cmake --build`/`ninja`) - building `qlcfixturedefcache_test` alone via
+`--target` does not pull it in; CI's Windows job already does a full build
+before `ctest`, so this is covered there. `resources/inputprofiles/` still
+has the same latent gap and remains unverified.
+
+Fixing the resource copy surfaced two further, unrelated real bugs in the same
+test, both root-caused and fixed rather than papered over by loosening
+assertions:
+- `QLCFixtureDefCache::loadMapManufacturer()` (in `qlcfixturedefcache.cpp`) and
+  `QLCFixtureDef::checkLoaded()` (in `qlcfixturedef.cpp`) built
+  `definitionSourceFile()` paths with `QDir::separator()`, which is `\` on
+  Windows - inconsistent with the forward-slash paths `QDir`'s own getters
+  produce everywhere else (the same mismatch already called out as "a dirty
+  workaround for an issue raised on Windows" in `qlccapability.cpp`). Fixed by
+  using a literal `/` in both spots, matching what the test's `fixtureDef()`
+  case actually asserts against.
+- `qlcfixturedefcache_test.cpp` used `QTEST_APPLESS_MAIN`, but
+  `QLCFixtureDefCache::systemDefinitionDirectory()`/`userDefinitionDirectory()`
+  (via `QLCFile::systemDirectory()`) call `QCoreApplication::applicationDirPath()`
+  on both the Windows and macOS code paths - which needs a live
+  `QCoreApplication` instance that an appless test never constructs, so it
+  warned and returned an empty path on both platforms. Switched to
+  `QTEST_GUILESS_MAIN` (same fix already used by `beattracker_test` and
+  `universeperf_test` in this same suite).
+- Separately, the test's `reload()` case held onto its `QLCFixtureDef*` after
+  calling `cache.reloadFixtureDef()`, which deletes that exact instance and
+  inserts a new one (`qlcfixturedefcache.h`'s doc comment for the sibling
+  `reloadOrAddFixtureDef()` says as much: "Unlike reloadFixtureDef, this method
+  preserve[s] the original definition pointer" - implying `reloadFixtureDef`
+  does not). The test was reading freed memory. Fixed by re-fetching the
+  reloaded definition from the cache by manufacturer/model afterwards, the same
+  pattern `qmlui/fixtureeditor/fixtureeditor.cpp`'s real callers already use.
+
 ## Git workflow for this project
 
 **Commit before every build**, even for a fix you're not certain worked yet —
