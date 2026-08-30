@@ -31,6 +31,18 @@ SidePanel
             item.functionID = ID
     }
 
+    // Shared by addWidgetButton's own click handler and the "Insert" keyboard
+    // shortcut (see App::registerBuiltinShortcuts, action "vc.insertWidget")
+    // so both stay in sync with a single implementation.
+    function toggleAddWidgetPanel()
+    {
+        addWidgetButton.checked = !addWidgetButton.checked
+        virtualConsole.editMode = false
+        if (addWidgetButton.checked)
+            loaderSource = "qrc:/WidgetsList.qml"
+        animatePanel(addWidgetButton.checked)
+    }
+
     Rectangle
     {
         id: sideBar
@@ -58,14 +70,7 @@ SidePanel
                 ButtonGroup.group: vcButtonsGroup
                 autoExclusive: false
                 tooltip: qsTr("Add a new widget to the console")
-                onClicked:
-                {
-                    checked = !checked
-                    virtualConsole.editMode = false
-                    if (checked)
-                        loaderSource = "qrc:/WidgetsList.qml"
-                    animatePanel(checked)
-                }
+                onClicked: toggleAddWidgetPanel()
             }
 
             IconButton

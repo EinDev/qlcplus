@@ -97,8 +97,9 @@ public:
     virtual qreal pixelDensity() const;
 
     /** Virtual method to handle a key press event.
-     *  Subclasses should reimplement this if interested in key events */
-    virtual void handleKeyEvent(QKeyEvent *e, bool pressed);
+     *  Subclasses should reimplement this if interested in key events.
+     *  Returns true if the event matched something and was consumed */
+    virtual bool handleKeyEvent(QKeyEvent *e, bool pressed);
 
 public slots:
     virtual void slotRefreshView();
