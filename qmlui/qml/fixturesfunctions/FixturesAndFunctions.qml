@@ -119,6 +119,24 @@ Rectangle
         leftPanel.closeChannelTools()
     }
 
+    /** Global Insert shortcut: open whichever "add" flow belongs to the side
+     *  panel currently open - the Add Function menu if the Function Manager
+     *  side is open, otherwise the Fixture Browser. */
+    Connections
+    {
+        target: shortcutManager
+        function onActionTriggered(actionId)
+        {
+            if (actionId !== "ff.openAddFlow")
+                return
+
+            if (rightPanel.isOpen)
+                rightPanel.openAddFlow()
+            else
+                leftPanel.openAddFixtures()
+        }
+    }
+
     LeftPanel
     {
         id: leftPanel

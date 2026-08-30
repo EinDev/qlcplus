@@ -63,6 +63,26 @@ Rectangle
             functionManager.setFunctionFilter(fType, false);
     }
 
+    /** Show and focus the Function search field. Used by the global Ctrl+F
+     *  shortcut - see the Connections block below. */
+    function focusSearch()
+    {
+        searchFunc.checked = true
+        sTextInput.forceActiveFocus()
+    }
+
+    // See the matching comment in FixtureGroupManager.qml: this panel and
+    // that one can both be open at once and both react independently.
+    Connections
+    {
+        target: shortcutManager
+        function onActionTriggered(actionId)
+        {
+            if (actionId === "ff.focusSearch")
+                focusSearch()
+        }
+    }
+
     ColumnLayout
     {
       anchors.fill: parent

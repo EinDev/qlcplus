@@ -323,6 +323,7 @@ void App::registerBuiltinShortcuts()
     ContextManager *cm = m_contextManager;
     InputOutputManager *ioMgr = m_ioManager;
     VirtualConsole *vc = m_virtualConsole;
+    FunctionManager *funcMgr = m_functionManager;
 
     m_shortcutManager->registerAction("fixture.selectAll", QKeySequence(Qt::CTRL | Qt::Key_A),
                                        ShortcutManager::FixturesAndFunctions,
@@ -442,6 +443,89 @@ void App::registerBuiltinShortcuts()
                                        ShortcutManager::Global,
                                        tr("Switch to the Input/Output Manager tab"),
                                        [cm]() { cm->switchToContext("IOMGR"); });
+
+    m_shortcutManager->registerAction("fixture.switchToUniverseGrid", QKeySequence(Qt::ALT | Qt::Key_1),
+                                       ShortcutManager::FixturesAndFunctions,
+                                       tr("Switch to the Universe Grid view"),
+                                       [cm]() { cm->setCurrentSubContext("UNIGRID"); });
+
+    m_shortcutManager->registerAction("fixture.switchToDmxView", QKeySequence(Qt::ALT | Qt::Key_2),
+                                       ShortcutManager::FixturesAndFunctions,
+                                       tr("Switch to the DMX view"),
+                                       [cm]() { cm->setCurrentSubContext("DMX"); });
+
+    m_shortcutManager->registerAction("fixture.switchTo2DView", QKeySequence(Qt::ALT | Qt::Key_3),
+                                       ShortcutManager::FixturesAndFunctions,
+                                       tr("Switch to the 2D view"),
+                                       [cm]() { cm->setCurrentSubContext("2D"); });
+
+    m_shortcutManager->registerAction("fixture.switchTo3DView", QKeySequence(Qt::ALT | Qt::Key_4),
+                                       ShortcutManager::FixturesAndFunctions,
+                                       tr("Switch to the 3D view"),
+                                       [cm]() { cm->setCurrentSubContext("3D"); });
+
+    m_shortcutManager->registerAction("fixture.deselectAll", QKeySequence(Qt::Key_Escape),
+                                       ShortcutManager::FixturesAndFunctions,
+                                       tr("Deselect all fixtures"),
+                                       [cm]() { cm->resetFixtureSelection(); });
+
+    m_shortcutManager->registerAction("fixture.selectEven", QKeySequence(Qt::ALT | Qt::Key_E),
+                                       ShortcutManager::FixturesAndFunctions,
+                                       tr("Select every even fixture of the current selection"),
+                                       [cm]() { cm->selectEvenOdd(true); });
+
+    m_shortcutManager->registerAction("fixture.selectOdd", QKeySequence(Qt::ALT | Qt::Key_O),
+                                       ShortcutManager::FixturesAndFunctions,
+                                       tr("Select every odd fixture of the current selection"),
+                                       [cm]() { cm->selectEvenOdd(false); });
+
+    m_shortcutManager->registerAction("fixture.highlightSelection", QKeySequence(Qt::CTRL | Qt::Key_H),
+                                       ShortcutManager::FixturesAndFunctions,
+                                       tr("Highlight the selected fixtures"),
+                                       [cm]() { cm->highlightFixtureSelection(); });
+
+    // Migrated from ContextManager::handleKeyPress()'s hardcoded switch - see the
+    // comment removed there. Not "create fixture group", which is a different,
+    // separate (and still unbound) action.
+    m_shortcutManager->registerAction("fixture.invertGroupSelection", QKeySequence(Qt::CTRL | Qt::Key_G),
+                                       ShortcutManager::FixturesAndFunctions,
+                                       tr("Invert the fixture group selection"),
+                                       [cm]() { cm->invertGroupSelection(); });
+
+    // QML-only: no single C++ entry point exists for "focus whichever F&F
+    // search field is relevant" - FixtureGroupManager.qml and FunctionManager.qml
+    // each listen for this via Connections and focus their own search field.
+    m_shortcutManager->registerAction("ff.focusSearch", QKeySequence(Qt::CTRL | Qt::Key_F),
+                                       ShortcutManager::FixturesAndFunctions,
+                                       tr("Focus the fixture/function search field"),
+                                       nullptr);
+
+    // QML-only: renaming is entered via a popup (PopupRenameItems) driven by
+    // per-panel selection state (gfhcDragItem / functionManager.selectedItemNames())
+    // that only exists in QML - FixtureGroupManager.qml and RightPanel.qml each
+    // listen for this via Connections.
+    m_shortcutManager->registerAction("item.renameSelected", QKeySequence(Qt::Key_F2),
+                                       ShortcutManager::FixturesAndFunctions,
+                                       tr("Rename the currently selected item"),
+                                       nullptr);
+
+    // QML-only: FixturesAndFunctions.qml listens via Connections and picks the
+    // Fixture Browser or the Add Function menu depending on which side panel
+    // is currently open.
+    m_shortcutManager->registerAction("ff.openAddFlow", QKeySequence(Qt::Key_Insert),
+                                       ShortcutManager::FixturesAndFunctions,
+                                       tr("Open the add flow for the active Fixtures/Functions panel"),
+                                       nullptr);
+
+    m_shortcutManager->registerAction("function.clone", QKeySequence(Qt::CTRL | Qt::Key_D),
+                                       ShortcutManager::FixturesAndFunctions,
+                                       tr("Clone the selected functions"),
+                                       [funcMgr]() { funcMgr->cloneFunctions(); });
+
+    m_shortcutManager->registerAction("function.togglePreview", QKeySequence(Qt::Key_Space),
+                                       ShortcutManager::FixturesAndFunctions,
+                                       tr("Toggle preview of the selected function"),
+                                       [funcMgr]() { funcMgr->setPreviewEnabled(!funcMgr->previewEnabled()); });
 }
 
 void App::toggleFullscreen()

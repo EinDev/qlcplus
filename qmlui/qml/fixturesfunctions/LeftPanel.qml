@@ -52,6 +52,15 @@ SidePanel
      *  to). Called from FixturesAndFunctions.qml's closeChannelTools(), the
      *  same place that already closes the unrelated ChannelToolLoader
      *  popups on a top-level tab switch. */
+    /** Open the Fixture Browser (Add Fixtures), same as clicking fxEditor.
+     *  Used by the global Insert shortcut - see FixturesAndFunctions.qml. */
+    function openAddFixtures()
+    {
+        fxEditor.checked = true
+        loaderSource = "qrc:/FixtureBrowser.qml"
+        animatePanel(true)
+    }
+
     function closeChannelTools()
     {
         intToolButton.checked = false
