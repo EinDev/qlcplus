@@ -28,6 +28,11 @@
 
 ---
 
+> **This is a personal fork** (`EinDev/qlcplus`) of the upstream project below,
+> with its own independent, automatically-versioned releases (tagged
+> `eindev-v*`) — unrelated to and not to be confused with upstream's own
+> `QLC+_x.y.z` releases linked in the badges above.
+
 <p align="center">
   <a href="https://www.qlcplus.org/download">
     <img src="https://custom-icon-badges.demolab.com/badge/-Download_QLC+-blue?style=for-the-badge&logo=download&logoColor=white" alt="Download QLC+ badge" /></a>
