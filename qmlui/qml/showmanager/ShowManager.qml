@@ -29,6 +29,7 @@ import "."
 Rectangle
 {
     id: showMgrContainer
+    objectName: "showManagerRoot"
     anchors.fill: parent
     color: "transparent"
 
@@ -50,7 +51,10 @@ Rectangle
 
     function centerView()
     {
-        var xPos = TimeUtils.timeToSize(showManager.currentTime, timeScale, tickSize) - (timelineHeader.width / 2)
+        var xPos = (showManager.timeDivision === Show.Time)
+                ? TimeUtils.timeToSize(showManager.currentTime, timeScale, tickSize)
+                : TimeUtils.timeToBeatPosition(showManager.currentTime, tickSize, ioManager.bpmNumber, showManager.beatsDivision)
+        xPos -= (timelineHeader.width / 2)
         if (xPos >= 0)
             xViewOffset = xPos
     }
@@ -60,6 +64,48 @@ Rectangle
         //console.log("Show Manager tick size: " + tickSize + "pixel")
         showManager.renderView(itemsArea.contentItem)
         centerView()
+    }
+
+    // Shared by the ZoomItem buttons below and the "Ctrl+="/"Ctrl+-" keyboard
+    // shortcuts (see App::registerBuiltinShortcuts, actions "showmgr.zoomIn"/
+    // "showmgr.zoomOut"), so both stay in sync with a single implementation.
+    function zoomTimelineIn()
+    {
+        if (showManager.timeScale > 1.0)
+            showManager.timeScale -= 1.0
+        else
+            showManager.timeScale -= 0.1
+        centerView()
+    }
+
+    function zoomTimelineOut()
+    {
+        if (showManager.timeScale >= 1.0)
+            showManager.timeScale += 1.0
+        else
+            showManager.timeScale += 0.1
+        centerView()
+    }
+
+    // Shared by the track up/down IconButtons below and the "Alt+Up"/
+    // "Alt+Down" keyboard shortcuts (see App::registerBuiltinShortcuts,
+    // actions "showmgr.moveTrackUp"/"showmgr.moveTrackDown").
+    function moveSelectedTrackUp()
+    {
+        if (selectedTrackIndex <= 0)
+            return
+        showManager.moveTrack(selectedTrackIndex, -1)
+        selectedTrackIndex--
+        renderAndCenter()
+    }
+
+    function moveSelectedTrackDown()
+    {
+        if (selectedTrackIndex >= tracksBox.count - 1)
+            return
+        showManager.moveTrack(selectedTrackIndex, 1)
+        selectedTrackIndex++
+        renderAndCenter()
     }
 
     Rectangle
@@ -322,23 +368,9 @@ Rectangle
                 implicitHeight: parent.height - 2
                 fontColor: "#222"
 
-                onZoomOutClicked:
-                {
-                    if (showManager.timeScale >= 1.0)
-                        showManager.timeScale += 1.0
-                    else
-                        showManager.timeScale += 0.1
-                    centerView()
-                }
+                onZoomOutClicked: zoomTimelineOut()
 
-                onZoomInClicked:
-                {
-                    if (showManager.timeScale > 1.0)
-                        showManager.timeScale -= 1.0
-                    else
-                        showManager.timeScale -= 0.1
-                    centerView()
-                }
+                onZoomInClicked: zoomTimelineIn()
             }
         }
     } // top bar
@@ -382,12 +414,7 @@ Rectangle
                 faSource: FontAwesome.fa_angle_up
                 faColor: UISettings.fgMain
                 tooltip: qsTr("Move the selected track up")
-                onClicked:
-                {
-                    showManager.moveTrack(selectedTrackIndex, -1)
-                    selectedTrackIndex--
-                    renderAndCenter()
-                }
+                onClicked: moveSelectedTrackUp()
             }
 
             IconButton
@@ -398,12 +425,7 @@ Rectangle
                 faSource: FontAwesome.fa_angle_down
                 faColor: UISettings.fgMain
                 tooltip: qsTr("Move the selected track down")
-                onClicked:
-                {
-                    showManager.moveTrack(selectedTrackIndex, 1)
-                    selectedTrackIndex++
-                    renderAndCenter()
-                }
+                onClicked: moveSelectedTrackDown()
             }
 
             // layout filler
@@ -550,7 +572,10 @@ Rectangle
                 anchors.fill: parent
                 onClicked: (mouse) =>
                 {
-                    showManager.currentTime = TimeUtils.posToMs(mouse.x, timeScale, tickSize)
+                    if (showManager.timeDivision === Show.Time)
+                        showManager.currentTime = TimeUtils.posToMs(mouse.x, timeScale, tickSize)
+                    else if (ioManager.bpmNumber > 0)
+                        showManager.currentTime = TimeUtils.posToBeatMs(mouse.x, tickSize, ioManager.bpmNumber, showManager.beatsDivision)
                     showManager.resetItemsSelection()
                 }
             }
@@ -615,8 +640,12 @@ Rectangle
                         var fTime
                         if (showManager.timeDivision === Show.Time)
                             fTime = TimeUtils.posToMs(itemsArea.contentX + drag.x, timeScale, tickSize)
+                        else if (ioManager.bpmNumber > 0)
+                            // posToBeat stored a beat-pseudo count, not real ms - startTime is
+                            // always real ms now, so this must go through posToBeatMs instead
+                            fTime = TimeUtils.posToBeatMs(itemsArea.contentX + drag.x, tickSize, ioManager.bpmNumber, showManager.beatsDivision)
                         else
-                            fTime = TimeUtils.posToBeat(itemsArea.contentX + drag.x, tickSize, showManager.beatsDivision)
+                            fTime = 0
                         console.log("Drop on time1: " + fTime)
                         showManager.addItems(itemsArea.contentItem, trackIdx, fTime, drag.source.itemsList)
                     }
@@ -689,8 +718,10 @@ Rectangle
 
                             if (showManager.timeDivision === Show.Time)
                                 fTime = TimeUtils.posToMs(xViewOffset + drag.x, timeScale, tickSize)
+                            else if (ioManager.bpmNumber > 0)
+                                fTime = TimeUtils.posToBeatMs(xViewOffset + drag.x, tickSize, ioManager.bpmNumber, showManager.beatsDivision)
                             else
-                                fTime = TimeUtils.posToBeat(xViewOffset + drag.x, tickSize, showManager.beatsDivision)
+                                fTime = 0
 
                             console.log("Drop on time2: " + fTime)
                             showManager.addItems(itemsArea.contentItem, -1, fTime, drag.source.itemsList)

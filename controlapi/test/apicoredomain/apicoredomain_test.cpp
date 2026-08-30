@@ -26,7 +26,6 @@
 #include "apiserver.h"
 #include "doc.h"
 #include "qlcconfig.h"
-#include "app.h"
 
 static QString buildRequest(const QString &method, const QJsonObject &params, const QString &id = QStringLiteral("t-1"))
 {

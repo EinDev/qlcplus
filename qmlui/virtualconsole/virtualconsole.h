@@ -33,6 +33,7 @@ class QXmlStreamReader;
 class QXmlStreamWriter;
 class QLCInputSource;
 class ContextManager;
+class ShortcutManager;
 class TreeModel;
 class VCFrame;
 class Doc;
@@ -363,12 +364,22 @@ public:
     /** Delete an existing key sequence from the specified $widget */
     Q_INVOKABLE void deleteKeySequence(VCWidget *widget, quint32 id, QString keyText);
 
-    /** @reimp */
-    void handleKeyEvent(QKeyEvent *e, bool pressed) override;
+    /** Reference used to check, while a user is capturing a new key sequence
+     *  in the auto-detection flow above, whether that sequence would shadow
+     *  a built-in ShortcutManager action - see setShortcutManager() */
+    void setShortcutManager(ShortcutManager *shortcutManager);
+
+    /** @reimp
+     *  Returns true if $e matched an existing per-show key binding on the
+     *  currently selected page (or a page-activation sequence) and was
+     *  dispatched - App::keyPressEvent uses this to give these user-defined
+     *  bindings priority over the built-in ShortcutManager registry */
+    bool handleKeyEvent(QKeyEvent *e, bool pressed) override;
 
 protected:
     QKeySequence m_autoDetectionKey;
     quint32 m_autoDetectionKeyId;
+    ShortcutManager *m_shortcutManager;
 
     /*********************************************************************
      * Load & Save

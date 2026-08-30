@@ -645,12 +645,8 @@ void ContextManager::handleKeyPress(QKeyEvent *e)
 
     qDebug() << "Key press event received:" << e->text();
 
-    // Ctrl+G (invert group selection) is not yet migrated to ShortcutManager -
-    // it was added to this switch after the ShortcutManager migration branch
-    // was forked, so it's kept here rather than silently dropped.
-    if (e->modifiers() & Qt::ControlModifier && e->key() == Qt::Key_G)
-        invertGroupSelection();
-
+    // Ctrl+G (invert group selection) is dispatched via ShortcutManager (see
+    // App::registerBuiltinShortcuts) - same as Delete below.
     // Delete is dispatched via ShortcutManager (see App::registerBuiltinShortcuts).
     // Never let it reach the PreviewContext broadcast below, same as before this
     // was extracted out of this function.
