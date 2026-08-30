@@ -60,6 +60,7 @@ Item
     property bool showOldPosGhost: false
     property real previewOffsetX: 0
     property real previewOffsetY: 0
+    property real previewWidthDelta: 0
     property bool showLandingPreview: false
 
     function getVisibleSnapEdges()
@@ -126,6 +127,34 @@ Item
         tooltip += qsTr("Position: ") + pos
         tooltip += "\n" + qsTr("Duration: ") + dur
         toolTipText = tooltip
+    }
+
+    // Mirrors ShowManager::checkAndMoveItem's grid-snap round-trip (showmanager.cpp)
+    // exactly, including its use of time-based m_timeScale/m_tickSize math even when
+    // newStartTime is actually a beat count (Show.Beats) rather than milliseconds -
+    // a pre-existing inconsistency in the C++ code that this preview intentionally
+    // mirrors rather than "fixes", so it always matches what release will really do.
+    function gridSnappedPreviewOffsetX(rawDx)
+    {
+        var pxX = itemRoot.x + rawDx
+        var newStartTime = (timeDivision === Show.Time)
+                ? TimeUtils.posToMs(pxX, timeScale, tickSize)
+                : TimeUtils.posToBeat(pxX, tickSize, beatsDivision)
+
+        // onReleased clamps a negative landing time to 0 before calling
+        // checkAndMoveItem - mirror that here too
+        if (newStartTime < 0)
+            newStartTime = 0
+
+        var xPos = (newStartTime * tickSize) / (timeScale * 1000.0)
+        xPos = Math.round(xPos / tickSize) * tickSize
+        var newTime = xPos * (1000 * timeScale) / tickSize
+
+        var snappedPxX = (timeDivision === Show.Time)
+                ? TimeUtils.timeToSize(newTime, timeScale, tickSize)
+                : TimeUtils.beatsToSize(newTime, tickSize, beatsDivision)
+
+        return snappedPxX - itemRoot.x
     }
 
     /* Locker image */
@@ -297,7 +326,7 @@ Item
         x: previewOffsetX
         y: previewOffsetY
         z: 1
-        width: itemRoot.width
+        width: itemRoot.width + previewWidthDelta
         height: itemRoot.height
         radius: 2
         color: Qt.rgba(globalColor.r, globalColor.g, globalColor.b, 0.3)
@@ -378,6 +407,8 @@ Item
             oldPosX = itemRoot.x
             oldPosY = itemRoot.y
             oldPosWidth = itemRoot.width
+            previewOffsetX = 0
+            previewWidthDelta = 0
         }
         onPositionChanged: (mouse) =>
         {
@@ -431,8 +462,9 @@ Item
             showItemBody.x = dx
             showItemBody.y = dy
 
-            previewOffsetX = dx
+            previewOffsetX = (showManager.gridEnabled && !itemSnapped) ? gridSnappedPreviewOffsetX(dx) : dx
             previewOffsetY = (Math.round((itemRoot.y + dy) / itemRoot.height) * itemRoot.height) - itemRoot.y
+            previewWidthDelta = 0
 
             var txt
             if (timeDivision === Show.Time)
@@ -547,6 +579,9 @@ Item
                 oldPosWidth = itemRoot.width
                 showOldPosGhost = true
                 showLandingPreview = true
+                previewOffsetX = 0
+                previewOffsetY = 0
+                previewWidthDelta = 0
             }
 
             onPositionChanged: (mouse) =>
@@ -592,6 +627,24 @@ Item
                 infoTextBox.height = itemRoot.height / 2
                 infoTextBox.textHAlign = Text.AlignLeft
                 updateTooltipText()
+
+                // grid-snap preview (skip if item-snapped) - mirrors the release-time
+                // logic below exactly; only x/width compensate, right edge stays fixed.
+                // Uses "itemRoot.x > 0" rather than a plain truthy check: the
+                // release-time code only reaches its (falsy-on-0) check *after*
+                // clamping a negative x to 0, so a negative itemRoot.x here (still
+                // truthy) must be excluded up front to match that outcome.
+                if (showManager.gridEnabled && !itemSnapped && itemRoot.x > 0)
+                {
+                    var snappedX = Math.round(itemRoot.x / tickSize) * tickSize
+                    previewOffsetX = snappedX - itemRoot.x
+                    previewWidthDelta = itemRoot.x - snappedX
+                }
+                else
+                {
+                    previewOffsetX = 0
+                    previewWidthDelta = 0
+                }
             }
             onReleased: (mouse) =>
             {
@@ -679,6 +732,9 @@ Item
                 oldPosWidth = itemRoot.width
                 showOldPosGhost = true
                 showLandingPreview = true
+                previewOffsetX = 0
+                previewOffsetY = 0
+                previewWidthDelta = 0
             }
 
             onPositionChanged: (mouse) =>
@@ -717,6 +773,20 @@ Item
                     infoTextBox.height = itemRoot.height / 4
                     infoTextBox.textHAlign = Text.AlignRight
                     updateTooltipText()
+
+                    // grid-snap preview (skip if item-snapped) - mirrors the
+                    // release-time logic below exactly; only width changes here,
+                    // the left edge/x is fixed for a right-edge resize
+                    if (showManager.gridEnabled && !itemSnapped)
+                    {
+                        var snappedEndPos = Math.round((itemRoot.x + itemRoot.width) / tickSize) * tickSize
+                        previewWidthDelta = snappedEndPos - (itemRoot.x + itemRoot.width)
+                    }
+                    else
+                    {
+                        previewWidthDelta = 0
+                    }
+                    previewOffsetX = 0
                 }
             }
             onReleased:
