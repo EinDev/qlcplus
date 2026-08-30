@@ -133,10 +133,6 @@ Item
 
         onLoaded:
         {
-            itemRoot.width = width
-            itemRoot.height = height
-            itemRoot.adjustToolPosition()
-
             item.showPalette = false
             if (item.hasOwnProperty('dragTarget'))
                 item.dragTarget = itemRoot
@@ -158,8 +154,14 @@ Item
             }
             else
             {
+                // for PresetsTool this sets the tab model, which its width depends
+                // on - must happen before itemRoot picks up the tool's width below
                 item.updatePresets(fixtureManager.presetChannel(itemRoot.fixtureId, itemRoot.channelIndex))
             }
+
+            itemRoot.width = width
+            itemRoot.height = height
+            itemRoot.adjustToolPosition()
 
             item.closeOnSelect = true
             itemRoot.visible = true
