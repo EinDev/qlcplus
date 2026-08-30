@@ -18,6 +18,7 @@
 */
 
 import QtQuick
+import QtQuick.Window
 
 import org.qlcplus.classes 1.0
 import "."
@@ -25,7 +26,11 @@ import "."
 Rectangle
 {
     id: toolRoot
-    width: UISettings.bigItemHeight * 3
+    readonly property real tabItemWidth: UISettings.bigItemHeight * 1.3
+    readonly property real minToolWidth: UISettings.bigItemHeight * 3
+    readonly property real maxToolWidth: toolRoot.Window.window ?
+                Math.max(minToolWidth, toolRoot.Window.width * 0.8) : minToolWidth
+    width: Math.min(Math.max(minToolWidth, tabItemWidth * prList.count), maxToolWidth)
     height: presetsArea.height + (showPalette ? paletteBox.height : 0)
     color: UISettings.bgStrong
     border.color: UISettings.bgLight
@@ -79,10 +84,15 @@ Rectangle
                 GradientStop { position: 1; color: UISettings.toolbarEnd }
             }
 
+            // true when the tabs don't all fit even at toolRoot's capped width
+            readonly property bool tabsOverflow: (toolRoot.tabItemWidth * prList.count) > presetToolBar.width
+
             ListView
             {
                 id: prList
                 anchors.fill: parent
+                anchors.leftMargin: prevTabButton.visible ? prevTabButton.width : 0
+                anchors.rightMargin: nextTabButton.visible ? nextTabButton.width : 0
                 orientation: ListView.Horizontal
                 boundsBehavior: Flickable.StopAtBounds
 
@@ -90,7 +100,7 @@ Rectangle
                     Rectangle
                     {
                         id: delegateRoot
-                        width: UISettings.bigItemHeight * 1.3
+                        width: toolRoot.tabItemWidth
                         height: presetToolBar.height
                         property bool isCurrentPreset: toolRoot.selectedFixture === fxID &&
                                                         toolRoot.selectedChannel === chIdx
@@ -137,6 +147,33 @@ Rectangle
                             }
                         }
                     }
+            }
+
+            IconButton
+            {
+                id: prevTabButton
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                width: UISettings.iconSizeDefault
+                height: width
+                visible: presetToolBar.tabsOverflow && !prList.atXBeginning
+                faSource: FontAwesome.fa_angle_left
+                tooltip: qsTr("Show previous channels")
+                onClicked: prList.contentX = Math.max(0, prList.contentX - toolRoot.tabItemWidth)
+            }
+
+            IconButton
+            {
+                id: nextTabButton
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                width: UISettings.iconSizeDefault
+                height: width
+                visible: presetToolBar.tabsOverflow && !prList.atXEnd
+                faSource: FontAwesome.fa_angle_right
+                tooltip: qsTr("Show next channels")
+                onClicked: prList.contentX = Math.min(prList.contentWidth - prList.width,
+                                                       prList.contentX + toolRoot.tabItemWidth)
             }
         }
 
