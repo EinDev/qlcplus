@@ -132,7 +132,12 @@ Item
                         gfhcDragItem.parent = mainView
                         gfhcDragItem.x = posnInWindow.x - (gfhcDragItem.width / 4)
                         gfhcDragItem.y = posnInWindow.y - (gfhcDragItem.height / 4)
-                        if (!qItem.isSelected)
+                        // A Shift range-select is about to rebuild itemsList itself
+                        // (see App.Clicked below) - don't let the plain/Ctrl logic
+                        // here reset or partially populate it first
+                        var isShiftRangeSelect = (mouseMods & Qt.ShiftModifier) && groupListView.shiftAnchorIndex >= 0
+
+                        if (!isShiftRangeSelect && !qItem.isSelected)
                         {
                             if ((mouseMods & Qt.ControlModifier) == 0)
                                 gfhcDragItem.itemsList = []
