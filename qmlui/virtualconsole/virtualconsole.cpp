@@ -44,6 +44,7 @@
 #include "tardis.h"
 #include "doc.h"
 #include "app.h"
+#include "shortcutmanager.h"
 
 #define KXMLQLCVCProperties             QStringLiteral("Properties")
 #define KXMLQLCVCPropertiesSize         QStringLiteral("Size")
@@ -79,6 +80,7 @@ VirtualConsole::VirtualConsole(QQuickView *view, Doc *doc,
     , m_inputChannelsTree(nullptr)
     , m_autoDetectionKey(QKeySequence())
     , m_autoDetectionKeyId(UINT_MAX)
+    , m_shortcutManager(nullptr)
 {
     Q_ASSERT(doc != nullptr);
 
@@ -1472,13 +1474,18 @@ void VirtualConsole::deleteKeySequence(VCWidget *widget, quint32 id, QString key
     widget->deleteKeySequence(seq);
 }
 
-void VirtualConsole::handleKeyEvent(QKeyEvent *e, bool pressed)
+void VirtualConsole::setShortcutManager(ShortcutManager *shortcutManager)
+{
+    m_shortcutManager = shortcutManager;
+}
+
+bool VirtualConsole::handleKeyEvent(QKeyEvent *e, bool pressed)
 {
     if (m_inputDetectionEnabled == false)
     {
         /* Ignore the repeating events */
         if (e->isAutoRepeat())
-            return;
+            return false;
 
         // Ctrl+E (edit mode toggle) is dispatched via ShortcutManager on key
         // press instead (see App::registerBuiltinShortcuts).
@@ -1490,20 +1497,22 @@ void VirtualConsole::handleKeyEvent(QKeyEvent *e, bool pressed)
         {
             QQuickItem *vcItem = qobject_cast<QQuickItem*>(m_view->rootObject()->findChild<QObject *>("virtualConsole"));
             if (vcItem == nullptr)
-                return;
+                return false;
 
             QMetaObject::invokeMethod(vcItem, "activatePage", Q_ARG(QVariant, pageIndex));
-            return;
+            return true;
         }
 
         /** otherwise forward it to the currently selected page */
+        bool handled = false;
         for (int pageIndex = 0; pageIndex < m_pages.count(); pageIndex++)
         {
             VCPage *page = m_pages.at(pageIndex);
 
             if (pageIndex == selectedPage())
-                page->handleKeyEvent(seq, pressed);
+                handled = page->handleKeyEvent(seq, pressed);
         }
+        return handled;
     }
     else
     {
@@ -1511,10 +1520,26 @@ void VirtualConsole::handleKeyEvent(QKeyEvent *e, bool pressed)
 
         /** consider only the key release */
         if (pressed == true)
-            return;
+            return false;
 
         QKeySequence seq(e->key() | e->modifiers());
         qDebug() << "Got key sequence:" << seq.toString(QKeySequence::NativeText);
+
+        // Warn the user if the sequence they just captured would shadow a
+        // built-in ShortcutManager action - with App::keyPressEvent giving
+        // per-show VC bindings priority, this binding will always win from
+        // now on whenever this project is loaded.
+        if (m_shortcutManager != nullptr)
+        {
+            QString collidingAction = m_shortcutManager->actionDescriptionForSequence(seq);
+            if (!collidingAction.isEmpty())
+            {
+                QMetaObject::invokeMethod(m_view->rootObject(), "showShortcutCollisionWarning",
+                                           Q_ARG(QVariant, seq.toString(QKeySequence::NativeText)),
+                                           Q_ARG(QVariant, collidingAction));
+            }
+        }
+
         m_autoDetectionWidget->updateKeySequence(m_autoDetectionKey, seq, m_autoDetectionKeyId);
 
         for (VCPage *page : m_pages) // C++11
@@ -1522,6 +1547,7 @@ void VirtualConsole::handleKeyEvent(QKeyEvent *e, bool pressed)
 
         /** At last, disable the autodetection process */
         disableAutoDetection();
+        return true;
     }
 }
 

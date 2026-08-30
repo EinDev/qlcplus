@@ -235,6 +235,7 @@ void App::startup()
 
     m_shortcutManager = new ShortcutManager(this);
     rootContext()->setContextProperty("shortcutManager", m_shortcutManager);
+    m_virtualConsole->setShortcutManager(m_shortcutManager);
     registerBuiltinShortcuts();
 
     m_stageWizard = new StageWizard(m_doc, m_fixtureManager, m_functionManager,
@@ -323,6 +324,7 @@ void App::registerBuiltinShortcuts()
     ContextManager *cm = m_contextManager;
     InputOutputManager *ioMgr = m_ioManager;
     VirtualConsole *vc = m_virtualConsole;
+    ShowManager *sm = m_showManager;
 
     m_shortcutManager->registerAction("fixture.selectAll", QKeySequence(Qt::CTRL | Qt::Key_A),
                                        ShortcutManager::FixturesAndFunctions,
@@ -442,6 +444,151 @@ void App::registerBuiltinShortcuts()
                                        ShortcutManager::Global,
                                        tr("Switch to the Input/Output Manager tab"),
                                        [cm]() { cm->switchToContext("IOMGR"); });
+
+    // Space is deliberately not bound to anything in VirtualConsole scope -
+    // it stays free for a user's own per-show VC binding (e.g. a cue-list
+    // Play button), which now always takes priority anyway (see
+    // App::keyPressEvent), but leaving it unregistered here keeps that
+    // intent explicit instead of relying on it being merely harmless.
+
+    m_shortcutManager->registerAction("vc.copy", QKeySequence(Qt::CTRL | Qt::Key_C),
+                                       ShortcutManager::VirtualConsole,
+                                       tr("Copy the selected widgets"),
+                                       [vc]() { if (vc->editMode()) vc->copyToClipboard(); });
+
+    m_shortcutManager->registerAction("vc.cut", QKeySequence(Qt::CTRL | Qt::Key_X),
+                                       ShortcutManager::VirtualConsole,
+                                       tr("Cut the selected widgets"),
+                                       [vc]() { if (vc->editMode()) vc->cutToClipboard(); });
+
+    m_shortcutManager->registerAction("vc.paste", QKeySequence(Qt::CTRL | Qt::Key_V),
+                                       ShortcutManager::VirtualConsole,
+                                       tr("Paste widgets from the clipboard"),
+                                       [vc]() { if (vc->editMode()) vc->pasteFromClipboard(); });
+
+    m_shortcutManager->registerAction("vc.delete", QKeySequence(Qt::Key_Delete),
+                                       ShortcutManager::VirtualConsole,
+                                       tr("Delete the selected widgets"),
+                                       [vc]() { if (vc->editMode()) vc->deleteVCWidgets(vc->selectedWidgetIDs()); });
+
+    m_shortcutManager->registerAction("vc.insertWidget", QKeySequence(Qt::Key_Insert),
+                                       ShortcutManager::VirtualConsole,
+                                       tr("Open the Add Widget panel"),
+                                       [this, vc]()
+                                       {
+                                           if (!vc->editMode())
+                                               return;
+                                           QQuickItem *vcItem = qobject_cast<QQuickItem *>(
+                                               rootObject()->findChild<QObject *>("virtualConsole"));
+                                           if (vcItem)
+                                               QMetaObject::invokeMethod(vcItem, "toggleAddWidgetPanel");
+                                       });
+
+    m_shortcutManager->registerAction("vc.previousPage", QKeySequence(Qt::Key_PageUp),
+                                       ShortcutManager::VirtualConsole,
+                                       tr("Select the previous Virtual Console page"),
+                                       [vc]()
+                                       {
+                                           int page = vc->selectedPage() - 1;
+                                           if (page < 0)
+                                               page = 0;
+                                           if (page < vc->pagesCount())
+                                               vc->setSelectedPage(page);
+                                       });
+
+    m_shortcutManager->registerAction("vc.nextPage", QKeySequence(Qt::Key_PageDown),
+                                       ShortcutManager::VirtualConsole,
+                                       tr("Select the next Virtual Console page"),
+                                       [vc]()
+                                       {
+                                           int page = vc->selectedPage() + 1;
+                                           if (page < vc->pagesCount())
+                                               vc->setSelectedPage(page);
+                                       });
+
+    m_shortcutManager->registerAction("vc.zoomIn", QKeySequence(Qt::CTRL | Qt::Key_Equal),
+                                       ShortcutManager::VirtualConsole,
+                                       tr("Zoom the current Virtual Console page in"),
+                                       [vc]() { vc->setPageScale(0.1); });
+
+    m_shortcutManager->registerAction("vc.zoomOut", QKeySequence(Qt::CTRL | Qt::Key_Minus),
+                                       ShortcutManager::VirtualConsole,
+                                       tr("Zoom the current Virtual Console page out"),
+                                       [vc]() { vc->setPageScale(-0.1); });
+
+    m_shortcutManager->registerAction("showmgr.play", QKeySequence(Qt::Key_Space),
+                                       ShortcutManager::ShowManager,
+                                       tr("Play/pause the current Show"),
+                                       [sm]() { sm->playShow(); });
+
+    m_shortcutManager->registerAction("showmgr.stop", QKeySequence(Qt::Key_Home),
+                                       ShortcutManager::ShowManager,
+                                       tr("Stop/rewind the current Show"),
+                                       [sm]() { sm->stopShow(); });
+
+    m_shortcutManager->registerAction("showmgr.copy", QKeySequence(Qt::CTRL | Qt::Key_C),
+                                       ShortcutManager::ShowManager,
+                                       tr("Copy the selected Show items"),
+                                       [sm]() { sm->copyToClipboard(); });
+
+    m_shortcutManager->registerAction("showmgr.paste", QKeySequence(Qt::CTRL | Qt::Key_V),
+                                       ShortcutManager::ShowManager,
+                                       tr("Paste Show items from the clipboard"),
+                                       [sm]() { sm->pasteFromClipboard(); });
+
+    m_shortcutManager->registerAction("showmgr.zoomIn", QKeySequence(Qt::CTRL | Qt::Key_Equal),
+                                       ShortcutManager::ShowManager,
+                                       tr("Zoom the Show Manager timeline in"),
+                                       [this]()
+                                       {
+                                           QQuickItem *smItem = qobject_cast<QQuickItem *>(
+                                               rootObject()->findChild<QObject *>("showManagerRoot"));
+                                           if (smItem)
+                                               QMetaObject::invokeMethod(smItem, "zoomTimelineIn");
+                                       });
+
+    m_shortcutManager->registerAction("showmgr.zoomOut", QKeySequence(Qt::CTRL | Qt::Key_Minus),
+                                       ShortcutManager::ShowManager,
+                                       tr("Zoom the Show Manager timeline out"),
+                                       [this]()
+                                       {
+                                           QQuickItem *smItem = qobject_cast<QQuickItem *>(
+                                               rootObject()->findChild<QObject *>("showManagerRoot"));
+                                           if (smItem)
+                                               QMetaObject::invokeMethod(smItem, "zoomTimelineOut");
+                                       });
+
+    m_shortcutManager->registerAction("showmgr.toggleSnap", QKeySequence(Qt::ALT | Qt::Key_S),
+                                       ShortcutManager::ShowManager,
+                                       tr("Toggle Show Manager snap-to-grid"),
+                                       [sm]() { sm->setGridEnabled(!sm->gridEnabled()); });
+
+    m_shortcutManager->registerAction("showmgr.toggleStretch", QKeySequence(Qt::ALT | Qt::Key_T),
+                                       ShortcutManager::ShowManager,
+                                       tr("Toggle Show Manager stretch-functions"),
+                                       [sm]() { sm->setStretchFunctions(!sm->stretchFunctions()); });
+
+    m_shortcutManager->registerAction("showmgr.moveTrackUp", QKeySequence(Qt::ALT | Qt::Key_Up),
+                                       ShortcutManager::ShowManager,
+                                       tr("Move the selected Show track up"),
+                                       [this]()
+                                       {
+                                           QQuickItem *smItem = qobject_cast<QQuickItem *>(
+                                               rootObject()->findChild<QObject *>("showManagerRoot"));
+                                           if (smItem)
+                                               QMetaObject::invokeMethod(smItem, "moveSelectedTrackUp");
+                                       });
+
+    m_shortcutManager->registerAction("showmgr.moveTrackDown", QKeySequence(Qt::ALT | Qt::Key_Down),
+                                       ShortcutManager::ShowManager,
+                                       tr("Move the selected Show track down"),
+                                       [this]()
+                                       {
+                                           QQuickItem *smItem = qobject_cast<QQuickItem *>(
+                                               rootObject()->findChild<QObject *>("showManagerRoot"));
+                                           if (smItem)
+                                               QMetaObject::invokeMethod(smItem, "moveSelectedTrackDown");
+                                       });
 }
 
 void App::toggleFullscreen()
@@ -609,6 +756,18 @@ bool App::isTextInputFocused() const
 void App::keyPressEvent(QKeyEvent *e)
 {
     if (isTextInputFocused() && isTextEditingKey(e))
+    {
+        QQuickView::keyPressEvent(e);
+        return;
+    }
+
+    // Virtual Console's own per-show key bindings must be checked before the
+    // ShortcutManager registry: they are a deliberate, specific user action
+    // (bound within their own project), while the registry only holds
+    // built-in defaults - the more specific binding should always win, and
+    // silently being unable to ever fire because a built-in shortcut happens
+    // to reuse the same combo would be a worse outcome than the reverse.
+    if (m_virtualConsole && m_virtualConsole->handleKeyEvent(e, true))
     {
         QQuickView::keyPressEvent(e);
         return;

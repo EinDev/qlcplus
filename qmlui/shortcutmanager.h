@@ -75,6 +75,13 @@ public:
      *  true. Returns false if nothing matched (the event is not consumed) */
     bool handleKeyEvent(QKeyEvent *event);
 
+    /** Return the description of the registered action bound to $sequence,
+     *  regardless of scope, or an empty string if none matches. Used to warn
+     *  a user binding a per-show Virtual Console key that it will shadow a
+     *  built-in action - VC bindings are tab-global so any scope could be
+     *  affected once bound, not just whatever scope is current right now */
+    QString actionDescriptionForSequence(const QKeySequence &sequence) const;
+
 signals:
     void currentContextChanged();
 

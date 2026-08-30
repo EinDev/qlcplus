@@ -202,10 +202,11 @@ qreal PreviewContext::pixelDensity() const
     return m_pixelDensity;
 }
 
-void PreviewContext::handleKeyEvent(QKeyEvent *e, bool pressed)
+bool PreviewContext::handleKeyEvent(QKeyEvent *e, bool pressed)
 {
     Q_UNUSED(e)
     Q_UNUSED(pressed)
+    return false;
 }
 
 void PreviewContext::slotWindowClosing()
