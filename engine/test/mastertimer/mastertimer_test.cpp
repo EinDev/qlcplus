@@ -191,18 +191,33 @@ void MasterTimer_Test::interval()
     /* Wait for one second */
     QTest::qWait(1000);
 
-#ifndef SKIP_TEST
-    /* It's not guaranteed that context switch happens exactly after 50
-       cycles, so we just have to estimate here... */
-    QVERIFY(fs.m_writeCalls >= 49 && fs.m_writeCalls <= 51);
-    QVERIFY(dss.m_writeCalls >= 49 && dss.m_writeCalls <= 51);
-#endif
+    /* Snapshot the write counts and fully stop/unregister the stubs *before*
+     * asserting on those counts below. fs/dss are stack objects that are still
+     * registered with MasterTimer's background timer thread at this point; if
+     * a QVERIFY on the snapshotted values below were to fail with fs/dss still
+     * registered, QVERIFY's early return would destroy fs/dss on the way out
+     * of this function while that timer thread could still be calling
+     * write()/writeDMX() on them - a cross-thread use-after-free that
+     * intermittently crashed this test (SIGSEGV on Windows, SIGBUS on macOS)
+     * whenever the timing-sensitive write-count assertion below happened to
+     * fail. */
+    int fsWriteCalls = fs.m_writeCalls;
+    int dssWriteCalls = dss.m_writeCalls;
 
     fs.stop(FunctionParent::master());
     QTest::qWait(1000);
-    QVERIFY(mt->runningFunctions() == 0);
-
     mt->unregisterDMXSource(&dss);
+
+#ifndef SKIP_TEST
+    /* It's not guaranteed that context switch happens exactly after 50
+       cycles, so we just have to estimate here. fs was registered via the
+       manual timerTick() call above, which ticks it once more than dss
+       (registered afterwards), so fs's window sits one write above dss's. */
+    QVERIFY(fsWriteCalls >= 50 && fsWriteCalls <= 52);
+    QVERIFY(dssWriteCalls >= 49 && dssWriteCalls <= 51);
+#endif
+
+    QVERIFY(mt->runningFunctions() == 0);
     QVERIFY(mt->m_dmxSourceList.size() == 0);
 }
 
