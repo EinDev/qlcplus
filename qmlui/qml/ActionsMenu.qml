@@ -495,6 +495,20 @@ Popup
 
         ContextMenuEntry
         {
+            id: shortcutsConfig
+            faSource: FontAwesome.fa_keyboard
+            faColor: UISettings.fgLight
+            entryText: qsTr("Keyboard Shortcuts")
+            onEntered: submenuItem = null
+            onClicked:
+            {
+                menuRoot.close()
+                mainView.loadResource("qrc:/ShortcutsEditor.qml")
+            }
+        }
+
+        ContextMenuEntry
+        {
             id: fullScreen
             faSource: FontAwesome.fa_maximize
             faColor: UISettings.fgLight
