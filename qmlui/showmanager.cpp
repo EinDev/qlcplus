@@ -1741,3 +1741,120 @@ void ShowManager::pasteFromClipboard()
                  QVariantList() << func->id(), item.m_showFunc);
     }
 }
+
+double ShowManager::legacyBeatPseudoUnitToMs(int bpmNumber)
+{
+    if (bpmNumber <= 0)
+        return 0.0;
+
+    // Old encoding (TimeUtils.js posToBeat(), pre-398388c7a) stored
+    // beatCount * 1000. Inverse of TimingUtils.qml's msToBeatPseudo()
+    // (round((ms / (60000 / bpm)) * 1000)): realMs = pseudo * (60000/bpm) / 1000
+    return (60000.0 / bpmNumber) / 1000.0;
+}
+
+QVariantMap ShowManager::legacyShowConversionInfo(int showId) const
+{
+    QVariantMap info;
+
+    Show *show = qobject_cast<Show *>(m_doc->function(quint32(showId)));
+    if (show == nullptr)
+        return info;
+
+    int itemCount = 0;
+    foreach (Track *track, show->tracks())
+        itemCount += track->showFunctions().count();
+
+    info["name"] = show->name();
+    info["bpm"] = show->timeDivisionBPM();
+    info["beatsDivision"] = show->beatsDivision();
+    info["itemCount"] = itemCount;
+
+    return info;
+}
+
+QVariantList ShowManager::legacyShowConversionPreview(int showId, int bpmNumber) const
+{
+    QVariantList preview;
+
+    Show *show = qobject_cast<Show *>(m_doc->function(quint32(showId)));
+    double msPerUnit = legacyBeatPseudoUnitToMs(bpmNumber);
+    if (show == nullptr || msPerUnit <= 0.0)
+        return preview;
+
+    QList<ShowFunction *> items;
+    foreach (Track *track, show->tracks())
+        items << track->showFunctions();
+
+    std::sort(items.begin(), items.end(), [](ShowFunction *a, ShowFunction *b) {
+        return a->startTime() < b->startTime();
+    });
+
+    // first/last 3 items (all of them if there are 6 or fewer), per the ADR
+    const int sampleEdge = 3;
+    for (int i = 0; i < items.count(); i++)
+    {
+        if (items.count() > sampleEdge * 2 && i >= sampleEdge && i < items.count() - sampleEdge)
+            continue;
+
+        ShowFunction *sf = items.at(i);
+        Function *target = m_doc->function(sf->functionID());
+
+        QVariantMap row;
+        row["name"] = target != nullptr ? target->name() : tr("Unknown function");
+        row["oldStart"] = sf->startTime();
+        row["newStart"] = quint32(qRound(sf->startTime() * msPerUnit));
+        row["oldDuration"] = sf->duration();
+        row["newDuration"] = quint32(qRound(sf->duration() * msPerUnit));
+        preview << row;
+    }
+
+    return preview;
+}
+
+bool ShowManager::convertLegacyBeatShow(int showId, int bpmNumber)
+{
+    Show *show = qobject_cast<Show *>(m_doc->function(quint32(showId)));
+    double msPerUnit = legacyBeatPseudoUnitToMs(bpmNumber);
+    if (show == nullptr || msPerUnit <= 0.0)
+        return false;
+
+    // Tardis's undo/redo for ShowManagerItemSetStartTime/Duration resolves
+    // the ShowFunction id against ShowManager::currentShow() (ids are only
+    // unique within a Show, not globally - see showfunction.h), exactly
+    // like every other ShowFunction mutator in this class. So this Show
+    // must be made current for the duration of the conversion.
+    int previousShowID = currentShowID();
+    if (previousShowID != showId)
+        setCurrentShowID(showId);
+
+    foreach (Track *track, show->tracks())
+    {
+        foreach (ShowFunction *sf, track->showFunctions())
+        {
+            quint32 newStart = quint32(qRound(sf->startTime() * msPerUnit));
+            if (newStart != sf->startTime())
+            {
+                Tardis::instance()->enqueueAction(Tardis::ShowManagerItemSetStartTime, sf->id(),
+                                                   sf->startTime(), newStart);
+                sf->setStartTime(newStart);
+            }
+
+            quint32 newDuration = quint32(qRound(sf->duration() * msPerUnit));
+            if (newDuration != sf->duration())
+            {
+                Tardis::instance()->enqueueAction(Tardis::ShowManagerItemSetDuration, sf->id(),
+                                                   sf->duration(), newDuration);
+                sf->setDuration(newDuration);
+            }
+        }
+    }
+
+    m_doc->setModified();
+    refreshView();
+
+    if (previousShowID != showId)
+        setCurrentShowID(previousShowID);
+
+    return true;
+}

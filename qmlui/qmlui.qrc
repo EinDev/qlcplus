@@ -295,6 +295,8 @@
     <file alias="ShowItem.qml">qml/showmanager/ShowItem.qml</file>
     <file alias="HeaderAndCursor.qml">qml/showmanager/HeaderAndCursor.qml</file>
     <file alias="TimingUtils.qml">qml/showmanager/TimingUtils.qml</file>
+    <file alias="LegacyShowTimingDialog.qml">qml/showmanager/LegacyShowTimingDialog.qml</file>
+    <file alias="LegacyShowTimingConvertDialog.qml">qml/showmanager/LegacyShowTimingConvertDialog.qml</file>
 
     <!-- Fixture Definition Editor -->
     <file alias="FixtureEditor.qml">qml/fixtureeditor/FixtureEditor.qml</file>
