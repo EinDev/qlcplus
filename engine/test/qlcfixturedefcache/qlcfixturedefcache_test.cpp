@@ -225,9 +225,21 @@ void QLCFixtureDefCache_Test::defDirectories()
 
     QVERIFY(dir.filter() & QDir::Files);
     QVERIFY(dir.nameFilters().contains(QString("*%1").arg(KExtFixture)));
+#if defined(__APPLE__) || defined(Q_OS_MAC)
+    // In a real .app bundle the executable lives in Contents/MacOS/ and
+    // resources in Contents/Resources/ - siblings one level up - so
+    // QLCFile::systemDirectory()'s APPLE branch (qlcfile.cpp) intentionally
+    // inserts "/..". Mirrors the equivalent guard in
+    // engine/test/inputoutputmap/inputoutputmap_test.cpp's profileDirectories()
+    // and engine/test/rgbscript/rgbscript_test.cpp's directories().
+    QString path("%1/../%2");
+    QCOMPARE(dir.path(), path.arg(QCoreApplication::applicationDirPath())
+                             .arg(FIXTUREDIR));
+#else
     QDir fxDir;
     fxDir.setPath(FIXTUREDIR);
     QCOMPARE(dir.absolutePath(), fxDir.absolutePath());
+#endif
 
     dir = QLCFixtureDefCache::userDefinitionDirectory();
 #ifndef SKIP_TEST
