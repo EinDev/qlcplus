@@ -293,13 +293,13 @@ bool ShortcutManager::handleKeyEvent(QKeyEvent *event)
 
 QString ShortcutManager::actionDescriptionForSequence(const QKeySequence &sequence) const
 {
-    for (const ShortcutAction &action : std::as_const(m_actions))
-    {
-        if (action.sequence == sequence)
-            return action.description;
-    }
-
-    return QString();
+    // "regardless of scope" is exactly what findCollision() does when asked
+    // about a Global-scope candidate: scopesOverlap(Global, x) is true for
+    // every x, so this reuses the same match loop instead of a second,
+    // near-identical one. excludeId is unused here (no action to exclude),
+    // and an empty sequence never matches a real registered action, so
+    // findCollision()'s early-out for that case doesn't change behavior
+    return findCollision(sequence.toString(), Global, QString()).value(QStringLiteral("description")).toString();
 }
 
 bool ShortcutManager::scopeMatchesCurrentContext(ShortcutScope scope) const

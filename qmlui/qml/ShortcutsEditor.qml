@@ -163,11 +163,18 @@ Rectangle
         }
     }
 
+    // Same CustomPopupDialog component and title wording as MainView.qml's
+    // shortcutCollisionPopup (VirtualConsole's own auto-detect collision
+    // warning), for visual consistency between the two - the interaction
+    // itself differs (Yes/No here vs. Ok there) because the underlying
+    // situations differ: that one warns *after* a VC binding has already
+    // been captured and always wins regardless, this one asks *before*
+    // committing a rebind that would otherwise silently race another action
     CustomPopupDialog
     {
         id: collisionPopup
         width: mainView.width / 2.5
-        title: qsTr("Keyboard shortcut collision")
+        title: qsTr("Keyboard shortcut already in use")
         standardButtons: Dialog.Yes | Dialog.No
 
         onClicked: function(role)
