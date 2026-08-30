@@ -51,7 +51,7 @@ CustomPopupDialog
     {
         if (popupRoot.arrangeMode === 0)
         {
-            popupRoot.circleDiameter = Math.max(circleSlider.from, Math.min(circleSlider.to,
+            popupRoot.circleDiameter = Math.max(circleSlider.minDiameter, Math.min(circleSlider.maxDiameter,
                                                  contextManager.detectedCircleDiameter()))
         }
         else if (popupRoot.arrangeMode === 2)
@@ -167,19 +167,32 @@ CustomPopupDialog
 
                 RobotoText
                 {
-                    label: qsTr("Diameter: ") + circleSlider.value.toFixed(0) + " mm"
+                    label: qsTr("Diameter: ") + circleSlider.diameterValue.toFixed(0) + " mm"
                 }
                 CustomSlider
                 {
                     id: circleSlider
                     Layout.fillWidth: true
                     enabled: !popupRoot.detectFromPlacement
-                    from: 100
-                    // Was capped at 10000mm (10m) - too narrow for large-scale
-                    // rigs (e.g. drone swarms spanning hundreds of meters).
-                    to: 2000000
-                    value: popupRoot.circleDiameter
-                    onValueChanged: popupRoot.circleDiameter = value
+                    from: 0
+                    to: 1
+
+                    // Was a linear 100-2000000mm slider - too coarse at the
+                    // small end to get fine control, since the huge upper
+                    // bound (needed for drone swarms spanning hundreds of
+                    // meters) forced every pixel of the handle to represent
+                    // thousands of mm. Slider position is now a normalized
+                    // 0-1 value mapped onto the mm range logarithmically, so
+                    // equal handle movement means equal *ratio* change in
+                    // diameter (e.g. always takes the same drag distance to
+                    // double the diameter) instead of equal absolute mm.
+                    readonly property real minDiameter: 100
+                    readonly property real maxDiameter: 2000000
+                    readonly property real diameterValue: minDiameter * Math.pow(maxDiameter / minDiameter, value)
+
+                    value: Math.log(Math.max(popupRoot.circleDiameter, minDiameter) / minDiameter) /
+                           Math.log(maxDiameter / minDiameter)
+                    onValueChanged: popupRoot.circleDiameter = diameterValue
                 }
             }
 
