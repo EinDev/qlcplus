@@ -214,7 +214,6 @@ jobs:
           echo "NPROC=$(nproc)" >> $GITHUB_ENV
           echo "TASK=$(echo '${{matrix.task}}' | cut -d '-' -f 2)" >> $GITHUB_ENV
           echo "QT=${QT:-$(echo '${{matrix.task}}' | cut -d '-' -f 2)}" >> $GITHUB_ENV
-          echo "QTDIR=/d/a/qlcplus/qlcplus/qt/Qt/${{ env.QT_VERSION }}/mingw_64" >> $GITHUB_ENV
           echo "BUILD_DATE=`date -u '+%Y%m%d'`" >> $GITHUB_ENV
           echo "GIT_REV=`git rev-parse --short HEAD`" >> $GITHUB_ENV
 
@@ -236,16 +235,19 @@ jobs:
           echo "QT: ${QT}"
           echo "NPROC: ${NPROC}"
 
-      - name: Install Qt
-        uses: jurplel/install-qt-action@v4
-        with:
-          version: ${{ env.QT_VERSION }}
-          host: 'windows'
-          target: 'desktop'
-          arch: 'win64_mingw'
-          dir: "${{ github.workspace }}/qt/"
-          modules: 'qt3d qtimageformats qtmultimedia qtserialport qtwebsockets'
-
+      # Qt used to come from aqt (jurplel/install-qt-action), a different
+      # MinGW/GCC build than this job's own MSYS2 toolchain compiles
+      # everything else with. That cross-toolchain mix is a real, confirmed
+      # ABI incompatibility, not a config mistake: aqt's Qt6Multimedia.dll
+      # imports emulated-TLS shadow symbols (__emutls_v.*) for std::call_once
+      # statics that MSYS2's own (newer, native-TLS) libstdc++-6.dll simply
+      # doesn't export, so every test binary that transitively loads
+      # qlcplusengine.dll (which always pulls in Multimedia) crashed
+      # instantly with STATUS_ENTRYPOINT_NOT_FOUND (0xc0000139) - see the
+      # git history of this file for the diagnostic that found this. Now
+      # builds against MSYS2's own qt6-* packages instead, exactly matching
+      # local dev (see CLAUDE.md's "Why MSYS2/MinGW, not the Qt installer")
+      # and eliminating the whole cross-toolchain class of bug for good.
       - name: Update and install MSYS2 (64bit)
         uses: msys2/setup-msys2@v2
         with:
@@ -259,6 +261,8 @@ jobs:
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-gcc-libs
             mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-pkgconf
             mingw-w64-x86_64-libmad
             mingw-w64-x86_64-libsndfile
             mingw-w64-x86_64-flac
@@ -266,6 +270,16 @@ jobs:
             mingw-w64-x86_64-libusb
             mingw-w64-x86_64-python-lxml
             mingw-w64-x86_64-nsis
+            mingw-w64-x86_64-qt6-base
+            mingw-w64-x86_64-qt6-declarative
+            mingw-w64-x86_64-qt6-svg
+            mingw-w64-x86_64-qt6-multimedia
+            mingw-w64-x86_64-qt6-websockets
+            mingw-w64-x86_64-qt6-serialport
+            mingw-w64-x86_64-qt6-3d
+            mingw-w64-x86_64-qt6-5compat
+            mingw-w64-x86_64-qt6-tools
+            mingw-w64-x86_64-qt6-translations
 
       - name: D2XX SDK (64 bit)
         shell: msys2 {0}
@@ -308,7 +322,10 @@ jobs:
       - name: Configure v5 build for Windows
         shell: msys2 {0}
         run: |
-          cmake -S . -B build -DCMAKE_PREFIX_PATH="${{ env.QTDIR }}/lib/cmake" -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -Dqmlui=ON
+          # No -DCMAKE_PREFIX_PATH needed - MSYS2's own Qt6 lives at the
+          # toolchain's default /mingw64 prefix, exactly like local dev
+          # (see CLAUDE.md's manual build command, which passes none either).
+          cmake -S . -B build -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -Dqmlui=ON
 
       - name: Build for Windows
         shell: msys2 {0}
@@ -328,132 +345,12 @@ jobs:
             cp -r resources/$d/. build/resources/$d/
           done
           # build/engine/src (qlcplusengine.dll) and build/engine/audio must be on PATH,
-          # not just the MSYS2/Qt runtime dirs - see CLAUDE.md's "Unit testing
-          # (engine/test) - resource paths" section for why this specifically matters.
-          # QTDIR/bin (aqt's Qt, a different MinGW build than MSYS2's) is appended, not
-          # prepended: these binaries are compiled by MSYS2's gcc, whose newer libstdc++
-          # satisfies aqt's older one's symbol versions but not vice versa - prepending
-          # QTDIR/bin would shadow the runtime that actually compiled the code.
-          export PATH="$PWD/build/engine/src:$PWD/build/engine/audio:$PATH:${{ env.QTDIR }}/bin"
+          # not just the MSYS2 runtime dirs (already on PATH by default in this
+          # shell) - see CLAUDE.md's "Unit testing (engine/test) - resource
+          # paths" section for why this specifically matters.
+          export PATH="$PWD/build/engine/src:$PWD/build/engine/audio:$PATH"
           export QTEST_FUNCTION_TIMEOUT=30000
           cd build
-          # TEMPORARY diagnostic for the systemic 0xc0000139 (STATUS_ENTRYPOINT_NOT_FOUND)
-          # failure hitting almost every test binary here (pre-existing, confirmed
-          # NOT caused by test-content changes - only qlcmacros_test and
-          # apienvelope_test pass, deterministically, across separate CI runs).
-          # ldd only resolves DLL NAMES to paths, it doesn't validate that every
-          # individual imported SYMBOL actually exists in the resolved file's
-          # export table - which is exactly what 0xc0000139 means is missing.
-          # Recursively diff imports vs exports with pefile instead (confirmed
-          # locally against this project's own MSYS2-Qt build: resolves 100%
-          # cleanly there, so if this finds a real gap here it's specific to
-          # aqt's Qt build).
-          # MSYS2's mingw64 python3 has no pip module by default (only
-          # mingw-w64-x86_64-python-lxml is installed, for the fixtures tool) -
-          # "No module named pip" killed this step before it ever reached
-          # ctest. MSYS2 ships pefile as its own pacman package, so skip pip
-          # entirely rather than bootstrapping it just for this.
-          pacman -S --noconfirm --needed mingw-w64-x86_64-python-pefile
-          python3 - "engine/test/beattracker/beattracker_test.exe" \
-              "$PWD/engine/src" "$PWD/engine/audio" "/mingw64/bin" "${{ env.QTDIR }}/bin" <<'PYEOF'
-          import sys, os, pefile
-
-          SYSTEM_SKIP = {
-              "kernel32.dll", "kernelbase.dll", "ntdll.dll", "msvcrt.dll", "user32.dll",
-              "gdi32.dll", "advapi32.dll", "shell32.dll", "ole32.dll", "rpcrt4.dll",
-              "ws2_32.dll", "combase.dll", "sechost.dll", "win32u.dll", "gdi32full.dll",
-              "msvcp_win.dll", "ucrtbase.dll", "wintypes.dll", "d3d11.dll", "dwrite.dll",
-              "dxgi.dll", "uxtheme.dll", "dwmapi.dll", "authz.dll", "mpr.dll",
-              "netapi32.dll", "version.dll", "userenv.dll", "winmm.dll", "powrprof.dll",
-              "cryptbase.dll", "avrt.dll", "propsys.dll", "netutils.dll", "srvcli.dll",
-              "bcrypt.dll", "crypt32.dll", "imm32.dll", "oleaut32.dll", "setupapi.dll",
-              "shlwapi.dll", "ws2help.dll", "iphlpapi.dll", "dnsapi.dll", "secur32.dll",
-              "winspool.drv", "comdlg32.dll", "wtsapi32.dll", "cfgmgr32.dll",
-              "mf.dll", "mfplat.dll", "mfreadwrite.dll", "mfcore.dll", "d3d9.dll",
-              "dxva2.dll", "evr.dll", "wmcodecdspuuid.dll", "amstrmid.dll", "msdmo.dll",
-              "d3d12.dll", "usp10.dll", "winhttp.dll",
-          }
-
-          def find_dll(name, search_dirs):
-              for d in search_dirs:
-                  p = os.path.join(d, name)
-                  if os.path.isfile(p):
-                      return p
-              return None
-
-          def get_imports(path):
-              pe = pefile.PE(path, fast_load=True)
-              pe.parse_data_directories(directories=[pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_IMPORT']])
-              result = {}
-              if not hasattr(pe, "DIRECTORY_ENTRY_IMPORT"):
-                  return result
-              for entry in pe.DIRECTORY_ENTRY_IMPORT:
-                  dllname = entry.dll.decode(errors="replace")
-                  names = []
-                  for imp in entry.imports:
-                      names.append(imp.name.decode(errors="replace") if imp.name else "Ordinal#%d" % imp.ordinal)
-                  result[dllname] = names
-              return result
-
-          def get_exports(path):
-              # pefile silently truncates at MAX_SYMBOL_EXPORT_COUNT (0x2000 = 8192) by
-              # default - both Qt DLLs and qlcplusengine.dll exceed that, causing a
-              # false "missing export" for anything past the cutoff. Override it.
-              pe = pefile.PE(path, fast_load=True, max_symbol_exports=1 << 20)
-              pe.parse_data_directories(directories=[pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_EXPORT']])
-              names, ordinals = set(), set()
-              if hasattr(pe, "DIRECTORY_ENTRY_EXPORT"):
-                  for exp in pe.DIRECTORY_ENTRY_EXPORT.symbols:
-                      if exp.name:
-                          names.add(exp.name.decode(errors="replace"))
-                      ordinals.add(exp.ordinal)
-              return names, ordinals
-
-          def main():
-              start, search_dirs = sys.argv[1], sys.argv[2:]
-              visited, queue, any_missing = set(), [start], False
-              while queue:
-                  path = queue.pop(0)
-                  key = os.path.normcase(os.path.abspath(path))
-                  if key in visited:
-                      continue
-                  visited.add(key)
-                  try:
-                      imports = get_imports(path)
-                  except Exception as e:
-                      print("  [%s] FAILED TO PARSE IMPORTS: %s" % (path, e)); continue
-                  for dllname, names in imports.items():
-                      if dllname.lower() in SYSTEM_SKIP:
-                          continue
-                      dllpath = find_dll(dllname, search_dirs)
-                      if not dllpath:
-                          print("  %s needs %s -> NOT FOUND (%d syms, e.g. %s)" % (path, dllname, len(names), names[:3]))
-                          any_missing = True
-                          continue
-                      try:
-                          exp_names, exp_ordinals = get_exports(dllpath)
-                      except Exception as e:
-                          print("  %s needs %s -> FAILED TO PARSE EXPORTS of %s: %s" % (path, dllname, dllpath, e))
-                          any_missing = True
-                          continue
-                      missing = []
-                      for n in names:
-                          if n.startswith("Ordinal#"):
-                              if int(n.split("#")[1]) not in exp_ordinals:
-                                  missing.append(n)
-                          elif n not in exp_names:
-                              missing.append(n)
-                      if missing:
-                          any_missing = True
-                          print("  %s needs %s (%s) -> MISSING %d/%d: %s" % (path, dllname, dllpath, len(missing), len(names), missing[:20]))
-                      else:
-                          print("  %s needs %s (%s) -> ok (%d imports, %d exports)" % (path, dllname, dllpath, len(names), len(exp_names)))
-                      queue.append(dllpath)
-              if not any_missing:
-                  print("  (all imports resolved cleanly, recursively, from %s)" % start)
-
-          main()
-          PYEOF
           # -j1: parallel runs of these WIN32-subsystem QTest binaries have shown a
           # heap-corruption crash (STATUS_HEAP_CORRUPTION) in this Qt/MinGW build -
           # see dev-test-run.ps1's own comment on this.
@@ -466,7 +363,7 @@ jobs:
           # CLAUDE.md's "Unit testing (qmlui/test)" section for why) - run each built
           # binary directly instead, same as this project's own documented convention.
           set +e
-          export PATH="$PWD/build/engine/src:$PWD/build/engine/audio:$PATH:${{ env.QTDIR }}/bin"
+          export PATH="$PWD/build/engine/src:$PWD/build/engine/audio:$PATH"
           shopt -s nullglob
           exes=(build/qmlui/test/*/*_test.exe)
           if [ ${#exes[@]} -eq 0 ]; then
@@ -513,7 +410,7 @@ jobs:
           ./translate.sh release qmlui
           cp *.qm /c/qlcplus
           cd /c/qlcplus
-          ${{ env.QTDIR }}/bin/windeployqt --qmldir $SRC_DIR/qmlui/qml qlcplus5.exe qlcplusengine.dll plugins/dmxusb.dll
+          windeployqt --qmldir $SRC_DIR/qmlui/qml qlcplus5.exe qlcplusengine.dll plugins/dmxusb.dll
 
       - name: Build installation package
         shell: msys2 {0}
