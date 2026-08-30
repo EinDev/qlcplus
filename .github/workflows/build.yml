@@ -410,7 +410,13 @@ jobs:
           ./translate.sh release qmlui
           cp *.qm /c/qlcplus
           cd /c/qlcplus
-          windeployqt --qmldir $SRC_DIR/qmlui/qml qlcplus5.exe qlcplusengine.dll plugins/dmxusb.dll
+          # TEMPORARY --verbose 2: this step has failed twice in CI only
+          # ("Process failed to start: The system cannot find the file
+          # specified." right around the QML import scan) but reproduced
+          # cleanly in a local scratch-dir run this session - need to see
+          # exactly which subprocess windeployqt is trying to launch here to
+          # tell a CI-environment-specific gap from something else.
+          windeployqt --verbose 2 --qmldir $SRC_DIR/qmlui/qml qlcplus5.exe qlcplusengine.dll plugins/dmxusb.dll
 
       - name: Build installation package
         shell: msys2 {0}
