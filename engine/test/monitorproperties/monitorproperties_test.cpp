@@ -123,19 +123,19 @@ void MonitorProperties_Test::fixtureItemsXML()
     QCOMPARE(loaded.fixtureName(10, 0, 1), QString("Linked 1"));
 }
 
-// Per-fixture DMX position/rotation invert + scale (added for the "moving
-// fixtures don't move the way the view assumes" feature): a fixture that
-// never sets these must keep behaving exactly as before (default flags = 0,
-// default scale = 1.0, matching PreviewItem::m_dmxScale's own default
-// member initializer) - and both must round-trip through save/load exactly
-// like every other per-fixture flag/value already does.
+// Per-fixture DMX position/rotation invert + rotation scale (added for the
+// "moving fixtures don't move the way the view assumes" feature): a fixture
+// that never sets these must keep behaving exactly as before (default
+// flags = 0, default scale = 1.0, matching PreviewItem::m_rotationScale's own
+// default member initializer) - and both must round-trip through save/load
+// exactly like every other per-fixture flag/value already does.
 void MonitorProperties_Test::fixtureDmxTransformDefaults()
 {
     MonitorProperties mp;
 
     // A fixture never touched at all - containsFixture() is false, but the
     // getters must still return the same defaults as an explicitly-set one.
-    QCOMPARE(mp.fixtureDmxScale(99, 0, 0), 1.0f);
+    QCOMPARE(mp.fixtureRotationScale(99, 0, 0), 1.0f);
     QCOMPARE(mp.fixtureFlags(99, 0, 0) & (MonitorProperties::InvertedPositionXFlag |
                                           MonitorProperties::InvertedPositionYFlag |
                                           MonitorProperties::InvertedPositionZFlag |
@@ -153,7 +153,7 @@ void MonitorProperties_Test::fixtureDmxTransformXML()
                     MonitorProperties::InvertedPositionZFlag |
                     MonitorProperties::InvertedRotationYFlag;
     mp.setFixtureFlags(20, 0, 0, flags);
-    mp.setFixtureDmxScale(20, 0, 0, 2.5f);
+    mp.setFixtureRotationScale(20, 0, 0, 2.5f);
 
     QByteArray xmlData;
     QBuffer buffer(&xmlData);
@@ -178,7 +178,67 @@ void MonitorProperties_Test::fixtureDmxTransformXML()
     }
 
     QCOMPARE(loaded.fixtureFlags(20, 0, 0), flags);
-    QCOMPARE(loaded.fixtureDmxScale(20, 0, 0), 2.5f);
+    QCOMPARE(loaded.fixtureRotationScale(20, 0, 0), 2.5f);
+}
+
+// Per-fixture DMX position range in meters (default 800.0, replacing the old
+// fixed +/-2.5m POSITION_DELTA_RANGE for drone-scale rigs) - independent of
+// the rotation scale above. A fixture that never sets it must keep reading
+// back the 800.0 default, matching PreviewItem::m_positionRange's own default
+// member initializer.
+void MonitorProperties_Test::fixturePositionRangeDefaults()
+{
+    MonitorProperties mp;
+
+    QCOMPARE(mp.fixturePositionRange(99, 0, 0), 800.0f);
+}
+
+// Round-trips through save/load like every other per-fixture value, and
+// confirms the "not written when equal to the 800.0 default" skip-behavior
+// (mirroring how fixtureDmxTransformXML() above never asserts on the
+// DmxScale skip case either, but this test explicitly covers both the
+// skip and the non-skip case since it's new coverage).
+void MonitorProperties_Test::fixturePositionRangeXML()
+{
+    Doc doc(this);
+    MonitorProperties mp;
+
+    mp.setFixturePositionRange(21, 0, 0, 500.0f);
+    // Fixture 22 is left at the 800.0 default - its PositionRange attribute
+    // must not be written at all.
+    mp.setFixturePosition(22, 0, 0, QVector3D(1, 2, 3));
+
+    QByteArray xmlData;
+    QBuffer buffer(&xmlData);
+    QVERIFY(buffer.open(QIODevice::WriteOnly));
+
+    QXmlStreamWriter writer(&buffer);
+    writer.writeStartDocument();
+    QVERIFY(mp.saveXML(&writer, &doc));
+    writer.writeEndDocument();
+    buffer.close();
+
+    // The default-valued fixture must not have a PositionRange attribute in
+    // the raw XML at all - proving the skip-if-default behavior actually
+    // skips the write, not just that loading it back happens to coincide
+    // with the default.
+    QVERIFY(xmlData.contains("PositionRange=\"500\""));
+    QVERIFY(!xmlData.contains("PositionRange=\"800\""));
+
+    MonitorProperties loaded;
+    QXmlStreamReader reader(xmlData);
+    while (reader.readNextStartElement())
+    {
+        if (reader.name() == KXMLQLCMonitorProperties)
+        {
+            QVERIFY(loaded.loadXML(reader, &doc));
+            break;
+        }
+        reader.skipCurrentElement();
+    }
+
+    QCOMPARE(loaded.fixturePositionRange(21, 0, 0), 500.0f);
+    QCOMPARE(loaded.fixturePositionRange(22, 0, 0), 800.0f);
 }
 
 // HasDmxPositionFlag/HasDmxRotationFlag mark a fixture's persisted position/

@@ -51,11 +51,6 @@
 #define RAW_16BIT_MAX 65535 // 0xFFFF - full accumulated MSB+LSB range
 #define RAW_16BIT_MID 32768 // 0x8000 - DMX mid-range, the rest/zero point
 
-// Half of MonitorProperties' default 3D floor grid width/depth
-// (GRID_DEFAULT_WIDTH = GRID_DEFAULT_DEPTH = 5m, monitorproperties.cpp) -
-// see FixtureUtils::positionDeltaFromRaw() for the reasoning.
-#define POSITION_DELTA_RANGE 2.5 // meters
-
 // Matches the "540 Degrees" rotation channels documented for the user's own
 // "Mobile Truss" fixture profile - see FixtureUtils::rotationDeltaFromRaw().
 #define ROTATION_DELTA_RANGE 270 // degrees (half of 540)
@@ -662,14 +657,14 @@ int FixtureUtils::accumulateChannelGroupValue(const QLCChannel *ch, uchar value,
     return currentAccumulator + value;
 }
 
-float FixtureUtils::positionDeltaFromRaw(int raw)
+float FixtureUtils::positionDeltaFromRaw(int raw, float range)
 {
-    return ((float(raw) - RAW_16BIT_MID) / RAW_16BIT_MID) * POSITION_DELTA_RANGE;
+    return ((float(raw) - RAW_16BIT_MID) / RAW_16BIT_MID) * range;
 }
 
-int FixtureUtils::positionRawFromDelta(float delta)
+int FixtureUtils::positionRawFromDelta(float delta, float range)
 {
-    int raw = RAW_16BIT_MID + qRound((delta / POSITION_DELTA_RANGE) * RAW_16BIT_MID);
+    int raw = RAW_16BIT_MID + qRound((delta / range) * RAW_16BIT_MID);
     return qBound(0, raw, RAW_16BIT_MAX);
 }
 
@@ -722,25 +717,25 @@ QVector3D FixtureUtils::fixturePositionDelta(Fixture *fixture, const MonitorProp
         }
     }
 
-    // Per-fixture invert/scale (see MonitorProperties::InvertedPosition{X,Y,Z}Flag
-    // and fixtureDmxScale()) is applied here, on top of the raw-to-delta
+    // Per-fixture invert/range (see MonitorProperties::InvertedPosition{X,Y,Z}Flag
+    // and fixturePositionRange()) is applied here, on top of the raw-to-delta
     // conversion, and inverted back out by ContextManager::pushPositionDelta()
     // on the write-back direction - both must agree or a drag will jump/drift.
     // Default (monProps null, or fixture not yet registered in it) is
-    // scale 1.0 / no invert, i.e. exactly today's behavior.
+    // range 800.0 / no invert, i.e. exactly today's behavior.
     quint32 flags = (monProps != nullptr) ? monProps->fixtureFlags(fixture->id(), 0, 0) : 0;
-    float scale = (monProps != nullptr) ? monProps->fixtureDmxScale(fixture->id(), 0, 0) : 1.0f;
-    // A zero (or hand-edited-to-zero-in-the-XML) scale must not silently
-    // collapse every delta to 0 here while ContextManager::pushPositionDelta()/
-    // pushRotationDelta() fall back to 1.0 for the exact same case (there, to
-    // avoid a divide-by-zero) - falling back the same way here keeps both
-    // conversion directions agreeing on what a zero scale means.
-    if (qFuzzyIsNull(scale))
-        scale = 1.0f;
+    float range = (monProps != nullptr) ? monProps->fixturePositionRange(fixture->id(), 0, 0) : 800.0f;
+    // A zero (or hand-edited-to-zero-in-the-XML) range must not silently
+    // collapse every delta to 0 here while ContextManager::pushPositionDelta()
+    // falls back to 800.0 for the exact same case (there, to avoid a
+    // divide-by-zero) - falling back the same way here keeps both conversion
+    // directions agreeing on what a zero range means.
+    if (qFuzzyIsNull(range))
+        range = 800.0f;
 
-    if (hasX) delta.setX(positionDeltaFromRaw(posX) * scale * ((flags & MonitorProperties::InvertedPositionXFlag) ? -1.0f : 1.0f));
-    if (hasY) delta.setY(positionDeltaFromRaw(posY) * scale * ((flags & MonitorProperties::InvertedPositionYFlag) ? -1.0f : 1.0f));
-    if (hasZ) delta.setZ(positionDeltaFromRaw(posZ) * scale * ((flags & MonitorProperties::InvertedPositionZFlag) ? -1.0f : 1.0f));
+    if (hasX) delta.setX(positionDeltaFromRaw(posX, range) * ((flags & MonitorProperties::InvertedPositionXFlag) ? -1.0f : 1.0f));
+    if (hasY) delta.setY(positionDeltaFromRaw(posY, range) * ((flags & MonitorProperties::InvertedPositionYFlag) ? -1.0f : 1.0f));
+    if (hasZ) delta.setZ(positionDeltaFromRaw(posZ, range) * ((flags & MonitorProperties::InvertedPositionZFlag) ? -1.0f : 1.0f));
 
     return delta;
 }
@@ -775,7 +770,7 @@ QVector3D FixtureUtils::fixtureRotationDelta(Fixture *fixture, const MonitorProp
     // See fixturePositionDelta()'s equivalent note - same invert/scale
     // convention, using the Rotation flags/scale instead.
     quint32 flags = (monProps != nullptr) ? monProps->fixtureFlags(fixture->id(), 0, 0) : 0;
-    float scale = (monProps != nullptr) ? monProps->fixtureDmxScale(fixture->id(), 0, 0) : 1.0f;
+    float scale = (monProps != nullptr) ? monProps->fixtureRotationScale(fixture->id(), 0, 0) : 1.0f;
     // A zero (or hand-edited-to-zero-in-the-XML) scale must not silently
     // collapse every delta to 0 here while ContextManager::pushPositionDelta()/
     // pushRotationDelta() fall back to 1.0 for the exact same case (there, to
