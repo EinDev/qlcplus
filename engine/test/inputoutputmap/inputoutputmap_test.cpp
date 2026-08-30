@@ -615,11 +615,22 @@ void InputOutputMap_Test::inputSourceNames()
 void InputOutputMap_Test::profileDirectories()
 {
     QDir dir = InputOutputMap::systemProfileDirectory();
-    QDir ipDir;
-    ipDir.setPath(INPUTPROFILEDIR);
     QVERIFY(dir.filter() & QDir::Files);
     QVERIFY(dir.nameFilters().contains(QString("*%1").arg(KExtInputProfile)));
+#if defined(__APPLE__) || defined(Q_OS_MAC)
+    // In a real .app bundle the executable lives in Contents/MacOS/ and
+    // resources in Contents/Resources/ - siblings one level up - so
+    // QLCFile::systemDirectory()'s APPLE branch (qlcfile.cpp) intentionally
+    // inserts "/..". Mirrors the equivalent guard in
+    // engine/test/rgbscript/rgbscript_test.cpp's directories().
+    QString path("%1/../%2");
+    QCOMPARE(dir.path(), path.arg(QCoreApplication::applicationDirPath())
+                             .arg(INPUTPROFILEDIR));
+#else
+    QDir ipDir;
+    ipDir.setPath(INPUTPROFILEDIR);
     QCOMPARE(dir.absolutePath(), ipDir.absolutePath());
+#endif
 
     dir = InputOutputMap::userProfileDirectory();
 #ifndef SKIP_TEST
@@ -860,4 +871,13 @@ void InputOutputMap_Test::grandMaster()
     QVERIFY(iom.grandMasterValueMode() == GrandMaster::Limit);
 }
 
-QTEST_APPLESS_MAIN(InputOutputMap_Test)
+// InputOutputMap_Test::profileDirectories() exercises InputOutputMap::
+// systemProfileDirectory(), which on WIN32/APPLE builds QLCFile::systemDirectory()
+// paths from QCoreApplication::applicationDirPath() - a static method that
+// requires an application instance to exist (see QLCFile::systemDirectory() in
+// qlcfile.cpp). QTEST_APPLESS_MAIN doesn't create one, so applicationDirPath()
+// warned and returned an empty string there, same failure on both platforms.
+// engine/test/rgbscript/rgbscript_test.cpp exercises the equivalent
+// systemScriptsDirectory()/applicationDirPath() pairing and already uses
+// QTEST_MAIN for the same reason.
+QTEST_MAIN(InputOutputMap_Test)
