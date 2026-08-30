@@ -119,6 +119,12 @@ public:
      *  Returns true if $seq matched at least one bound widget */
     bool handleKeyEvent(QKeySequence &seq, bool pressed);
 
+    /** Return true if $seq is bound to any widget on this page, without
+     *  dispatching anything - used to decide whether an auto-repeated key
+     *  event should still be swallowed here rather than falling through
+     *  to the ShortcutManager registry (see VirtualConsole::handleKeyEvent) */
+    bool hasKeySequence(const QKeySequence &seq) const;
+
 private:
     /** This variable represents the map of all the key bindings for every
      *  child widget of this VC Page.

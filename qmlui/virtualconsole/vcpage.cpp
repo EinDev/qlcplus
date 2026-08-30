@@ -377,3 +377,8 @@ bool VCPage::handleKeyEvent(QKeySequence &seq, bool pressed)
 
     return handled;
 }
+
+bool VCPage::hasKeySequence(const QKeySequence &seq) const
+{
+    return m_keySequencesMap.contains(seq);
+}
