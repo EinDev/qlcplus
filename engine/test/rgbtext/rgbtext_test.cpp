@@ -249,7 +249,13 @@ void RGBText_Test::load()
 
     buffer.close();
     QByteArray bData = buffer.data();
-    bData.replace(fn.toString().toUtf8(), "a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t,u,v,w,x,y,z");
+    // An empty font description reliably fails QFont::fromString() across Qt
+    // versions. A fixed-length garbage string (e.g. 26 comma-separated
+    // letters) does not: QFont::fromString()'s field-count validation is
+    // Qt-version-dependent, and on Qt 6.11 a 26-field string happens to fall
+    // into an accepted range, silently "succeeding" with garbage values
+    // instead of failing as this test expects.
+    bData.replace(fn.toString().toUtf8(), "");
     buffer.setData(bData);
     buffer.open(QIODevice::ReadWrite | QIODevice::Text);
     buffer.seek(0);
