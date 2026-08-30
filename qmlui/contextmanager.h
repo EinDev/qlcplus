@@ -460,6 +460,16 @@ public:
 
     void setChannelValues(QList<SceneValue> values);
 
+    /** Select the next available Fixture group, cycling through the
+     *  groups defined in the Doc. Deselects everything else.
+     *  Registered as a ShortcutManager action by App */
+    void selectNextFixtureGroup();
+
+    /** Perform the context-sensitive delete dispatched on m_lastClickedType
+     *  (fixtures/functions/folders/show items/tracks). Registered as a
+     *  ShortcutManager action by App */
+    void deleteSelectedItems();
+
 protected slots:
     void slotNewFixtureCreated(quint32 fxID, qreal x, qreal y, qreal z = 0);
     void slotFixtureDeleted(quint32 itemID);
@@ -498,10 +508,6 @@ signals:
     void candidateGroupsForInversionReady(QVariantList groups);
 
 private:
-    /** Select the next available Fixture group, cycling through the
-     *  groups defined in the Doc. Deselects everything else. */
-    void selectNextFixtureGroup();
-
     /** Shared tail end of invertGroupSelection()/confirmGroupSelectionInversion():
      *  replaces the current fixture selection with
      *  FixtureUtils::invertGroupSelection()'s result for $groups. */

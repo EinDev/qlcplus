@@ -1480,12 +1480,8 @@ void VirtualConsole::handleKeyEvent(QKeyEvent *e, bool pressed)
         if (e->isAutoRepeat())
             return;
 
-        if ((e->modifiers() & Qt::ControlModifier) &&
-            e->key() == Qt::Key_E && pressed == false)
-        {
-            setEditMode(!editMode());
-            return;
-        }
+        // Ctrl+E (edit mode toggle) is dispatched via ShortcutManager on key
+        // press instead (see App::registerBuiltinShortcuts).
 
         QKeySequence seq(e->key() | e->modifiers());
 

@@ -30,7 +30,7 @@ class MainView2D;
 class ShowManager;
 class SimpleDesk;
 class UiManager;
-class ActionManager;
+class ShortcutManager;
 class FixtureBrowser;
 class FixtureManager;
 class PaletteManager;
@@ -198,6 +198,17 @@ protected:
     void mousePressEvent(QMouseEvent *e) override;
     bool event(QEvent *event) override;
 
+private:
+    /** Returns true if activeFocusItem(), or one of its QQuickItem
+     *  ancestors, is a text-editing item (QQuickTextInput/QQuickTextEdit) */
+    bool isTextInputFocused() const;
+
+    /** Register every built-in ShortcutManager action and bind it to its
+     *  default key sequence. Called once from startup() after m_shortcutManager
+     *  and every manager it binds to (m_contextManager, m_ioManager,
+     *  m_virtualConsole, m_tardis) have been constructed */
+    void registerBuiltinShortcuts();
+
 protected slots:
     void slotSceneGraphInitialized();
     void slotScreenChanged(QScreen *screen);
@@ -241,7 +252,7 @@ private:
     VirtualConsole *m_virtualConsole;
     ShowManager *m_showManager;
     SimpleDesk *m_simpleDesk;
-    ActionManager *m_actionManager;
+    ShortcutManager *m_shortcutManager;
     VideoProvider *m_videoProvider;
     NetworkManager *m_networkManager;
     ApiServer *m_apiServer;
