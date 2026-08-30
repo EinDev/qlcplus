@@ -28,7 +28,7 @@ Rectangle
 {
     id: editorRoot
     anchors.fill: parent
-    color: "transparent"
+    color: UISettings.bgMedium
 
     property real origItemHeight: { origItemHeight = UISettings.listItemHeight }
     property real origIconMedium: { origIconMedium = UISettings.iconSizeMedium }
