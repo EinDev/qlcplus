@@ -39,6 +39,7 @@ Item
     property real timeScale: showManager.timeScale
     property real tickSize: showManager.tickSize
     property int beatsDivision: showManager.beatsDivision
+    property int bpmNumber: ioManager.bpmNumber
     property bool isSelected: false
     property bool isDragging: false
     property color globalColor: showManager.itemsColor
@@ -77,6 +78,13 @@ Item
     onDurationChanged: updateGeometry()
     onTimeScaleChanged: updateGeometry()
     onTimeDivisionChanged: updateGeometry()
+    // updateGeometry() is an imperative assignment, not a binding, so every input
+    // it reads in the Beats-mode branch (timeToBeatSize) needs its own explicit
+    // trigger here - relying on just the above left item geometry stuck at its
+    // old pixel position whenever BPM/beatsDivision changed without startTime
+    // itself changing (same trap documented in HeaderAndCursor.qml).
+    onBeatsDivisionChanged: updateGeometry()
+    onBpmNumberChanged: updateGeometry()
 
     onGlobalColorChanged:
     {
@@ -104,8 +112,8 @@ Item
         {
             // startTime/duration are always real ms now - beatsToSize would treat
             // them as a beat-pseudo count, so this must go through timeToBeatSize
-            x = TimeUtils.timeToBeatSize(startTime, ioManager.bpmNumber, beatsDivision, tickSize)
-            width = TimeUtils.timeToBeatSize(duration, ioManager.bpmNumber, beatsDivision, tickSize)
+            x = TimeUtils.timeToBeatSize(startTime, bpmNumber, beatsDivision, tickSize)
+            width = TimeUtils.timeToBeatSize(duration, bpmNumber, beatsDivision, tickSize)
         }
     }
 

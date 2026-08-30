@@ -506,8 +506,18 @@ void ShowManager::addItems(QQuickItem *parent, int trackIdx, int startTime, QVar
         // Chaser/Scene/RGBMatrix expose their own user-settable tempoType in their own
         // editors, and Audio/Video must never run on a beat clock regardless of how
         // the Show's ruler happens to be displayed.
-        if (func->type() == Function::AudioType || func->type() == Function::VideoType)
-            func->setTotalDuration(func->duration());
+        //
+        // The old Beats-mode branch also called func->setTotalDuration(func->duration())
+        // for Audio/Video here. That is dropped rather than made unconditional: Audio
+        // already keeps duration()/totalDuration() in sync from its own decoder at file
+        // load, making the call a no-op there, but Video's generic duration() is never
+        // populated from its real probed length (only its own totalDuration is, via the
+        // media player) - it defaults to 0, so applying this unconditionally would
+        // overwrite an already-correct Video totalDuration with 0 on every add. This was
+        // only safe before because it only ran in Beats mode, in front of a tempoType
+        // force-set whose own Function::setTempoType() conversion this call was likely
+        // compensating for - that conversion no longer runs, so this line no longer has
+        // a clear purpose here.
         showFunc->setDuration(func->totalDuration() ? func->totalDuration() : 5000);
         qDebug() << "[DBG SHOWMGR] addItems: functionID" << functionID << "type" << func->type()
                  << "timeDivision" << (int)timeDivision() << "-> tempoType" << (int)func->tempoType()
