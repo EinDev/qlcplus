@@ -51,7 +51,10 @@ Rectangle
 
     function centerView()
     {
-        var xPos = TimeUtils.timeToSize(showManager.currentTime, timeScale, tickSize) - (timelineHeader.width / 2)
+        var xPos = (showManager.timeDivision === Show.Time)
+                ? TimeUtils.timeToSize(showManager.currentTime, timeScale, tickSize)
+                : TimeUtils.timeToBeatPosition(showManager.currentTime, tickSize, ioManager.bpmNumber, showManager.beatsDivision)
+        xPos -= (timelineHeader.width / 2)
         if (xPos >= 0)
             xViewOffset = xPos
     }
@@ -569,7 +572,10 @@ Rectangle
                 anchors.fill: parent
                 onClicked: (mouse) =>
                 {
-                    showManager.currentTime = TimeUtils.posToMs(mouse.x, timeScale, tickSize)
+                    if (showManager.timeDivision === Show.Time)
+                        showManager.currentTime = TimeUtils.posToMs(mouse.x, timeScale, tickSize)
+                    else if (ioManager.bpmNumber > 0)
+                        showManager.currentTime = TimeUtils.posToBeatMs(mouse.x, tickSize, ioManager.bpmNumber, showManager.beatsDivision)
                     showManager.resetItemsSelection()
                 }
             }
@@ -634,8 +640,12 @@ Rectangle
                         var fTime
                         if (showManager.timeDivision === Show.Time)
                             fTime = TimeUtils.posToMs(itemsArea.contentX + drag.x, timeScale, tickSize)
+                        else if (ioManager.bpmNumber > 0)
+                            // posToBeat stored a beat-pseudo count, not real ms - startTime is
+                            // always real ms now, so this must go through posToBeatMs instead
+                            fTime = TimeUtils.posToBeatMs(itemsArea.contentX + drag.x, tickSize, ioManager.bpmNumber, showManager.beatsDivision)
                         else
-                            fTime = TimeUtils.posToBeat(itemsArea.contentX + drag.x, tickSize, showManager.beatsDivision)
+                            fTime = 0
                         console.log("Drop on time1: " + fTime)
                         showManager.addItems(itemsArea.contentItem, trackIdx, fTime, drag.source.itemsList)
                     }
@@ -708,8 +718,10 @@ Rectangle
 
                             if (showManager.timeDivision === Show.Time)
                                 fTime = TimeUtils.posToMs(xViewOffset + drag.x, timeScale, tickSize)
+                            else if (ioManager.bpmNumber > 0)
+                                fTime = TimeUtils.posToBeatMs(xViewOffset + drag.x, tickSize, ioManager.bpmNumber, showManager.beatsDivision)
                             else
-                                fTime = TimeUtils.posToBeat(xViewOffset + drag.x, tickSize, showManager.beatsDivision)
+                                fTime = 0
 
                             console.log("Drop on time2: " + fTime)
                             showManager.addItems(itemsArea.contentItem, -1, fTime, drag.source.itemsList)
