@@ -102,8 +102,10 @@ Item
         }
         else
         {
-            x = TimeUtils.beatsToSize(startTime, tickSize, beatsDivision)
-            width = TimeUtils.beatsToSize(duration, tickSize, beatsDivision)
+            // startTime/duration are always real ms now - beatsToSize would treat
+            // them as a beat-pseudo count, so this must go through timeToBeatSize
+            x = TimeUtils.timeToBeatSize(startTime, ioManager.bpmNumber, beatsDivision, tickSize)
+            width = TimeUtils.timeToBeatSize(duration, ioManager.bpmNumber, beatsDivision, tickSize)
         }
     }
 
@@ -130,31 +132,44 @@ Item
     }
 
     // Mirrors ShowManager::checkAndMoveItem's grid-snap round-trip (showmanager.cpp)
-    // exactly, including its use of time-based m_timeScale/m_tickSize math even when
-    // newStartTime is actually a beat count (Show.Beats) rather than milliseconds -
-    // a pre-existing inconsistency in the C++ code that this preview intentionally
-    // mirrors rather than "fixes", so it always matches what release will really do.
+    // exactly: the Time-mode branch reproduces its m_timeScale/m_tickSize pixel
+    // round-trip, the Beats-mode branch reproduces its BPM/beatsDivision-driven
+    // whole-bar snap - both operating on newStartTime as real milliseconds, since
+    // ShowFunction startTime/duration are always real ms now.
     function gridSnappedPreviewOffsetX(rawDx)
     {
         var pxX = itemRoot.x + rawDx
-        var newStartTime = (timeDivision === Show.Time)
-                ? TimeUtils.posToMs(pxX, timeScale, tickSize)
-                : TimeUtils.posToBeat(pxX, tickSize, beatsDivision)
 
-        // onReleased clamps a negative landing time to 0 before calling
-        // checkAndMoveItem - mirror that here too
-        if (newStartTime < 0)
-            newStartTime = 0
+        if (timeDivision === Show.Time)
+        {
+            var newStartTime = TimeUtils.posToMs(pxX, timeScale, tickSize)
 
-        var xPos = (newStartTime * tickSize) / (timeScale * 1000.0)
-        xPos = Math.round(xPos / tickSize) * tickSize
-        var newTime = xPos * (1000 * timeScale) / tickSize
+            // onReleased clamps a negative landing time to 0 before calling
+            // checkAndMoveItem - mirror that here too
+            if (newStartTime < 0)
+                newStartTime = 0
 
-        var snappedPxX = (timeDivision === Show.Time)
-                ? TimeUtils.timeToSize(newTime, timeScale, tickSize)
-                : TimeUtils.beatsToSize(newTime, tickSize, beatsDivision)
+            var xPos = (newStartTime * tickSize) / (timeScale * 1000.0)
+            xPos = Math.round(xPos / tickSize) * tickSize
+            var newTime = xPos * (1000 * timeScale) / tickSize
 
-        return snappedPxX - itemRoot.x
+            return TimeUtils.timeToSize(newTime, timeScale, tickSize) - itemRoot.x
+        }
+        else
+        {
+            var bpmNumber = ioManager.bpmNumber
+            if (bpmNumber <= 0)
+                return rawDx
+
+            var newStartTimeMs = TimeUtils.posToBeatMs(pxX, tickSize, bpmNumber, beatsDivision)
+            if (newStartTimeMs < 0)
+                newStartTimeMs = 0
+
+            var barDuration = (60000.0 / bpmNumber) * beatsDivision
+            var snappedTime = Math.round(newStartTimeMs / barDuration) * barDuration
+
+            return TimeUtils.timeToBeatSize(snappedTime, bpmNumber, beatsDivision, tickSize) - itemRoot.x
+        }
     }
 
     /* Locker image */
@@ -488,8 +503,12 @@ Item
                 var newTime
                 if (timeDivision === Show.Time)
                     newTime = TimeUtils.posToMs(itemRoot.x + showItemBody.x, timeScale, tickSize)
+                else if (ioManager.bpmNumber > 0)
+                    // posToBeat stored a beat-pseudo count, not real ms - startTime is
+                    // always real ms now, so this must go through posToBeatMs instead
+                    newTime = TimeUtils.posToBeatMs(itemRoot.x + showItemBody.x, tickSize, ioManager.bpmNumber, beatsDivision)
                 else
-                    newTime = TimeUtils.posToBeat(itemRoot.x + showItemBody.x, tickSize, beatsDivision)
+                    newTime = startTime
 
                 var newTrackIdx = Math.round((itemRoot.y + showItemBody.y) / itemRoot.height)
                 if (newTime < 0)
@@ -678,10 +697,15 @@ Item
                         newStartTime = TimeUtils.posToMs(itemRoot.x, timeScale, tickSize)
                         newDuration = TimeUtils.posToMs(itemRoot.width, timeScale, tickSize)
                     }
+                    else if (ioManager.bpmNumber > 0)
+                    {
+                        newStartTime = TimeUtils.posToBeatMs(itemRoot.x, tickSize, ioManager.bpmNumber, beatsDivision)
+                        newDuration = TimeUtils.posToBeatMs(itemRoot.width, tickSize, ioManager.bpmNumber, beatsDivision)
+                    }
                     else
                     {
-                        newStartTime = TimeUtils.posToBeat(itemRoot.x, tickSize, beatsDivision)
-                        newDuration = TimeUtils.posToBeat(itemRoot.width, tickSize, beatsDivision)
+                        newStartTime = startTime
+                        newDuration = duration
                     }
 
                     if (showManager.setShowItemStartTime(sfRef, newStartTime) === true)
@@ -820,8 +844,12 @@ Item
 
                     if (timeDivision === Show.Time)
                         newDuration = TimeUtils.posToMs(itemRoot.width, timeScale, tickSize)
+                    else if (ioManager.bpmNumber > 0)
+                        // was: Math.round(width / (tickSize / beatsDivision)) * 1000 - a beat-pseudo
+                        // count, not real ms; duration is always real ms now, so use posToBeatMs
+                        newDuration = TimeUtils.posToBeatMs(itemRoot.width, tickSize, ioManager.bpmNumber, beatsDivision)
                     else
-                        newDuration = (Math.round(itemRoot.width / (tickSize / beatsDivision)) * 1000)
+                        newDuration = duration
 
                     if (showManager.setShowItemDuration(sfRef, newDuration) === false)
                         updateGeometry()
