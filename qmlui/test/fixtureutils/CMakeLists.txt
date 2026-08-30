@@ -5,6 +5,7 @@ add_executable(fixtureutils_test WIN32
 
 target_include_directories(fixtureutils_test PRIVATE
     ../..
+    ../../../engine/src
 )
 
 target_link_libraries(fixtureutils_test PRIVATE
