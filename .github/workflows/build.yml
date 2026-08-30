@@ -317,6 +317,66 @@ jobs:
           cd build
           ninja
 
+      - name: Test (engine + controlapi)
+        shell: msys2 {0}
+        run: |
+          # Only rgbscripts auto-copies into the build tree (see resources/rgbscripts/
+          # CMakeLists.txt); the rest are Android-only-gated, so stage them here too -
+          # same set dev-test-run.ps1 stages for local runs.
+          for d in colorfilters fixtures gobos icons inputprofiles rgbscripts schemas; do
+            mkdir -p build/resources/$d
+            cp -r resources/$d/. build/resources/$d/
+          done
+          # build/engine/src (qlcplusengine.dll) and build/engine/audio must be on PATH,
+          # not just the MSYS2/Qt runtime dirs - see CLAUDE.md's "Unit testing
+          # (engine/test) - resource paths" section for why this specifically matters.
+          # QTDIR/bin (aqt's Qt, a different MinGW build than MSYS2's) is appended, not
+          # prepended: these binaries are compiled by MSYS2's gcc, whose newer libstdc++
+          # satisfies aqt's older one's symbol versions but not vice versa - prepending
+          # QTDIR/bin would shadow the runtime that actually compiled the code.
+          export PATH="$PWD/build/engine/src:$PWD/build/engine/audio:$PATH:${{ env.QTDIR }}/bin"
+          export QTEST_FUNCTION_TIMEOUT=30000
+          cd build
+          # -j1: parallel runs of these WIN32-subsystem QTest binaries have shown a
+          # heap-corruption crash (STATUS_HEAP_CORRUPTION) in this Qt/MinGW build -
+          # see dev-test-run.ps1's own comment on this.
+          ctest -j1 --output-on-failure --timeout 60
+
+      - name: Test (qmlui/test)
+        shell: msys2 {0}
+        run: |
+          # qmlui/test/*'s QTest suites are deliberately not wired into CTest (see
+          # CLAUDE.md's "Unit testing (qmlui/test)" section for why) - run each built
+          # binary directly instead, same as this project's own documented convention.
+          set +e
+          export PATH="$PWD/build/engine/src:$PWD/build/engine/audio:$PATH:${{ env.QTDIR }}/bin"
+          shopt -s nullglob
+          exes=(build/qmlui/test/*/*_test.exe)
+          if [ ${#exes[@]} -eq 0 ]; then
+            echo "No qmlui/test binaries found under build/qmlui/test/*/*_test.exe - the build must have failed to produce any."
+            exit 1
+          fi
+          echo "Found ${#exes[@]} qmlui/test binaries."
+          overall=0
+          for exe in "${exes[@]}"; do
+            name=$(basename "$exe" .exe)
+            dir=$(dirname "$exe")
+            base=$(basename "$exe")
+            echo "=== Running $name ==="
+            ( cd "$dir" && "./$base" -o "${name}-result.txt,txt" )
+            status=$?
+            if [ -f "$dir/${name}-result.txt" ]; then
+              cat "$dir/${name}-result.txt"
+            else
+              echo "(no result file - binary likely crashed before QTestLib could write it)"
+            fi
+            if [ $status -ne 0 ]; then
+              echo "==> $name FAILED (exit $status)"
+              overall=1
+            fi
+          done
+          exit $overall
+
       - name: Install on Windows
         shell: msys2 {0}
         run: |
@@ -452,6 +512,57 @@ jobs:
           sed -i '' "s/\(#define APPVERSION \".*\)\"/\1 ${{env.GIT_REV}}\"/" engine/src/qlcconfig.h
           cd build
           make -j${{ env.NPROC }}
+
+      - name: Test (engine + controlapi)
+        shell: bash
+        run: |-
+          # Only rgbscripts auto-copies into the build tree (see resources/rgbscripts/
+          # CMakeLists.txt); the rest are Android-only-gated, so stage them here too.
+          for d in colorfilters fixtures gobos icons inputprofiles rgbscripts schemas; do
+            mkdir -p build/resources/$d
+            cp -r resources/$d/. build/resources/$d/
+          done
+          # Build-tree binaries should already carry a working rpath to libqlcplusengine
+          # (CMAKE_SKIP_BUILD_RPATH is CMake's default off) - DYLD_LIBRARY_PATH here is
+          # a defensive fallback, not a known-required fix like on Windows.
+          export DYLD_LIBRARY_PATH="$PWD/build/engine/src:$PWD/build/engine/audio:$DYLD_LIBRARY_PATH"
+          export QTEST_FUNCTION_TIMEOUT=30000
+          cd build
+          ctest -j1 --output-on-failure --timeout 60
+
+      - name: Test (qmlui/test)
+        shell: bash
+        run: |-
+          # qmlui/test/*'s QTest suites are deliberately not wired into CTest (see
+          # CLAUDE.md's "Unit testing (qmlui/test)" section) - run each built binary
+          # directly instead.
+          set +e
+          export DYLD_LIBRARY_PATH="$PWD/build/engine/src:$PWD/build/engine/audio:$DYLD_LIBRARY_PATH"
+          shopt -s nullglob
+          exes=(build/qmlui/test/*/*_test)
+          if [ ${#exes[@]} -eq 0 ]; then
+            echo "No qmlui/test binaries found under build/qmlui/test/*/*_test - the build must have failed to produce any."
+            exit 1
+          fi
+          echo "Found ${#exes[@]} qmlui/test binaries."
+          overall=0
+          for exe in "${exes[@]}"; do
+            name=$(basename "$exe")
+            dir=$(dirname "$exe")
+            echo "=== Running $name ==="
+            ( cd "$dir" && "./$name" -o "${name}-result.txt,txt" )
+            status=$?
+            if [ -f "$dir/${name}-result.txt" ]; then
+              cat "$dir/${name}-result.txt"
+            else
+              echo "(no result file - binary likely crashed before QTestLib could write it)"
+            fi
+            if [ $status -ne 0 ]; then
+              echo "==> $name FAILED (exit $status)"
+              overall=1
+            fi
+          done
+          exit $overall
 
       - name: Install
         shell: bash
