@@ -48,10 +48,6 @@ Dialog
     property int beatsDivision: 4
     // false = "already correct real-time values" (no-op), true = "convert from beats"
     property bool convertFromBeats: false
-    // convenience only - convertLegacyBeatShow() below is the real, Tardis-tracked
-    // commit either way, so there is nothing to revert if the user doesn't like
-    // the result: they can just undo (Ctrl+Z) or not save
-    property bool playAfterConvert: false
 
     signal converted(int showId)
 
@@ -60,7 +56,7 @@ Dialog
         showId = id
         showName = name
         convertFromBeats = false
-        playAfterConvert = false
+        playAfterConvertCheck.checked = false
 
         var info = showManager.legacyShowConversionInfo(id)
         bpmValue = info.bpm > 0 ? info.bpm : 120
@@ -79,7 +75,11 @@ Dialog
 
             showManager.convertLegacyBeatShow(showId, bpmValue)
 
-            if (playAfterConvert && preview.length > 0)
+            // convenience only - convertLegacyBeatShow() above is the real,
+            // Tardis-tracked commit either way, so there is nothing to revert
+            // if the user doesn't like the result: they can just undo (Ctrl+Z)
+            // or not save
+            if (playAfterConvertCheck.checked && preview.length > 0)
             {
                 if (showManager.isPlaying())
                     showManager.stopShow()
@@ -194,10 +194,9 @@ Dialog
 
             CheckBox
             {
+                id: playAfterConvertCheck
                 visible: control.convertFromBeats
                 text: qsTr("Play back the Show from its converted timing after converting")
-                checked: control.playAfterConvert
-                onCheckedChanged: control.playAfterConvert = checked
             }
 
             Text
