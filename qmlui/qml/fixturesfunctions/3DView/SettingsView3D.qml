@@ -47,10 +47,11 @@ Rectangle
     property vector3d lastRotation
     property vector3d lastScale
     property bool isUpdating: false
-    // Only meaningful for a single selected fixture (not a generic mesh item)
-    // with its own PositionX/Y/Z or RotationX/Y/Z DMX channels - see
-    // ContextManager::selectedFixtureHasDmxTransform().
-    property bool fxHasDmxTransform: contextManager && selFixturesCount === 1 && selGenericCount === 0 &&
+    // Meaningful whenever at least one selected fixture (not a generic mesh
+    // item) has its own PositionX/Y/Z or RotationX/Y/Z DMX channels - see
+    // ContextManager::selectedFixtureHasDmxTransform(). True for a multi-
+    // selection too, as long as none of the selection is a generic item.
+    property bool fxHasDmxTransform: contextManager && selFixturesCount >= 1 && selGenericCount === 0 &&
                                      contextManager.selectedFixtureHasDmxTransform
 
     // Toggles one bit of contextManager.fixtureDmxTransformFlags on/off,
@@ -607,9 +608,11 @@ Rectangle
                             onToggled: setDmxTransformFlag(MonitorProperties.InvertedRotationZFlag, checked)
                         }
 
-                        // row 7 - whole percent (10% to 1000%, i.e. 0.1x to
-                        // 10.0x) since CustomSpinBox only supports integers.
-                        RobotoText { height: UISettings.listItemHeight; label: qsTr("DMX scale") }
+                        // row 7 - rotation-only scale, whole percent (10% to
+                        // 1000%, i.e. 0.1x to 10.0x) since CustomSpinBox only
+                        // supports integers. Position has its own independent
+                        // range below.
+                        RobotoText { height: UISettings.listItemHeight; label: qsTr("Rotation scale") }
                         CustomSpinBox
                         {
                             Layout.fillWidth: true
@@ -617,8 +620,25 @@ Rectangle
                             from: 10
                             to: 1000
                             suffix: "%"
-                            value: Math.round(contextManager.fixtureDmxScale * 100)
-                            onValueModified: contextManager.fixtureDmxScale = value / 100.0
+                            value: Math.round(contextManager.fixtureRotationScale * 100)
+                            onValueModified: contextManager.fixtureRotationScale = value / 100.0
+                        }
+
+                        // row 8 - absolute position range in meters (default
+                        // 800), replacing the old shared-with-rotation
+                        // percentage scale for position specifically - sized
+                        // for drone-scale rigs with hundreds-of-meters flight
+                        // ranges, decoupled from rotation's percentage scale.
+                        RobotoText { height: UISettings.listItemHeight; label: qsTr("Position range") }
+                        CustomSpinBox
+                        {
+                            Layout.fillWidth: true
+                            height: UISettings.listItemHeight
+                            from: 1
+                            to: 1000000
+                            suffix: "m"
+                            value: Math.round(contextManager.fixturePositionRange)
+                            onValueModified: contextManager.fixturePositionRange = value
                         }
                     } // GridLayout
             } // SectionBox - DMX Position/Rotation

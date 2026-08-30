@@ -57,7 +57,7 @@ private slots:
     void fixtureScaleFactorDefaultsToOneForAbsentAxes();
 
     void fixturePositionDeltaUnaffectedByDefaultMonProps();
-    void fixturePositionDeltaAppliesPerFixtureInvertAndScale();
+    void fixturePositionDeltaAppliesPerFixtureInvertAndRange();
     void fixtureRotationDeltaAppliesPerFixtureInvertAndScale();
 
     void invertGroupSelectionWorkedExample();
