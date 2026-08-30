@@ -164,6 +164,44 @@ Rectangle
         chModifierEditor.open()
     }
 
+    /** Open the rename popup for the currently selected item, same as
+     *  clicking renameButton. Used by the global F2 shortcut (see
+     *  Connections below) - returns false if there is nothing selected here. */
+    function renameSelected()
+    {
+        if (allowEditing === false || gfhcDragItem.itemsList.length === 0)
+            return false
+
+        renamePopup.showNumbering = gfhcDragItem.itemsList.length > 1 ? true : false
+        renamePopup.editText = gfhcDragItem.itemsList[0].textLabel
+        renamePopup.open()
+        return true
+    }
+
+    /** Show and focus the Group/Fixture search field. Used by the global
+     *  Ctrl+F shortcut (see Connections below). */
+    function focusSearch()
+    {
+        searchItem.checked = true
+        sTextInput.forceActiveFocus()
+    }
+
+    // Note: since both this panel and RightPanel.qml's Function Manager side
+    // can be open at once, both react independently to "item.renameSelected"/
+    // "ff.focusSearch" - if both sides have a selection/are open simultaneously,
+    // both popups/focus calls can fire for the same keypress. Not resolved here.
+    Connections
+    {
+        target: shortcutManager
+        function onActionTriggered(actionId)
+        {
+            if (actionId === "item.renameSelected")
+                renameSelected()
+            else if (actionId === "ff.focusSearch")
+                focusSearch()
+        }
+    }
+
     CustomPopupDialog
     {
         id: fmGenericPopup
