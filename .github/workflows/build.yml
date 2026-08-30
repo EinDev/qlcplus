@@ -337,6 +337,19 @@ jobs:
           export PATH="$PWD/build/engine/src:$PWD/build/engine/audio:$PATH:${{ env.QTDIR }}/bin"
           export QTEST_FUNCTION_TIMEOUT=30000
           cd build
+          # TEMPORARY diagnostic for the systemic 0xc0000139 (STATUS_ENTRYPOINT_NOT_FOUND)
+          # failure hitting almost every test binary here: only qlcmacros_test and
+          # apienvelope_test pass, deterministically, across separate CI runs. ldd's
+          # per-import resolved path is the fastest way to see which DLL differs
+          # between a failing binary and a passing one under this exact PATH.
+          echo "=== PATH ==="
+          echo "$PATH"
+          echo "=== ldd: engine/test/beattracker/beattracker_test.exe (FAILS) ==="
+          ldd engine/test/beattracker/beattracker_test.exe || true
+          echo "=== ldd: engine/test/qlcmacros/qlcmacros_test.exe (PASSES) ==="
+          ldd engine/test/qlcmacros/qlcmacros_test.exe || true
+          echo "=== ldd: controlapi/test/apienvelope/apienvelope_test.exe (PASSES) ==="
+          ldd controlapi/test/apienvelope/apienvelope_test.exe || true
           # -j1: parallel runs of these WIN32-subsystem QTest binaries have shown a
           # heap-corruption crash (STATUS_HEAP_CORRUPTION) in this Qt/MinGW build -
           # see dev-test-run.ps1's own comment on this.
