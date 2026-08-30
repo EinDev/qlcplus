@@ -92,7 +92,9 @@ void Doc_Test::normalizeComponentPath()
      QCOMPARE(m_doc->normalizeComponentPath("qlcplus.png"), QFileInfo("qlcplus.png").absoluteFilePath());
      QCOMPARE(m_doc->normalizeComponentPath("../../../resources/icons/png/qlcplus.png"), QString("qlcplus.png"));
      QCOMPARE(m_doc->normalizeComponentPath("../../../resources/icons/png/sub/qlcplus.png"), QString("sub/qlcplus.png"));
-     QCOMPARE(m_doc->normalizeComponentPath("/home/user/test.png"), QString("/home/user/test.png"));
+
+     QString absolutePath = QDir::rootPath() + "home/user/test.png";
+     QCOMPARE(m_doc->normalizeComponentPath(absolutePath), absolutePath);
 }
 
 void Doc_Test::denormalizeComponentPath()
@@ -102,7 +104,9 @@ void Doc_Test::denormalizeComponentPath()
      QCOMPARE(m_doc->denormalizeComponentPath(QString()), QString());
      QCOMPARE(m_doc->denormalizeComponentPath("qlcplus.png"), QFileInfo("../../../resources/icons/png/qlcplus.png").absoluteFilePath());
      QCOMPARE(m_doc->denormalizeComponentPath("sub/qlcplus.png"), QFileInfo("../../../resources/icons/png/sub/qlcplus.png").absoluteFilePath());
-     QCOMPARE(m_doc->denormalizeComponentPath("/home/user/test.png"), QString("/home/user/test.png"));
+
+     QString absolutePath = QDir::rootPath() + "home/user/test.png";
+     QCOMPARE(m_doc->denormalizeComponentPath(absolutePath), absolutePath);
 }
 
 void Doc_Test::defaults()
