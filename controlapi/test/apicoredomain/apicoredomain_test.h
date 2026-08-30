@@ -20,6 +20,7 @@
 
 #include <QObject>
 #include <QJsonObject>
+#include <QTemporaryDir>
 
 class Doc;
 class ApiServer;
@@ -30,6 +31,7 @@ class ApiCoreDomain_Test final : public QObject
     Q_OBJECT
 
 private slots:
+    void initTestCase();
     void init();
     void cleanup();
 
@@ -45,6 +47,7 @@ private:
     Doc *m_doc;
     ApiServer *m_apiServer;
     QWebSocket *m_client;
+    QTemporaryDir m_settingsDir;
 };
 
 #endif
