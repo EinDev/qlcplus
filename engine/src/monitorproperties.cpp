@@ -69,7 +69,11 @@
 
 #define KXMLQLCMonitorFixtureGelColor   QStringLiteral("GelColor")
 #define KXMLQLCMonitorFixtureFixedZoom  QStringLiteral("FixedZoom")
-#define KXMLQLCMonitorFixtureDmxScale   QStringLiteral("DmxScale")
+// XML attribute name kept as "DmxScale" for backward compatibility with
+// existing saved shows - only the C++ identifier is renamed to reflect that
+// this is now rotation-only.
+#define KXMLQLCMonitorFixtureDmxScale       QStringLiteral("DmxScale")
+#define KXMLQLCMonitorFixturePositionRange  QStringLiteral("PositionRange")
 
 #define KXMLQLCMonitorFixtureHiddenFlag     QStringLiteral("Hidden")
 #define KXMLQLCMonitorFixtureInvPanFlag     QStringLiteral("InvertedPan")
@@ -340,29 +344,55 @@ int MonitorProperties::fixtureFixedZoom(quint32 fid, quint16 head, quint16 linke
     }
 }
 
-void MonitorProperties::setFixtureDmxScale(quint32 fid, quint16 head, quint16 linked, float scale)
+void MonitorProperties::setFixtureRotationScale(quint32 fid, quint16 head, quint16 linked, float scale)
 {
     if (head == 0 && linked == 0)
     {
-        m_fixtureItems[fid].m_baseItem.m_dmxScale = scale;
+        m_fixtureItems[fid].m_baseItem.m_rotationScale = scale;
     }
     else
     {
         quint32 subID = fixtureSubID(head, linked);
-        m_fixtureItems[fid].m_subItems[subID].m_dmxScale = scale;
+        m_fixtureItems[fid].m_subItems[subID].m_rotationScale = scale;
     }
 }
 
-float MonitorProperties::fixtureDmxScale(quint32 fid, quint16 head, quint16 linked) const
+float MonitorProperties::fixtureRotationScale(quint32 fid, quint16 head, quint16 linked) const
 {
     if (head == 0 && linked == 0)
     {
-        return m_fixtureItems[fid].m_baseItem.m_dmxScale;
+        return m_fixtureItems[fid].m_baseItem.m_rotationScale;
     }
     else
     {
         quint32 subID = fixtureSubID(head, linked);
-        return m_fixtureItems[fid].m_subItems[subID].m_dmxScale;
+        return m_fixtureItems[fid].m_subItems[subID].m_rotationScale;
+    }
+}
+
+void MonitorProperties::setFixturePositionRange(quint32 fid, quint16 head, quint16 linked, float meters)
+{
+    if (head == 0 && linked == 0)
+    {
+        m_fixtureItems[fid].m_baseItem.m_positionRange = meters;
+    }
+    else
+    {
+        quint32 subID = fixtureSubID(head, linked);
+        m_fixtureItems[fid].m_subItems[subID].m_positionRange = meters;
+    }
+}
+
+float MonitorProperties::fixturePositionRange(quint32 fid, quint16 head, quint16 linked) const
+{
+    if (head == 0 && linked == 0)
+    {
+        return m_fixtureItems[fid].m_baseItem.m_positionRange;
+    }
+    else
+    {
+        quint32 subID = fixtureSubID(head, linked);
+        return m_fixtureItems[fid].m_subItems[subID].m_positionRange;
     }
 }
 
@@ -799,7 +829,10 @@ bool MonitorProperties::loadXML(QXmlStreamReader &root, const Doc *mainDocument)
                 item.m_zoom = tAttrs.value(KXMLQLCMonitorFixtureFixedZoom).toString().toInt();
 
             if (tAttrs.hasAttribute(KXMLQLCMonitorFixtureDmxScale))
-                item.m_dmxScale = tAttrs.value(KXMLQLCMonitorFixtureDmxScale).toString().toFloat();
+                item.m_rotationScale = tAttrs.value(KXMLQLCMonitorFixtureDmxScale).toString().toFloat();
+
+            if (tAttrs.hasAttribute(KXMLQLCMonitorFixturePositionRange))
+                item.m_positionRange = tAttrs.value(KXMLQLCMonitorFixturePositionRange).toString().toFloat();
 
             if (tAttrs.hasAttribute(KXMLQLCMonitorFixtureHiddenFlag))
                 item.m_flags |= HiddenFlag;
@@ -1022,9 +1055,13 @@ bool MonitorProperties::saveXML(QXmlStreamWriter *doc, const Doc *mainDocument) 
             if (item.m_flags & HasDmxRotationFlag)
                 doc->writeAttribute(KXMLQLCMonitorFixtureHasDmxRotFlag, KXMLQLCTrue);
 
-            // write the DMX-to-view scale multiplier, if not the 1.0 default
-            if (!qFuzzyCompare(item.m_dmxScale, 1.0f))
-                doc->writeAttribute(KXMLQLCMonitorFixtureDmxScale, QString::number(item.m_dmxScale));
+            // write the DMX-to-view rotation scale multiplier, if not the 1.0 default
+            if (!qFuzzyCompare(item.m_rotationScale, 1.0f))
+                doc->writeAttribute(KXMLQLCMonitorFixtureDmxScale, QString::number(item.m_rotationScale));
+
+            // write the DMX-to-view position range (meters), if not the 800.0 default
+            if (!qFuzzyCompare(item.m_positionRange, 800.0f))
+                doc->writeAttribute(KXMLQLCMonitorFixturePositionRange, QString::number(item.m_positionRange));
 
             // always write position
             doc->writeAttribute(KXMLQLCMonitorItemXPosition, QString::number(item.m_position.x()));

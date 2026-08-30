@@ -51,13 +51,21 @@ struct PreviewItem
     int m_zoom = 0;             ///< Fixture: fixed zoom in degrees
     quint32 m_flags = 0;        ///< Item flags as specified in the ItemsFlags enum
     /** Fixture: per-fixture multiplier applied on top of the global DMX
-     *  position/rotation delta conversion (FixtureUtils::positionDeltaFromRaw()/
-     *  rotationDeltaFromRaw()) for a fixture with its own PositionX/Y/Z or
-     *  RotationX/Y/Z channels - how far it moves/rotates in the 2D/3D view per
-     *  unit of DMX channel change. Default 1.0 (no adjustment), matching the
-     *  global conversion exactly - must stay backward compatible for every
-     *  fixture that never sets it explicitly. */
-    float m_dmxScale = 1.0f;
+     *  rotation delta conversion (FixtureUtils::rotationDeltaFromRaw()) for a
+     *  fixture with its own RotationX/Y/Z channels - how far it rotates in
+     *  the 2D/3D view per unit of DMX channel change. Default 1.0 (no
+     *  adjustment), matching the global conversion exactly - must stay
+     *  backward compatible for every fixture that never sets it explicitly.
+     *  Rotation-only: position uses the independent m_positionRange below. */
+    float m_rotationScale = 1.0f;
+    /** Fixture: per-fixture absolute position range in meters, applied by
+     *  FixtureUtils::positionDeltaFromRaw()/positionRawFromDelta() for a
+     *  fixture with its own PositionX/Y/Z channels - the full +/- span (in
+     *  meters) the DMX range covers. Default 800.0, sized for drone-scale
+     *  rigs with hundreds-of-meters flight ranges (replaces the old fixed
+     *  +/-2.5m POSITION_DELTA_RANGE constant, which is now this field's
+     *  default instead of a hardcoded value). */
+    float m_positionRange = 800.0f;
 };
 
 struct FixturePreviewItem
@@ -225,12 +233,19 @@ public:
     void setFixtureFixedZoom(quint32 fid, quint16 head, quint16 linked, int degrees);
     int fixtureFixedZoom(quint32 fid, quint16 head, quint16 linked) const;
 
-    /** Get/Set the per-fixture DMX-to-view position/rotation scale multiplier
-     *  of a Fixture with the given $fid, $head and $linked index - see
-     *  PreviewItem::m_dmxScale. Default 1.0 (no adjustment) for any fixture
-     *  that never sets it explicitly. */
-    void setFixtureDmxScale(quint32 fid, quint16 head, quint16 linked, float scale);
-    float fixtureDmxScale(quint32 fid, quint16 head, quint16 linked) const;
+    /** Get/Set the per-fixture DMX-to-view rotation scale multiplier of a
+     *  Fixture with the given $fid, $head and $linked index - see
+     *  PreviewItem::m_rotationScale. Default 1.0 (no adjustment) for any
+     *  fixture that never sets it explicitly. Rotation-only. */
+    void setFixtureRotationScale(quint32 fid, quint16 head, quint16 linked, float scale);
+    float fixtureRotationScale(quint32 fid, quint16 head, quint16 linked) const;
+
+    /** Get/Set the per-fixture absolute position range, in meters, of a
+     *  Fixture with the given $fid, $head and $linked index - see
+     *  PreviewItem::m_positionRange. Default 800.0 for any fixture that
+     *  never sets it explicitly. */
+    void setFixturePositionRange(quint32 fid, quint16 head, quint16 linked, float meters);
+    float fixturePositionRange(quint32 fid, quint16 head, quint16 linked) const;
 
     /** Get/Set the name of a Fixture with with the given $fid, $head and $linked index */
     void setFixtureName(quint32 fid, quint16 head, quint16 linked, QString name);

@@ -367,13 +367,17 @@ void FixtureUtils_Test::positionDeltaMidpointIsZero()
     QCOMPARE(FixtureUtils::positionDeltaFromRaw(32768), 0.0f);
 }
 
-// Pin down the documented +/-2.5m default range (anchored to half of
-// MonitorProperties' default 3D floor grid width/depth, GRID_DEFAULT_WIDTH =
-// GRID_DEFAULT_DEPTH = 5m) at both raw extremes.
+// Pin down the documented +/-800m default range (MonitorProperties'
+// PreviewItem::m_positionRange default, sized for drone-scale rigs) at both
+// raw extremes, plus an explicit-range case proving the new $range parameter
+// itself is honored, not just the default.
 void FixtureUtils_Test::positionDeltaAtExtremesMatchesDocumentedRange()
 {
-    QCOMPARE(FixtureUtils::positionDeltaFromRaw(0), -2.5f);
-    QVERIFY(qAbs(FixtureUtils::positionDeltaFromRaw(65535) - 2.5f) < 0.001f);
+    QCOMPARE(FixtureUtils::positionDeltaFromRaw(0), -800.0f);
+    QVERIFY(qAbs(FixtureUtils::positionDeltaFromRaw(65535) - 800.0f) < 0.1f);
+
+    QCOMPARE(FixtureUtils::positionDeltaFromRaw(0, 2.5f), -2.5f);
+    QVERIFY(qAbs(FixtureUtils::positionDeltaFromRaw(65535, 2.5f) - 2.5f) < 0.001f);
 }
 
 // The write-back direction (engineering value -> raw DMX) other workstreams
@@ -391,8 +395,10 @@ void FixtureUtils_Test::positionDeltaRoundTrips()
     }
 
     // out-of-range engineering values must clamp, not wrap or overflow.
-    QCOMPARE(FixtureUtils::positionRawFromDelta(-100.0f), 0);
-    QCOMPARE(FixtureUtils::positionRawFromDelta(100.0f), 65535);
+    // With the new 800.0m default range, +/-100 no longer exceeds it (only
+    // +/-12.5%) - use deltas that actually exceed +/-800 to still saturate.
+    QCOMPARE(FixtureUtils::positionRawFromDelta(-2000.0f), 0);
+    QCOMPARE(FixtureUtils::positionRawFromDelta(2000.0f), 65535);
 }
 
 void FixtureUtils_Test::rotationDeltaMidpointIsZero()
@@ -451,9 +457,9 @@ void FixtureUtils_Test::scaleFactorRoundTrips()
 // updateFixtureItem() (DMX->transform) and ContextManager::setFixturesPosition()
 // (drag->DMX write-back) both rely on to know "what is this fixture's current
 // live position offset" - an axis with no channel at all on the fixture must
-// read back as exactly 0 (unaffected), never positionDeltaFromRaw(0)'s -2.5m,
-// or every axis a profile doesn't define would silently drag the fixture off
-// to one side.
+// read back as exactly 0 (unaffected), never positionDeltaFromRaw(0)'s
+// negative range extreme, or every axis a profile doesn't define would
+// silently drag the fixture off to one side.
 void FixtureUtils_Test::fixturePositionDeltaIgnoresAbsentAxes()
 {
     Doc doc(this);
@@ -510,35 +516,37 @@ void FixtureUtils_Test::fixturePositionDeltaUnaffectedByDefaultMonProps()
     QCOMPARE(withDefaultMonProps, withoutMonProps);
 }
 
-// The core of the invert/scale feature: a fixture's own MonitorProperties
-// entry must flip the sign and apply the multiplier of exactly the axis its
-// flag/scale addresses, leaving the raw-to-delta conversion of every other
-// axis (and every other fixture) untouched.
-void FixtureUtils_Test::fixturePositionDeltaAppliesPerFixtureInvertAndScale()
+// The core of the invert/range feature: a fixture's own MonitorProperties
+// entry must flip the sign and apply the position range of exactly the axis
+// its flag/range addresses, leaving the raw-to-delta conversion of every
+// other axis (and every other fixture) untouched. Position no longer reads
+// DmxScale/RotationScale at all - it uses its own independent range.
+void FixtureUtils_Test::fixturePositionDeltaAppliesPerFixtureInvertAndRange()
 {
     Doc doc(this);
     Fixture *fixture = createSingleChannelFixture(&doc, QLCChannel::PositionX, 0xFF);
     MonitorProperties monProps;
     monProps.setFixtureFlags(fixture->id(), 0, 0, MonitorProperties::InvertedPositionXFlag);
-    monProps.setFixtureDmxScale(fixture->id(), 0, 0, 2.0f);
+    monProps.setFixturePositionRange(fixture->id(), 0, 0, 100.0f);
 
     QVector3D delta = FixtureUtils::fixturePositionDelta(fixture, &monProps);
 
-    float rawDelta = FixtureUtils::positionDeltaFromRaw(0xFF << 8);
-    QCOMPARE(delta.x(), rawDelta * 2.0f * -1.0f);
-    // Axes with no channel at all must stay exactly 0 regardless of invert/scale.
+    float rawDelta = FixtureUtils::positionDeltaFromRaw(0xFF << 8, 100.0f);
+    QCOMPARE(delta.x(), rawDelta * -1.0f);
+    // Axes with no channel at all must stay exactly 0 regardless of invert/range.
     QCOMPARE(delta.y(), 0.0f);
     QCOMPARE(delta.z(), 0.0f);
 }
 
-// Same guarantee as above, for RotationX/Y/Z.
+// Same guarantee as above, for RotationX/Y/Z - proving rotation still reads
+// the independent rotation scale (unaffected by the position range split).
 void FixtureUtils_Test::fixtureRotationDeltaAppliesPerFixtureInvertAndScale()
 {
     Doc doc(this);
     Fixture *fixture = createSingleChannelFixture(&doc, QLCChannel::RotationZ, 0xFF);
     MonitorProperties monProps;
     monProps.setFixtureFlags(fixture->id(), 0, 0, MonitorProperties::InvertedRotationZFlag);
-    monProps.setFixtureDmxScale(fixture->id(), 0, 0, 0.5f);
+    monProps.setFixtureRotationScale(fixture->id(), 0, 0, 0.5f);
 
     QVector3D delta = FixtureUtils::fixtureRotationDelta(fixture, &monProps);
 

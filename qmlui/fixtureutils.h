@@ -200,18 +200,18 @@ public:
      *  own placed rest position; DMX 0 = the most-negative delta; DMX 65535 =
      *  the most-positive delta.
      *
-     *  Default range is +/-2.5m, i.e. HALF of MonitorProperties' default 3D
-     *  floor grid width/depth (GRID_DEFAULT_WIDTH = GRID_DEFAULT_DEPTH = 5m,
-     *  monitorproperties.cpp) - so the full DMX range moves a fixture across
-     *  one default-sized floor tile's width in either direction from its
-     *  rest position, which is a sensible span for a generic "moving
-     *  fixture" with no per-profile physical property to size this from
-     *  (unlike Pan/Tilt's focusPanMax()/focusTiltMax()). */
-    static float positionDeltaFromRaw(int raw);
+     *  $range is the full +/- span, in meters, the DMX range covers - an
+     *  explicit per-fixture value (MonitorProperties::fixturePositionRange())
+     *  rather than a fixed constant, since a fixture's real-world travel can
+     *  range from a couple of meters up to hundreds of meters (e.g. a
+     *  drone-scale rig). Defaults to 800.0m, matching MonitorProperties'
+     *  own PreviewItem::m_positionRange default, for callers that don't
+     *  care about a specific fixture's setting (e.g. unit tests). */
+    static float positionDeltaFromRaw(int raw, float range = 800.0f);
     /** Inverse of positionDeltaFromRaw(): world-space delta -> raw 0-65535,
      *  clamped to that range. Round-trips through positionDeltaFromRaw()
      *  within +/-1 raw unit of quantization error. */
-    static int positionRawFromDelta(float delta);
+    static int positionRawFromDelta(float delta, float range = 800.0f);
 
     /** Convert an accumulated 16-bit RotationX/RotationY/RotationZ raw value
      *  to a rotation delta in degrees. Modelled on how Pan/Tilt fall back to
@@ -240,24 +240,27 @@ public:
      *  the resulting world-space delta (meters - see positionDeltaFromRaw()),
      *  one axis at a time via accumulateChannelGroupValue(). An axis with no
      *  matching channel on the fixture contributes 0 (no offset) rather than
-     *  positionDeltaFromRaw(0)'s -2.5m - "no channel" and "channel currently
-     *  at DMX 0" are different things and must not be conflated.
+     *  positionDeltaFromRaw(0)'s negative range extreme - "no channel" and
+     *  "channel currently at DMX 0" are different things and must not be
+     *  conflated.
      *
      *  If $monProps is non-null, $fixture's per-fixture DMX-to-view invert
-     *  flags (MonitorProperties::InvertedPosition{X,Y,Z}Flag) and scale
-     *  multiplier (MonitorProperties::fixtureDmxScale()) are applied on top
-     *  of the raw-to-delta conversion, per axis: delta = rawDelta * scale *
+     *  flags (MonitorProperties::InvertedPosition{X,Y,Z}Flag) and position
+     *  range (MonitorProperties::fixturePositionRange()) are applied on top
+     *  of the raw-to-delta conversion, per axis: delta = rawDelta(range) *
      *  (-1 if inverted). $monProps defaults to null for callers (and the
      *  existing unit tests) that only care about the un-adjusted global
-     *  conversion; every real caller in qmlui passes its own MonitorProperties
-     *  so the setting actually takes effect - see ContextManager::
-     *  pushPositionDelta() for the exact-inverse write-back direction, which
-     *  must apply the same scale/invert or a drag will jump/drift. */
+     *  conversion (using the 800.0m default range); every real caller in
+     *  qmlui passes its own MonitorProperties so the setting actually takes
+     *  effect - see ContextManager::pushPositionDelta() for the exact-inverse
+     *  write-back direction, which must apply the same range/invert or a
+     *  drag will jump/drift. */
     static QVector3D fixturePositionDelta(Fixture *fixture, const MonitorProperties *monProps = nullptr);
 
     /** Same as fixturePositionDelta(), for RotationX/Y/Z (degrees). An axis
      *  with no matching channel contributes 0 degrees. $monProps applies the
-     *  fixture's InvertedRotation{X,Y,Z}Flag and DMX scale the same way. */
+     *  fixture's InvertedRotation{X,Y,Z}Flag and rotation scale
+     *  (MonitorProperties::fixtureRotationScale()) the same way. */
     static QVector3D fixtureRotationDelta(Fixture *fixture, const MonitorProperties *monProps = nullptr);
 
     /** Scans $fixture's current channel values for ScaleX/Y/Z and returns the
