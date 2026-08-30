@@ -356,8 +356,8 @@ void ApiCoreDomain::registerMethods()
         result.insert(QStringLiteral("defaultWorkingPath"), a ? a->workingPath() : QString());
         result.insert(QStringLiteral("masterTimerFrequencyHz"), settings.value(QStringLiteral(MASTERTIMER_FREQUENCY)).toInt());
 
-        session->send(ApiEnvelope::buildOkResponse(id, result));
         m_server->broadcast(QStringLiteral("core.settings.changed"), result, session->clientId(), false);
+        session->send(ApiEnvelope::buildOkResponse(id, result));
     });
 }
 
