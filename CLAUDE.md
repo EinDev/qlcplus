@@ -284,19 +284,30 @@ being tracked down. `resources/fixtures/`/`resources/inputprofiles/` likely have
 the same latent gap (same desktop-skips-the-copy pattern) but weren't touched -
 a deliberate follow-up, not verified broken.
 
-**Still-unresolved wrinkle, found while fixing this, not solved**: running a
-test directly (`./rgbscript_test.exe`, from an MSYS2 bash shell with
-`C:\msys64\mingw64\bin` and the built `qlcplusengine.dll`'s directory on `PATH`)
-works and correctly picks up the fresh resource copy. Running the exact same
-binary via `ctest -R rgbscript_test` from the build directory, with the same
-`PATH` exported in the same shell before invoking `ctest`, fails with no
-captured output at all (`Testing/Temporary/LastTest.log` shows `<end of
-output>`) - consistent with `qlcplusengine.dll` not being found specifically
-for a ctest-spawned child process, even though `ctest.exe` itself launches fine
-from that same shell/PATH. Direct binary execution (this project's established
-convention, see the `qmlui/test` section above) is unaffected and is the
-reliable way to run these suites; bare `ctest` invocation for anything needing
-`qlcplusengine.dll` needs further investigation before it can be trusted.
+**Update - did not reproduce (checked while wiring engine/controlapi tests into
+CI, 2026-08-30)**: re-tested this exact scenario - fresh configure/build,
+`C:\msys64\mingw64\bin` plus `build/engine/src` and `build/engine/audio` on
+`PATH`, `ctest -R rgbscript_test` run from `build/`. This time `ctest` found
+`qlcplusengine.dll` fine: it ran the binary and reported `***Failed`, and
+re-running the same binary directly with QTestLib's `-o result.txt,txt`
+confirmed it's a real, pre-existing test failure (`RGBScript_Test::runScripts()`
+- the "3D Starfield" script name fails a `scriptName.toLower() == scriptName`
+assumption), not a launch failure - `ctest`'s exit code agreed with the direct
+run in both cases. Repeating the full suite (`ctest -j1 --output-on-failure`)
+gave 55/62 passing with the rest failing for equally real reasons (e.g.
+`doc_test`'s `normalizeComponentPath()` assumes a `/home/user/...`-style Unix
+path). `ctest`'s own per-test captured log is still empty even on failure
+(`--output-on-failure` prints nothing) - that matches this project's already-
+documented WIN32-subsystem-binary behavior (see the `qmlui/test` section above:
+these binaries print nothing to stdout without QTestLib's own `-o` flag), which
+is what the original note's `<end of output>` was most likely showing, not a
+missing-DLL launch failure. Best guess for why the original attempt looked like
+a launch failure: unclear, possibly a stale build or a differently-scoped PATH
+at the time - not reproducible now. Conclusion: bare `ctest`, run from `build/`
+with `build/engine/src` and `build/engine/audio` (not just
+`C:\msys64\mingw64\bin`) on `PATH`, is reliable for engine/test and
+controlapi/test on this checkout; `dev-test-run.ps1` and
+`.github/workflows/build.yml`'s Windows `Test` step both rely on this.
 
 ## Git workflow for this project
 
