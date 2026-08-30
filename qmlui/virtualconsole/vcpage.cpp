@@ -353,8 +353,10 @@ QList<QKeySequence> VCPage::pageKeySequences()
     return list;
 }
 
-void VCPage::handleKeyEvent(QKeySequence &seq, bool pressed)
+bool VCPage::handleKeyEvent(QKeySequence &seq, bool pressed)
 {
+    bool handled = false;
+
     for (QPair<quint32, VCWidget *> match : m_keySequencesMap.values(seq)) // C++11
     {
         bool passVisibility = isEffectivelyVisible(match.second);
@@ -369,6 +371,14 @@ void VCPage::handleKeyEvent(QKeySequence &seq, bool pressed)
         {
             // TODO: match frame page??
             match.second->slotInputValueChanged(match.first, pressed ? 255 : 0);
+            handled = true;
         }
     }
+
+    return handled;
+}
+
+bool VCPage::hasKeySequence(const QKeySequence &seq) const
+{
+    return m_keySequencesMap.contains(seq);
 }

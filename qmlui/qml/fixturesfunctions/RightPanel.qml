@@ -32,6 +32,49 @@ SidePanel
     property int selectedItemsCount: functionManager.selectedFunctionCount + functionManager.selectedFolderCount
     property bool inShowManager: false
 
+    /** Open the rename popup for the currently selected item(s), same as
+     *  clicking renameFunction. Used by the global F2 shortcut (see
+     *  Connections below) - returns false if there is nothing selected here. */
+    function renameSelected()
+    {
+        var selNames = functionManager.selectedItemNames()
+        if (selNames.length === 0)
+            return false
+
+        if (selNames.length > 1)
+            textInputPopup.showNumbering = true
+        textInputPopup.title = qsTr("Rename items")
+        textInputPopup.isFolder = false
+        textInputPopup.editText = selNames[0]
+        textInputPopup.open()
+        return true
+    }
+
+    /** Open the Add Function menu, same as clicking addFunction. Used by the
+     *  global Insert shortcut (see Connections below). */
+    function openAddFlow()
+    {
+        // addFunction itself is hidden without this same access mask bit -
+        // mirror that guard, since a shortcut bypasses its visibility gate.
+        if (!(qlcplus.accessMask & App.AC_FunctionEditing))
+            return
+
+        addFunction.checked = true
+    }
+
+    // See the matching comment in FixtureGroupManager.qml: this panel and
+    // that one can both be open at once and both react independently to
+    // "item.renameSelected".
+    Connections
+    {
+        target: shortcutManager
+        function onActionTriggered(actionId)
+        {
+            if (actionId === "item.renameSelected" && !functionManager.isEditing)
+                renameSelected()
+        }
+    }
+
     function createFunctionAndEditor(fType)
     {
         var i

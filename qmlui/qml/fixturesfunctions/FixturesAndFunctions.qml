@@ -119,6 +119,40 @@ Rectangle
         leftPanel.closeChannelTools()
     }
 
+    /** Global Alt+1..4 (view switch) and Insert (open add flow) shortcuts.
+     *  Alt+1..4 flip the relevant toolbar button's checked property instead
+     *  of writing contextManager.currentSubContext directly - see the
+     *  comment on the fixture.switchTo* registrations in
+     *  App::registerBuiltinShortcuts() for why. */
+    Connections
+    {
+        target: shortcutManager
+        function onActionTriggered(actionId)
+        {
+            switch (actionId)
+            {
+                case "fixture.switchToUniverseGrid":
+                    uniView.checked = true
+                break
+                case "fixture.switchToDmxView":
+                    dmxView.checked = true
+                break
+                case "fixture.switchTo2DView":
+                    twodView.checked = true
+                break
+                case "fixture.switchTo3DView":
+                    threedView.checked = true
+                break
+                case "ff.openAddFlow":
+                    if (rightPanel.isOpen)
+                        rightPanel.openAddFlow()
+                    else
+                        leftPanel.openAddFixtures()
+                break
+            }
+        }
+    }
+
     LeftPanel
     {
         id: leftPanel

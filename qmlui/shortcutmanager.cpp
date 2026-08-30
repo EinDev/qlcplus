@@ -291,6 +291,17 @@ bool ShortcutManager::handleKeyEvent(QKeyEvent *event)
     return false;
 }
 
+QString ShortcutManager::actionDescriptionForSequence(const QKeySequence &sequence) const
+{
+    for (const ShortcutAction &action : std::as_const(m_actions))
+    {
+        if (action.sequence == sequence)
+            return action.description;
+    }
+
+    return QString();
+}
+
 bool ShortcutManager::scopeMatchesCurrentContext(ShortcutScope scope) const
 {
     switch (scope)

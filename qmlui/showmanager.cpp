@@ -215,8 +215,13 @@ QVariantList ShowManager::getSnapEdges(quint32 excludeFuncId,
             }
             else
             {
-                startX = (m_tickSize / beatsDivision) * ((double)sf->startTime() / 1000.0);
-                endX = (m_tickSize / beatsDivision) * ((double)endTime / 1000.0);
+                // sf->startTime()/duration() are always real milliseconds now, so this
+                // must convert ms -> pixels-on-a-beat-ruler (mirrors TimeUtils.timeToBeatSize),
+                // not reinterpret the ms value as a beat-pseudo count.
+                int bpmNumber = m_doc->inputOutputMap()->bpmNumber();
+                double barDuration = bpmNumber > 0 ? (60000.0 / bpmNumber) * beatsDivision : 0.0;
+                startX = barDuration > 0.0 ? (m_tickSize * (double)sf->startTime()) / barDuration : 0.0;
+                endX = barDuration > 0.0 ? (m_tickSize * (double)endTime) / barDuration : 0.0;
             }
 
             // filter: skip items entirely outside the visible viewport
@@ -496,22 +501,24 @@ void ShowManager::addItems(QQuickItem *parent, int trackIdx, int startTime, QVar
 
         ShowFunction *showFunc = selectedTrack->createShowFunction(functionID);
 
-        if (timeDivision() == Show::Time)
-        {
-            func->setTempoType(Function::Time);
-            showFunc->setDuration(func->totalDuration() ? func->totalDuration() : 5000);
-        }
-        else
-        {
-            func->setTempoType(Function::Beats);
-            if (func->type() == Function::AudioType || func->type() == Function::VideoType)
-                func->setTotalDuration(func->duration());
-            showFunc->setDuration(func->totalDuration() ? func->totalDuration() : 4000);
-        }
-        qDebug() << "[DBG SHOWMGR] addItems: functionID" << functionID << "type" << func->type()
-                 << "timeDivision" << (int)timeDivision() << "-> tempoType" << (int)func->tempoType()
-                 << "totalDuration" << func->totalDuration() << "showFunc duration" << showFunc->duration()
-                 << "startTime" << startTime;
+        // tempoType (real-time vs beat-clock playback scheduling) is no longer forced
+        // to match the Show's display mode here: Function already defaults to Time,
+        // Chaser/Scene/RGBMatrix expose their own user-settable tempoType in their own
+        // editors, and Audio/Video must never run on a beat clock regardless of how
+        // the Show's ruler happens to be displayed.
+        //
+        // The old Beats-mode branch also called func->setTotalDuration(func->duration())
+        // for Audio/Video here. That is dropped rather than made unconditional: Audio
+        // already keeps duration()/totalDuration() in sync from its own decoder at file
+        // load, making the call a no-op there, but Video's generic duration() is never
+        // populated from its real probed length (only its own totalDuration is, via the
+        // media player) - it defaults to 0, so applying this unconditionally would
+        // overwrite an already-correct Video totalDuration with 0 on every add. This was
+        // only safe before because it only ran in Beats mode, in front of a tempoType
+        // force-set whose own Function::setTempoType() conversion this call was likely
+        // compensating for - that conversion no longer runs, so this line no longer has
+        // a clear purpose here.
+        showFunc->setDuration(func->totalDuration() ? func->totalDuration() : 5000);
         showFunc->setStartTime(startTime);
         showFunc->setColor(ShowFunction::defaultColor(func->type()));
 
@@ -666,20 +673,33 @@ bool ShowManager::checkAndMoveItem(ShowFunction *sf, int originalTrackIdx, int n
 
     int newTime = newStartTime;
 
-    qDebug() << "[DBG SHOWMGR] checkAndMoveItem: m_gridEnabled" << m_gridEnabled << "itemSnapped" << itemSnapped
-             << "newStartTime" << newStartTime << "m_tickSize" << m_tickSize << "m_timeScale" << m_timeScale;
-
     if (m_gridEnabled && !itemSnapped)
     {
-        // calculate the X position from time and time scale
-        // timescale * 1000 : tickSize = time : x
-        float xPos = ((float)newStartTime * m_tickSize) / (m_timeScale * 1000.0);
-        // round to the nearest snap position
-        xPos = qRound(xPos / m_tickSize) * m_tickSize;
-        // recalculate the time from pixels
-        // xPos : time = tickSize : timescale * 1000
-        newTime = xPos * (1000 * m_timeScale) / m_tickSize;
-        qDebug() << "[DBG SHOWMGR] checkAndMoveItem: grid-snapped newStartTime" << newStartTime << "-> newTime" << newTime;
+        if (timeDivision() == Show::Time)
+        {
+            // calculate the X position from time and time scale
+            // timescale * 1000 : tickSize = time : x
+            float xPos = ((float)newStartTime * m_tickSize) / (m_timeScale * 1000.0);
+            // round to the nearest snap position
+            xPos = qRound(xPos / m_tickSize) * m_tickSize;
+            // recalculate the time from pixels
+            // xPos : time = tickSize : timescale * 1000
+            newTime = xPos * (1000 * m_timeScale) / m_tickSize;
+        }
+        else
+        {
+            // newStartTime is real ms here too; in Beats mode tickSize means pixels
+            // per bar, not pixels-per-timeScale-second, so snap to the nearest whole
+            // bar (in ms, via BPM/beatsDivision) instead of reusing the Time-mode
+            // pixel round-trip above.
+            int bpmNumber = m_doc->inputOutputMap()->bpmNumber();
+            int beatsDivision = m_currentShow->beatsDivision();
+            if (bpmNumber > 0 && beatsDivision > 0)
+            {
+                double barDuration = (60000.0 / bpmNumber) * beatsDivision;
+                newTime = qRound(newStartTime / barDuration) * barDuration;
+            }
+        }
     }
 
     Tardis::instance()->enqueueAction(Tardis::ShowManagerItemSetStartTime, sf->id(), sf->startTime(), newTime);
@@ -1546,12 +1566,6 @@ void ShowManager::setSelectedItemsLock(bool lock)
 
 void ShowManager::slotTimeChanged(quint32 msec_time)
 {
-    static int dbgLastLogged = -1000;
-    if ((int)msec_time - dbgLastLogged >= 1000 || (int)msec_time < dbgLastLogged)
-    {
-        dbgLastLogged = (int)msec_time;
-        qDebug() << "[DBG SHOWMGR-TIME] slotTimeChanged" << msec_time << "prev m_currentTime" << m_currentTime;
-    }
     m_currentTime = (int)msec_time;
     emit currentTimeChanged(m_currentTime);
 }

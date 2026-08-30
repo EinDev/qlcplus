@@ -80,10 +80,18 @@ Rectangle
         updateCursorPosition()
     }
 
-    onBeatsDivisionChanged: updateCursorPosition()
-    onBpmNumberChanged: updateCursorPosition()
-
-    property int dbgLastLoggedSecond: -1
+    onBeatsDivisionChanged:
+    {
+        updateCursorPosition()
+        width = parseInt(headerWidthFor(duration + 300000))
+        timeHeader.requestPaint()
+    }
+    onBpmNumberChanged:
+    {
+        updateCursorPosition()
+        width = parseInt(headerWidthFor(duration + 300000))
+        timeHeader.requestPaint()
+    }
 
     // cursor.x is an imperative assignment, not a live binding, so every
     // input it depends on (currentTime, timeScale, timeDivision,
@@ -102,33 +110,25 @@ Rectangle
             cursor.x = TimeUtils.timeToBeatPosition(currentTime, tickSize, bpmNumber, beatsDivision)
     }
 
-    onCurrentTimeChanged:
+    function headerWidthFor(time)
     {
-        updateCursorPosition()
-
-        if (cursorHeight)
-        {
-            var dbgSecond = Math.floor(currentTime / 1000)
-            if (dbgSecond !== dbgLastLoggedSecond)
-            {
-                dbgLastLoggedSecond = dbgSecond
-                console.log("[DBG QML-CURSOR] currentTime:", currentTime, "timeDivision:", timeDivision,
-                            "bpmNumber:", bpmNumber, "beatsDivision:", beatsDivision, "tickSize:", tickSize,
-                            "timeScale:", timeScale, "-> cursor.x:", cursor.x)
-            }
-        }
+        return (timeDivision === Show.Time)
+                ? TimeUtils.timeToSize(time, timeScale, tickSize)
+                : TimeUtils.timeToBeatPosition(time, tickSize, bpmNumber, beatsDivision)
     }
+
+    onCurrentTimeChanged: updateCursorPosition()
 
     onDurationChanged:
     {
-        width = parseInt(TimeUtils.timeToSize(duration + 300000, timeScale, tickSize))
+        width = parseInt(headerWidthFor(duration + 300000))
         //console.log("New header width: " + width)
     }
 
     onTimeScaleChanged:
     {
         updateCursorPosition()
-        width = parseInt(TimeUtils.timeToSize(duration + 300000, timeScale, tickSize))
+        width = parseInt(headerWidthFor(duration + 300000))
         timeHeader.requestPaint()
         //console.log("New header width: " + width)
     }

@@ -235,6 +235,7 @@ void App::startup()
 
     m_shortcutManager = new ShortcutManager(this);
     rootContext()->setContextProperty("shortcutManager", m_shortcutManager);
+    m_virtualConsole->setShortcutManager(m_shortcutManager);
     registerBuiltinShortcuts();
 
     m_stageWizard = new StageWizard(m_doc, m_fixtureManager, m_functionManager,
@@ -323,6 +324,8 @@ void App::registerBuiltinShortcuts()
     ContextManager *cm = m_contextManager;
     InputOutputManager *ioMgr = m_ioManager;
     VirtualConsole *vc = m_virtualConsole;
+    FunctionManager *funcMgr = m_functionManager;
+    ShowManager *sm = m_showManager;
 
     m_shortcutManager->registerAction("fixture.selectAll", QKeySequence(Qt::CTRL | Qt::Key_A),
                                        ShortcutManager::FixturesAndFunctions,
@@ -442,6 +445,252 @@ void App::registerBuiltinShortcuts()
                                        ShortcutManager::Global,
                                        tr("Switch to the Input/Output Manager tab"),
                                        [cm]() { cm->switchToContext("IOMGR"); });
+
+    // QML-only: FixturesAndFunctions.qml listens via Connections and flips the
+    // relevant MenuBarEntry's checked property (uniView/dmxView/twodView/
+    // threedView), the same thing a real click on it does. This is deliberately
+    // NOT a direct cm->setCurrentSubContext() call: that would only update
+    // ContextManager's own property, while the view toolbar's buttons drive
+    // (and can be driven by) a *declarative* checked binding to that same
+    // property - a binding that FixturesAndFunctions.qml itself already
+    // sometimes overwrites with a plain imperative assignment (see
+    // onRightClicked / enableContext()). Going through the button's checked
+    // property, exactly like those call sites do, keeps working even after
+    // that binding has been severed, and keeps loadContext()'s side effects
+    // (currentViewQML, the 3D is3DSupported branch) in sync.
+    m_shortcutManager->registerAction("fixture.switchToUniverseGrid", QKeySequence(Qt::ALT | Qt::Key_1),
+                                       ShortcutManager::FixturesAndFunctions,
+                                       tr("Switch to the Universe Grid view"),
+                                       nullptr);
+
+    m_shortcutManager->registerAction("fixture.switchToDmxView", QKeySequence(Qt::ALT | Qt::Key_2),
+                                       ShortcutManager::FixturesAndFunctions,
+                                       tr("Switch to the DMX view"),
+                                       nullptr);
+
+    m_shortcutManager->registerAction("fixture.switchTo2DView", QKeySequence(Qt::ALT | Qt::Key_3),
+                                       ShortcutManager::FixturesAndFunctions,
+                                       tr("Switch to the 2D view"),
+                                       nullptr);
+
+    m_shortcutManager->registerAction("fixture.switchTo3DView", QKeySequence(Qt::ALT | Qt::Key_4),
+                                       ShortcutManager::FixturesAndFunctions,
+                                       tr("Switch to the 3D view"),
+                                       nullptr);
+
+    // Guarded against isPopupFocused() so Escape-cancelling a popup (e.g.
+    // PopupInvertGroupSelection, documented to leave the selection untouched
+    // on cancel) doesn't also wipe the fixture selection out from under it.
+    m_shortcutManager->registerAction("fixture.deselectAll", QKeySequence(Qt::Key_Escape),
+                                       ShortcutManager::FixturesAndFunctions,
+                                       tr("Deselect all fixtures"),
+                                       [this, cm]() { if (!isPopupFocused()) cm->resetFixtureSelection(); });
+
+    m_shortcutManager->registerAction("fixture.selectEven", QKeySequence(Qt::ALT | Qt::Key_E),
+                                       ShortcutManager::FixturesAndFunctions,
+                                       tr("Select every even fixture of the current selection"),
+                                       [cm]() { cm->selectEvenOdd(true); });
+
+    m_shortcutManager->registerAction("fixture.selectOdd", QKeySequence(Qt::ALT | Qt::Key_O),
+                                       ShortcutManager::FixturesAndFunctions,
+                                       tr("Select every odd fixture of the current selection"),
+                                       [cm]() { cm->selectEvenOdd(false); });
+
+    m_shortcutManager->registerAction("fixture.highlightSelection", QKeySequence(Qt::CTRL | Qt::Key_H),
+                                       ShortcutManager::FixturesAndFunctions,
+                                       tr("Highlight the selected fixtures"),
+                                       [cm]() { cm->highlightFixtureSelection(); });
+
+    // Migrated from ContextManager::handleKeyPress()'s hardcoded switch - see the
+    // comment removed there. Not "create fixture group", which is a different,
+    // separate (and still unbound) action.
+    m_shortcutManager->registerAction("fixture.invertGroupSelection", QKeySequence(Qt::CTRL | Qt::Key_G),
+                                       ShortcutManager::FixturesAndFunctions,
+                                       tr("Invert the fixture group selection"),
+                                       [cm]() { cm->invertGroupSelection(); });
+
+    // QML-only: no single C++ entry point exists for "focus whichever F&F
+    // search field is relevant" - FixtureGroupManager.qml and FunctionManager.qml
+    // each listen for this via Connections and focus their own search field.
+    m_shortcutManager->registerAction("ff.focusSearch", QKeySequence(Qt::CTRL | Qt::Key_F),
+                                       ShortcutManager::FixturesAndFunctions,
+                                       tr("Focus the fixture/function search field"),
+                                       nullptr);
+
+    // QML-only: renaming is entered via a popup (PopupRenameItems) driven by
+    // per-panel selection state (gfhcDragItem / functionManager.selectedItemNames())
+    // that only exists in QML - FixtureGroupManager.qml and RightPanel.qml each
+    // listen for this via Connections.
+    m_shortcutManager->registerAction("item.renameSelected", QKeySequence(Qt::Key_F2),
+                                       ShortcutManager::FixturesAndFunctions,
+                                       tr("Rename the currently selected item"),
+                                       nullptr);
+
+    // QML-only: FixturesAndFunctions.qml listens via Connections and picks the
+    // Fixture Browser or the Add Function menu depending on which side panel
+    // is currently open.
+    m_shortcutManager->registerAction("ff.openAddFlow", QKeySequence(Qt::Key_Insert),
+                                       ShortcutManager::FixturesAndFunctions,
+                                       tr("Open the add flow for the active Fixtures/Functions panel"),
+                                       nullptr);
+
+    // cloneFunction's own button hides itself while a Function is being
+    // edited (counter: ... && !functionManager.isEditing) - mirror that guard
+    // here since a keyboard shortcut bypasses that visibility gate entirely.
+    m_shortcutManager->registerAction("function.clone", QKeySequence(Qt::CTRL | Qt::Key_D),
+                                       ShortcutManager::FixturesAndFunctions,
+                                       tr("Clone the selected functions"),
+                                       [funcMgr]() { if (!funcMgr->isEditing()) funcMgr->cloneFunctions(); });
+
+    m_shortcutManager->registerAction("function.togglePreview", QKeySequence(Qt::Key_Space),
+                                       ShortcutManager::FixturesAndFunctions,
+                                       tr("Toggle preview of the selected function"),
+                                       [funcMgr]() { funcMgr->setPreviewEnabled(!funcMgr->previewEnabled()); });
+
+    // Space is deliberately not bound to anything in VirtualConsole scope -
+    // it stays free for a user's own per-show VC binding (e.g. a cue-list
+    // Play button), which now always takes priority anyway (see
+    // App::keyPressEvent), but leaving it unregistered here keeps that
+    // intent explicit instead of relying on it being merely harmless.
+
+    m_shortcutManager->registerAction("vc.copy", QKeySequence(Qt::CTRL | Qt::Key_C),
+                                       ShortcutManager::VirtualConsole,
+                                       tr("Copy the selected widgets"),
+                                       [vc]() { if (vc->editMode()) vc->copyToClipboard(); });
+
+    m_shortcutManager->registerAction("vc.cut", QKeySequence(Qt::CTRL | Qt::Key_X),
+                                       ShortcutManager::VirtualConsole,
+                                       tr("Cut the selected widgets"),
+                                       [vc]() { if (vc->editMode()) vc->cutToClipboard(); });
+
+    m_shortcutManager->registerAction("vc.paste", QKeySequence(Qt::CTRL | Qt::Key_V),
+                                       ShortcutManager::VirtualConsole,
+                                       tr("Paste widgets from the clipboard"),
+                                       [vc]() { if (vc->editMode()) vc->pasteFromClipboard(); });
+
+    m_shortcutManager->registerAction("vc.delete", QKeySequence(Qt::Key_Delete),
+                                       ShortcutManager::VirtualConsole,
+                                       tr("Delete the selected widgets"),
+                                       [vc]() { if (vc->editMode()) vc->deleteVCWidgets(vc->selectedWidgetIDs()); });
+
+    m_shortcutManager->registerAction("vc.insertWidget", QKeySequence(Qt::Key_Insert),
+                                       ShortcutManager::VirtualConsole,
+                                       tr("Open the Add Widget panel"),
+                                       [this, vc]()
+                                       {
+                                           if (!vc->editMode())
+                                               return;
+                                           QQuickItem *vcItem = qobject_cast<QQuickItem *>(
+                                               rootObject()->findChild<QObject *>("virtualConsole"));
+                                           if (vcItem)
+                                               QMetaObject::invokeMethod(vcItem, "toggleAddWidgetPanel");
+                                       });
+
+    m_shortcutManager->registerAction("vc.previousPage", QKeySequence(Qt::Key_PageUp),
+                                       ShortcutManager::VirtualConsole,
+                                       tr("Select the previous Virtual Console page"),
+                                       [vc]()
+                                       {
+                                           int page = vc->selectedPage() - 1;
+                                           if (page < 0)
+                                               page = 0;
+                                           if (page < vc->pagesCount())
+                                               vc->setSelectedPage(page);
+                                       });
+
+    m_shortcutManager->registerAction("vc.nextPage", QKeySequence(Qt::Key_PageDown),
+                                       ShortcutManager::VirtualConsole,
+                                       tr("Select the next Virtual Console page"),
+                                       [vc]()
+                                       {
+                                           int page = vc->selectedPage() + 1;
+                                           if (page < vc->pagesCount())
+                                               vc->setSelectedPage(page);
+                                       });
+
+    m_shortcutManager->registerAction("vc.zoomIn", QKeySequence(Qt::CTRL | Qt::Key_Equal),
+                                       ShortcutManager::VirtualConsole,
+                                       tr("Zoom the current Virtual Console page in"),
+                                       [vc]() { vc->setPageScale(0.1); });
+
+    m_shortcutManager->registerAction("vc.zoomOut", QKeySequence(Qt::CTRL | Qt::Key_Minus),
+                                       ShortcutManager::VirtualConsole,
+                                       tr("Zoom the current Virtual Console page out"),
+                                       [vc]() { vc->setPageScale(-0.1); });
+
+    m_shortcutManager->registerAction("showmgr.play", QKeySequence(Qt::Key_Space),
+                                       ShortcutManager::ShowManager,
+                                       tr("Play/pause the current Show"),
+                                       [sm]() { sm->playShow(); });
+
+    m_shortcutManager->registerAction("showmgr.stop", QKeySequence(Qt::Key_Home),
+                                       ShortcutManager::ShowManager,
+                                       tr("Stop/rewind the current Show"),
+                                       [sm]() { sm->stopShow(); });
+
+    m_shortcutManager->registerAction("showmgr.copy", QKeySequence(Qt::CTRL | Qt::Key_C),
+                                       ShortcutManager::ShowManager,
+                                       tr("Copy the selected Show items"),
+                                       [sm]() { sm->copyToClipboard(); });
+
+    m_shortcutManager->registerAction("showmgr.paste", QKeySequence(Qt::CTRL | Qt::Key_V),
+                                       ShortcutManager::ShowManager,
+                                       tr("Paste Show items from the clipboard"),
+                                       [sm]() { sm->pasteFromClipboard(); });
+
+    m_shortcutManager->registerAction("showmgr.zoomIn", QKeySequence(Qt::CTRL | Qt::Key_Equal),
+                                       ShortcutManager::ShowManager,
+                                       tr("Zoom the Show Manager timeline in"),
+                                       [this]()
+                                       {
+                                           QQuickItem *smItem = qobject_cast<QQuickItem *>(
+                                               rootObject()->findChild<QObject *>("showManagerRoot"));
+                                           if (smItem)
+                                               QMetaObject::invokeMethod(smItem, "zoomTimelineIn");
+                                       });
+
+    m_shortcutManager->registerAction("showmgr.zoomOut", QKeySequence(Qt::CTRL | Qt::Key_Minus),
+                                       ShortcutManager::ShowManager,
+                                       tr("Zoom the Show Manager timeline out"),
+                                       [this]()
+                                       {
+                                           QQuickItem *smItem = qobject_cast<QQuickItem *>(
+                                               rootObject()->findChild<QObject *>("showManagerRoot"));
+                                           if (smItem)
+                                               QMetaObject::invokeMethod(smItem, "zoomTimelineOut");
+                                       });
+
+    m_shortcutManager->registerAction("showmgr.toggleSnap", QKeySequence(Qt::ALT | Qt::Key_S),
+                                       ShortcutManager::ShowManager,
+                                       tr("Toggle Show Manager snap-to-grid"),
+                                       [sm]() { sm->setGridEnabled(!sm->gridEnabled()); });
+
+    m_shortcutManager->registerAction("showmgr.toggleStretch", QKeySequence(Qt::ALT | Qt::Key_T),
+                                       ShortcutManager::ShowManager,
+                                       tr("Toggle Show Manager stretch-functions"),
+                                       [sm]() { sm->setStretchFunctions(!sm->stretchFunctions()); });
+
+    m_shortcutManager->registerAction("showmgr.moveTrackUp", QKeySequence(Qt::ALT | Qt::Key_Up),
+                                       ShortcutManager::ShowManager,
+                                       tr("Move the selected Show track up"),
+                                       [this]()
+                                       {
+                                           QQuickItem *smItem = qobject_cast<QQuickItem *>(
+                                               rootObject()->findChild<QObject *>("showManagerRoot"));
+                                           if (smItem)
+                                               QMetaObject::invokeMethod(smItem, "moveSelectedTrackUp");
+                                       });
+
+    m_shortcutManager->registerAction("showmgr.moveTrackDown", QKeySequence(Qt::ALT | Qt::Key_Down),
+                                       ShortcutManager::ShowManager,
+                                       tr("Move the selected Show track down"),
+                                       [this]()
+                                       {
+                                           QQuickItem *smItem = qobject_cast<QQuickItem *>(
+                                               rootObject()->findChild<QObject *>("showManagerRoot"));
+                                           if (smItem)
+                                               QMetaObject::invokeMethod(smItem, "moveSelectedTrackDown");
+                                       });
 }
 
 void App::toggleFullscreen()
@@ -554,13 +803,18 @@ int App::defaultMask() const
 namespace {
 
 /** Keys a focused text field legitimately wants for itself: any unmodified
- *  (or shifted, for uppercase/shifted-symbol) letter or digit, Delete, and
- *  the standard Ctrl+A/C/V/X editing shortcuts. Everything else (F-keys,
- *  Ctrl+S, Ctrl+Z, Ctrl+1..5, ...) still goes through the shortcut path
- *  even while a text field has focus. */
+ *  (or shifted, for uppercase/shifted-symbol) letter or digit, Delete, Space,
+ *  Escape, and the standard Ctrl+A/C/V/X editing shortcuts. Everything else
+ *  (F-keys, Ctrl+S, Ctrl+Z, Ctrl+1..5, ...) still goes through the shortcut
+ *  path even while a text field has focus.
+ *  Space and Escape were added alongside the FixturesAndFunctions shortcuts
+ *  (function.togglePreview / fixture.deselectAll) - without this, typing a
+ *  space into a focused rename/search field would also start/stop the
+ *  selected function's preview, and Escape-cancelling an inline rename
+ *  would also deselect every fixture. */
 bool isTextEditingKey(const QKeyEvent *e)
 {
-    if (e->key() == Qt::Key_Delete)
+    if (e->key() == Qt::Key_Delete || e->key() == Qt::Key_Space || e->key() == Qt::Key_Escape)
         return true;
 
     Qt::KeyboardModifiers mods = e->modifiers() & ~Qt::KeypadModifier;
@@ -606,9 +860,36 @@ bool App::isTextInputFocused() const
     return false;
 }
 
+bool App::isPopupFocused() const
+{
+    QQuickItem *item = activeFocusItem();
+
+    while (item != nullptr)
+    {
+        if (item->inherits("QQuickOverlay"))
+            return true;
+
+        item = item->parentItem();
+    }
+
+    return false;
+}
+
 void App::keyPressEvent(QKeyEvent *e)
 {
     if (isTextInputFocused() && isTextEditingKey(e))
+    {
+        QQuickView::keyPressEvent(e);
+        return;
+    }
+
+    // Virtual Console's own per-show key bindings must be checked before the
+    // ShortcutManager registry: they are a deliberate, specific user action
+    // (bound within their own project), while the registry only holds
+    // built-in defaults - the more specific binding should always win, and
+    // silently being unable to ever fire because a built-in shortcut happens
+    // to reuse the same combo would be a worse outcome than the reverse.
+    if (m_virtualConsole && m_virtualConsole->handleKeyEvent(e, true))
     {
         QQuickView::keyPressEvent(e);
         return;

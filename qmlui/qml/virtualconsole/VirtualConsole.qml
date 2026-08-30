@@ -71,6 +71,13 @@ Rectangle
         pageItem.click()
     }
 
+    // Invoked from App::registerBuiltinShortcuts (action "vc.insertWidget")
+    // via QMetaObject::invokeMethod, same mechanism as activatePage() above.
+    function toggleAddWidgetPanel()
+    {
+        rightSidePanel.toggleAddWidgetPanel()
+    }
+
     function requestMatrixPopup(target, mparent, type, pos)
     {
         addMatrixPopup.targetFrame = target
