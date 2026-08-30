@@ -172,6 +172,12 @@ Rectangle
         dmxDumpDialog.focusEditItem()
     }
 
+    function showShortcutCollisionWarning(sequence, actionDescription)
+    {
+        shortcutCollisionPopup.message = qsTr("The key combination \"%1\" you just assigned is already used by the built-in shortcut \"%2\". Your Virtual Console binding will always take priority over it while this project is loaded.").arg(sequence).arg(actionDescription)
+        shortcutCollisionPopup.open()
+    }
+
     function saveBeforeExit()
     {
         //actionsMenu.open()
@@ -776,6 +782,17 @@ Rectangle
     // panel button, or the 2D view's "Groups" settings row all call the same
     // C++ method).
     PopupInvertGroupSelection { id: invertGroupSelectionPopup }
+
+    // Warns a user capturing a new Virtual Console key binding (the
+    // auto-detect flow in KeyboardSequenceDelegate.qml) that the sequence
+    // they just picked already shadows a built-in ShortcutManager action -
+    // see VirtualConsole::handleKeyEvent()'s auto-detection branch.
+    CustomPopupDialog
+    {
+        id: shortcutCollisionPopup
+        standardButtons: Dialog.Ok
+        title: qsTr("Keyboard shortcut already in use")
+    }
 
     Connections
     {
