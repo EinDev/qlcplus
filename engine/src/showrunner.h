@@ -76,7 +76,12 @@ private:
     /** Index of the item in m_beatFunctions to be considered for playback */
     int m_currentBeatFunctionIndex;
 
-    /** Elapsed beats since runner start */
+    /** Elapsed time since runner start, for Beats-tempo functions - in real
+     *  milliseconds like m_elapsedTime, NOT a beat count. ShowFunction::startTime()/
+     *  duration() are always real milliseconds regardless of a function's tempoType
+     *  (ADR 0001), so this must be kept in the same unit to compare directly against
+     *  them; it is advanced by the actual ms-per-beat (derived from BPM) on every
+     *  detected beat pulse, not by a fixed beat-pseudo-count step. */
     quint32 m_elapsedBeats;
 
     /** Flag used to sinchronize playback to beats */
