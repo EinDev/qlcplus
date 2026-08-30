@@ -54,6 +54,11 @@ SidePanel
      *  global Insert shortcut (see Connections below). */
     function openAddFlow()
     {
+        // addFunction itself is hidden without this same access mask bit -
+        // mirror that guard, since a shortcut bypasses its visibility gate.
+        if (!(qlcplus.accessMask & App.AC_FunctionEditing))
+            return
+
         addFunction.checked = true
     }
 
