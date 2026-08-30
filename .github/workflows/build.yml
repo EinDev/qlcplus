@@ -450,6 +450,16 @@ jobs:
           name: QLC+-${{matrix.task}}-${{env.APPVERSION}}-${{env.BUILD_DATE}}-${{env.GIT_REV}}.exe
           path: ${{matrix.task}}-${{env.OUTFILE}}
 
+      # Fixed name (unlike the dynamically-named artifact above) so the
+      # release workflow can find the v5/qmlui installer without knowing the
+      # per-run APPVERSION/BUILD_DATE/GIT_REV values.
+      - name: Store executable artifact under a fixed name for the release workflow
+        if: ${{ matrix.task == 'build-v5' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: qlcplus5-windows-installer
+          path: ${{matrix.task}}-${{env.OUTFILE}}
+
   build-macos:
     runs-on: macos-15
     name: QLCplus macOS ${{matrix.task}}

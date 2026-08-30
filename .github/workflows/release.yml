@@ -1,0 +1,67 @@
+name: QLCplus GitHub Release
+
+on:
+  workflow_run:
+    workflows: ["QLCplus Github Actions CI Build"]
+    types: [completed]
+
+concurrency: release-me
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  release-me:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    # `event == 'push'` is required in addition to `head_branch == 'master'`:
+    # build.yml also runs on pull_request, and a PR opened from a fork whose
+    # own default branch is also called `master` would otherwise match too.
+    if: >-
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'master'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          submodules: false
+
+      # Downloaded before ReleaseMe runs (rather than after) so a download
+      # failure fails the job before any tag/release is created - ReleaseMe
+      # only lets one release be created per new Conventional Commit, so a
+      # failure discovered afterwards (e.g. missing installer) would leave a
+      # published release permanently missing the required asset.
+      - name: Download Windows installer from the triggering CI run
+        uses: actions/download-artifact@v7
+        with:
+          name: qlcplus5-windows-installer
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+          path: release-assets
+
+      - name: Run ReleaseMe
+        id: release
+        # eindev-v keeps this fork's own auto-generated tags unambiguous from
+        # upstream mcallegari/qlcplus's own QLC+_x.y.z tags, which this fork
+        # periodically pulls in from `upstream`. No release is created (and
+        # `created` stays unset) when no commit since the last eindev-v tag
+        # is a Conventional Commit feat:/fix:/breaking change - this is
+        # release-me's normal, non-erroring default, not a fallback we added.
+        uses: dev-build-deploy/release-me@v1
+        with:
+          token: ${{ github.token }}
+          prefix: eindev-v
+          versioning: semver
+
+      - name: Attach Windows installer to the release
+        # Deliberately not using release-me's own `files`/`artifacts` inputs:
+        # it reads assets as UTF-8 text before uploading them (see
+        # dev-build-deploy/release-me issue #55), which corrupts binaries.
+        # `gh release upload` uploads the raw bytes correctly.
+        if: ${{ steps.release.outputs.created }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ fromJSON(steps.release.outputs.release).tag_name }}" release-assets/* --repo "${{ github.repository }}"
