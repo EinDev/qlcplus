@@ -186,6 +186,70 @@ Rectangle
         sTextInput.forceActiveFocus()
     }
 
+    /** Select every currently-visible flat-tree row between $fromRow and
+     *  $toRow (inclusive), the same way individually Ctrl-clicking each of
+     *  them would: additive to whatever is already selected, keeping the
+     *  tree's isSelected role, contextManager's fixture/group selection and
+     *  the drag payload (gfhcDragItem.itemsList) all in sync. Used by
+     *  FixtureGroupFlatDelegate.qml to implement Shift range-select. Rows
+     *  hidden behind a collapsed ancestor aren't part of the flat model at
+     *  all, so (like a real file explorer) they're simply not reachable by
+     *  a range that spans a collapsed group. */
+    function selectFlatRange(fromRow, toRow)
+    {
+        var lo = Math.min(fromRow, toRow)
+        var hi = Math.max(fromRow, toRow)
+
+        for (var i = lo; i <= hi; i++)
+        {
+            var rIdx = flatGroupsModel.index(i, 0)
+            if (flatGroupsModel.data(rIdx, TreeFlatModel.IsSelectedRole))
+                continue // already selected - avoid a duplicate itemsList entry
+
+            flatGroupsModel.setData(rIdx, 2, TreeFlatModel.IsSelectedRole)
+
+            var rType = flatGroupsModel.data(rIdx, TreeFlatModel.TypeRole)
+            var rClassRef = flatGroupsModel.data(rIdx, TreeFlatModel.ClassRefRole)
+            var rId = flatGroupsModel.data(rIdx, TreeFlatModel.IdRole)
+            var rSubId = flatGroupsModel.data(rIdx, TreeFlatModel.SubIdRole)
+            var rChIdx = flatGroupsModel.data(rIdx, TreeFlatModel.ChIdxRole)
+            var rInGroup = flatGroupsModel.data(rIdx, TreeFlatModel.InGroupRole)
+            var rLabel = flatGroupsModel.data(rIdx, TreeFlatModel.LabelRole)
+
+            switch (rType)
+            {
+                case App.FixtureDragItem:
+                    contextManager.setFixtureSelection(rId, -1, true)
+                break
+                case App.HeadDragItem:
+                    contextManager.setFixtureSelection(rId, rChIdx, true)
+                break
+                case App.UniverseDragItem:
+                    contextManager.setFixtureGroupSelection(rClassRef ? rClassRef.id : -1, true, true)
+                break
+                case App.FixtureGroupDragItem:
+                    contextManager.setFixtureGroupSelection(rClassRef ? rClassRef.id : -1, true, false)
+                break
+            }
+
+            // Universe/Group rows (depth 0) don't carry an "id" role value of
+            // their own - like TreeNodeRow.qml, their identity comes from cRef
+            var itemID = (rType === App.UniverseDragItem || rType === App.FixtureGroupDragItem) ?
+                        (rClassRef ? rClassRef.id : -1) : rId
+
+            gfhcDragItem.itemsList.push({
+                itemType: rType,
+                cRef: rClassRef,
+                itemID: itemID,
+                subID: rSubId,
+                headIndex: rChIdx,
+                chIndex: rChIdx,
+                textLabel: rLabel,
+                inGroup: rInGroup
+            })
+        }
+    }
+
     // Note: since both this panel and RightPanel.qml's Function Manager side
     // can be open at once, both react independently to "item.renameSelected"/
     // "ff.focusSearch" - if both sides have a selection/are open simultaneously,
@@ -547,6 +611,10 @@ Rectangle
             boundsBehavior: Flickable.StopAtBounds
 
             property bool dragActive: false
+            // Anchor row for Shift range-select (see FixtureGroupFlatDelegate.qml's
+            // App.Clicked handler) - only updated by a plain or Ctrl click, same as
+            // ModelSelector's previousIndex
+            property int shiftAnchorIndex: -1
 
             model: flatGroupsModel
             delegate: FixtureGroupFlatDelegate

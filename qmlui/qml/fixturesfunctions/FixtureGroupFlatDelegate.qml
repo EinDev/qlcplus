@@ -150,6 +150,16 @@ Item
                         }
                     break;
                     case App.Clicked:
+                        if ((mouseMods & Qt.ShiftModifier) && groupListView.shiftAnchorIndex >= 0)
+                        {
+                            // Range-select from the last plain/Ctrl-clicked row to this
+                            // one, additive to whatever is already selected - same
+                            // semantics as ModelSelector's Shift handling elsewhere
+                            fgmContainer.selectFlatRange(groupListView.shiftAnchorIndex, index)
+                            fgmContainer.updateButtons(qItem.itemType, qItem.itemType === App.HeadDragItem ? qItem.itemID : iID)
+                            break;
+                        }
+
                         model.isSelected = (mouseMods & Qt.ControlModifier) ? 2 : 1
 
                         if (!(mouseMods & Qt.ControlModifier))
@@ -175,6 +185,7 @@ Item
                         }
 
                         fgmContainer.updateButtons(qItem.itemType, itemID)
+                        groupListView.shiftAnchorIndex = index
                     break;
                     case App.DoubleClicked:
                         if (model.hasChildren)
