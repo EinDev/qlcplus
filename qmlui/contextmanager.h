@@ -347,6 +347,24 @@ public:
      *  so it faces the centroid. */
     Q_INVOKABLE void arrangeFixturesInLine(qreal length, qreal angleDegrees, bool lookAtCenter = false);
 
+    /** Rotates the currently selected Fixtures' positions rigidly by
+     *  $angleDegrees around their current centroid, in the plane the user is
+     *  currently looking at (see fixturePlaneAxes()) - the shape/spacing of
+     *  the selection is preserved, only its overall orientation around its
+     *  own center changes. Unlike arrangeFixturesIn*(), this does not
+     *  recompute the layout from scratch, and does not touch any fixture's
+     *  own yaw (see arrangeFixturesInCircle()'s $lookAtCenter for that). */
+    Q_INVOKABLE void rotateFixturesAroundCentroid(qreal angleDegrees);
+
+    /** Translates the currently selected Fixtures rigidly so their centroid
+     *  lands exactly on the stage/grid's own center (FixtureUtils::
+     *  gridCenterPosition()) - the same anchor a DMX-position-driven
+     *  fixture's own delta is expressed relative to. Shape/spacing and
+     *  orientation are preserved, only the group's overall location moves -
+     *  a quick way to "summon" a selection back to a known, central spot
+     *  regardless of where it's drifted off to. */
+    Q_INVOKABLE void moveFixturesToCenter();
+
     /** Returns the diameter (mm) of the circle that best fits the currently
      *  selected Fixtures' current positions: twice their average distance
      *  from the centroid. Returns 0 if fewer than 2 fixtures are selected.

@@ -2112,6 +2112,71 @@ void ContextManager::arrangeFixturesInLine(qreal length, qreal angleDegrees, boo
         emit fixturesRotationChanged();
 }
 
+void ContextManager::rotateFixturesAroundCentroid(qreal angleDegrees)
+{
+    QList<quint32> fixtures = sortedSelectedFixtures();
+    if (fixtures.isEmpty())
+        return;
+
+    int hAxis, vAxis, dAxis;
+    fixturePlaneAxes(m_monProps->pointOfView(), hAxis, vAxis, dAxis);
+    Q_UNUSED(dAxis)
+    QVector3D centroid = selectedFixturesCentroid();
+
+    qreal angleRad = qDegreesToRadians(angleDegrees);
+    qreal cosA = qCos(angleRad);
+    qreal sinA = qSin(angleRad);
+
+    for (quint32 itemID : fixtures)
+    {
+        quint32 fxID = FixtureUtils::itemFixtureID(itemID);
+        quint16 headIndex = FixtureUtils::itemHeadIndex(itemID);
+        quint16 linkedIndex = FixtureUtils::itemLinkedIndex(itemID);
+
+        if (m_monProps->fixtureFlags(fxID, headIndex, linkedIndex) & MonitorProperties::LockedFlag)
+            continue;
+
+        QVector3D currPos = effectiveFixturePosition(itemID);
+        qreal h = vecAxis(currPos, hAxis) - vecAxis(centroid, hAxis);
+        qreal v = vecAxis(currPos, vAxis) - vecAxis(centroid, vAxis);
+
+        QVector3D newPos = currPos;
+        setVecAxis(newPos, hAxis, vecAxis(centroid, hAxis) + (h * cosA - v * sinA));
+        setVecAxis(newPos, vAxis, vecAxis(centroid, vAxis) + (h * sinA + v * cosA));
+
+        applyArrangedFixturePosition(itemID, newPos);
+    }
+
+    m_doc->setModified();
+    emit fixturesPositionChanged();
+}
+
+void ContextManager::moveFixturesToCenter()
+{
+    QList<quint32> fixtures = sortedSelectedFixtures();
+    if (fixtures.isEmpty())
+        return;
+
+    QVector3D offset = FixtureUtils::gridCenterPosition(m_monProps) - selectedFixturesCentroid();
+    if (offset.isNull())
+        return;
+
+    for (quint32 itemID : fixtures)
+    {
+        quint32 fxID = FixtureUtils::itemFixtureID(itemID);
+        quint16 headIndex = FixtureUtils::itemHeadIndex(itemID);
+        quint16 linkedIndex = FixtureUtils::itemLinkedIndex(itemID);
+
+        if (m_monProps->fixtureFlags(fxID, headIndex, linkedIndex) & MonitorProperties::LockedFlag)
+            continue;
+
+        applyArrangedFixturePosition(itemID, effectiveFixturePosition(itemID) + offset);
+    }
+
+    m_doc->setModified();
+    emit fixturesPositionChanged();
+}
+
 void ContextManager::setLinkedFixture(quint32 itemID)
 {
     quint32 fixtureID = FixtureUtils::itemFixtureID(itemID);

@@ -40,6 +40,8 @@ CustomPopupDialog
     property real lineLength: 2000
     property real lineAngle: 0
 
+    property real rotateAngle: 0
+
     // Circle/Line only - Grid has no single well-defined shape to detect a
     // size/angle from, or a middle to face fixtures towards.
     property bool detectFromPlacement: false
@@ -305,6 +307,50 @@ CustomPopupDialog
                         break
                     }
                 }
+            }
+
+            // Rotates the current selection as-is (rigidly, around its own
+            // centroid) rather than laying it out from scratch - independent
+            // of arrangeMode above, so it also works on a selection that was
+            // never arranged with this popup at all.
+            RowLayout
+            {
+                Layout.fillWidth: true
+                Layout.margins: 4
+                spacing: 4
+
+                RobotoText
+                {
+                    label: qsTr("Rotate group: ") + rotateAngleSpin.value + "°"
+                }
+
+                Item { Layout.fillWidth: true }
+
+                CustomSpinBox
+                {
+                    id: rotateAngleSpin
+                    from: -360
+                    to: 360
+                    value: popupRoot.rotateAngle
+                    onValueModified: popupRoot.rotateAngle = value
+                }
+
+                GenericButton
+                {
+                    label: qsTr("Rotate")
+                    onClicked: contextManager.rotateFixturesAroundCentroid(popupRoot.rotateAngle)
+                }
+            }
+
+            // Translates the current selection as-is (rigidly) so its
+            // centroid lands on the stage/grid center - independent of
+            // arrangeMode above, same as the rotate row.
+            GenericButton
+            {
+                Layout.fillWidth: true
+                Layout.margins: 4
+                label: qsTr("Summon selection (move to center)")
+                onClicked: contextManager.moveFixturesToCenter()
             }
         }
 }
