@@ -348,7 +348,12 @@ jobs:
           # locally against this project's own MSYS2-Qt build: resolves 100%
           # cleanly there, so if this finds a real gap here it's specific to
           # aqt's Qt build).
-          python3 -m pip install --quiet pefile
+          # MSYS2's mingw64 python3 has no pip module by default (only
+          # mingw-w64-x86_64-python-lxml is installed, for the fixtures tool) -
+          # "No module named pip" killed this step before it ever reached
+          # ctest. MSYS2 ships pefile as its own pacman package, so skip pip
+          # entirely rather than bootstrapping it just for this.
+          pacman -S --noconfirm --needed mingw-w64-x86_64-python-pefile
           python3 - "engine/test/beattracker/beattracker_test.exe" \
               "$PWD/engine/src" "$PWD/engine/audio" "/mingw64/bin" "${{ env.QTDIR }}/bin" <<'PYEOF'
           import sys, os, pefile
