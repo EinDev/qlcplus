@@ -8,9 +8,9 @@ jobs:
     runs-on: ubuntu-22.04
     name: QLCplus Linux ${{matrix.task}}
     strategy:
-      #fail-fast: false
+      fail-fast: false
       matrix:
-        task: [build-v4, build-v5, coverage-build-v4]
+        task: [build-v5]
     env:
       CI_REPO_SLUG: ${{ github.repository }}
       CI_BRANCH: ${{ github.head_ref }}
@@ -36,8 +36,6 @@ jobs:
         wget
       PACKAGES_V5_BASE:
         libpulse-dev
-      PACKAGES_COVERAGE_BASE:
-        lcov
 
     defaults:
       run:
@@ -51,10 +49,8 @@ jobs:
 
       - name: Set General ENV variables
         run: |
-          echo "PACKAGES_V4=$(echo ${PACKAGES_BASE})" >> $GITHUB_ENV
           echo "PACKAGES_V5=$(echo ${PACKAGES_BASE} ${PACKAGES_V5_BASE})" >> $GITHUB_ENV
-          echo "PACKAGES_COVERAGE=$(echo ${PACKAGES_BASE} ${PACKAGES_V4_BASE} ${PACKAGES_COVERAGE_BASE})" >> $GITHUB_ENV
-          echo "PACKAGES_ALL=$(echo ${PACKAGES_BASE} ${PACKAGES_V5_BASE} ${PACKAGES_COVERAGE_BASE})" >> $GITHUB_ENV
+          echo "PACKAGES_ALL=$(echo ${PACKAGES_BASE} ${PACKAGES_V5_BASE})" >> $GITHUB_ENV
           echo "CI_BRANCH=$(echo $GITHUB_REF | cut -d '/' -f 3)" >> $GITHUB_ENV
           echo "CI_SECURE_ENV_VARS=$(if [ -z '${{ secrets.something }}' ]; then echo 'false'; else echo 'true'; fi)" >> $GITHUB_ENV
           echo "CI_EVENT_TYPE=$(if [ 'schedule' == '${{ github.event_name }}' ]; then echo 'cron'; else echo '${{ github.event_name }}'; fi)" >> $GITHUB_ENV
@@ -63,14 +59,6 @@ jobs:
           echo "INSTALL_ROOT=`pwd`/install_root" >> $GITHUB_ENV
           echo "BUILD_DATE=`date -u '+%Y%m%d'`" >> $GITHUB_ENV
           echo "GIT_REV=`git rev-parse --short HEAD`" >> $GITHUB_ENV
-
-      - name: Set Qt ENV variables (v4)
-        if: ${{ endsWith( matrix.task, 'v4') }}
-        run: |
-          echo "QT=${QT:-$(echo '${{matrix.task}}' | cut -d '-' -f 2)}" >> $GITHUB_ENV
-          echo "QT_INSTALL_DIR=/opt" >> $GITHUB_ENV
-          echo "QT_VERSION=6.9.3" >> $GITHUB_ENV
-          source $GITHUB_ENV && echo "QTDIR=${QT_INSTALL_DIR}/Qt/${QT_VERSION}/gcc_64" >> $GITHUB_ENV
 
       - name: Set Qt ENV variables (v5)
         if: ${{ endsWith( matrix.task, 'v5') }}
@@ -87,9 +75,7 @@ jobs:
           echo "CI_REPO_SLUG: ${CI_REPO_SLUG}"
           echo "CI_EVENT_TYPE: ${CI_EVENT_TYPE}"
           echo "CI_SECURE_ENV_VARS: ${CI_SECURE_ENV_VARS}"
-          echo "PACKAGES_V4: ${PACKAGES_V4}"
           echo "PACKAGES_V5: ${PACKAGES_V5}"
-          echo "PACKAGES_COVERAGE: ${PACKAGES_COVERAGE}"
           echo "TASK: ${TASK}"
           echo "QT: ${QT}"
           echo "NPROC: ${NPROC}"
@@ -116,16 +102,6 @@ jobs:
         with:
           key: ${{ github.job }}-${{ matrix.task }}
 
-      - name: Setup ruby cache
-        uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: '2.7'
-          bundler-cache: true
-
-      - name: Install coveralls-lcov
-        if: ${{ startsWith( matrix.task, 'coverage') }}
-        run: sudo gem install coveralls-lcov
-
       - name: Print program versions and username
         run: |
           echo "CXX:"
@@ -135,20 +111,9 @@ jobs:
           echo "WHOAMI:"
           whoami
 
-      - name: Configure for v4 build
-        if: ${{ matrix.task == 'build-v4' }}
-        run: |
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$QTDIR/lib/cmake/" -Dappimage=ON -DINSTALL_ROOT=${INSTALL_ROOT} -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-
       - name: Configure for v5 build
-        if: ${{ matrix.task == 'build-v5' }}
         run: |
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$QTDIR/lib/cmake/" -Dqmlui=ON -Dappimage=ON -DINSTALL_ROOT=${INSTALL_ROOT} -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-
-      - name: Configure for coverage build
-        if: ${{ matrix.task == 'coverage-build-v4' }}
-        run: |
-          cmake -DCMAKE_PREFIX_PATH="/opt/Qt/$QT_VERSION/gcc_64/lib/cmake" -Dcoverage=ON -DINSTALL_ROOT=${INSTALL_ROOT} -B build
 
       - name: Build
         run: |
@@ -156,74 +121,39 @@ jobs:
           cmake --build build --parallel `nproc`
 
       - name: Test
-        if: ${{ ! startsWith( matrix.task, 'coverage') }}
         run: cmake --build build --target check
 
-      - name: Test with Coverage
-        if: ${{ startsWith( matrix.task, 'coverage') }}
-        run: cmake --build build --target lcov
-
-      - name: Coveralls
-        if: ${{ startsWith( matrix.task, 'coverage') }}
-        uses: coverallsapp/github-action@v2
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          file: coverage/coverage.info
-          format: lcov
-
       - name: Install
-        if: ${{ ! startsWith( matrix.task, 'coverage') }}
         run: |
           cmake --build build --target install
           cp -v resources/icons/svg/qlcplus.svg ${INSTALL_ROOT}
           cp -v platforms/linux/qlcplus.desktop ${INSTALL_ROOT}
-          # QLC+ 5 keeps its translations in a separate directory, so that the
-          # two flavours don't overwrite each other's .qm files
-          if [ "${{ matrix.task }}" == "build-v5" ]; then
-            cp -v $QTDIR/translations/qtbase_* ${INSTALL_ROOT}/share/qlcplus/translations5/
-          else
-            cp -v $QTDIR/translations/qtbase_* ${INSTALL_ROOT}/share/qlcplus/translations/
-          fi
+          cp -v $QTDIR/translations/qtbase_* ${INSTALL_ROOT}/share/qlcplus/translations5/
 
       - name: Set APPVERSION
-        if: ${{ ! startsWith( matrix.task, 'coverage') }}
         run: |
           APPVERSION=$(awk -F\" '/^#define APPVERSION/ {gsub(/ /,"-",$2); print $2}' engine/src/qlcconfig.h)
           echo "APPVERSION=$APPVERSION" >> $GITHUB_ENV
 
-      - name: Adapt qlcplus for AppImage (v4)
-        if: ${{ matrix.task == 'build-v4' }}
-        run: |
-          chrpath -r "../lib" ${INSTALL_ROOT}/usr/bin/qlcplus
-
-      - name: Adapt qlcplus for AppImage (v5)
-        if: ${{ matrix.task == 'build-v5' }}
+      - name: Adapt qlcplus for AppImage
         run: |
           chrpath -r "../lib" ${INSTALL_ROOT}/usr/bin/qlcplus5
           sed -i -e 's/Exec=qlcplus --open %f/Exec=qlcplus5/g' ${INSTALL_ROOT}/qlcplus.desktop
 
       - name: Store original install artifacts before stripping and AppImage
         # Activate for debugging
-        if: ${{ false && ! startsWith( matrix.task, 'coverage') }}
+        if: false
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.task }}-files
           path: ${{ env.INSTALL_ROOT }}
 
-      - name: Strip Binaries (v4)
-        if: ${{ matrix.task == 'build-v4' }}
-        run: |
-          strip -v ${INSTALL_ROOT}/usr/bin/qlcplus
-          find ${INSTALL_ROOT}/usr/lib/ -name 'libqlcplus*.so*' -exec strip -v {} \;
-
-      - name: Strip Binaries (v5)
-        if: ${{ matrix.task == 'build-v5' }}
+      - name: Strip Binaries
         run: |
           strip -v ${INSTALL_ROOT}/usr/bin/qlcplus5
           find ${INSTALL_ROOT}/usr/lib/ -name 'libqlcplus*.so*' -exec strip -v {} \;
 
       - name: Delete unused files for AppImage
-        if: ${{ ! startsWith( matrix.task, 'coverage') }}
         run: |
           find ${INSTALL_ROOT}/usr/bin/ -name plugins.qmltypes -type f -delete
           find ${INSTALL_ROOT}/usr/bin -name *.qmlc -type f -delete
@@ -233,7 +163,6 @@ jobs:
           rm -rf ${INSTALL_ROOT}/usr/bin/QtQuick/Controls.2/Imagine QtQuick/Controls.2/Scene2D
 
       - name: Build AppImage
-        if: ${{ ! startsWith( matrix.task, 'coverage') }}
         run: |
           wget -c https://github.com/AppImage/AppImageKit/releases/download/continuous/AppRun-x86_64 -O ${INSTALL_ROOT}/AppRun
           chmod a+x ${INSTALL_ROOT}/AppRun
@@ -243,12 +172,10 @@ jobs:
           mv -v Q_Light_Controller_Plus_-_QLC+-x86_64.AppImage qlcplus-${{env.TASK}}-${{env.APPVERSION}}-${{env.BUILD_DATE}}-${{env.GIT_REV}}.AppImage
 
       - name: Test Load AppImage
-        if: ${{ matrix.task == 'build-v5' }}
         run: |
           ./qlcplus-${{env.TASK}}-${{env.APPVERSION}}-${{env.BUILD_DATE}}-${{env.GIT_REV}}.AppImage --platform offscreen --version
 
       - name: Store AppImage artifacts
-        if: ${{ ! startsWith( matrix.task, 'coverage') }}
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.task }}-AppImage
@@ -260,7 +187,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        task: [build-v4, build-v5]
+        task: [build-v5]
     env:
       CI_REPO_SLUG: ${{ github.repository }}
       CI_BRANCH: ${{ github.head_ref }}
@@ -291,16 +218,8 @@ jobs:
           echo "BUILD_DATE=`date -u '+%Y%m%d'`" >> $GITHUB_ENV
           echo "GIT_REV=`git rev-parse --short HEAD`" >> $GITHUB_ENV
 
-      - name: Set v4 ENV variables
-        shell: bash
-        if: ${{ matrix.task == 'build-v4' }}
-        run: |
-          echo "OUTFILE=`grep 'OutFile' platforms/windows/qlcplus4Qt6.nsi | cut -d'"' -f 2`" >> $GITHUB_ENV
-          echo "NSIS_SCRIPT=qlcplus4Qt6.nsi" >> $GITHUB_ENV
-
       - name: Set v5 ENV variables
         shell: bash
-        if: ${{ matrix.task == 'build-v5' }}
         run: |
           echo "OUTFILE=`grep 'OutFile' platforms/windows/qlcplus5Qt6.nsi | cut -d'"' -f 2`" >> $GITHUB_ENV
           echo "NSIS_SCRIPT=qlcplus5Qt6.nsi" >> $GITHUB_ENV
@@ -386,15 +305,8 @@ jobs:
           # fix project path in NSIS script
           sed -i -e 's/c\:\\projects/d:\\a\\qlcplus/g' platforms/windows/${{env.NSIS_SCRIPT}}
 
-      - name: Configure v4 build for Windows
-        shell: msys2 {0}
-        if: ${{ matrix.task == 'build-v4' }}
-        run: |
-          cmake -S . -B build -DCMAKE_PREFIX_PATH="${{ env.QTDIR }}/lib/cmake" -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-
       - name: Configure v5 build for Windows
         shell: msys2 {0}
-        if: ${{ matrix.task == 'build-v5' }}
         run: |
           cmake -S . -B build -DCMAKE_PREFIX_PATH="${{ env.QTDIR }}/lib/cmake" -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -Dqmlui=ON
 
@@ -417,18 +329,8 @@ jobs:
           APPVERSION=$(awk -F\" '/^#define APPVERSION/ {gsub(/ /,"-",$2); print $2}' engine/src/qlcconfig.h)
           echo "APPVERSION=$APPVERSION" >> $GITHUB_ENV
 
-      - name: Run windeployqt for v4
-        shell: msys2 {0}
-        if: ${{ matrix.task == 'build-v4' }}
-        run: |-
-          ./translate.sh release ui
-          cp *.qm /c/qlcplus
-          cd /c/qlcplus
-          ${{ env.QTDIR }}/bin/windeployqt qlcplus.exe qlcplusengine.dll qlcplusui.dll qlcpluswebaccess.dll plugins/dmxusb.dll
-
       - name: Run windeployqt for v5
         shell: msys2 {0}
-        if: ${{ matrix.task == 'build-v5' }}
         run: |-
           SRC_DIR=$PWD
           ./translate.sh release qmlui
@@ -466,7 +368,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        task: [build-v4, build-v5]
+        task: [build-v5]
     env:
       CI_REPO_SLUG: ${{ github.repository }}
       CI_BRANCH: ${{ github.head_ref }}
@@ -494,16 +396,6 @@ jobs:
           echo "GIT_REV=`git rev-parse --short HEAD`" >> $GITHUB_ENV
           echo "QTDIR=${{ github.workspace }}/qt/Qt/${{ env.QT_VERSION }}/macos" >> $GITHUB_ENV
           echo "NPROC=`sysctl -n hw.ncpu`" >> $GITHUB_ENV
-
-      - name: Set v4 ENV variables
-        shell: bash
-        if: ${{ matrix.task == 'build-v4' }}
-        run: |
-
-      - name: Set v5 ENV variables
-        shell: bash
-        if: ${{ matrix.task == 'build-v5' }}
-        run: |
 
       - name: Print ENV vars
         shell: bash
@@ -549,15 +441,8 @@ jobs:
         with:
           key: ${{ github.job }}-${{ matrix.task }}
 
-      - name: Configure v4 build
-        shell: bash
-        if: ${{ matrix.task == 'build-v4' }}
-        run: |-
-          cmake -S . -B build -DCMAKE_PREFIX_PATH="${{ env.QTDIR }}/lib/cmake" -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-
       - name: Configure v5 build
         shell: bash
-        if: ${{ matrix.task == 'build-v5' }}
         run: |-
           cmake -S . -B build -DCMAKE_PREFIX_PATH="${{ env.QTDIR }}/lib/cmake" -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -Dqmlui=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
@@ -580,18 +465,8 @@ jobs:
           APPVERSION=$(awk -F\" '/^#define APPVERSION/ {gsub(/ /,"-",$2); print $2}' engine/src/qlcconfig.h)
           echo "APPVERSION=$APPVERSION" >> $GITHUB_ENV
 
-      - name: Fix v4 dylib dependencies
-        shell: bash
-        if: ${{ matrix.task == 'build-v4' }}
-        run: |-
-          platforms/macos/fix_dylib_deps.sh ~/QLC+.app/Contents/Frameworks/libsndfile.1.dylib
-          platforms/macos/fix_dylib_deps.sh ~/QLC+.app/Contents/MacOS/qlcplus
-          platforms/macos/fix_dylib_deps.sh ~/QLC+.app/Contents/MacOS/qlcplus-fixtureeditor
-          ${{ env.QTDIR }}/bin/macdeployqt ~/QLC+.app
-
       - name: Fix v5 dylib dependencies
         shell: bash
-        if: ${{ matrix.task == 'build-v5' }}
         run: |-
           platforms/macos/fix_dylib_deps.sh ~/QLC+.app/Contents/Frameworks/libsndfile.1.dylib
           platforms/macos/fix_dylib_deps.sh ~/QLC+.app/Contents/MacOS/qlcplus5
