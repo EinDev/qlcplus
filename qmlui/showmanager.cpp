@@ -519,10 +519,6 @@ void ShowManager::addItems(QQuickItem *parent, int trackIdx, int startTime, QVar
         // compensating for - that conversion no longer runs, so this line no longer has
         // a clear purpose here.
         showFunc->setDuration(func->totalDuration() ? func->totalDuration() : 5000);
-        qDebug() << "[DBG SHOWMGR] addItems: functionID" << functionID << "type" << func->type()
-                 << "timeDivision" << (int)timeDivision() << "-> tempoType" << (int)func->tempoType()
-                 << "totalDuration" << func->totalDuration() << "showFunc duration" << showFunc->duration()
-                 << "startTime" << startTime;
         showFunc->setStartTime(startTime);
         showFunc->setColor(ShowFunction::defaultColor(func->type()));
 
@@ -677,9 +673,6 @@ bool ShowManager::checkAndMoveItem(ShowFunction *sf, int originalTrackIdx, int n
 
     int newTime = newStartTime;
 
-    qDebug() << "[DBG SHOWMGR] checkAndMoveItem: m_gridEnabled" << m_gridEnabled << "itemSnapped" << itemSnapped
-             << "newStartTime" << newStartTime << "m_tickSize" << m_tickSize << "m_timeScale" << m_timeScale;
-
     if (m_gridEnabled && !itemSnapped)
     {
         if (timeDivision() == Show::Time)
@@ -692,7 +685,6 @@ bool ShowManager::checkAndMoveItem(ShowFunction *sf, int originalTrackIdx, int n
             // recalculate the time from pixels
             // xPos : time = tickSize : timescale * 1000
             newTime = xPos * (1000 * m_timeScale) / m_tickSize;
-            qDebug() << "[DBG SHOWMGR] checkAndMoveItem: grid-snapped newStartTime" << newStartTime << "-> newTime" << newTime;
         }
         else
         {
@@ -1574,12 +1566,6 @@ void ShowManager::setSelectedItemsLock(bool lock)
 
 void ShowManager::slotTimeChanged(quint32 msec_time)
 {
-    static int dbgLastLogged = -1000;
-    if ((int)msec_time - dbgLastLogged >= 1000 || (int)msec_time < dbgLastLogged)
-    {
-        dbgLastLogged = (int)msec_time;
-        qDebug() << "[DBG SHOWMGR-TIME] slotTimeChanged" << msec_time << "prev m_currentTime" << m_currentTime;
-    }
     m_currentTime = (int)msec_time;
     emit currentTimeChanged(m_currentTime);
 }
