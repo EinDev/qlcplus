@@ -59,14 +59,23 @@ Rectangle
 
     function cursorValue()
     {
-        if (showManager.timeDivision === Show.Time)
-            return showManager.currentTime
+        // showManager.currentTime is already real milliseconds regardless of
+        // Markers mode (ShowRunner reports genuine elapsed ms) - it must not be
+        // reinterpreted into a beat-pseudo count here, since this value is used
+        // to compute start/duration values stored via setShowItemStartTime()/
+        // setShowItemDuration(), which are always real ms.
+        return showManager.currentTime
+    }
 
+    // Converts a real-ms value into the beat-pseudo-count format TimeUtils.timeToQlcString()
+    // expects for its Beats (type 1) formatting - display-only, never used for storage.
+    function msToBeatPseudo(ms)
+    {
         var bpm = ioManager ? ioManager.bpmNumber : 0
         if (bpm <= 0)
             return 0
         var beatDuration = 60000 / bpm
-        return Math.round((showManager.currentTime / beatDuration) * 1000)
+        return Math.round((ms / beatDuration) * 1000)
     }
 
     function minDurationValue()
@@ -80,12 +89,16 @@ Rectangle
             return qsTr("--")
         if (hasMultipleSelection)
             return qsTr("Multiple")
-        return TimeUtils.timeToQlcString(value, tempoType)
+        // value is always real ms (ShowFunction startTime/duration) - only the
+        // string formatting is beat-based in Beats mode, so convert for display only
+        var displayValue = (tempoType === QLCFunction.Beats) ? msToBeatPseudo(value) : value
+        return TimeUtils.timeToQlcString(displayValue, tempoType)
     }
 
     function cutInsertLengthLabel()
     {
-        return TimeUtils.timeToQlcString(cutInsertLength, tempoType)
+        var displayValue = (tempoType === QLCFunction.Beats) ? msToBeatPseudo(cutInsertLength) : cutInsertLength
+        return TimeUtils.timeToQlcString(displayValue, tempoType)
     }
 
     function isTimingField(fieldId)
