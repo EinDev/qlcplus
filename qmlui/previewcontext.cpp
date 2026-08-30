@@ -160,7 +160,6 @@ void PreviewContext::setDetached(bool detached)
         m_view->rootContext()->setContextProperty("virtualConsole", m_mainView->rootContext()->contextProperty("virtualConsole"));
         m_view->rootContext()->setContextProperty("showManager", m_mainView->rootContext()->contextProperty("showManager"));
         m_view->rootContext()->setContextProperty("simpleDesk", m_mainView->rootContext()->contextProperty("simpleDesk"));
-        m_view->rootContext()->setContextProperty("actionManager", m_mainView->rootContext()->contextProperty("actionManager"));
         m_view->rootContext()->setContextProperty("View2D", m_mainView->rootContext()->contextProperty("View2D"));
         m_view->rootContext()->setContextProperty("View3D", m_mainView->rootContext()->contextProperty("View3D"));
 

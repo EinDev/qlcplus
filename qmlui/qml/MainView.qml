@@ -109,6 +109,8 @@ Rectangle
             currentContext = ""
         }
 
+        shortcutManager.currentContext = currentContext
+
         // For the 5 standard tabs, qmlRes is always the same fixed resource
         // for a given ctx (see contextResources) - activate that context's
         // own persistent Loader rather than loading qmlRes into a shared one.
@@ -151,6 +153,23 @@ Rectangle
     function saveProject()
     {
         actionsMenu.handleSaveAction()
+    }
+
+    function openProject()
+    {
+        actionsMenu.openDialog(App.OpenMode)
+    }
+
+    function saveProjectAs()
+    {
+        actionsMenu.openDialog(App.SaveAsMode)
+    }
+
+    function triggerDmxDump()
+    {
+        sceneDump.updateDumpVariables()
+        dmxDumpDialog.open()
+        dmxDumpDialog.focusEditItem()
     }
 
     function saveBeforeExit()

@@ -645,105 +645,80 @@ void ContextManager::handleKeyPress(QKeyEvent *e)
 
     qDebug() << "Key press event received:" << e->text();
 
-    if (e->modifiers() & Qt::ControlModifier)
-    {
-        switch(e->key())
-        {
-            case Qt::Key_A:
-                toggleFixturesSelection();
-            break;
-            case Qt::Key_G:
-                invertGroupSelection();
-            break;
-            case Qt::Key_Tab:
-                selectNextFixtureGroup();
-            break;
-            case Qt::Key_P:
-                setPositionPicking(true);
-            break;
-            case Qt::Key_R:
-                resetDumpValues();
-            break;
-            case Qt::Key_S:
-                QMetaObject::invokeMethod(m_view->rootObject(), "saveProject");
-            break;
-            case Qt::Key_Z:
-                if (e->modifiers() & Qt::ShiftModifier)
-                    Tardis::instance()->redoAction();
-                else
-                    Tardis::instance()->undoAction();
-            break;
-            default:
-            break;
-        }
-    }
+    // Ctrl+G (invert group selection) is not yet migrated to ShortcutManager -
+    // it was added to this switch after the ShortcutManager migration branch
+    // was forked, so it's kept here rather than silently dropped.
+    if (e->modifiers() & Qt::ControlModifier && e->key() == Qt::Key_G)
+        invertGroupSelection();
 
-    // 'Delete' key has its own handling
-    if (e->key() == Qt::Key_Delete)
-    {
-        // When a Function editor is open, the selection belongs to the editor
-        // (e.g. the Scene Editor fixture list or the EFX Editor head list), so
-        // the editor decides what to delete. Never delete Fixtures or Functions
-        // from the project while editing.
-        // Show items and Tracks are excluded, as those are explicitly clicked
-        // on the Show Manager timeline, which can be visible while editing.
-        if (m_editingEnabled &&
-            m_lastClickedType != App::ShowDragItem &&
-            m_lastClickedType != App::TrackDragItem)
-        {
-            if (m_functionManager->deleteCurrentEditorItems())
-                return;
-        }
-
-        switch (m_lastClickedType)
-        {
-            case App::FixtureDragItem:
-                m_fixtureManager->deleteFixtures(selectedItemIDVariantList());
-                m_fixtureManager->resetCapabilities();
-            break;
-            case App::FixtureGroupDragItem:
-                //m_fixtureManager->deleteFixtureGroups(); // TODO
-            break;
-            case App::FunctionDragItem:
-                m_functionManager->deleteFunctions(m_functionManager->selectedFunctionsID());
-            break;
-            case App::FolderDragItem:
-                m_functionManager->deleteSelectedFolders();
-            break;
-            case App::ShowDragItem:
-            {
-                PreviewContext *ctx = contextByName("SHOWMGR");
-                if (ctx != nullptr)
-                {
-                    ShowManager *showMgr = qobject_cast<ShowManager *>(ctx);
-                    if (showMgr != nullptr)
-                        showMgr->deleteShowItems(showMgr->selectedItemRefs());
-                }
-            }
-            break;
-            case App::TrackDragItem:
-            {
-                PreviewContext *ctx = contextByName("SHOWMGR");
-                if (ctx != nullptr)
-                {
-                    ShowManager *showMgr = qobject_cast<ShowManager *>(ctx);
-                    if (showMgr != nullptr)
-                        showMgr->deleteSelectedTrack();
-                }
-            }
-            break;
-            case App::PaletteDragItem:
-            break;
-            case App::WidgetDragItem:
-            break;
-        }
-
-        // Don't let it go through
+    // Delete is dispatched via ShortcutManager (see App::registerBuiltinShortcuts).
+    // Never let it reach the PreviewContext broadcast below, same as before this
+    // was extracted out of this function.
+    if (key == Qt::Key_Delete)
         return;
-    }
 
     for (PreviewContext *context : m_contextsMap.values()) // C++11
         context->handleKeyEvent(e, true);
+}
+
+void ContextManager::deleteSelectedItems()
+{
+    // When a Function editor is open, the selection belongs to the editor
+    // (e.g. the Scene Editor fixture list or the EFX Editor head list), so
+    // the editor decides what to delete. Never delete Fixtures or Functions
+    // from the project while editing.
+    // Show items and Tracks are excluded, as those are explicitly clicked
+    // on the Show Manager timeline, which can be visible while editing.
+    if (m_editingEnabled &&
+        m_lastClickedType != App::ShowDragItem &&
+        m_lastClickedType != App::TrackDragItem)
+    {
+        if (m_functionManager->deleteCurrentEditorItems())
+            return;
+    }
+
+    switch (m_lastClickedType)
+    {
+        case App::FixtureDragItem:
+            m_fixtureManager->deleteFixtures(selectedItemIDVariantList());
+            m_fixtureManager->resetCapabilities();
+        break;
+        case App::FixtureGroupDragItem:
+            //m_fixtureManager->deleteFixtureGroups(); // TODO
+        break;
+        case App::FunctionDragItem:
+            m_functionManager->deleteFunctions(m_functionManager->selectedFunctionsID());
+        break;
+        case App::FolderDragItem:
+            m_functionManager->deleteSelectedFolders();
+        break;
+        case App::ShowDragItem:
+        {
+            PreviewContext *ctx = contextByName("SHOWMGR");
+            if (ctx != nullptr)
+            {
+                ShowManager *showMgr = qobject_cast<ShowManager *>(ctx);
+                if (showMgr != nullptr)
+                    showMgr->deleteShowItems(showMgr->selectedItemRefs());
+            }
+        }
+        break;
+        case App::TrackDragItem:
+        {
+            PreviewContext *ctx = contextByName("SHOWMGR");
+            if (ctx != nullptr)
+            {
+                ShowManager *showMgr = qobject_cast<ShowManager *>(ctx);
+                if (showMgr != nullptr)
+                    showMgr->deleteSelectedTrack();
+            }
+        }
+        break;
+        case App::PaletteDragItem:
+        break;
+        case App::WidgetDragItem:
+        break;
+    }
 }
 
 void ContextManager::handleKeyRelease(QKeyEvent *e)

@@ -55,6 +55,7 @@ set(SRC_FILES
     rgbmatrixeditor.cpp rgbmatrixeditor.h
     sceneeditor.cpp sceneeditor.h
     scripteditor.cpp scripteditor.h
+    shortcutmanager.cpp shortcutmanager.h
     showmanager.cpp showmanager.h
     simpledesk.cpp simpledesk.h
     tardis/networkmanager.cpp tardis/networkmanager.h
