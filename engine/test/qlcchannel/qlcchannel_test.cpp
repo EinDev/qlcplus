@@ -30,7 +30,7 @@ void QLCChannel_Test::groupList()
 {
     QStringList list(QLCChannel::groupList());
 
-    QVERIFY(list.size() == 12);
+    QCOMPARE(list.size(), 21);
     QVERIFY(list.contains(QLCChannel::groupToString(QLCChannel::Beam)));
     QVERIFY(list.contains(QLCChannel::groupToString(QLCChannel::Colour)));
     QVERIFY(list.contains(QLCChannel::groupToString(QLCChannel::Effect)));
@@ -43,6 +43,15 @@ void QLCChannel_Test::groupList()
     QVERIFY(list.contains(QLCChannel::groupToString(QLCChannel::Shutter)));
     QVERIFY(list.contains(QLCChannel::groupToString(QLCChannel::Speed)));
     QVERIFY(list.contains(QLCChannel::groupToString(QLCChannel::Tilt)));
+    QVERIFY(list.contains(QLCChannel::groupToString(QLCChannel::PositionX)));
+    QVERIFY(list.contains(QLCChannel::groupToString(QLCChannel::PositionY)));
+    QVERIFY(list.contains(QLCChannel::groupToString(QLCChannel::PositionZ)));
+    QVERIFY(list.contains(QLCChannel::groupToString(QLCChannel::RotationX)));
+    QVERIFY(list.contains(QLCChannel::groupToString(QLCChannel::RotationY)));
+    QVERIFY(list.contains(QLCChannel::groupToString(QLCChannel::RotationZ)));
+    QVERIFY(list.contains(QLCChannel::groupToString(QLCChannel::ScaleX)));
+    QVERIFY(list.contains(QLCChannel::groupToString(QLCChannel::ScaleY)));
+    QVERIFY(list.contains(QLCChannel::groupToString(QLCChannel::ScaleZ)));
 }
 
 void QLCChannel_Test::name()
