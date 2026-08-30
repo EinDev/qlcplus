@@ -142,7 +142,13 @@ void QLCFixtureDefCache_Test::reload()
     def->removeChannel(channel);
     QVERIFY(def->channels().count() == 4);
 
-    cache.reloadFixtureDef(def);
+    // reloadFixtureDef() deletes the old QLCFixtureDef and inserts a brand new
+    // instance into the cache (see fixtureeditor.cpp's callers, which always
+    // re-fetch by manufacturer/model afterwards rather than reusing their old
+    // pointer) - do the same here instead of dereferencing the now-dangling
+    // "def" pointer.
+    QVERIFY(cache.reloadFixtureDef(def) == true);
+    def = cache.fixtureDef("Botex", "SP-1500");
     QVERIFY(def->channels().count() == 5);
 }
 
@@ -247,4 +253,10 @@ void QLCFixtureDefCache_Test::storeDef()
     file.remove();
 }
 
-QTEST_APPLESS_MAIN(QLCFixtureDefCache_Test)
+// QLCFixtureDefCache::systemDefinitionDirectory()/userDefinitionDirectory()
+// (via QLCFile::systemDirectory()) call QCoreApplication::applicationDirPath(),
+// which needs a live QCoreApplication instance - QTEST_APPLESS_MAIN doesn't
+// construct one, so that call silently warned and returned an empty path on
+// both Windows and macOS. QTEST_GUILESS_MAIN constructs a QCoreApplication
+// (no GUI needed) - same fix already used for beattracker_test/universeperf_test.
+QTEST_GUILESS_MAIN(QLCFixtureDefCache_Test)

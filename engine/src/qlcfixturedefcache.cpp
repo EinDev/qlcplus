@@ -274,8 +274,13 @@ int QLCFixtureDefCache::loadMapManufacturer(QXmlStreamReader *doc, const QString
 
             if (doc->attributes().hasAttribute("n"))
             {
+                // Use "/" rather than QDir::separator(): this path is stored as
+                // definitionSourceFile() and compared/concatenated elsewhere as a
+                // Qt-style forward-slash path (QDir::separator() returns "\" on
+                // Windows, which QDir's own path getters never produce - see the
+                // same mismatch documented in qlccapability.cpp).
                 defFile = QString("%1%2%3%4")
-                            .arg(manufacturer).arg(QDir::separator())
+                            .arg(manufacturer).arg(QLatin1Char('/'))
                             .arg(doc->attributes().value("n").toString()).arg(KExtFixture);
                 //qDebug() << "Manufacturer" << spacedManufacturer << "file" << defFile;
             }
