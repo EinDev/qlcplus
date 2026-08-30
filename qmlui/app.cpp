@@ -50,6 +50,7 @@
 #include "videoprovider.h"
 #include "importmanager.h"
 #include "contextmanager.h"
+#include "shortcutmanager.h"
 #include "virtualconsole.h"
 #include "fixturebrowser.h"
 #include "fixturemanager.h"
@@ -95,6 +96,7 @@ App::App()
     , m_ioManager(nullptr)
     , m_showManager(nullptr)
     , m_simpleDesk(nullptr)
+    , m_shortcutManager(nullptr)
     , m_videoProvider(nullptr)
     , m_networkManager(nullptr)
     , m_apiServer(nullptr)
@@ -230,6 +232,10 @@ void App::startup()
                           m_contextManager, m_simpleDesk, m_showManager, m_virtualConsole);
     rootContext()->setContextProperty("tardis", m_tardis);
 
+    m_shortcutManager = new ShortcutManager(this);
+    rootContext()->setContextProperty("shortcutManager", m_shortcutManager);
+    registerBuiltinShortcuts();
+
     m_stageWizard = new StageWizard(m_doc, m_fixtureManager, m_functionManager,
                                     m_virtualConsole, m_contextManager, this);
     rootContext()->setContextProperty("stageWizard", m_stageWizard);
@@ -309,6 +315,124 @@ void App::startup()
 
     if (restoreWindowGeometry)
         setGeometry(rect);
+}
+
+void App::registerBuiltinShortcuts()
+{
+    ContextManager *cm = m_contextManager;
+    InputOutputManager *ioMgr = m_ioManager;
+    VirtualConsole *vc = m_virtualConsole;
+
+    m_shortcutManager->registerAction("fixture.selectAll", QKeySequence(Qt::CTRL | Qt::Key_A),
+                                       ShortcutManager::FixturesAndFunctions,
+                                       tr("Select/Deselect all fixtures"),
+                                       [cm]() { cm->toggleFixturesSelection(); });
+
+    m_shortcutManager->registerAction("fixture.nextGroup", QKeySequence(Qt::CTRL | Qt::Key_Tab),
+                                       ShortcutManager::FixturesAndFunctions,
+                                       tr("Select next fixture group"),
+                                       [cm]() { cm->selectNextFixtureGroup(); });
+
+    m_shortcutManager->registerAction("fixture.positionPicking", QKeySequence(Qt::CTRL | Qt::Key_P),
+                                       ShortcutManager::FixturesAndFunctions,
+                                       tr("Enable 3D position picking"),
+                                       [cm]() { cm->setPositionPicking(true); });
+
+    m_shortcutManager->registerAction("fixture.resetDumpValues", QKeySequence(Qt::CTRL | Qt::Key_R),
+                                       ShortcutManager::FixturesAndFunctions,
+                                       tr("Reset DMX dump values"),
+                                       [cm]() { cm->resetDumpValues(); });
+
+    m_shortcutManager->registerAction("fixture.deleteSelection", QKeySequence(Qt::Key_Delete),
+                                       ShortcutManager::FixturesAndFunctions,
+                                       tr("Delete the currently selected item"),
+                                       [cm]() { cm->deleteSelectedItems(); });
+
+    m_shortcutManager->registerAction("app.save", QKeySequence(Qt::CTRL | Qt::Key_S),
+                                       ShortcutManager::Global,
+                                       tr("Save the current project"),
+                                       [this]() { QMetaObject::invokeMethod(rootObject(), "saveProject"); });
+
+    m_shortcutManager->registerAction("app.undo", QKeySequence(Qt::CTRL | Qt::Key_Z),
+                                       ShortcutManager::Global,
+                                       tr("Undo the last action"),
+                                       []() { Tardis::instance()->undoAction(); });
+
+    m_shortcutManager->registerAction("app.redo", QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Z),
+                                       ShortcutManager::Global,
+                                       tr("Redo the last undone action"),
+                                       []() { Tardis::instance()->redoAction(); });
+
+    // Ctrl+Y is a common alternate binding for redo - same callback, second id
+    m_shortcutManager->registerAction("app.redoAlt", QKeySequence(Qt::CTRL | Qt::Key_Y),
+                                       ShortcutManager::Global,
+                                       tr("Redo the last undone action (alternate binding)"),
+                                       []() { Tardis::instance()->redoAction(); });
+
+    m_shortcutManager->registerAction("vc.editMode", QKeySequence(Qt::CTRL | Qt::Key_E),
+                                       ShortcutManager::VirtualConsole,
+                                       tr("Toggle Virtual Console edit mode"),
+                                       [vc]() { vc->setEditMode(!vc->editMode()); });
+
+    m_shortcutManager->registerAction("app.newProject", QKeySequence(Qt::CTRL | Qt::Key_N),
+                                       ShortcutManager::Global,
+                                       tr("Create a new project"),
+                                       [this]() { newWorkspace(); });
+
+    m_shortcutManager->registerAction("app.openProject", QKeySequence(Qt::CTRL | Qt::Key_O),
+                                       ShortcutManager::Global,
+                                       tr("Open a project"),
+                                       [this]() { QMetaObject::invokeMethod(rootObject(), "openProject"); });
+
+    m_shortcutManager->registerAction("app.saveProjectAs", QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_S),
+                                       ShortcutManager::Global,
+                                       tr("Save the project with a new name"),
+                                       [this]() { QMetaObject::invokeMethod(rootObject(), "saveProjectAs"); });
+
+    m_shortcutManager->registerAction("app.toggleFullscreen", QKeySequence(Qt::Key_F11),
+                                       ShortcutManager::Global,
+                                       tr("Toggle fullscreen mode"),
+                                       [this]() { toggleFullscreen(); });
+
+    m_shortcutManager->registerAction("io.blackoutToggle", QKeySequence(Qt::CTRL | Qt::Key_B),
+                                       ShortcutManager::Global,
+                                       tr("Toggle blackout"),
+                                       [ioMgr]() { ioMgr->setBlackout(!ioMgr->blackout()); });
+
+    m_shortcutManager->registerAction("app.panic", QKeySequence(Qt::CTRL | Qt::Key_Period),
+                                       ShortcutManager::Global,
+                                       tr("Stop all running functions"),
+                                       [this]() { stopAllFunctions(); });
+
+    m_shortcutManager->registerAction("app.dmxDump", QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_D),
+                                       ShortcutManager::Global,
+                                       tr("Dump DMX values to a Scene"),
+                                       [this]() { QMetaObject::invokeMethod(rootObject(), "triggerDmxDump"); });
+
+    m_shortcutManager->registerAction("context.switchFixturesAndFunctions", QKeySequence(Qt::CTRL | Qt::Key_1),
+                                       ShortcutManager::Global,
+                                       tr("Switch to the Fixtures & Functions tab"),
+                                       [cm]() { cm->switchToContext("FIXANDFUNC"); });
+
+    m_shortcutManager->registerAction("context.switchVirtualConsole", QKeySequence(Qt::CTRL | Qt::Key_2),
+                                       ShortcutManager::Global,
+                                       tr("Switch to the Virtual Console tab"),
+                                       [cm]() { cm->switchToContext("VC"); });
+
+    m_shortcutManager->registerAction("context.switchSimpleDesk", QKeySequence(Qt::CTRL | Qt::Key_3),
+                                       ShortcutManager::Global,
+                                       tr("Switch to the Simple Desk tab"),
+                                       [cm]() { cm->switchToContext("SDESK"); });
+
+    m_shortcutManager->registerAction("context.switchShowManager", QKeySequence(Qt::CTRL | Qt::Key_4),
+                                       ShortcutManager::Global,
+                                       tr("Switch to the Show Manager tab"),
+                                       [cm]() { cm->switchToContext("SHOWMGR"); });
+
+    m_shortcutManager->registerAction("context.switchIOManager", QKeySequence(Qt::CTRL | Qt::Key_5),
+                                       ShortcutManager::Global,
+                                       tr("Switch to the Input/Output Manager tab"),
+                                       [cm]() { cm->switchToContext("IOMGR"); });
 }
 
 void App::toggleFullscreen()
@@ -418,8 +542,75 @@ int App::defaultMask() const
             AC_ShowManager | AC_SimpleDesk | AC_VCControl | AC_VCEditing;
 }
 
+namespace {
+
+/** Keys a focused text field legitimately wants for itself: any unmodified
+ *  (or shifted, for uppercase/shifted-symbol) letter or digit, Delete, and
+ *  the standard Ctrl+A/C/V/X editing shortcuts. Everything else (F-keys,
+ *  Ctrl+S, Ctrl+Z, Ctrl+1..5, ...) still goes through the shortcut path
+ *  even while a text field has focus. */
+bool isTextEditingKey(const QKeyEvent *e)
+{
+    if (e->key() == Qt::Key_Delete)
+        return true;
+
+    Qt::KeyboardModifiers mods = e->modifiers() & ~Qt::KeypadModifier;
+
+    if (mods == Qt::ControlModifier)
+    {
+        switch (e->key())
+        {
+            case Qt::Key_A:
+            case Qt::Key_C:
+            case Qt::Key_V:
+            case Qt::Key_X:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    if (mods == Qt::NoModifier || mods == Qt::ShiftModifier)
+    {
+        QString text = e->text();
+        if (text.size() == 1 && text.at(0).isLetterOrNumber())
+            return true;
+    }
+
+    return false;
+}
+
+} // namespace
+
+bool App::isTextInputFocused() const
+{
+    QQuickItem *item = activeFocusItem();
+
+    while (item != nullptr)
+    {
+        if (item->inherits("QQuickTextInput") || item->inherits("QQuickTextEdit"))
+            return true;
+
+        item = item->parentItem();
+    }
+
+    return false;
+}
+
 void App::keyPressEvent(QKeyEvent *e)
 {
+    if (isTextInputFocused() && isTextEditingKey(e))
+    {
+        QQuickView::keyPressEvent(e);
+        return;
+    }
+
+    if (m_shortcutManager && m_shortcutManager->handleKeyEvent(e))
+    {
+        QQuickView::keyPressEvent(e);
+        return;
+    }
+
     if (m_contextManager)
         m_contextManager->handleKeyPress(e);
 
