@@ -423,13 +423,17 @@ Rectangle
                     drag.onActiveChanged:
                     {
                         if (drag.active)
+                        {
+                            contextManager.setFixturePositionDragActive(true)
                             return;
+                        }
 
                         contentsDragArea.flushDragOffset()
                         contentsDragArea.x = 0
                         contentsDragArea.y = 0
                         contentsDragArea.lastFlushedX = 0
                         contentsDragArea.lastFlushedY = 0
+                        contextManager.setFixturePositionDragActive(false)
                     }
 
                     onReleased: (mouse) =>

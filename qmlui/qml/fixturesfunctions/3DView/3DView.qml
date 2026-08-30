@@ -432,6 +432,8 @@ Rectangle
 
                     if (mouse.buttons === Qt.LeftButton) // move items
                     {
+                        contextManager.setFixturePositionDragActive(true)
+
                         xDelta = xDelta * viewCamera.position.z
                         yDelta = yDelta * viewCamera.position.z
 
@@ -514,6 +516,11 @@ Rectangle
                         viewCamera.setZoom(-1)
                     else
                         viewCamera.setZoom(1)
+                }
+
+                onReleased: (mouse) =>
+                {
+                    contextManager.setFixturePositionDragActive(false)
                 }
             }
 

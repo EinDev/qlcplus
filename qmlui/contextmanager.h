@@ -304,6 +304,18 @@ public:
     QVector3D fixturesPosition() const;
     void setFixturesPosition(QVector3D position);
 
+    /** Marks whether a live position-drag gesture (2D/3D view mouse drag,
+     *  $active = true at gesture start, false once released) is currently
+     *  in progress on a DMX-position-driven fixture. While true,
+     *  slotUniverseWritten()'s cache-eviction check is suspended for
+     *  position deltas - see its own doc comment for why a fast stream of
+     *  our own writes during a single gesture can otherwise be misread as
+     *  an external change and evicted, discarding sub-quantization
+     *  precision that then compounds over the rest of the gesture (root
+     *  cause of a user report: repeated arrange/move cycles on a group of
+     *  such fixtures slowly drifted/distorted the arrangement). */
+    Q_INVOKABLE void setFixturePositionDragActive(bool active);
+
     /** Set the gelatine color for the selected fixtures */
     Q_INVOKABLE void setFixturesGelColor(QColor color);
 
@@ -662,6 +674,7 @@ private:
 private:
     mutable QHash<quint32, QVector3D> m_fixturePositionDeltaCache;
     mutable QHash<quint32, QVector3D> m_fixtureRotationDeltaCache;
+    bool m_fixturePositionDragActive = false;
 
     /** The list of the currently selected Fixture item IDs */
     QList<quint32> m_selectedFixtures;

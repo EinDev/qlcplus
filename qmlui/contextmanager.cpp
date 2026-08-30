@@ -1111,6 +1111,11 @@ void ContextManager::setFixturePosition(quint32 itemID, qreal x, qreal y, qreal 
         m_3DView->updateFixturePosition(itemID, newPos);
 }
 
+void ContextManager::setFixturePositionDragActive(bool active)
+{
+    m_fixturePositionDragActive = active;
+}
+
 void ContextManager::setFixturesOffset(qreal x, qreal y)
 {
     // A fixture's PositionX/PositionZ channels (the TopView/DMX branch just
@@ -3146,8 +3151,16 @@ void ContextManager::slotUniverseWritten(quint32 idx, const QByteArray &ua)
             if (qFuzzyIsNull(positionRange))
                 positionRange = 800.0f;
 
+            // Skip the eviction check entirely while a position-drag gesture
+            // is in progress (see setFixturePositionDragActive()'s doc
+            // comment) - the "known remaining race" noted above between our
+            // own push and Doc's processing tick fires often enough within
+            // a single fast mouse-move gesture to spuriously evict and
+            // reseed from a quantized value on almost every step, which
+            // compounds visibly over a gesture in a way the race's original,
+            // one-off framing didn't anticipate.
             QHash<quint32, QVector3D>::iterator posIt = m_fixturePositionDeltaCache.find(fxID);
-            if (posIt != m_fixturePositionDeltaCache.end())
+            if (posIt != m_fixturePositionDeltaCache.end() && m_fixturePositionDragActive == false)
             {
                 QVector3D fresh = FixtureUtils::fixturePositionDelta(fixture, m_monProps);
                 QVector3D cached = posIt.value();
