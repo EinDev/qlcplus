@@ -46,7 +46,12 @@ endif()
 # deliberately left unsuffixed, since they are shared between the two.
 if(qmlui)
     add_definitions(-DQMLUI)
-    set(APPVERSION "5.3.0")
+    # Bumped for ADR 0001 decision 4 (legacy Show timeline beat-value
+    # detection): the canonical-ms storage fix itself (398388c7a) did not
+    # bump this, so it can't be used to detect "saved before the fix" -
+    # this bump is itself the cutoff marker Doc::possiblyAffectedLegacyBeatShows()
+    # compares against. See that method's comment for the consequences.
+    set(APPVERSION "5.3.1")
     set(APPBINARY "qlcplus5")
     set(PLUGINSUBDIR "qlcplus5")
 else()
