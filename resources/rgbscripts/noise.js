@@ -30,9 +30,11 @@ var testAlgo;
         algo.properties = [];
         algo.acceptColors = 1;
         algo.noisePercentage = "High";
+        algo.noiseStyle = "Analog";
         var dCounter = 0;
 
         algo.properties.push("name:noisePercentage|type:list|display:Noise Coverage|values:Low,Medium,High|write:setAmount|read:getAmount");
+        algo.properties.push("name:noiseStyle|type:list|display:Noise Style|values:Analog,Binary|write:setStyle|read:getStyle");
 
         algo.setAmount = function (_amount) {
             algo.noisePercentage = _amount;
@@ -40,6 +42,14 @@ var testAlgo;
 
         algo.getAmount = function () {
             return algo.noisePercentage;
+        };
+
+        algo.setStyle = function (_style) {
+            algo.noiseStyle = _style;
+        };
+
+        algo.getStyle = function () {
+            return algo.noiseStyle;
         };
 
         // QLC+ rgbMap function where the work is done
@@ -53,27 +63,38 @@ var testAlgo;
 
                 for (var x = 0; x < width; x++)
                 {
-                    var r = (rgb >> 16) & 0x00FF;  // split color of user selected color
-                    var g = (rgb >> 8) & 0x00FF;
-                    var b = rgb & 0x00FF;
+                    var cColor;
 
-                    // create random color level from 1 to 255
-                    var colorLevel = Math.floor(Math.random() * 255);
+                    if (algo.noiseStyle === "Binary")
+                    {
+                        // Binary: lit pixels use the full chosen color, no per-pixel dimming
+                        cColor = rgb;
+                    }
+                    else
+                    {
+                        var r = (rgb >> 16) & 0x00FF;  // split color of user selected color
+                        var g = (rgb >> 8) & 0x00FF;
+                        var b = rgb & 0x00FF;
 
-                    // Assign random color value to temp variables
-                    var rr = colorLevel;
-                    var gg = colorLevel;
-                    var bb = colorLevel;
+                        // create random color level from 1 to 255
+                        var colorLevel = Math.floor(Math.random() * 255);
 
-                    // Limit each color element to the maximum for chosen color or make 0 if below 0
-                    if (rr > r) { rr = r; }
-                    if (rr < 0) { rr = 0; }
-                    if (gg > g) { gg = g; }
-                    if (gg < 0) { gg = 0; }
-                    if (bb > b) { bb = b; }
-                    if (bb < 0) { bb = 0; }
+                        // Assign random color value to temp variables
+                        var rr = colorLevel;
+                        var gg = colorLevel;
+                        var bb = colorLevel;
 
-                    var cColor = (rr << 16) + (gg << 8) + bb;   // put rgb parts back together
+                        // Limit each color element to the maximum for chosen color or make 0 if below 0
+                        if (rr > r) { rr = r; }
+                        if (rr < 0) { rr = 0; }
+                        if (gg > g) { gg = g; }
+                        if (gg < 0) { gg = 0; }
+                        if (bb > b) { bb = b; }
+                        if (bb < 0) { bb = 0; }
+
+                        cColor = (rr << 16) + (gg << 8) + bb;   // put rgb parts back together
+                    }
+
                     var vDiv = 0;                               // for noise amount use
 
                     // setup for noise reduction :)
