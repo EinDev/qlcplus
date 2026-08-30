@@ -74,19 +74,40 @@ Rectangle
         }
     }
 
-    onTimeDivisionChanged: timeHeader.requestPaint()
+    onTimeDivisionChanged:
+    {
+        timeHeader.requestPaint()
+        updateCursorPosition()
+    }
+
+    onBeatsDivisionChanged: updateCursorPosition()
+    onBpmNumberChanged: updateCursorPosition()
 
     property int dbgLastLoggedSecond: -1
 
+    // cursor.x is an imperative assignment, not a live binding, so every
+    // input it depends on (currentTime, timeScale, timeDivision,
+    // beatsDivision, bpmNumber) needs its own explicit call to this -
+    // relying on just onCurrentTimeChanged left the cursor visually stuck
+    // at its old (wrong-scale) pixel position whenever the Markers mode
+    // was switched without currentTime itself changing.
+    function updateCursorPosition()
+    {
+        if (!cursorHeight)
+            return
+
+        if (timeDivision === Show.Time)
+            cursor.x = TimeUtils.timeToSize(currentTime, timeScale, tickSize)
+        else
+            cursor.x = TimeUtils.timeToBeatPosition(currentTime, tickSize, bpmNumber, beatsDivision)
+    }
+
     onCurrentTimeChanged:
     {
+        updateCursorPosition()
+
         if (cursorHeight)
         {
-            if (timeDivision === Show.Time)
-                cursor.x = TimeUtils.timeToSize(currentTime, timeScale, tickSize)
-            else
-                cursor.x = TimeUtils.timeToBeatPosition(currentTime, tickSize, bpmNumber, beatsDivision)
-
             var dbgSecond = Math.floor(currentTime / 1000)
             if (dbgSecond !== dbgLastLoggedSecond)
             {
@@ -106,8 +127,7 @@ Rectangle
 
     onTimeScaleChanged:
     {
-        if (cursorHeight)
-            cursor.x = TimeUtils.timeToSize(currentTime, timeScale, tickSize)
+        updateCursorPosition()
         width = parseInt(TimeUtils.timeToSize(duration + 300000, timeScale, tickSize))
         timeHeader.requestPaint()
         //console.log("New header width: " + width)
