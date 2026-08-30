@@ -96,6 +96,9 @@ Rectangle
       *                        MainView2D::selectFixture()'s comment)
       *       MouseArea (z = 0): handles drag & drop of multiple fixture items
       *     MouseArea (z = 2): handles selection rectangle and mouse wheel for zooming
+      *     MouseArea (z = 3): middle-mouse-drag view panning (Middle button only,
+      *                        so it never steals a Left/Right press from anything
+      *                        below it)
       *     Fixture2DItem (z = 2): the Fixture 2D items
       *       MouseArea (z = 0): handles only the press event for selecting the Fixture item,
       *                          but doesn't accept it so it can be forwarded for dragging
@@ -345,6 +348,51 @@ Rectangle
                         setZoom(0.5)
                     else
                         setZoom(-0.5)
+                }
+            }
+
+            MouseArea
+            {
+                // Middle-mouse-drag pans the view (same convention as the 3D
+                // view's own middle-button camera translate). Only Middle is
+                // accepted, so an unclaimed Left/Right press here still falls
+                // through untouched to the MouseAreas below/around it (the
+                // selection-rectangle one above, Fixture2DItem's own press
+                // handling, and contentsDragArea's fixture-drag handling) -
+                // z: 3 just ensures a middle-press is never stolen by one of
+                // those before it gets here.
+                id: panMouseArea
+                width: twoDView.contentWidth
+                height: twoDView.contentHeight
+                z: 3
+                acceptedButtons: Qt.MiddleButton
+
+                // Deltas are computed from screen coordinates, not
+                // mouse.x/mouse.y - those are in twoDContents' own content
+                // space, which itself shifts as contentX/contentY change
+                // below, so using them here would feed the pan's own output
+                // back into its input on the very next event (the same
+                // coordinate-frame trap documented for fixture dragging
+                // elsewhere in this file).
+                property point lastScreenPos
+
+                onPressed: (mouse) =>
+                {
+                    lastScreenPos = Qt.point(mouse.screenX, mouse.screenY)
+                }
+
+                onPositionChanged: (mouse) =>
+                {
+                    var dx = mouse.screenX - lastScreenPos.x
+                    var dy = mouse.screenY - lastScreenPos.y
+
+                    var maxX = Math.max(0, twoDView.contentWidth - twoDView.width)
+                    var maxY = Math.max(0, twoDView.contentHeight - twoDView.height)
+
+                    twoDView.contentX = Math.max(0, Math.min(maxX, twoDView.contentX - dx))
+                    twoDView.contentY = Math.max(0, Math.min(maxY, twoDView.contentY - dy))
+
+                    lastScreenPos = Qt.point(mouse.screenX, mouse.screenY)
                 }
             }
 
