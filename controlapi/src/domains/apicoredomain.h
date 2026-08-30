@@ -20,9 +20,9 @@
 
 #include <QObject>
 #include "doc.h"
+#include "apiprojecthost.h"
 
 class ApiServer;
-class App;
 
 /**
  * Implementation of the "core.*" domain (project lifecycle, mode, settings).
@@ -37,7 +37,7 @@ public:
 
 private:
     void registerMethods();
-    App *app() const;
+    ApiProjectHost *projectHost() const;
 
     /** Broadcasts core.project.loaded ({reason, project: CoreProjectMetadata}),
      *  the one event a spec-built client should refresh all its domain state
