@@ -599,7 +599,12 @@ Rectangle
         Connections
         {
             target: modelProvider ? modelProvider : fixtureManager
-            function onGroupsTreeModelChanged() { flatGroupsModel.rebuild() }
+            function onGroupsTreeModelChanged()
+            {
+                flatGroupsModel.rebuild()
+                // row indices are meaningless across a rebuild - drop the stale anchor
+                groupListView.shiftAnchorIndex = -1
+            }
         }
 
         ListView
