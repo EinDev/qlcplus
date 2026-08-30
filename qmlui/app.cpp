@@ -444,30 +444,45 @@ void App::registerBuiltinShortcuts()
                                        tr("Switch to the Input/Output Manager tab"),
                                        [cm]() { cm->switchToContext("IOMGR"); });
 
+    // QML-only: FixturesAndFunctions.qml listens via Connections and flips the
+    // relevant MenuBarEntry's checked property (uniView/dmxView/twodView/
+    // threedView), the same thing a real click on it does. This is deliberately
+    // NOT a direct cm->setCurrentSubContext() call: that would only update
+    // ContextManager's own property, while the view toolbar's buttons drive
+    // (and can be driven by) a *declarative* checked binding to that same
+    // property - a binding that FixturesAndFunctions.qml itself already
+    // sometimes overwrites with a plain imperative assignment (see
+    // onRightClicked / enableContext()). Going through the button's checked
+    // property, exactly like those call sites do, keeps working even after
+    // that binding has been severed, and keeps loadContext()'s side effects
+    // (currentViewQML, the 3D is3DSupported branch) in sync.
     m_shortcutManager->registerAction("fixture.switchToUniverseGrid", QKeySequence(Qt::ALT | Qt::Key_1),
                                        ShortcutManager::FixturesAndFunctions,
                                        tr("Switch to the Universe Grid view"),
-                                       [cm]() { cm->setCurrentSubContext("UNIGRID"); });
+                                       nullptr);
 
     m_shortcutManager->registerAction("fixture.switchToDmxView", QKeySequence(Qt::ALT | Qt::Key_2),
                                        ShortcutManager::FixturesAndFunctions,
                                        tr("Switch to the DMX view"),
-                                       [cm]() { cm->setCurrentSubContext("DMX"); });
+                                       nullptr);
 
     m_shortcutManager->registerAction("fixture.switchTo2DView", QKeySequence(Qt::ALT | Qt::Key_3),
                                        ShortcutManager::FixturesAndFunctions,
                                        tr("Switch to the 2D view"),
-                                       [cm]() { cm->setCurrentSubContext("2D"); });
+                                       nullptr);
 
     m_shortcutManager->registerAction("fixture.switchTo3DView", QKeySequence(Qt::ALT | Qt::Key_4),
                                        ShortcutManager::FixturesAndFunctions,
                                        tr("Switch to the 3D view"),
-                                       [cm]() { cm->setCurrentSubContext("3D"); });
+                                       nullptr);
 
+    // Guarded against isPopupFocused() so Escape-cancelling a popup (e.g.
+    // PopupInvertGroupSelection, documented to leave the selection untouched
+    // on cancel) doesn't also wipe the fixture selection out from under it.
     m_shortcutManager->registerAction("fixture.deselectAll", QKeySequence(Qt::Key_Escape),
                                        ShortcutManager::FixturesAndFunctions,
                                        tr("Deselect all fixtures"),
-                                       [cm]() { cm->resetFixtureSelection(); });
+                                       [this, cm]() { if (!isPopupFocused()) cm->resetFixtureSelection(); });
 
     m_shortcutManager->registerAction("fixture.selectEven", QKeySequence(Qt::ALT | Qt::Key_E),
                                        ShortcutManager::FixturesAndFunctions,
@@ -517,10 +532,13 @@ void App::registerBuiltinShortcuts()
                                        tr("Open the add flow for the active Fixtures/Functions panel"),
                                        nullptr);
 
+    // cloneFunction's own button hides itself while a Function is being
+    // edited (counter: ... && !functionManager.isEditing) - mirror that guard
+    // here since a keyboard shortcut bypasses that visibility gate entirely.
     m_shortcutManager->registerAction("function.clone", QKeySequence(Qt::CTRL | Qt::Key_D),
                                        ShortcutManager::FixturesAndFunctions,
                                        tr("Clone the selected functions"),
-                                       [funcMgr]() { funcMgr->cloneFunctions(); });
+                                       [funcMgr]() { if (!funcMgr->isEditing()) funcMgr->cloneFunctions(); });
 
     m_shortcutManager->registerAction("function.togglePreview", QKeySequence(Qt::Key_Space),
                                        ShortcutManager::FixturesAndFunctions,
@@ -638,13 +656,18 @@ int App::defaultMask() const
 namespace {
 
 /** Keys a focused text field legitimately wants for itself: any unmodified
- *  (or shifted, for uppercase/shifted-symbol) letter or digit, Delete, and
- *  the standard Ctrl+A/C/V/X editing shortcuts. Everything else (F-keys,
- *  Ctrl+S, Ctrl+Z, Ctrl+1..5, ...) still goes through the shortcut path
- *  even while a text field has focus. */
+ *  (or shifted, for uppercase/shifted-symbol) letter or digit, Delete, Space,
+ *  Escape, and the standard Ctrl+A/C/V/X editing shortcuts. Everything else
+ *  (F-keys, Ctrl+S, Ctrl+Z, Ctrl+1..5, ...) still goes through the shortcut
+ *  path even while a text field has focus.
+ *  Space and Escape were added alongside the FixturesAndFunctions shortcuts
+ *  (function.togglePreview / fixture.deselectAll) - without this, typing a
+ *  space into a focused rename/search field would also start/stop the
+ *  selected function's preview, and Escape-cancelling an inline rename
+ *  would also deselect every fixture. */
 bool isTextEditingKey(const QKeyEvent *e)
 {
-    if (e->key() == Qt::Key_Delete)
+    if (e->key() == Qt::Key_Delete || e->key() == Qt::Key_Space || e->key() == Qt::Key_Escape)
         return true;
 
     Qt::KeyboardModifiers mods = e->modifiers() & ~Qt::KeypadModifier;
@@ -682,6 +705,21 @@ bool App::isTextInputFocused() const
     while (item != nullptr)
     {
         if (item->inherits("QQuickTextInput") || item->inherits("QQuickTextEdit"))
+            return true;
+
+        item = item->parentItem();
+    }
+
+    return false;
+}
+
+bool App::isPopupFocused() const
+{
+    QQuickItem *item = activeFocusItem();
+
+    while (item != nullptr)
+    {
+        if (item->inherits("QQuickOverlay"))
             return true;
 
         item = item->parentItem();

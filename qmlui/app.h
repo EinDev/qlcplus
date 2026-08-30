@@ -203,6 +203,15 @@ private:
      *  ancestors, is a text-editing item (QQuickTextInput/QQuickTextEdit) */
     bool isTextInputFocused() const;
 
+    /** Returns true if activeFocusItem(), or one of its QQuickItem ancestors,
+     *  is parented under the window's QQuickOverlay - i.e. a Popup (such as
+     *  PopupInvertGroupSelection or PopupRenameItems) currently owns focus.
+     *  Used to keep fixture.deselectAll (Escape) from also clearing the
+     *  fixture selection while Escape is instead meant to cancel/close an
+     *  open popup - e.g. cancelling PopupInvertGroupSelection is documented
+     *  to leave the selection untouched. */
+    bool isPopupFocused() const;
+
     /** Register every built-in ShortcutManager action and bind it to its
      *  default key sequence. Called once from startup() after m_shortcutManager
      *  and every manager it binds to (m_contextManager, m_ioManager,
