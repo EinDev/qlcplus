@@ -5,34 +5,43 @@ on:
     workflows: ["QLCplus Github Actions CI Build"]
     types: [completed]
 
-concurrency: release-me
+concurrency: release-please
 
 permissions:
   contents: write
+  pull-requests: write
+  issues: write
   actions: read
 
 jobs:
-  release-me:
+  release-please:
     name: Create GitHub Release
-    runs-on: ubuntu-latest
     # `event == 'push'` is required in addition to `head_branch == 'master'`:
     # build.yml also runs on pull_request, and a PR opened from a fork whose
     # own default branch is also called `master` would otherwise match too.
+    #
+    # Staying on workflow_run (rather than release-please's usual `on: push`)
+    # is deliberate: the Windows installer is a hard-required release asset,
+    # and the only moment an installer is guaranteed to exist for a given
+    # commit is after that commit's own CI build has succeeded. Running
+    # release-please directly on push would let it cut a release for a merge
+    # commit whose build later fails, publishing a release with no installer
+    # and no way to retry (workflow_run only fires once). The cost: grooming
+    # the release PR lags behind CI by a full build, and a failed build on
+    # the merge commit delays the actual release until the next green build
+    # (release-please re-scans from scratch each run, so it self-heals).
     if: >-
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.head_branch == 'master'
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-        with:
-          submodules: false
-
-      # Downloaded before ReleaseMe runs (rather than after) so a download
-      # failure fails the job before any tag/release is created - ReleaseMe
-      # only lets one release be created per new Conventional Commit, so a
-      # failure discovered afterwards (e.g. missing installer) would leave a
-      # published release permanently missing the required asset.
+      # Downloaded before release-please runs (rather than after) so a
+      # download failure fails the job before any tag/release is created -
+      # release-please only lets one release be created per new Conventional
+      # Commit, so a failure discovered afterwards (e.g. missing installer)
+      # would leave a published release permanently missing the required
+      # asset.
       - name: Download Windows installer from the triggering CI run
         uses: actions/download-artifact@v7
         with:
@@ -41,27 +50,24 @@ jobs:
           github-token: ${{ github.token }}
           path: release-assets
 
-      - name: Run ReleaseMe
+      - name: Run release-please
         id: release
-        # eindev-v keeps this fork's own auto-generated tags unambiguous from
-        # upstream mcallegari/qlcplus's own QLC+_x.y.z tags, which this fork
-        # periodically pulls in from `upstream`. No release is created (and
-        # `created` stays unset) when no commit since the last eindev-v tag
-        # is a Conventional Commit feat:/fix:/breaking change - this is
-        # release-me's normal, non-erroring default, not a fallback we added.
-        uses: dev-build-deploy/release-me@v1
+        uses: googleapis/release-please-action@v4
         with:
           token: ${{ github.token }}
-          prefix: eindev-v
-          versioning: semver
 
       - name: Attach Windows installer to the release
-        # Deliberately not using release-me's own `files`/`artifacts` inputs:
-        # it reads assets as UTF-8 text before uploading them (see
-        # dev-build-deploy/release-me issue #55), which corrupts binaries.
-        # `gh release upload` uploads the raw bytes correctly.
-        if: ${{ steps.release.outputs.created }}
+        # `release.outputs.sha` must match the commit this run actually
+        # built: release-please always re-evaluates from the tip of master,
+        # so if this build's commit was the one just released, they'll
+        # agree; if an earlier merge commit's build had failed and this is
+        # the next green build to catch up, they won't, and the installer
+        # for the actually-released commit is attached by a later run
+        # instead (or manually, if no later build exists).
+        if: >-
+          steps.release.outputs.release_created &&
+          steps.release.outputs.sha == github.event.workflow_run.head_sha
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release upload "${{ fromJSON(steps.release.outputs.release).tag_name }}" release-assets/* --repo "${{ github.repository }}"
+          gh release upload "${{ steps.release.outputs.tag_name }}" release-assets/* --repo "${{ github.repository }}"
