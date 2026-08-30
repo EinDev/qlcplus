@@ -48,6 +48,10 @@ Dialog
     property int beatsDivision: 4
     // false = "already correct real-time values" (no-op), true = "convert from beats"
     property bool convertFromBeats: false
+    // convenience only - convertLegacyBeatShow() below is the real, Tardis-tracked
+    // commit either way, so there is nothing to revert if the user doesn't like
+    // the result: they can just undo (Ctrl+Z) or not save
+    property bool playAfterConvert: false
 
     signal converted(int showId)
 
@@ -56,6 +60,7 @@ Dialog
         showId = id
         showName = name
         convertFromBeats = false
+        playAfterConvert = false
 
         var info = showManager.legacyShowConversionInfo(id)
         bpmValue = info.bpm > 0 ? info.bpm : 120
@@ -67,7 +72,24 @@ Dialog
     onAccepted:
     {
         if (convertFromBeats)
+        {
+            // grab the earliest item's post-conversion start time before
+            // convertLegacyBeatShow() mutates it in place
+            var preview = showManager.legacyShowConversionPreview(showId, bpmValue)
+
             showManager.convertLegacyBeatShow(showId, bpmValue)
+
+            if (playAfterConvert && preview.length > 0)
+            {
+                if (showManager.isPlaying())
+                    showManager.stopShow()
+
+                showManager.currentShowID = showId
+                showManager.currentTime = Math.max(0, preview[0].newStart - 1000)
+                mainView.switchToContext("SHOWMGR", "qrc:/ShowManager.qml")
+                showManager.playShow()
+            }
+        }
         control.converted(showId)
     }
 
@@ -168,6 +190,14 @@ Dialog
                                "were placed - the value above is only this Show's current " +
                                "setting, not necessarily what was used originally.").arg(control.beatsDivision)
                 }
+            }
+
+            CheckBox
+            {
+                visible: control.convertFromBeats
+                text: qsTr("Play back the Show from its converted timing after converting")
+                checked: control.playAfterConvert
+                onCheckedChanged: control.playAfterConvert = checked
             }
 
             Text
