@@ -53,6 +53,15 @@ Item
     property bool dragActive: false
     property bool itemSnapped: false
 
+    // Snap preview / old position ghost properties
+    property real oldPosX: 0
+    property real oldPosY: 0
+    property real oldPosWidth: 0
+    property bool showOldPosGhost: false
+    property real previewOffsetX: 0
+    property real previewOffsetY: 0
+    property bool showLandingPreview: false
+
     function getVisibleSnapEdges()
     {
         // itemRoot.parent is the Flickable's contentItem,
@@ -265,6 +274,38 @@ Item
         }
     }
 
+    /* Ghost of the item's position before the current drag/resize started */
+    Rectangle
+    {
+        id: oldPositionGhost
+        x: oldPosX - itemRoot.x
+        y: oldPosY - itemRoot.y
+        z: 1
+        width: oldPosWidth
+        height: itemRoot.height
+        radius: 2
+        color: "#30FFFFFF"
+        border.width: 1
+        border.color: "#AAFFFFFF"
+        visible: showOldPosGhost
+    }
+
+    /* Preview of the item's position if the mouse were released now */
+    Rectangle
+    {
+        id: landingPreview
+        x: previewOffsetX
+        y: previewOffsetY
+        z: 1
+        width: itemRoot.width
+        height: itemRoot.height
+        radius: 2
+        color: Qt.rgba(globalColor.r, globalColor.g, globalColor.b, 0.3)
+        border.width: 2
+        border.color: itemSnapped ? "#00FF00" : "#80FFFFFF"
+        visible: showLandingPreview
+    }
+
     /* Body mouse area (covers the whole item) */
     MouseArea
     {
@@ -334,6 +375,9 @@ Item
             dragActive = false
             itemSnapped = false
             snapEdges = getVisibleSnapEdges()
+            oldPosX = itemRoot.x
+            oldPosY = itemRoot.y
+            oldPosWidth = itemRoot.width
         }
         onPositionChanged: (mouse) =>
         {
@@ -351,6 +395,8 @@ Item
                 itemRoot.z++
                 infoTextBox.height = itemRoot.height / 4
                 infoTextBox.textHAlign = Text.AlignLeft
+                showOldPosGhost = true
+                showLandingPreview = true
             }
 
             // snap-to-item: check start edge if clicked on first half,
@@ -384,6 +430,9 @@ Item
 
             showItemBody.x = dx
             showItemBody.y = dy
+
+            previewOffsetX = dx
+            previewOffsetY = (Math.round((itemRoot.y + dy) / itemRoot.height) * itemRoot.height) - itemRoot.y
 
             var txt
             if (timeDivision === Show.Time)
@@ -434,6 +483,8 @@ Item
             isDragging = false
             dragActive = false
             itemSnapped = false
+            showOldPosGhost = false
+            showLandingPreview = false
             updateGeometry()
         }
 
@@ -491,6 +542,11 @@ Item
                 pressX = mapToItem(itemRoot.parent, mouse.x, mouse.y).x
                 origItemX = itemRoot.x
                 origItemW = itemRoot.width
+                oldPosX = itemRoot.x
+                oldPosY = itemRoot.y
+                oldPosWidth = itemRoot.width
+                showOldPosGhost = true
+                showLandingPreview = true
             }
 
             onPositionChanged: (mouse) =>
@@ -583,6 +639,8 @@ Item
                 infoText = ""
                 isDragging = false
                 itemSnapped = false
+                showOldPosGhost = false
+                showLandingPreview = false
                 updateGeometry()
             }
         }
@@ -616,6 +674,11 @@ Item
                 isDragging = true
                 itemSnapped = false
                 snapEdges = getVisibleSnapEdges()
+                oldPosX = itemRoot.x
+                oldPosY = itemRoot.y
+                oldPosWidth = itemRoot.width
+                showOldPosGhost = true
+                showLandingPreview = true
             }
 
             onPositionChanged: (mouse) =>
@@ -658,6 +721,9 @@ Item
             }
             onReleased:
             {
+                showOldPosGhost = false
+                showLandingPreview = false
+
                 if (drag.active === false)
                     return
 
