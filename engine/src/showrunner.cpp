@@ -163,7 +163,17 @@ void ShowRunner::write(MasterTimer *timer)
                 qDebug() << "Beat synced";
             }
             else
-                m_elapsedBeats += 1000;
+            {
+                // m_elapsedBeats tracks real elapsed milliseconds (see showrunner.h),
+                // not a beat count, so advance it by the actual duration of one beat
+                // at the current BPM rather than a fixed pseudo-unit step. With no
+                // known BPM there is no way to convert a beat pulse into a real-ms
+                // increment, so leave it unchanged instead of guessing - any
+                // Beats-tempo functions simply won't start/stop until BPM is known.
+                int bpmNumber = m_doc->inputOutputMap()->bpmNumber();
+                if (bpmNumber > 0)
+                    m_elapsedBeats += qRound(60000.0 / bpmNumber);
+            }
         }
 
         if (beatSynced == false)
