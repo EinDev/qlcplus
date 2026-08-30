@@ -181,6 +181,16 @@ jobs:
           name: ${{ matrix.task }}-AppImage
           path: qlcplus-${{env.TASK}}-${{env.APPVERSION}}-${{env.BUILD_DATE}}-${{env.GIT_REV}}.AppImage
 
+      # Fixed name (unlike the dynamically-named artifact above) so the
+      # release workflow can find the v5/qmlui AppImage without knowing the
+      # per-run APPVERSION/BUILD_DATE/GIT_REV values.
+      - name: Store AppImage artifact under a fixed name for the release workflow
+        if: ${{ matrix.task == 'build-v5' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: qlcplus5-linux-appimage
+          path: qlcplus-${{env.TASK}}-${{env.APPVERSION}}-${{env.BUILD_DATE}}-${{env.GIT_REV}}.AppImage
+
   build-windows:
     runs-on: windows-latest
     name: QLCplus Windows ${{matrix.task}}
@@ -647,4 +657,14 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: QLC+-${{env.APPVERSION}}-${{env.BUILD_DATE}}-${{env.GIT_REV}}.dmg
+          path: QLC+_${{ matrix.task }}.dmg
+
+      # Fixed name (unlike the dynamically-named artifact above) so the
+      # release workflow can find the v5/qmlui DMG without knowing the
+      # per-run APPVERSION/BUILD_DATE/GIT_REV values.
+      - name: Store DMG artifact under a fixed name for the release workflow
+        if: ${{ matrix.task == 'build-v5' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: qlcplus5-macos-dmg
           path: QLC+_${{ matrix.task }}.dmg
