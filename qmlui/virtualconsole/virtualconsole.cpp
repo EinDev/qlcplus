@@ -509,6 +509,13 @@ void VirtualConsole::setPageInteraction(bool enable)
 
 void VirtualConsole::setPageScale(qreal factor)
 {
+    // m_selectedPage can legitimately be -1 (no page selected, e.g. right
+    // after a page is deleted) - guard against it since this is now also
+    // reachable from the keyboard (Ctrl+=/Ctrl+-), not just the page area's
+    // own zoom buttons which only exist while a page is actually shown.
+    if (m_selectedPage < 0 || m_selectedPage >= m_pages.count())
+        return;
+
     m_pages.at(m_selectedPage)->setPageScale(factor);
 }
 
@@ -1483,14 +1490,29 @@ bool VirtualConsole::handleKeyEvent(QKeyEvent *e, bool pressed)
 {
     if (m_inputDetectionEnabled == false)
     {
-        /* Ignore the repeating events */
+        QKeySequence seq(e->key() | e->modifiers());
+
+        /* Ignore the repeating events, but still report whether $seq is
+         * bound to something here (without re-dispatching it). Otherwise,
+         * on a held key whose sequence also matches a ShortcutManager
+         * action, the first press would be consumed here as expected, but
+         * every OS auto-repeat afterwards would fall through and fire the
+         * registry action instead - a double-fire this precedence change
+         * must not introduce (see App::keyPressEvent) */
         if (e->isAutoRepeat())
+        {
+            if (!m_pagesKeySequencesMap.keys(seq).isEmpty())
+                return true;
+
+            int page = selectedPage();
+            if (page >= 0 && page < m_pages.count())
+                return m_pages.at(page)->hasKeySequence(seq);
+
             return false;
+        }
 
         // Ctrl+E (edit mode toggle) is dispatched via ShortcutManager on key
         // press instead (see App::registerBuiltinShortcuts).
-
-        QKeySequence seq(e->key() | e->modifiers());
 
         /** first check if this key sequence is a page activation */
         for (int pageIndex : m_pagesKeySequencesMap.keys(seq))
