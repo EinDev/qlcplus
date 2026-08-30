@@ -344,6 +344,16 @@ public:
 
     void setChannelValues(QList<SceneValue> values);
 
+    /** Select the next available Fixture group, cycling through the
+     *  groups defined in the Doc. Deselects everything else.
+     *  Registered as a ShortcutManager action by App */
+    void selectNextFixtureGroup();
+
+    /** Perform the context-sensitive delete dispatched on m_lastClickedType
+     *  (fixtures/functions/folders/show items/tracks). Registered as a
+     *  ShortcutManager action by App */
+    void deleteSelectedItems();
+
 protected slots:
     void slotNewFixtureCreated(quint32 fxID, qreal x, qreal y, qreal z = 0);
     void slotFixtureDeleted(quint32 itemID);
@@ -371,10 +381,6 @@ signals:
     void fixturesRotationChanged();
 
 private:
-    /** Select the next available Fixture group, cycling through the
-     *  groups defined in the Doc. Deselects everything else. */
-    void selectNextFixtureGroup();
-
     /** Returns the world axis indices (0=X, 1=Y, 2=Z) that represent the
      *  horizontal ($hAxis) and vertical ($vAxis) directions on screen for
      *  $pointOfView, plus the remaining depth axis ($dAxis). Used by the

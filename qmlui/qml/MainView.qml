@@ -84,6 +84,8 @@ Rectangle
             currentContext = ""
         }
 
+        shortcutManager.currentContext = currentContext
+
         if (qmlRes)
             mainViewLoader.source = qmlRes
     }
@@ -112,6 +114,23 @@ Rectangle
     function saveProject()
     {
         actionsMenu.handleSaveAction()
+    }
+
+    function openProject()
+    {
+        actionsMenu.openDialog(App.OpenMode)
+    }
+
+    function saveProjectAs()
+    {
+        actionsMenu.openDialog(App.SaveAsMode)
+    }
+
+    function triggerDmxDump()
+    {
+        sceneDump.updateDumpVariables()
+        dmxDumpDialog.open()
+        dmxDumpDialog.focusEditItem()
     }
 
     function saveBeforeExit()
