@@ -104,6 +104,14 @@ Rectangle
             cancelCapture()
     }
 
+    // Switching tabs while this overlay is open destroys it outright
+    // (mainView.loadResource()/switchToContext() clear overlayLoader.source)
+    // rather than just hiding it, so onVisibleChanged above isn't guaranteed
+    // to run - without this, a capture left in progress would leave
+    // shortcutManager.capturing stuck true and every shortcut in the app
+    // dead until restart
+    Component.onDestruction: shortcutManager.capturing = false
+
     Component.onCompleted: reload()
 
     Connections
@@ -167,6 +175,18 @@ Rectangle
             if (role === Dialog.Yes && pendingBinding !== null)
                 shortcutManager.saveOverride(pendingBinding.id, pendingBinding.storage)
 
+            pendingBinding = null
+            cancelCapture()
+        }
+
+        // CustomPopupDialog's closePolicy allows dismissing with Escape, which
+        // closes the dialog without going through onClicked above - without
+        // this, that path would leave pendingBinding set and capturing stuck
+        // true. Safe to run alongside the Yes path too: DialogButtonBox emits
+        // clicked() (and applies the override) before the dialog closes, and
+        // cancelCapture()/pendingBinding=null are idempotent
+        onClosed:
+        {
             pendingBinding = null
             cancelCapture()
         }
