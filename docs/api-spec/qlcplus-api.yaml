@@ -1452,6 +1452,42 @@ channels:
         $ref: '#/components/messages/VcWidgetPresetAddResponse'
       vcWidgetPresetAddOkResponse:
         $ref: '#/components/messages/VcWidgetPresetAddOkResponse'
+      paletteListRequest:
+        $ref: '#/components/messages/PaletteListRequest'
+      paletteListResponse:
+        $ref: '#/components/messages/PaletteListResponse'
+      paletteListOkResponse:
+        $ref: '#/components/messages/PaletteListOkResponse'
+      paletteGetRequest:
+        $ref: '#/components/messages/PaletteGetRequest'
+      paletteGetResponse:
+        $ref: '#/components/messages/PaletteGetResponse'
+      paletteGetOkResponse:
+        $ref: '#/components/messages/PaletteGetOkResponse'
+      paletteCreateRequest:
+        $ref: '#/components/messages/PaletteCreateRequest'
+      paletteCreateResponse:
+        $ref: '#/components/messages/PaletteCreateResponse'
+      paletteCreateOkResponse:
+        $ref: '#/components/messages/PaletteCreateOkResponse'
+      paletteCreatedEvent:
+        $ref: '#/components/messages/PaletteCreatedEvent'
+      paletteUpdateRequest:
+        $ref: '#/components/messages/PaletteUpdateRequest'
+      paletteUpdateResponse:
+        $ref: '#/components/messages/PaletteUpdateResponse'
+      paletteUpdateOkResponse:
+        $ref: '#/components/messages/PaletteUpdateOkResponse'
+      paletteUpdatedEvent:
+        $ref: '#/components/messages/PaletteUpdatedEvent'
+      paletteDeleteRequest:
+        $ref: '#/components/messages/PaletteDeleteRequest'
+      paletteDeleteResponse:
+        $ref: '#/components/messages/PaletteDeleteResponse'
+      paletteDeleteOkResponse:
+        $ref: '#/components/messages/PaletteDeleteOkResponse'
+      paletteDeletedEvent:
+        $ref: '#/components/messages/PaletteDeletedEvent'
 operations:
   sendHello:
     action: send
@@ -5074,6 +5110,84 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/vcWidgetPresetAddResponse'
+  sendPaletteList:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/paletteListRequest'
+  receivePaletteListResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/paletteListResponse'
+  sendPaletteGet:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/paletteGetRequest'
+  receivePaletteGetResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/paletteGetResponse'
+  sendPaletteCreate:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/paletteCreateRequest'
+  receivePaletteCreateResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/paletteCreateResponse'
+  receivePaletteCreated:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/paletteCreatedEvent'
+  sendPaletteUpdate:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/paletteUpdateRequest'
+  receivePaletteUpdateResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/paletteUpdateResponse'
+  receivePaletteUpdated:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/paletteUpdatedEvent'
+  sendPaletteDelete:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/paletteDeleteRequest'
+  receivePaletteDeleteResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/paletteDeleteResponse'
+  receivePaletteDeleted:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/paletteDeletedEvent'
 components:
   messages:
     HelloRequest:
@@ -20967,6 +21081,352 @@ components:
                 type: integer
               presetId:
                 type: integer
+    PaletteListRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: palette.list
+          params:
+            type: object
+    PaletteListResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/PaletteListOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    PaletteListOkResponse:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - ok
+        - result
+        properties:
+          type:
+            const: response
+          id:
+            type: string
+          ok:
+            const: true
+          result:
+            type: object
+            required:
+            - palettes
+            - docRevision
+            properties:
+              palettes:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PaletteSummary'
+              docRevision:
+                type: integer
+    PaletteGetRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: palette.get
+          params:
+            type: object
+            required:
+            - paletteId
+            properties:
+              paletteId:
+                type: integer
+    PaletteGetResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/PaletteGetOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    PaletteGetOkResponse:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - ok
+        - result
+        properties:
+          type:
+            const: response
+          id:
+            type: string
+          ok:
+            const: true
+          result:
+            $ref: '#/components/schemas/PaletteDetail'
+    PaletteCreateRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: palette.create
+          params:
+            type: object
+            required:
+            - type
+            - name
+            - baseRevision
+            properties:
+              type:
+                $ref: '#/components/schemas/PaletteTypeEnum'
+              name:
+                type: string
+              values:
+                $ref: '#/components/schemas/PaletteValues'
+                description: Initial value(s), in the type-appropriate encoding described on PaletteValues.
+                  Optional; a type-appropriate zero/default value is used if omitted (mirrors QLCPalette::resetValues()).
+              baseRevision:
+                type: integer
+                description: docRevision this client last observed (see 00-conventions.md §4a)
+    PaletteCreateResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/PaletteCreateOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    PaletteCreateOkResponse:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - ok
+        - result
+        properties:
+          type:
+            const: response
+          id:
+            type: string
+          ok:
+            const: true
+          result:
+            type: object
+            required:
+            - paletteId
+            - docRevision
+            properties:
+              paletteId:
+                type: integer
+              docRevision:
+                type: integer
+    PaletteCreatedEvent:
+      payload:
+        type: object
+        required:
+        - type
+        - topic
+        - data
+        properties:
+          type:
+            const: event
+          topic:
+            const: palette.created
+          originClientId:
+            type:
+            - string
+            - 'null'
+          data:
+            type: object
+            required:
+            - palette
+            - docRevision
+            properties:
+              palette:
+                $ref: '#/components/schemas/PaletteDetail'
+              docRevision:
+                type: integer
+    PaletteUpdateRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: palette.update
+          params:
+            type: object
+            required:
+            - paletteId
+            - baseRevision
+            properties:
+              paletteId:
+                type: integer
+              name:
+                type: string
+                description: Optional; rename the palette when present.
+              values:
+                $ref: '#/components/schemas/PaletteValues'
+                description: Optional; replace the palette's value(s) when present, in the type-appropriate
+                  encoding described on PaletteValues. The palette's type itself is immutable after creation
+                  (see QLCPalette::type(), CONSTANT), so it is never accepted here - delete and re-create
+                  instead if the type is wrong.
+              baseRevision:
+                type: integer
+    PaletteUpdateResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/PaletteUpdateOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    PaletteUpdateOkResponse:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - ok
+        - result
+        properties:
+          type:
+            const: response
+          id:
+            type: string
+          ok:
+            const: true
+          result:
+            type: object
+            required:
+            - docRevision
+            properties:
+              docRevision:
+                type: integer
+    PaletteUpdatedEvent:
+      payload:
+        type: object
+        required:
+        - type
+        - topic
+        - data
+        properties:
+          type:
+            const: event
+          topic:
+            const: palette.updated
+          originClientId:
+            type:
+            - string
+            - 'null'
+          data:
+            type: object
+            required:
+            - palette
+            - docRevision
+            properties:
+              palette:
+                $ref: '#/components/schemas/PaletteDetail'
+              docRevision:
+                type: integer
+    PaletteDeleteRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: palette.delete
+          params:
+            type: object
+            required:
+            - paletteId
+            - baseRevision
+            properties:
+              paletteId:
+                type: integer
+              baseRevision:
+                type: integer
+    PaletteDeleteResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/PaletteDeleteOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    PaletteDeleteOkResponse:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - ok
+        - result
+        properties:
+          type:
+            const: response
+          id:
+            type: string
+          ok:
+            const: true
+          result:
+            type: object
+            required:
+            - docRevision
+            properties:
+              docRevision:
+                type: integer
+    PaletteDeletedEvent:
+      payload:
+        type: object
+        required:
+        - type
+        - topic
+        - data
+        properties:
+          type:
+            const: event
+          topic:
+            const: palette.deleted
+          originClientId:
+            type:
+            - string
+            - 'null'
+          data:
+            type: object
+            required:
+            - paletteId
+            - docRevision
+            properties:
+              paletteId:
+                type: integer
+              docRevision:
+                type: integer
   schemas:
     CoreProjectMetadata:
       type: object
@@ -24018,3 +24478,65 @@ components:
       description: Covers addColorPreset/addColorKnobsPreset/addTextPreset/ addAlgorithmPreset. $colorIndex
         (0-4) required for color/colorKnobs; $text required for text; $algorithmName (+optional $algorithmProperties)
         required for algorithm.
+    PaletteTypeEnum:
+      type: string
+      enum:
+      - Dimmer
+      - Color
+      - Pan
+      - Tilt
+      - PanTilt
+      - Position3D
+      - Shutter
+      - Gobo
+      - Zoom
+      description: Mirrors QLCPalette::PaletteType (engine/src/qlcpalette.h). Fixed once a palette is
+        created - palette.update never accepts it.
+    PaletteValues:
+      type: array
+      items:
+        type:
+        - number
+        - string
+      description: 'Direct JSON mirror of QLCPalette::values()''s QVariantList - one array element per
+        stored value, in the same order the engine keeps them, with no per-type object wrapper (see palette-notes.md
+        for why this shape was chosen over a type-specific object). Meaning per PaletteTypeEnum value:
+        Dimmer, Zoom: [level] - one float, 0.0-100.0 (percent; QLCPalette::setValue(float)). Color: [packed]
+        - one string, "#rrggbb" or "#rrggbbwwaauv" (RGB, optionally followed by White/Amber/UV) exactly
+        as produced/consumed by QLCPalette::colorToString()/stringToColor() - build/parse it with those
+        semantics, don''t hand-roll hex concatenation. Pan, Tilt: [value] - one integer, the raw pan-or-tilt
+        value. PanTilt: [pan, tilt] - two integers, in that order. Position3D: [x, y, z] - three floats.
+        Shutter: [value1, value2] - two integers; QLCPalette itself does not document what these two mean
+        beyond "2 values" (see its loadXML''s Shutter case) - treated generically here, pass-through only.
+        Gobo: treated generically (engine''s own loadXML has no Gobo case today - see qlcpalette.cpp)
+        - whatever values() currently holds, round-tripped as-is. An empty array (or an absent `values`
+        on palette.create) means "use QLCPalette''s post-construction default", i.e. QLCPalette::resetValues().'
+    PaletteSummary:
+      type: object
+      required:
+      - id
+      - name
+      - type
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        type:
+          $ref: '#/components/schemas/PaletteTypeEnum'
+    PaletteDetail:
+      type: object
+      required:
+      - id
+      - name
+      - type
+      - values
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        type:
+          $ref: '#/components/schemas/PaletteTypeEnum'
+        values:
+          $ref: '#/components/schemas/PaletteValues'

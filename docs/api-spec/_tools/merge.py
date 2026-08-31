@@ -34,6 +34,7 @@ FRAGMENTS = [
     "functions-advanced.yaml",
     "io.yaml",
     "virtualconsole.yaml",
+    "palette.yaml",
 ]
 
 
