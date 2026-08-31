@@ -49,6 +49,7 @@ private slots:
     void setPausePausesRunningFunction();
 
     void createSceneAddsFunctionAndBumpsRevision();
+    void createBroadcastsFunctionsCreatedEvent();
     void createOnStaleRevisionIsConflict();
     void createSequenceAutoCreatesHiddenBoundScene();
     void getReturnsGenericAndSceneTypeDetail();

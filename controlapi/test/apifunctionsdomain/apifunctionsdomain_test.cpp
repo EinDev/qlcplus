@@ -206,6 +206,45 @@ void ApiFunctionsDomain_Test::createSceneAddsFunctionAndBumpsRevision()
     QCOMPARE(created->name(), QStringLiteral("My New Scene"));
 }
 
+void ApiFunctionsDomain_Test::createBroadcastsFunctionsCreatedEvent()
+{
+    QString clientId = helloAndGetClientId();
+
+    // Unlike sendAndWaitForReply() (which only surfaces the correlated
+    // response), this test needs to see the unsolicited event frame that
+    // the same request also triggers (00-conventions.md §3's "response to
+    // the requester AND broadcasts... to all subscribed clients" rule) - so
+    // it drives its own QSignalSpy over the whole request instead.
+    QSignalSpy spy(m_client, &QWebSocket::textMessageReceived);
+    QJsonObject params;
+    params.insert(QStringLiteral("type"), QStringLiteral("Scene"));
+    params.insert(QStringLiteral("baseRevision"), int(m_doc->docRevision()));
+    m_client->sendTextMessage(buildRequest(QStringLiteral("functions.create"), params, QStringLiteral("t-1")));
+
+    QJsonObject eventObj;
+    QVERIFY(QTest::qWaitFor([&]()
+    {
+        for (const QList<QVariant> &frame : spy)
+        {
+            QJsonObject obj = QJsonDocument::fromJson(frame.at(0).toString().toUtf8()).object();
+            if (obj.value(QStringLiteral("type")).toString() == QStringLiteral("event") &&
+                obj.value(QStringLiteral("topic")).toString() == QStringLiteral("functions.created"))
+            {
+                eventObj = obj;
+                return true;
+            }
+        }
+        return false;
+    }, 2000));
+
+    QJsonObject data = eventObj.value(QStringLiteral("data")).toObject();
+    QJsonObject functionSummary = data.value(QStringLiteral("function")).toObject();
+    QVERIFY(functionSummary.value(QStringLiteral("id")).toString().isEmpty() == false);
+    QCOMPARE(functionSummary.value(QStringLiteral("type")).toString(), QStringLiteral("Scene"));
+    QCOMPARE(int(data.value(QStringLiteral("docRevision")).toInt()), int(m_doc->docRevision()));
+    QCOMPARE(eventObj.value(QStringLiteral("originClientId")).toString(), clientId);
+}
+
 void ApiFunctionsDomain_Test::createOnStaleRevisionIsConflict()
 {
     helloAndGetClientId();
