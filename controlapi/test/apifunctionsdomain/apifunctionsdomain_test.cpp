@@ -26,6 +26,9 @@
 #include "mastertimer.h"
 #include "fixture.h"
 #include "scene.h"
+#include "chaser.h"
+#include "sequence.h"
+#include "universe.h"
 #include "doc.h"
 
 static QString buildRequest(const QString &method, const QJsonObject &params, const QString &id = QStringLiteral("t-1"))
@@ -109,6 +112,17 @@ QString ApiFunctionsDomain_Test::helloAndGetClientId()
     return reply.value(QStringLiteral("result")).toObject().value(QStringLiteral("clientId")).toString();
 }
 
+QString ApiFunctionsDomain_Test::createFunctionViaApi(const QString &type, const QJsonObject &extraParams)
+{
+    QJsonObject params = extraParams;
+    params.insert(QStringLiteral("type"), type);
+    params.insert(QStringLiteral("baseRevision"), int(m_doc->docRevision()));
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("functions.create"), params);
+    if (reply.value(QStringLiteral("ok")).toBool() == false)
+        return QString();
+    return reply.value(QStringLiteral("result")).toObject().value(QStringLiteral("functionId")).toString();
+}
+
 void ApiFunctionsDomain_Test::startRunsFunction()
 {
     helloAndGetClientId();
@@ -165,6 +179,284 @@ void ApiFunctionsDomain_Test::setPausePausesRunningFunction()
     // Function::setPause() sets the flag synchronously (unlike start/stop,
     // it doesn't go through MasterTimer's queue), so no polling wait needed.
     QCOMPARE(m_scene->isPaused(), true);
+}
+
+void ApiFunctionsDomain_Test::createSceneAddsFunctionAndBumpsRevision()
+{
+    helloAndGetClientId();
+    quint32 baseRevision = m_doc->docRevision();
+
+    QJsonObject params;
+    params.insert(QStringLiteral("type"), QStringLiteral("Scene"));
+    params.insert(QStringLiteral("name"), QStringLiteral("My New Scene"));
+    params.insert(QStringLiteral("baseRevision"), int(baseRevision));
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("functions.create"), params);
+
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QString functionIdStr = reply.value(QStringLiteral("result")).toObject().value(QStringLiteral("functionId")).toString();
+    QVERIFY(functionIdStr.isEmpty() == false);
+    QVERIFY(quint32(reply.value(QStringLiteral("result")).toObject().value(QStringLiteral("docRevision")).toInt()) > baseRevision);
+
+    bool ok = false;
+    quint32 functionId = functionIdStr.toUInt(&ok);
+    QVERIFY(ok);
+
+    Scene *created = qobject_cast<Scene *>(m_doc->function(functionId));
+    QVERIFY(created != nullptr);
+    QCOMPARE(created->name(), QStringLiteral("My New Scene"));
+}
+
+void ApiFunctionsDomain_Test::createOnStaleRevisionIsConflict()
+{
+    helloAndGetClientId();
+
+    QJsonObject params;
+    params.insert(QStringLiteral("type"), QStringLiteral("Scene"));
+    params.insert(QStringLiteral("baseRevision"), int(m_doc->docRevision()) + 999);
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("functions.create"), params);
+
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(),
+              QStringLiteral("CONFLICT"));
+}
+
+void ApiFunctionsDomain_Test::createSequenceAutoCreatesHiddenBoundScene()
+{
+    helloAndGetClientId();
+
+    QString sequenceIdStr = createFunctionViaApi(QStringLiteral("Sequence"));
+    QVERIFY(sequenceIdStr.isEmpty() == false);
+
+    Sequence *sequence = qobject_cast<Sequence *>(m_doc->function(sequenceIdStr.toUInt()));
+    QVERIFY(sequence != nullptr);
+
+    Scene *boundScene = qobject_cast<Scene *>(m_doc->function(sequence->boundSceneID()));
+    QVERIFY(boundScene != nullptr);
+    QCOMPARE(boundScene->isVisible(), false);
+}
+
+void ApiFunctionsDomain_Test::getReturnsGenericAndSceneTypeDetail()
+{
+    helloAndGetClientId();
+    m_scene->setValue(1, 2, 200);
+
+    QJsonObject params;
+    params.insert(QStringLiteral("functionId"), QString::number(m_scene->id()));
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("functions.get"), params);
+
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QJsonObject result = reply.value(QStringLiteral("result")).toObject();
+    QCOMPARE(result.value(QStringLiteral("type")).toString(), QStringLiteral("Scene"));
+    QCOMPARE(result.value(QStringLiteral("name")).toString(), QStringLiteral("Test Scene"));
+
+    QJsonObject typeDetail = result.value(QStringLiteral("typeDetail")).toObject();
+    QCOMPARE(typeDetail.value(QStringLiteral("functionId")).toString(), QString::number(m_scene->id()));
+    QCOMPARE(typeDetail.value(QStringLiteral("values")).toObject().value(QStringLiteral("1.2")).toInt(), 200);
+}
+
+void ApiFunctionsDomain_Test::listFiltersByType()
+{
+    helloAndGetClientId();
+    QVERIFY(createFunctionViaApi(QStringLiteral("Chaser")).isEmpty() == false);
+
+    QJsonObject params;
+    params.insert(QStringLiteral("typeFilter"), QJsonArray{ QStringLiteral("Scene") });
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("functions.list"), params);
+
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QJsonArray functions = reply.value(QStringLiteral("result")).toObject().value(QStringLiteral("functions")).toArray();
+    QCOMPARE(functions.count(), 1);
+    QCOMPARE(functions.at(0).toObject().value(QStringLiteral("type")).toString(), QStringLiteral("Scene"));
+}
+
+void ApiFunctionsDomain_Test::deleteRemovesFunction()
+{
+    helloAndGetClientId();
+    QString functionIdStr = createFunctionViaApi(QStringLiteral("Chaser"));
+    QVERIFY(functionIdStr.isEmpty() == false);
+    quint32 functionId = functionIdStr.toUInt();
+
+    QJsonObject params;
+    params.insert(QStringLiteral("functionId"), functionIdStr);
+    params.insert(QStringLiteral("baseRevision"), int(m_doc->docRevision()));
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("functions.delete"), params);
+
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QVERIFY(m_doc->function(functionId) == nullptr);
+}
+
+void ApiFunctionsDomain_Test::renameChangesName()
+{
+    helloAndGetClientId();
+
+    QJsonObject params;
+    params.insert(QStringLiteral("functionId"), QString::number(m_scene->id()));
+    params.insert(QStringLiteral("name"), QStringLiteral("Renamed Scene"));
+    params.insert(QStringLiteral("baseRevision"), int(m_doc->docRevision()));
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("functions.rename"), params);
+
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(m_scene->name(), QStringLiteral("Renamed Scene"));
+}
+
+void ApiFunctionsDomain_Test::moveChangesPath()
+{
+    helloAndGetClientId();
+
+    QJsonObject params;
+    params.insert(QStringLiteral("functionIds"), QJsonArray{ QString::number(m_scene->id()) });
+    params.insert(QStringLiteral("path"), QStringLiteral("MyFolder"));
+    params.insert(QStringLiteral("baseRevision"), int(m_doc->docRevision()));
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("functions.move"), params);
+
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(m_scene->path(true), QStringLiteral("MyFolder"));
+}
+
+void ApiFunctionsDomain_Test::updateChangesGenericProperties()
+{
+    helloAndGetClientId();
+
+    QJsonObject params;
+    params.insert(QStringLiteral("functionId"), QString::number(m_scene->id()));
+    params.insert(QStringLiteral("runOrder"), QStringLiteral("PingPong"));
+    params.insert(QStringLiteral("blendMode"), QStringLiteral("Additive"));
+    params.insert(QStringLiteral("baseRevision"), int(m_doc->docRevision()));
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("functions.update"), params);
+
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(m_scene->runOrder(), Function::PingPong);
+    QCOMPARE(m_scene->blendMode(), Universe::AdditiveBlend);
+}
+
+void ApiFunctionsDomain_Test::sceneSetValuesReplacesValueList()
+{
+    helloAndGetClientId();
+    m_scene->setValue(1, 1, 50);
+
+    QJsonObject values;
+    values.insert(QStringLiteral("2.3"), 128);
+    QJsonObject params;
+    params.insert(QStringLiteral("functionId"), QString::number(m_scene->id()));
+    params.insert(QStringLiteral("values"), values);
+    params.insert(QStringLiteral("baseRevision"), int(m_doc->docRevision()));
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("functions.scene.setValues"), params);
+
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(int(m_scene->value(2, 3)), 128);
+    // The previously-set (1,1) value must be gone - full replacement, not a merge.
+    QVERIFY(m_scene->checkValue(SceneValue(1, 1, 0)) == false);
+}
+
+void ApiFunctionsDomain_Test::sceneSetValueAndUnsetValueEmitSinglePatchOps()
+{
+    helloAndGetClientId();
+
+    QJsonObject setParams;
+    setParams.insert(QStringLiteral("functionId"), QString::number(m_scene->id()));
+    setParams.insert(QStringLiteral("fixture"), QStringLiteral("7"));
+    setParams.insert(QStringLiteral("channel"), 4);
+    setParams.insert(QStringLiteral("value"), 99);
+    setParams.insert(QStringLiteral("baseRevision"), int(m_doc->docRevision()));
+    QJsonObject setReply = sendAndWaitForReply(QStringLiteral("functions.scene.setValue"), setParams);
+
+    QCOMPARE(setReply.value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(int(m_scene->value(7, 4)), 99);
+
+    QJsonObject unsetParams;
+    unsetParams.insert(QStringLiteral("functionId"), QString::number(m_scene->id()));
+    unsetParams.insert(QStringLiteral("fixture"), QStringLiteral("7"));
+    unsetParams.insert(QStringLiteral("channel"), 4);
+    unsetParams.insert(QStringLiteral("baseRevision"), int(m_doc->docRevision()));
+    QJsonObject unsetReply = sendAndWaitForReply(QStringLiteral("functions.scene.unsetValue"), unsetParams);
+
+    QCOMPARE(unsetReply.value(QStringLiteral("ok")).toBool(), true);
+    QVERIFY(m_scene->checkValue(SceneValue(7, 4, 0)) == false);
+}
+
+void ApiFunctionsDomain_Test::sceneSetMembersReplacesFixtureList()
+{
+    helloAndGetClientId();
+    m_scene->addFixture(1);
+
+    QJsonObject params;
+    params.insert(QStringLiteral("functionId"), QString::number(m_scene->id()));
+    params.insert(QStringLiteral("fixtures"), QJsonArray{ QStringLiteral("2"), QStringLiteral("3") });
+    params.insert(QStringLiteral("baseRevision"), int(m_doc->docRevision()));
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("functions.scene.setMembers"), params);
+
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QList<quint32> fixtures = m_scene->fixtures();
+    QVERIFY(fixtures.contains(1) == false);
+    QVERIFY(fixtures.contains(2));
+    QVERIFY(fixtures.contains(3));
+}
+
+void ApiFunctionsDomain_Test::chaserStepsAddReplaceRemoveMove()
+{
+    helloAndGetClientId();
+    QString chaserIdStr = createFunctionViaApi(QStringLiteral("Chaser"));
+    QVERIFY(chaserIdStr.isEmpty() == false);
+    Chaser *chaser = qobject_cast<Chaser *>(m_doc->function(chaserIdStr.toUInt()));
+    QVERIFY(chaser != nullptr);
+
+    // addStep (twice, so there's something to move/remove)
+    QJsonObject step1;
+    step1.insert(QStringLiteral("targetFunctionId"), QString::number(m_scene->id()));
+    step1.insert(QStringLiteral("fadeIn"), 100);
+    step1.insert(QStringLiteral("hold"), 500);
+    step1.insert(QStringLiteral("fadeOut"), 100);
+    step1.insert(QStringLiteral("duration"), 700);
+
+    QJsonObject addParams1;
+    addParams1.insert(QStringLiteral("functionId"), chaserIdStr);
+    addParams1.insert(QStringLiteral("step"), step1);
+    addParams1.insert(QStringLiteral("baseRevision"), int(m_doc->docRevision()));
+    QJsonObject addReply1 = sendAndWaitForReply(QStringLiteral("functions.steps.addStep"), addParams1);
+    QCOMPARE(addReply1.value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(chaser->stepsCount(), 1);
+    // duration is server-derived from fadeIn+hold, not trusted from the client.
+    QCOMPARE(chaser->stepAt(0)->duration, uint(600));
+
+    QJsonObject step2 = step1;
+    QJsonObject addParams2;
+    addParams2.insert(QStringLiteral("functionId"), chaserIdStr);
+    addParams2.insert(QStringLiteral("step"), step2);
+    addParams2.insert(QStringLiteral("baseRevision"), int(m_doc->docRevision()));
+    sendAndWaitForReply(QStringLiteral("functions.steps.addStep"), addParams2);
+    QCOMPARE(chaser->stepsCount(), 2);
+
+    // replaceStep
+    QJsonObject replacedStep = step1;
+    replacedStep.insert(QStringLiteral("fadeIn"), 50);
+    replacedStep.insert(QStringLiteral("hold"), 50);
+    QJsonObject replaceParams;
+    replaceParams.insert(QStringLiteral("functionId"), chaserIdStr);
+    replaceParams.insert(QStringLiteral("index"), 0);
+    replaceParams.insert(QStringLiteral("step"), replacedStep);
+    replaceParams.insert(QStringLiteral("baseRevision"), int(m_doc->docRevision()));
+    QJsonObject replaceReply = sendAndWaitForReply(QStringLiteral("functions.steps.replaceStep"), replaceParams);
+    QCOMPARE(replaceReply.value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(chaser->stepAt(0)->fadeIn, uint(50));
+
+    // moveStep
+    QJsonObject moveParams;
+    moveParams.insert(QStringLiteral("functionId"), chaserIdStr);
+    moveParams.insert(QStringLiteral("sourceIndex"), 0);
+    moveParams.insert(QStringLiteral("destIndex"), 1);
+    moveParams.insert(QStringLiteral("baseRevision"), int(m_doc->docRevision()));
+    QJsonObject moveReply = sendAndWaitForReply(QStringLiteral("functions.steps.moveStep"), moveParams);
+    QCOMPARE(moveReply.value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(chaser->stepAt(1)->fadeIn, uint(50));
+
+    // removeStep
+    QJsonObject removeParams;
+    removeParams.insert(QStringLiteral("functionId"), chaserIdStr);
+    removeParams.insert(QStringLiteral("index"), 0);
+    removeParams.insert(QStringLiteral("baseRevision"), int(m_doc->docRevision()));
+    QJsonObject removeReply = sendAndWaitForReply(QStringLiteral("functions.steps.removeStep"), removeParams);
+    QCOMPARE(removeReply.value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(chaser->stepsCount(), 1);
 }
 
 QTEST_MAIN(ApiFunctionsDomain_Test)

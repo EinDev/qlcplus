@@ -15,6 +15,10 @@
   limitations under the License.
 */
 
+#include <QJsonArray>
+#include <QJsonValue>
+#include <QSet>
+
 #include "apifunctionsdomain.h"
 #include "apiserver.h"
 #include "apisession.h"
@@ -22,6 +26,20 @@
 #include "function.h"
 #include "functionparent.h"
 #include "mastertimer.h"
+#include "universe.h"
+#include "scenevalue.h"
+#include "scene.h"
+#include "chaser.h"
+#include "chaserstep.h"
+#include "sequence.h"
+#include "efx.h"
+#include "collection.h"
+#include "script.h"
+#include "rgbmatrix.h"
+#include "show.h"
+#include "audio.h"
+#include "video.h"
+#include "fixture.h"
 #include "doc.h"
 
 namespace {
@@ -46,6 +64,314 @@ Function::TempoType tempoTypeFromJson(const QJsonValue &value)
     if (str == QStringLiteral("Beats"))
         return Function::Beats;
     return Function::Original;
+}
+
+QJsonObject conflictDetails(Doc *doc)
+{
+    QJsonObject details;
+    details.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
+    return details;
+}
+
+QJsonObject docRevisionResult(Doc *doc)
+{
+    QJsonObject result;
+    result.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
+    return result;
+}
+
+QString sceneValueKey(quint32 fxi, quint32 channel)
+{
+    return QStringLiteral("%1.%2").arg(fxi).arg(channel);
+}
+
+// Splits a FunctionsSceneValues map key ("<fixtureId>.<channel>") - see
+// functions-core.yaml's FunctionsSceneValues schema. Returns false (leaving
+// fxi/channel untouched) for anything malformed, so callers can skip a bad
+// entry rather than crash on it.
+bool parseSceneValueKey(const QString &key, quint32 &fxi, quint32 &channel)
+{
+    int dot = key.indexOf(QLatin1Char('.'));
+    if (dot <= 0 || dot == key.length() - 1)
+        return false;
+
+    bool okFxi = false;
+    bool okCh = false;
+    quint32 parsedFxi = key.left(dot).toUInt(&okFxi);
+    quint32 parsedCh = key.mid(dot + 1).toUInt(&okCh);
+    if (okFxi == false || okCh == false)
+        return false;
+
+    fxi = parsedFxi;
+    channel = parsedCh;
+    return true;
+}
+
+QJsonObject sceneValueListToJson(const QList<SceneValue> &values)
+{
+    QJsonObject obj;
+    for (const SceneValue &sv : values)
+        obj.insert(sceneValueKey(sv.fxi, sv.channel), int(sv.value));
+    return obj;
+}
+
+QJsonArray idListToJson(const QList<quint32> &ids)
+{
+    QJsonArray arr;
+    for (quint32 id : ids)
+        arr.append(QString::number(id));
+    return arr;
+}
+
+QJsonArray sceneChannelGroupRefsToJson(Scene *scene)
+{
+    QJsonArray arr;
+    QList<quint32> ids = scene->channelGroups();
+    QList<uchar> levels = scene->channelGroupsLevels();
+    for (int i = 0; i < ids.count(); i++)
+    {
+        QJsonObject obj;
+        obj.insert(QStringLiteral("id"), QString::number(ids.at(i)));
+        obj.insert(QStringLiteral("level"), i < levels.count() ? int(levels.at(i)) : 0);
+        arr.append(obj);
+    }
+    return arr;
+}
+
+QJsonObject sceneDetailToJson(Scene *scene)
+{
+    QJsonObject obj;
+    obj.insert(QStringLiteral("functionId"), QString::number(scene->id()));
+    obj.insert(QStringLiteral("values"), sceneValueListToJson(scene->values()));
+    obj.insert(QStringLiteral("fixtures"), idListToJson(scene->fixtures()));
+    obj.insert(QStringLiteral("fixtureGroups"), idListToJson(scene->fixtureGroups()));
+    obj.insert(QStringLiteral("channelGroups"), sceneChannelGroupRefsToJson(scene));
+    obj.insert(QStringLiteral("palettes"), idListToJson(scene->palettes()));
+    quint32 blendFid = scene->blendFunctionID();
+    obj.insert(QStringLiteral("blendFunctionId"), blendFid == Function::invalidId()
+               ? QJsonValue() : QJsonValue(QString::number(blendFid)));
+    return obj;
+}
+
+// duration is authored server-side, not trusted from the client - mirrors
+// ChaserStep::loadXML's own behaviour (functions-core.yaml's FunctionsChaserStep/
+// FunctionsSequenceStep description): fadeIn+hold wins, except hold's own
+// infinite sentinel (Function::infiniteSpeed()) propagates through unchanged.
+quint32 deriveStepDuration(quint32 fadeIn, quint32 hold)
+{
+    if (hold == Function::infiniteSpeed())
+        return hold;
+    return fadeIn + hold;
+}
+
+// Builds a ChaserStep from a FunctionsChaserStep/FunctionsSequenceStep wire
+// object. Which shape applies is resolved server-side from the target
+// function's own type (isSequence), not a wire discriminator field - see
+// functions.steps.addStep/replaceStep's params.step description.
+bool chaserStepFromJson(Chaser *chaser, bool isSequence, const QJsonObject &stepObj,
+                         ChaserStep &outStep, QString &errorMessage)
+{
+    outStep = ChaserStep();
+    outStep.fadeIn = quint32(stepObj.value(QStringLiteral("fadeIn")).toDouble());
+    outStep.hold = quint32(stepObj.value(QStringLiteral("hold")).toDouble());
+    outStep.fadeOut = quint32(stepObj.value(QStringLiteral("fadeOut")).toDouble());
+    outStep.duration = deriveStepDuration(outStep.fadeIn, outStep.hold);
+    outStep.note = stepObj.value(QStringLiteral("note")).toString();
+
+    if (isSequence)
+    {
+        Sequence *sequence = qobject_cast<Sequence *>(chaser);
+        outStep.fid = sequence->boundSceneID();
+
+        QJsonObject valuesObj = stepObj.value(QStringLiteral("values")).toObject();
+        for (auto it = valuesObj.constBegin(); it != valuesObj.constEnd(); ++it)
+        {
+            quint32 fxi = 0;
+            quint32 channel = 0;
+            if (parseSceneValueKey(it.key(), fxi, channel) == false)
+                continue;
+            int value = qBound(0, it.value().toInt(), 255);
+            outStep.values.append(SceneValue(fxi, channel, uchar(value)));
+        }
+    }
+    else
+    {
+        bool ok = false;
+        quint32 targetId = stepObj.value(QStringLiteral("targetFunctionId")).toString().toUInt(&ok);
+        if (ok == false)
+        {
+            errorMessage = QStringLiteral("Invalid or missing targetFunctionId");
+            return false;
+        }
+        outStep.fid = targetId;
+    }
+
+    return true;
+}
+
+QJsonObject chaserStepToJson(const ChaserStep &step, bool isSequence)
+{
+    QJsonObject obj;
+    if (isSequence == false)
+        obj.insert(QStringLiteral("targetFunctionId"), QString::number(step.fid));
+    obj.insert(QStringLiteral("fadeIn"), double(step.fadeIn));
+    obj.insert(QStringLiteral("hold"), double(step.hold));
+    obj.insert(QStringLiteral("fadeOut"), double(step.fadeOut));
+    obj.insert(QStringLiteral("duration"), double(step.duration));
+    if (step.note.isEmpty() == false)
+        obj.insert(QStringLiteral("note"), step.note);
+    if (isSequence)
+        obj.insert(QStringLiteral("values"), sceneValueListToJson(step.values));
+    return obj;
+}
+
+QJsonObject chaserDetailToJson(Chaser *chaser, bool isSequence)
+{
+    QJsonObject obj;
+    obj.insert(QStringLiteral("functionId"), QString::number(chaser->id()));
+
+    QJsonArray steps;
+    for (const ChaserStep &step : chaser->steps())
+        steps.append(chaserStepToJson(step, isSequence));
+    obj.insert(QStringLiteral("steps"), steps);
+
+    obj.insert(QStringLiteral("fadeInMode"), Chaser::speedModeToString(chaser->fadeInMode()));
+    obj.insert(QStringLiteral("fadeOutMode"), Chaser::speedModeToString(chaser->fadeOutMode()));
+    obj.insert(QStringLiteral("durationMode"), Chaser::speedModeToString(chaser->durationMode()));
+    return obj;
+}
+
+QJsonObject sequenceDetailToJson(Sequence *sequence)
+{
+    // Sequence is-a Chaser (shares steps/speed-mode storage) - reuse the
+    // Chaser detail shape and just add the one Sequence-specific field.
+    QJsonObject obj = chaserDetailToJson(sequence, true);
+    obj.insert(QStringLiteral("boundSceneId"), QString::number(sequence->boundSceneID()));
+    return obj;
+}
+
+// Non-Scene/Chaser/Sequence types intentionally return only the minimal
+// {functionId} shape for now (see this task's own scope note) rather than
+// the fuller FunctionsAudioDetail/FunctionsRgbMatrixDetail/FunctionsScriptDetail/
+// FunctionsShowDetail/FunctionsVideoDetail schemas (functions-advanced.yaml
+// territory) - a deliberate, tracked gap, not an oversight.
+QJsonObject typeDetailToJson(Function *function)
+{
+    switch (function->type())
+    {
+    case Function::SceneType:
+        return sceneDetailToJson(qobject_cast<Scene *>(function));
+    case Function::ChaserType:
+        return chaserDetailToJson(qobject_cast<Chaser *>(function), false);
+    case Function::SequenceType:
+        return sequenceDetailToJson(qobject_cast<Sequence *>(function));
+    default:
+    {
+        QJsonObject obj;
+        obj.insert(QStringLiteral("functionId"), QString::number(function->id()));
+        return obj;
+    }
+    }
+}
+
+QJsonArray attributeFlagsToJson(int flags)
+{
+    QJsonArray arr;
+    if (flags & Function::Multiply)
+        arr.append(QStringLiteral("Multiply"));
+    if (flags & Function::LastWins)
+        arr.append(QStringLiteral("LastWins"));
+    if (flags & Function::Single)
+        arr.append(QStringLiteral("Single"));
+    return arr;
+}
+
+QJsonArray attributesToJson(Function *function)
+{
+    QJsonArray arr;
+    QList<Attribute> attrs = function->attributes();
+    for (int i = 0; i < attrs.count(); i++)
+    {
+        const Attribute &a = attrs.at(i);
+        QJsonObject obj;
+        obj.insert(QStringLiteral("index"), i);
+        obj.insert(QStringLiteral("name"), a.m_name);
+        obj.insert(QStringLiteral("value"), a.m_value);
+        obj.insert(QStringLiteral("min"), a.m_min);
+        obj.insert(QStringLiteral("max"), a.m_max);
+        obj.insert(QStringLiteral("overridden"), a.m_isOverridden);
+        obj.insert(QStringLiteral("overrideValue"), a.m_overrideValue);
+        obj.insert(QStringLiteral("flags"), attributeFlagsToJson(a.m_flags));
+        arr.append(obj);
+    }
+    return arr;
+}
+
+QJsonObject functionSummaryToJson(Function *function)
+{
+    QJsonObject obj;
+    obj.insert(QStringLiteral("id"), QString::number(function->id()));
+    obj.insert(QStringLiteral("name"), function->name());
+    obj.insert(QStringLiteral("type"), Function::typeToString(function->type()));
+    obj.insert(QStringLiteral("path"), function->path(true));
+    obj.insert(QStringLiteral("hidden"), function->isVisible() == false);
+    return obj;
+}
+
+QJsonObject functionDetailToJson(Function *function)
+{
+    QJsonObject obj = functionSummaryToJson(function);
+    obj.insert(QStringLiteral("runOrder"), Function::runOrderToString(function->runOrder()));
+    obj.insert(QStringLiteral("direction"), Function::directionToString(function->direction()));
+    obj.insert(QStringLiteral("tempoType"), Function::tempoTypeToString(function->tempoType()));
+    obj.insert(QStringLiteral("fadeInSpeed"), double(function->fadeInSpeed()));
+    obj.insert(QStringLiteral("fadeOutSpeed"), double(function->fadeOutSpeed()));
+    obj.insert(QStringLiteral("duration"), double(function->duration()));
+    obj.insert(QStringLiteral("totalDuration"), double(function->totalDuration()));
+    obj.insert(QStringLiteral("blendMode"), Universe::blendModeToString(function->blendMode()));
+    obj.insert(QStringLiteral("attributes"), attributesToJson(function));
+    obj.insert(QStringLiteral("typeDetail"), typeDetailToJson(function));
+    return obj;
+}
+
+QString defaultFunctionName(Function::Type type)
+{
+    switch (type)
+    {
+    case Function::SceneType:      return QStringLiteral("New Scene");
+    case Function::ChaserType:     return QStringLiteral("New Chaser");
+    case Function::EFXType:        return QStringLiteral("New EFX");
+    case Function::CollectionType: return QStringLiteral("New Collection");
+    case Function::ScriptType:     return QStringLiteral("New Script");
+    case Function::RGBMatrixType:  return QStringLiteral("New RGB Matrix");
+    case Function::ShowType:       return QStringLiteral("New Show");
+    case Function::SequenceType:   return QStringLiteral("New Sequence");
+    case Function::AudioType:      return QStringLiteral("New Audio");
+    case Function::VideoType:      return QStringLiteral("New Video");
+    default:                       return QStringLiteral("New Function");
+    }
+}
+
+// Sequence is deliberately excluded here - functions.create's Sequence
+// branch needs to create+add a hidden bound Scene first (see
+// FunctionsCreateRequest.params' own description in functions-core.yaml)
+// before the Sequence itself can be constructed, so it's handled directly
+// by the functions.create handler instead of through this generic factory.
+Function *instantiateFunction(Doc *doc, Function::Type type)
+{
+    switch (type)
+    {
+    case Function::SceneType:      return new Scene(doc);
+    case Function::ChaserType:     return new Chaser(doc);
+    case Function::EFXType:        return new EFX(doc);
+    case Function::CollectionType: return new Collection(doc);
+    case Function::ScriptType:     return new Script(doc);
+    case Function::RGBMatrixType:  return new RGBMatrix(doc);
+    case Function::ShowType:       return new Show(doc);
+    case Function::AudioType:      return new Audio(doc);
+    case Function::VideoType:      return new Video(doc);
+    default:                       return nullptr;
+    }
 }
 
 } // namespace
@@ -121,5 +447,822 @@ void ApiFunctionsDomain::registerMethods()
 
         function->setPause(params.value(QStringLiteral("paused")).toBool());
         session->send(ApiEnvelope::buildOkResponse(id, QJsonObject()));
+    });
+
+    /*********************************************************************
+     * Generic CRUD (functions-core.yaml, all 10 Function types)
+     *********************************************************************/
+
+    dispatcher->registerMethod(QStringLiteral("functions.list"), [doc](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        // Function::Type is a bitmask enum - OR the requested types together
+        // so filtering is a single AND-test per function, same trick the
+        // engine itself uses (Doc::functionsByType()).
+        int typeMask = 0;
+        for (const QJsonValue &v : params.value(QStringLiteral("typeFilter")).toArray())
+            typeMask |= int(Function::stringToType(v.toString()));
+
+        QString pathFilter = params.value(QStringLiteral("pathFilter")).toString();
+
+        QJsonArray functions;
+        for (Function *function : doc->functions())
+        {
+            if (typeMask != 0 && (int(function->type()) & typeMask) == 0)
+                continue;
+            if (pathFilter.isEmpty() == false && function->path(true).startsWith(pathFilter) == false)
+                continue;
+            functions.append(functionSummaryToJson(function));
+        }
+
+        QJsonObject result;
+        result.insert(QStringLiteral("functions"), functions);
+        session->send(ApiEnvelope::buildOkResponse(id, result));
+    });
+
+    dispatcher->registerMethod(QStringLiteral("functions.get"), [doc](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        Function *function = findFunction(doc, params);
+        if (function == nullptr)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrNotFound,
+                                                            QStringLiteral("No such function")));
+            return;
+        }
+
+        session->send(ApiEnvelope::buildOkResponse(id, functionDetailToJson(function)));
+    });
+
+    dispatcher->registerMethod(QStringLiteral("functions.create"), [doc, this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        quint32 baseRevision = quint32(params.value(QStringLiteral("baseRevision")).toInt());
+        if (baseRevision != doc->docRevision())
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrConflict,
+                                                            QStringLiteral("baseRevision is stale"), conflictDetails(doc)));
+            return;
+        }
+
+        Function::Type type = Function::stringToType(params.value(QStringLiteral("type")).toString());
+        if (type == Function::Undefined)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams,
+                                                            QStringLiteral("Unknown function type")));
+            return;
+        }
+
+        // A Sequence depends on a bound Scene from the moment it exists
+        // (FunctionsSequenceDetail.boundSceneId is required/non-null) - create
+        // a hidden Scene first, mirroring qmlui/functionmanager.cpp's own
+        // "New Sequence" action, and clean it back up if the Sequence itself
+        // then fails to add.
+        Scene *boundScene = nullptr;
+        Function *function = nullptr;
+        if (type == Function::SequenceType)
+        {
+            boundScene = new Scene(doc);
+            boundScene->setVisible(false);
+            boundScene->setName(QStringLiteral("New Sequence Scene"));
+            if (doc->addFunction(boundScene) == false)
+            {
+                delete boundScene;
+                session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInternal,
+                                                                QStringLiteral("Could not add the Sequence's bound Scene")));
+                return;
+            }
+
+            Sequence *sequence = new Sequence(doc);
+            sequence->setBoundSceneID(boundScene->id());
+            function = sequence;
+        }
+        else
+        {
+            function = instantiateFunction(doc, type);
+        }
+
+        if (function == nullptr)
+        {
+            if (boundScene != nullptr)
+                doc->deleteFunction(boundScene->id());
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrUnsupported,
+                                                            QStringLiteral("Function type not creatable via the API")));
+            return;
+        }
+
+        QString name = params.value(QStringLiteral("name")).toString();
+        function->setName(name.isEmpty() ? defaultFunctionName(type) : name);
+
+        if (params.value(QStringLiteral("path")).isString())
+            function->setPath(params.value(QStringLiteral("path")).toString());
+
+        // fixtures is only meaningful for a handful of types at creation
+        // time (functions-core.yaml's own wording: "ignored by types that
+        // don't take fixtures at creation time") - Scene is the one handled
+        // here; every other type simply ignores the field for now.
+        if (type == Function::SceneType)
+        {
+            Scene *scene = qobject_cast<Scene *>(function);
+            for (const QJsonValue &v : params.value(QStringLiteral("fixtures")).toArray())
+            {
+                bool ok = false;
+                quint32 fixtureId = v.toString().toUInt(&ok);
+                if (ok && doc->fixture(fixtureId) != nullptr)
+                    scene->addFixture(fixtureId);
+            }
+        }
+
+        if (doc->addFunction(function) == false)
+        {
+            delete function;
+            if (boundScene != nullptr)
+                doc->deleteFunction(boundScene->id());
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInternal,
+                                                            QStringLiteral("Could not add function")));
+            return;
+        }
+
+        QJsonObject result;
+        result.insert(QStringLiteral("functionId"), QString::number(function->id()));
+        result.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
+        session->send(ApiEnvelope::buildOkResponse(id, result));
+
+        // Only the function the client actually asked to create gets a
+        // functions.created broadcast - the auto-created hidden bound Scene
+        // is an implementation detail (also true of the real Function
+        // Manager's own "New Sequence" action), not a resource the client
+        // asked for; it's still fully visible/queryable afterward via
+        // functions.get's boundSceneId or a plain functions.list.
+        QJsonObject data;
+        data.insert(QStringLiteral("function"), functionSummaryToJson(function));
+        data.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
+        m_server->broadcast(QStringLiteral("functions.created"), data, session->clientId(), false);
+    });
+
+    dispatcher->registerMethod(QStringLiteral("functions.delete"), [doc, this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        Function *function = findFunction(doc, params);
+        if (function == nullptr)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrNotFound,
+                                                            QStringLiteral("No such function")));
+            return;
+        }
+
+        quint32 baseRevision = quint32(params.value(QStringLiteral("baseRevision")).toInt());
+        if (baseRevision != doc->docRevision())
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrConflict,
+                                                            QStringLiteral("baseRevision is stale"), conflictDetails(doc)));
+            return;
+        }
+
+        quint32 functionId = function->id();
+        if (doc->deleteFunction(functionId) == false)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInternal,
+                                                            QStringLiteral("Could not delete function")));
+            return;
+        }
+
+        session->send(ApiEnvelope::buildOkResponse(id, docRevisionResult(doc)));
+
+        QJsonObject data;
+        data.insert(QStringLiteral("functionId"), QString::number(functionId));
+        data.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
+        m_server->broadcast(QStringLiteral("functions.deleted"), data, session->clientId(), false);
+    });
+
+    dispatcher->registerMethod(QStringLiteral("functions.rename"), [doc, this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        Function *function = findFunction(doc, params);
+        if (function == nullptr)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrNotFound,
+                                                            QStringLiteral("No such function")));
+            return;
+        }
+
+        quint32 baseRevision = quint32(params.value(QStringLiteral("baseRevision")).toInt());
+        if (baseRevision != doc->docRevision())
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrConflict,
+                                                            QStringLiteral("baseRevision is stale"), conflictDetails(doc)));
+            return;
+        }
+
+        // Function::setName() emits nameChanged() only, which Doc relays to
+        // setModified() (slotFunctionNameChanged) - no explicit setModified()
+        // needed here.
+        function->setName(params.value(QStringLiteral("name")).toString());
+
+        session->send(ApiEnvelope::buildOkResponse(id, docRevisionResult(doc)));
+
+        QJsonObject data;
+        data.insert(QStringLiteral("functionId"), QString::number(function->id()));
+        data.insert(QStringLiteral("name"), function->name());
+        data.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
+        m_server->broadcast(QStringLiteral("functions.renamed"), data, session->clientId(), false);
+    });
+
+    dispatcher->registerMethod(QStringLiteral("functions.move"), [doc, this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        quint32 baseRevision = quint32(params.value(QStringLiteral("baseRevision")).toInt());
+        if (baseRevision != doc->docRevision())
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrConflict,
+                                                            QStringLiteral("baseRevision is stale"), conflictDetails(doc)));
+            return;
+        }
+
+        QString path = params.value(QStringLiteral("path")).toString();
+        QJsonArray requestedIds = params.value(QStringLiteral("functionIds")).toArray();
+
+        QJsonArray movedIds;
+        for (const QJsonValue &v : requestedIds)
+        {
+            bool ok = false;
+            quint32 functionId = v.toString().toUInt(&ok);
+            Function *function = ok ? doc->function(functionId) : nullptr;
+            if (function == nullptr)
+                continue;
+
+            // Function::setPath() doesn't emit changed()/setModified() on its
+            // own (unlike most other Function property setters) - bumped
+            // explicitly below instead.
+            function->setPath(path);
+            movedIds.append(QString::number(functionId));
+        }
+
+        if (requestedIds.isEmpty() == false && movedIds.isEmpty())
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrNotFound,
+                                                            QStringLiteral("No such function(s)")));
+            return;
+        }
+
+        if (movedIds.isEmpty() == false)
+            doc->setModified();
+
+        session->send(ApiEnvelope::buildOkResponse(id, docRevisionResult(doc)));
+
+        QJsonObject data;
+        data.insert(QStringLiteral("functionIds"), movedIds);
+        data.insert(QStringLiteral("path"), path);
+        data.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
+        m_server->broadcast(QStringLiteral("functions.moved"), data, session->clientId(), false);
+    });
+
+    dispatcher->registerMethod(QStringLiteral("functions.update"), [doc, this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        Function *function = findFunction(doc, params);
+        if (function == nullptr)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrNotFound,
+                                                            QStringLiteral("No such function")));
+            return;
+        }
+
+        quint32 baseRevision = quint32(params.value(QStringLiteral("baseRevision")).toInt());
+        if (baseRevision != doc->docRevision())
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrConflict,
+                                                            QStringLiteral("baseRevision is stale"), conflictDetails(doc)));
+            return;
+        }
+
+        if (params.contains(QStringLiteral("runOrder")))
+            function->setRunOrder(Function::stringToRunOrder(params.value(QStringLiteral("runOrder")).toString()));
+        if (params.contains(QStringLiteral("direction")))
+            function->setDirection(Function::stringToDirection(params.value(QStringLiteral("direction")).toString()));
+        if (params.contains(QStringLiteral("tempoType")))
+            function->setTempoType(Function::stringToTempoType(params.value(QStringLiteral("tempoType")).toString()));
+        if (params.contains(QStringLiteral("fadeInSpeed")))
+            function->setFadeInSpeed(quint32(params.value(QStringLiteral("fadeInSpeed")).toDouble()));
+        if (params.contains(QStringLiteral("fadeOutSpeed")))
+            function->setFadeOutSpeed(quint32(params.value(QStringLiteral("fadeOutSpeed")).toDouble()));
+        if (params.contains(QStringLiteral("duration")))
+            function->setDuration(quint32(params.value(QStringLiteral("duration")).toDouble()));
+        if (params.contains(QStringLiteral("blendMode")))
+            // Universe::setBlendMode() doesn't emit changed()/setModified()
+            // on its own - bumped explicitly below regardless of which
+            // optional fields were actually present, since this whole call
+            // is already gated behind an explicit baseRevision (i.e. the
+            // client always intends a structural mutation by calling this).
+            function->setBlendMode(Universe::stringToBlendMode(params.value(QStringLiteral("blendMode")).toString()));
+
+        doc->setModified();
+
+        session->send(ApiEnvelope::buildOkResponse(id, docRevisionResult(doc)));
+
+        QJsonObject data;
+        data.insert(QStringLiteral("functionId"), QString::number(function->id()));
+        data.insert(QStringLiteral("runOrder"), Function::runOrderToString(function->runOrder()));
+        data.insert(QStringLiteral("direction"), Function::directionToString(function->direction()));
+        data.insert(QStringLiteral("tempoType"), Function::tempoTypeToString(function->tempoType()));
+        data.insert(QStringLiteral("fadeInSpeed"), double(function->fadeInSpeed()));
+        data.insert(QStringLiteral("fadeOutSpeed"), double(function->fadeOutSpeed()));
+        data.insert(QStringLiteral("duration"), double(function->duration()));
+        data.insert(QStringLiteral("blendMode"), Universe::blendModeToString(function->blendMode()));
+        data.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
+        m_server->broadcast(QStringLiteral("functions.updated"), data, session->clientId(), false);
+    });
+
+    /*********************************************************************
+     * Scene-specific (functions-core.yaml)
+     *********************************************************************/
+
+    dispatcher->registerMethod(QStringLiteral("functions.scene.setValues"), [doc, this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        Scene *scene = qobject_cast<Scene *>(findFunction(doc, params));
+        if (scene == nullptr)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrNotFound,
+                                                            QStringLiteral("No such Scene")));
+            return;
+        }
+
+        quint32 baseRevision = quint32(params.value(QStringLiteral("baseRevision")).toInt());
+        if (baseRevision != doc->docRevision())
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrConflict,
+                                                            QStringLiteral("baseRevision is stale"), conflictDetails(doc)));
+            return;
+        }
+
+        QJsonObject newValues = params.value(QStringLiteral("values")).toObject();
+
+        // Full replacement of the value list only - deliberately NOT
+        // Scene::clear() (which would also drop fixtures()/fixtureGroups()/
+        // palettes() membership, collateral damage the "values" field has no
+        // business causing - see functions-core-notes.md). Removed entries
+        // first, then (re)apply every entry in the new map; Scene::setValue()
+        // re-adds the owning fixture automatically if needed.
+        for (const SceneValue &sv : scene->values())
+        {
+            if (newValues.contains(sceneValueKey(sv.fxi, sv.channel)) == false)
+                scene->unsetValue(sv.fxi, sv.channel);
+        }
+        for (auto it = newValues.constBegin(); it != newValues.constEnd(); ++it)
+        {
+            quint32 fxi = 0;
+            quint32 channel = 0;
+            if (parseSceneValueKey(it.key(), fxi, channel) == false)
+                continue;
+            int value = qBound(0, it.value().toInt(), 255);
+            scene->setValue(fxi, channel, uchar(value));
+        }
+
+        session->send(ApiEnvelope::buildOkResponse(id, docRevisionResult(doc)));
+
+        QJsonObject replaceOp;
+        replaceOp.insert(QStringLiteral("op"), QStringLiteral("replace"));
+        replaceOp.insert(QStringLiteral("path"), QStringLiteral("/values"));
+        replaceOp.insert(QStringLiteral("value"), sceneValueListToJson(scene->values()));
+
+        QJsonObject data;
+        data.insert(QStringLiteral("functionId"), QString::number(scene->id()));
+        data.insert(QStringLiteral("patch"), QJsonArray{ replaceOp });
+        data.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
+        m_server->broadcast(QStringLiteral("functions.scene.valuesChanged"), data, session->clientId(), false);
+    });
+
+    dispatcher->registerMethod(QStringLiteral("functions.scene.setValue"), [doc, this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        Scene *scene = qobject_cast<Scene *>(findFunction(doc, params));
+        if (scene == nullptr)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrNotFound,
+                                                            QStringLiteral("No such Scene")));
+            return;
+        }
+
+        quint32 baseRevision = quint32(params.value(QStringLiteral("baseRevision")).toInt());
+        if (baseRevision != doc->docRevision())
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrConflict,
+                                                            QStringLiteral("baseRevision is stale"), conflictDetails(doc)));
+            return;
+        }
+
+        bool ok = false;
+        quint32 fixtureId = params.value(QStringLiteral("fixture")).toString().toUInt(&ok);
+        if (ok == false)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams,
+                                                            QStringLiteral("Invalid fixture")));
+            return;
+        }
+        quint32 channel = quint32(params.value(QStringLiteral("channel")).toInt());
+        int value = qBound(0, params.value(QStringLiteral("value")).toInt(), 255);
+
+        bool existed = scene->checkValue(SceneValue(fixtureId, channel, 0));
+        scene->setValue(fixtureId, channel, uchar(value));
+
+        session->send(ApiEnvelope::buildOkResponse(id, docRevisionResult(doc)));
+
+        QJsonObject op;
+        op.insert(QStringLiteral("op"), existed ? QStringLiteral("replace") : QStringLiteral("add"));
+        op.insert(QStringLiteral("path"), QStringLiteral("/values/%1").arg(sceneValueKey(fixtureId, channel)));
+        op.insert(QStringLiteral("value"), value);
+
+        QJsonObject data;
+        data.insert(QStringLiteral("functionId"), QString::number(scene->id()));
+        data.insert(QStringLiteral("patch"), QJsonArray{ op });
+        data.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
+        m_server->broadcast(QStringLiteral("functions.scene.valuesChanged"), data, session->clientId(), false);
+    });
+
+    dispatcher->registerMethod(QStringLiteral("functions.scene.unsetValue"), [doc, this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        Scene *scene = qobject_cast<Scene *>(findFunction(doc, params));
+        if (scene == nullptr)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrNotFound,
+                                                            QStringLiteral("No such Scene")));
+            return;
+        }
+
+        quint32 baseRevision = quint32(params.value(QStringLiteral("baseRevision")).toInt());
+        if (baseRevision != doc->docRevision())
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrConflict,
+                                                            QStringLiteral("baseRevision is stale"), conflictDetails(doc)));
+            return;
+        }
+
+        bool ok = false;
+        quint32 fixtureId = params.value(QStringLiteral("fixture")).toString().toUInt(&ok);
+        if (ok == false)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams,
+                                                            QStringLiteral("Invalid fixture")));
+            return;
+        }
+        quint32 channel = quint32(params.value(QStringLiteral("channel")).toInt());
+
+        // Scene::unsetValue() unconditionally emits changed() even when the
+        // key didn't exist - matches this method being effectively idempotent.
+        scene->unsetValue(fixtureId, channel);
+
+        session->send(ApiEnvelope::buildOkResponse(id, docRevisionResult(doc)));
+
+        QJsonObject op;
+        op.insert(QStringLiteral("op"), QStringLiteral("remove"));
+        op.insert(QStringLiteral("path"), QStringLiteral("/values/%1").arg(sceneValueKey(fixtureId, channel)));
+
+        QJsonObject data;
+        data.insert(QStringLiteral("functionId"), QString::number(scene->id()));
+        data.insert(QStringLiteral("patch"), QJsonArray{ op });
+        data.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
+        m_server->broadcast(QStringLiteral("functions.scene.valuesChanged"), data, session->clientId(), false);
+    });
+
+    dispatcher->registerMethod(QStringLiteral("functions.scene.setMembers"), [doc, this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        Scene *scene = qobject_cast<Scene *>(findFunction(doc, params));
+        if (scene == nullptr)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrNotFound,
+                                                            QStringLiteral("No such Scene")));
+            return;
+        }
+
+        quint32 baseRevision = quint32(params.value(QStringLiteral("baseRevision")).toInt());
+        if (baseRevision != doc->docRevision())
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrConflict,
+                                                            QStringLiteral("baseRevision is stale"), conflictDetails(doc)));
+            return;
+        }
+
+        // None of Scene's membership add/remove* setters below emit
+        // changed()/setModified() on their own (only setValue()/unsetValue()
+        // and slotFixtureRemoved() do - see scene.cpp) - bumped explicitly
+        // once at the end instead, and only if something actually changed.
+        bool anyChanged = false;
+
+        if (params.value(QStringLiteral("fixtures")).isArray())
+        {
+            QSet<quint32> newIds;
+            for (const QJsonValue &v : params.value(QStringLiteral("fixtures")).toArray())
+            {
+                bool ok = false;
+                quint32 fid = v.toString().toUInt(&ok);
+                if (ok)
+                    newIds.insert(fid);
+            }
+            for (quint32 existingId : scene->fixtures())
+            {
+                if (newIds.contains(existingId) == false)
+                {
+                    scene->removeFixture(existingId);
+                    anyChanged = true;
+                }
+            }
+            for (quint32 newId : std::as_const(newIds))
+            {
+                if (scene->fixtures().contains(newId) == false)
+                {
+                    scene->addFixture(newId);
+                    anyChanged = true;
+                }
+            }
+        }
+
+        if (params.value(QStringLiteral("fixtureGroups")).isArray())
+        {
+            QSet<quint32> newIds;
+            for (const QJsonValue &v : params.value(QStringLiteral("fixtureGroups")).toArray())
+            {
+                bool ok = false;
+                quint32 gid = v.toString().toUInt(&ok);
+                if (ok)
+                    newIds.insert(gid);
+            }
+            for (quint32 existingId : scene->fixtureGroups())
+            {
+                if (newIds.contains(existingId) == false)
+                {
+                    scene->removeFixtureGroup(existingId);
+                    anyChanged = true;
+                }
+            }
+            for (quint32 newId : std::as_const(newIds))
+            {
+                if (scene->fixtureGroups().contains(newId) == false)
+                {
+                    scene->addFixtureGroup(newId);
+                    anyChanged = true;
+                }
+            }
+        }
+
+        if (params.value(QStringLiteral("palettes")).isArray())
+        {
+            QSet<quint32> newIds;
+            for (const QJsonValue &v : params.value(QStringLiteral("palettes")).toArray())
+            {
+                bool ok = false;
+                quint32 pid = v.toString().toUInt(&ok);
+                if (ok)
+                    newIds.insert(pid);
+            }
+            for (quint32 existingId : scene->palettes())
+            {
+                if (newIds.contains(existingId) == false)
+                {
+                    scene->removePalette(existingId);
+                    anyChanged = true;
+                }
+            }
+            for (quint32 newId : std::as_const(newIds))
+            {
+                if (scene->palettes().contains(newId) == false)
+                {
+                    scene->addPalette(newId);
+                    anyChanged = true;
+                }
+            }
+        }
+
+        if (params.value(QStringLiteral("channelGroups")).isArray())
+        {
+            QJsonArray refs = params.value(QStringLiteral("channelGroups")).toArray();
+            QSet<quint32> newIds;
+            QHash<quint32, uchar> newLevels;
+            for (const QJsonValue &v : refs)
+            {
+                QJsonObject ref = v.toObject();
+                bool ok = false;
+                quint32 gid = ref.value(QStringLiteral("id")).toString().toUInt(&ok);
+                if (ok == false)
+                    continue;
+                newIds.insert(gid);
+                newLevels.insert(gid, uchar(qBound(0, ref.value(QStringLiteral("level")).toInt(), 255)));
+            }
+            for (quint32 existingId : scene->channelGroups())
+            {
+                if (newIds.contains(existingId) == false)
+                {
+                    scene->removeChannelGroup(existingId);
+                    anyChanged = true;
+                }
+            }
+            for (auto it = newLevels.constBegin(); it != newLevels.constEnd(); ++it)
+            {
+                if (scene->channelGroups().contains(it.key()) == false)
+                {
+                    scene->addChannelGroup(it.key());
+                    anyChanged = true;
+                }
+                scene->setChannelGroupLevel(it.key(), it.value());
+            }
+        }
+
+        if (anyChanged)
+            doc->setModified();
+
+        session->send(ApiEnvelope::buildOkResponse(id, docRevisionResult(doc)));
+
+        QJsonObject data;
+        data.insert(QStringLiteral("functionId"), QString::number(scene->id()));
+        data.insert(QStringLiteral("fixtures"), idListToJson(scene->fixtures()));
+        data.insert(QStringLiteral("fixtureGroups"), idListToJson(scene->fixtureGroups()));
+        data.insert(QStringLiteral("channelGroups"), sceneChannelGroupRefsToJson(scene));
+        data.insert(QStringLiteral("palettes"), idListToJson(scene->palettes()));
+        data.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
+        m_server->broadcast(QStringLiteral("functions.scene.membersChanged"), data, session->clientId(), false);
+    });
+
+    /*********************************************************************
+     * Chaser/Sequence step CRUD, shared (functions-core.yaml)
+     *********************************************************************/
+
+    dispatcher->registerMethod(QStringLiteral("functions.steps.addStep"), [doc, this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        Chaser *chaser = qobject_cast<Chaser *>(findFunction(doc, params));
+        if (chaser == nullptr)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrNotFound,
+                                                            QStringLiteral("No such Chaser/Sequence")));
+            return;
+        }
+
+        quint32 baseRevision = quint32(params.value(QStringLiteral("baseRevision")).toInt());
+        if (baseRevision != doc->docRevision())
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrConflict,
+                                                            QStringLiteral("baseRevision is stale"), conflictDetails(doc)));
+            return;
+        }
+
+        bool isSequence = chaser->type() == Function::SequenceType;
+        ChaserStep step;
+        QString errorMessage;
+        if (chaserStepFromJson(chaser, isSequence, params.value(QStringLiteral("step")).toObject(), step, errorMessage) == false)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams, errorMessage));
+            return;
+        }
+
+        // Chaser::addStep() silently no-ops (yet still reports success and
+        // still emits changed()) for an index beyond the current size - clamp
+        // here so the reported/broadcast index always matches where the step
+        // actually landed.
+        int stepsCountBefore = chaser->stepsCount();
+        int requestedIndex = params.contains(QStringLiteral("index")) ? params.value(QStringLiteral("index")).toInt() : -1;
+        int insertIndex = (requestedIndex < 0 || requestedIndex > stepsCountBefore) ? stepsCountBefore : requestedIndex;
+
+        if (chaser->addStep(step, insertIndex) == false)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams,
+                                                            QStringLiteral("A Chaser/Sequence cannot target itself")));
+            return;
+        }
+
+        session->send(ApiEnvelope::buildOkResponse(id, docRevisionResult(doc)));
+
+        QJsonObject op;
+        op.insert(QStringLiteral("op"), QStringLiteral("add"));
+        op.insert(QStringLiteral("path"), QStringLiteral("/steps/%1").arg(insertIndex));
+        op.insert(QStringLiteral("value"), chaserStepToJson(step, isSequence));
+
+        QJsonObject data;
+        data.insert(QStringLiteral("functionId"), QString::number(chaser->id()));
+        data.insert(QStringLiteral("patch"), QJsonArray{ op });
+        data.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
+        m_server->broadcast(isSequence ? QStringLiteral("functions.sequence.stepsChanged") : QStringLiteral("functions.chaser.stepsChanged"),
+                             data, session->clientId(), false);
+    });
+
+    dispatcher->registerMethod(QStringLiteral("functions.steps.replaceStep"), [doc, this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        Chaser *chaser = qobject_cast<Chaser *>(findFunction(doc, params));
+        if (chaser == nullptr)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrNotFound,
+                                                            QStringLiteral("No such Chaser/Sequence")));
+            return;
+        }
+
+        quint32 baseRevision = quint32(params.value(QStringLiteral("baseRevision")).toInt());
+        if (baseRevision != doc->docRevision())
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrConflict,
+                                                            QStringLiteral("baseRevision is stale"), conflictDetails(doc)));
+            return;
+        }
+
+        bool isSequence = chaser->type() == Function::SequenceType;
+        ChaserStep step;
+        QString errorMessage;
+        if (chaserStepFromJson(chaser, isSequence, params.value(QStringLiteral("step")).toObject(), step, errorMessage) == false)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams, errorMessage));
+            return;
+        }
+
+        int index = params.value(QStringLiteral("index")).toInt();
+        if (chaser->replaceStep(step, index) == false)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams,
+                                                            QStringLiteral("index out of range")));
+            return;
+        }
+
+        session->send(ApiEnvelope::buildOkResponse(id, docRevisionResult(doc)));
+
+        QJsonObject op;
+        op.insert(QStringLiteral("op"), QStringLiteral("replace"));
+        op.insert(QStringLiteral("path"), QStringLiteral("/steps/%1").arg(index));
+        op.insert(QStringLiteral("value"), chaserStepToJson(step, isSequence));
+
+        QJsonObject data;
+        data.insert(QStringLiteral("functionId"), QString::number(chaser->id()));
+        data.insert(QStringLiteral("patch"), QJsonArray{ op });
+        data.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
+        m_server->broadcast(isSequence ? QStringLiteral("functions.sequence.stepsChanged") : QStringLiteral("functions.chaser.stepsChanged"),
+                             data, session->clientId(), false);
+    });
+
+    dispatcher->registerMethod(QStringLiteral("functions.steps.removeStep"), [doc, this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        Chaser *chaser = qobject_cast<Chaser *>(findFunction(doc, params));
+        if (chaser == nullptr)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrNotFound,
+                                                            QStringLiteral("No such Chaser/Sequence")));
+            return;
+        }
+
+        quint32 baseRevision = quint32(params.value(QStringLiteral("baseRevision")).toInt());
+        if (baseRevision != doc->docRevision())
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrConflict,
+                                                            QStringLiteral("baseRevision is stale"), conflictDetails(doc)));
+            return;
+        }
+
+        int index = params.value(QStringLiteral("index")).toInt();
+        if (chaser->removeStep(index) == false)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams,
+                                                            QStringLiteral("index out of range")));
+            return;
+        }
+
+        session->send(ApiEnvelope::buildOkResponse(id, docRevisionResult(doc)));
+
+        QJsonObject op;
+        op.insert(QStringLiteral("op"), QStringLiteral("remove"));
+        op.insert(QStringLiteral("path"), QStringLiteral("/steps/%1").arg(index));
+
+        QJsonObject data;
+        data.insert(QStringLiteral("functionId"), QString::number(chaser->id()));
+        data.insert(QStringLiteral("patch"), QJsonArray{ op });
+        data.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
+        m_server->broadcast(chaser->type() == Function::SequenceType ? QStringLiteral("functions.sequence.stepsChanged") : QStringLiteral("functions.chaser.stepsChanged"),
+                             data, session->clientId(), false);
+    });
+
+    dispatcher->registerMethod(QStringLiteral("functions.steps.moveStep"), [doc, this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        Chaser *chaser = qobject_cast<Chaser *>(findFunction(doc, params));
+        if (chaser == nullptr)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrNotFound,
+                                                            QStringLiteral("No such Chaser/Sequence")));
+            return;
+        }
+
+        quint32 baseRevision = quint32(params.value(QStringLiteral("baseRevision")).toInt());
+        if (baseRevision != doc->docRevision())
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrConflict,
+                                                            QStringLiteral("baseRevision is stale"), conflictDetails(doc)));
+            return;
+        }
+
+        int sourceIndex = params.value(QStringLiteral("sourceIndex")).toInt();
+        int destIndex = params.value(QStringLiteral("destIndex")).toInt();
+        if (chaser->moveStep(sourceIndex, destIndex) == false)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams,
+                                                            QStringLiteral("Invalid sourceIndex/destIndex")));
+            return;
+        }
+
+        session->send(ApiEnvelope::buildOkResponse(id, docRevisionResult(doc)));
+
+        QJsonObject op;
+        op.insert(QStringLiteral("op"), QStringLiteral("move"));
+        op.insert(QStringLiteral("from"), QStringLiteral("/steps/%1").arg(sourceIndex));
+        op.insert(QStringLiteral("path"), QStringLiteral("/steps/%1").arg(destIndex));
+
+        QJsonObject data;
+        data.insert(QStringLiteral("functionId"), QString::number(chaser->id()));
+        data.insert(QStringLiteral("patch"), QJsonArray{ op });
+        data.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
+        m_server->broadcast(chaser->type() == Function::SequenceType ? QStringLiteral("functions.sequence.stepsChanged") : QStringLiteral("functions.chaser.stepsChanged"),
+                             data, session->clientId(), false);
     });
 }

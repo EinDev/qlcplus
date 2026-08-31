@@ -24,18 +24,21 @@ class ApiServer;
 class Doc;
 
 /**
- * First slice of docs/api-spec/fragments/functions-core.yaml: direct
- * start/stop/pause of an already-authored Function by ID
- * (functions.start/functions.stop/functions.setPause,
- * functions-core.yaml:551-648), so a client can trigger an existing
- * preset/Scene without needing a Virtual Console widget. Structural
- * authoring of Functions (functions.create/update/delete, the ~250-message
- * rest of this domain) is a separate, much larger future slice -
- * deliberately not part of this class.
+ * docs/api-spec/fragments/functions-core.yaml: functions.start/stop/setPause
+ * (§4b live/runtime - no baseRevision, no broadcast event, matching a real
+ * console: pressing a VC button doesn't itself notify other consoles beyond
+ * whatever live state they already observe, e.g. DMX output), plus the
+ * generic structural (§4a) CRUD shared by all 10 Function types
+ * (functions.list/get/create/delete/rename/move/update), Scene-specific
+ * value/membership editing (functions.scene.setValues/setValue/unsetValue/
+ * setMembers), and the Chaser/Sequence step CRUD they share
+ * (functions.steps.addStep/replaceStep/removeStep/moveStep).
  *
- * §4b live/runtime action: no baseRevision, no broadcast event - matches a
- * real console (pressing a VC button doesn't itself notify other consoles
- * beyond whatever live state they already observe, e.g. DMX output).
+ * functions.get's typeDetail is fully implemented for Scene/Chaser/Sequence
+ * only; the other 7 types (EFX/Collection/Script/RGBMatrix/Show/Audio/Video)
+ * get a minimal {functionId} placeholder for now - their full detail shapes
+ * (FunctionsEfxDetail etc.) are functions-advanced.yaml territory, a
+ * deliberately separate future slice, not an oversight.
  */
 class ApiFunctionsDomain : public QObject
 {

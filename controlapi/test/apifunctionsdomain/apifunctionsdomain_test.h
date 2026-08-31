@@ -19,6 +19,7 @@
 #define APIFUNCTIONSDOMAIN_TEST_H
 
 #include <QObject>
+#include <QJsonObject>
 
 class Doc;
 class Scene;
@@ -47,9 +48,30 @@ private slots:
     void stopStopsFunction();
     void setPausePausesRunningFunction();
 
+    void createSceneAddsFunctionAndBumpsRevision();
+    void createOnStaleRevisionIsConflict();
+    void createSequenceAutoCreatesHiddenBoundScene();
+    void getReturnsGenericAndSceneTypeDetail();
+    void listFiltersByType();
+    void deleteRemovesFunction();
+    void renameChangesName();
+    void moveChangesPath();
+    void updateChangesGenericProperties();
+
+    void sceneSetValuesReplacesValueList();
+    void sceneSetValueAndUnsetValueEmitSinglePatchOps();
+    void sceneSetMembersReplacesFixtureList();
+
+    void chaserStepsAddReplaceRemoveMove();
+
 private:
     QJsonObject sendAndWaitForReply(const QString &method, const QJsonObject &params);
     QString helloAndGetClientId();
+
+    /** functions.create helper for the new-method tests below - returns the
+     *  new function's id (as a string, matching the wire convention) or an
+     *  empty string on failure. */
+    QString createFunctionViaApi(const QString &type, const QJsonObject &extraParams = QJsonObject());
 
 private:
     Doc *m_doc;
