@@ -44,6 +44,7 @@ Scene::Scene(Doc* doc)
     , m_legacyFadeBus(Bus::invalid())
     , m_flashOverrides(false)
     , m_flashForceLTP(false)
+    , m_releaseOnStop(false)
     , m_blendFunctionID(Function::invalidId())
 {
     setName(tr("New Scene"));
@@ -105,6 +106,7 @@ bool Scene::copyFrom(const Function* function)
     m_fixtureGroups = scene->m_fixtureGroups;
     m_palettes.clear();
     m_palettes = scene->m_palettes;
+    m_releaseOnStop = scene->m_releaseOnStop;
 
     return Function::copyFrom(function);
 }
@@ -437,6 +439,10 @@ bool Scene::saveXML(QXmlStreamWriter *doc) const
     /* Speed */
     saveXMLSpeed(doc);
 
+    /* Release channels on stop */
+    if (m_releaseOnStop)
+        doc->writeTextElement(KXMLQLCSceneReleaseOnStop, QStringLiteral("1"));
+
     /* Channel groups */
     if (m_channelGroups.count() > 0)
     {
@@ -546,6 +552,10 @@ bool Scene::loadXML(QXmlStreamReader &root)
         else if (root.name() == KXMLQLCFunctionTempoType)
         {
             loadXMLTempoType(root);
+        }
+        else if (root.name() == KXMLQLCSceneReleaseOnStop)
+        {
+            m_releaseOnStop = root.readElementText().toInt() != 0;
         }
         else if (root.name() == KXMLQLCSceneChannelGroups)
         {
@@ -711,7 +721,7 @@ void Scene::writeDMX(MasterTimer *timer, QList<Universe *> ua)
     }
     else
     {
-        handleFadersEnd(timer);
+        handleFadersEnd(timer, ua);
         timer->unregisterDMXSource(this);
     }
 }
@@ -791,8 +801,28 @@ void Scene::processValue(MasterTimer *timer, QList<Universe*> ua, uint fadeIn, c
     });
 }
 
-void Scene::handleFadersEnd(MasterTimer *timer)
+void Scene::handleFadersEnd(MasterTimer *timer, QList<Universe*> ua)
 {
+    if (m_releaseOnStop)
+    {
+        // Forcefully zero every channel this Scene ever touched, instead of
+        // leaving LTP channels (Shutter, Gobo, Colour...) latched at their
+        // last value. Only covers directly-authored SceneValues - values
+        // sourced from Palettes/FixtureGroups at runtime are not tracked here.
+        QMutexLocker locker(&m_valueListMutex);
+        QMapIterator <SceneValue, uchar> it(m_values);
+        while (it.hasNext() == true)
+        {
+            SceneValue scv(it.next().key());
+            FadeChannel fc(doc(), scv.fxi, scv.channel);
+            quint32 universe = fc.universe();
+            if (universe == Universe::invalid() || universe >= quint32(ua.count()))
+                continue;
+
+            ua[universe]->write(fc.addressInUniverse(), 0, true);
+        }
+    }
+
     uint fadeout = overrideFadeOutSpeed() == defaultSpeed() ? fadeOutSpeed() : overrideFadeOutSpeed();
 
     /* If no fade out is needed, dismiss all the requested faders.
@@ -866,9 +896,19 @@ void Scene::write(MasterTimer *timer, QList<Universe*> ua)
 
 void Scene::postRun(MasterTimer* timer, QList<Universe *> ua)
 {
-    handleFadersEnd(timer);
+    handleFadersEnd(timer, ua);
 
     Function::postRun(timer, ua);
+}
+
+bool Scene::releaseOnStop() const
+{
+    return m_releaseOnStop;
+}
+
+void Scene::setReleaseOnStop(bool enable)
+{
+    m_releaseOnStop = enable;
 }
 
 void Scene::setPause(bool enable)

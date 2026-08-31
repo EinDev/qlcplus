@@ -39,6 +39,7 @@ class QXmlStreamReader;
 
 #define KXMLQLCFixtureValues QStringLiteral("FixtureVal")
 #define KXMLQLCSceneChannelGroupsValues QStringLiteral("ChannelGroupsVal")
+#define KXMLQLCSceneReleaseOnStop QStringLiteral("ReleaseOnStop")
 
 // Legacy: these do not contain ChannelGroups values
 #define KXMLQLCSceneChannelGroups QStringLiteral("ChannelGroups")
@@ -270,12 +271,25 @@ public:
     /** @reimp */
     void setPause(bool enable) override;
 
+    /**
+     * When enabled, all of this Scene's channels are forcefully written to 0
+     * the moment the Scene stops, instead of being left at their last value
+     * (the normal behaviour for LTP channels like Shutter/Gobo/Colour, which
+     * are never touched again once nothing is actively driving them). Meant
+     * for momentary/SFX-style Scenes; leave disabled (the default) for Scenes
+     * that are meant to hold a look after they stop.
+     */
+    bool releaseOnStop() const;
+    void setReleaseOnStop(bool enable);
+
 private:
     /** Internal helper method to abtract Scene value processing */
     void processValue(MasterTimer *timer, QList<Universe*> ua, uint fadeIn, const SceneValue &scv);
 
     /** Check whether a fade out is needed and cleanup faders */
-    void handleFadersEnd(MasterTimer* timer);
+    void handleFadersEnd(MasterTimer* timer, QList<Universe*> ua);
+
+    bool m_releaseOnStop;
 
     /*********************************************************************
      * Attributes
