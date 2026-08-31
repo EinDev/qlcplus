@@ -30,6 +30,7 @@ class ApiCoreDomain;
 class ApiFunctionsDomain;
 class ApiPaletteDomain;
 class ApiFixturesDomain;
+class ApiFixtureGroupDomain;
 class Doc;
 
 /** Default port for the control API's WebSocket server. Distinct from
@@ -120,6 +121,7 @@ private:
     ApiFunctionsDomain *m_functionsDomain;
     ApiPaletteDomain *m_paletteDomain;
     ApiFixturesDomain *m_fixturesDomain;
+    ApiFixtureGroupDomain *m_fixtureGroupDomain;
 };
 
 #endif
