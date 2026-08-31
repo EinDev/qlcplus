@@ -683,6 +683,32 @@ void ApiVcDomain::registerWidgetMethods(ApiDispatcher *d)
             return;
         }
 
+        // Validate everything BEFORE mutating anything below - this handler must be all-or-nothing
+        // like vc.widget.reposition, not leave a partial write behind an error response with no
+        // setModified()/broadcast/revision bump to signal it (a real bug caught in review: the page
+        // check used to run last, after geometry/style/etc. had already been applied).
+        bool hasPage = params.contains(QStringLiteral("page"));
+        int newPage = hasPage ? params.value(QStringLiteral("page")).toInt() : w->page;
+        if (hasPage)
+        {
+            if (newPage < 0 || newPage >= m_pages.size())
+            {
+                session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrNotFound,
+                                                                QStringLiteral("No such page")));
+                return;
+            }
+            // A nested widget's page always mirrors its containing top-level ancestor's (see
+            // vc.widget.reparent) - changing it directly here would desync it from its parent
+            // (which stays behind) and leave a dangling parentId behind after a future
+            // vc.page.delete on either page. Reparent the widget instead if it needs to move.
+            if (w->parentId != InvalidWidgetId)
+            {
+                session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams,
+                                                                QStringLiteral("Cannot change page directly on a nested widget - use vc.widget.reparent")));
+                return;
+            }
+        }
+
         if (params.contains(QStringLiteral("geometry")))
             w->geometry = geometryFromJson(params.value(QStringLiteral("geometry")).toObject());
         if (params.contains(QStringLiteral("zIndex")))
@@ -695,18 +721,11 @@ void ApiVcDomain::registerWidgetMethods(ApiDispatcher *d)
             w->isVisible = params.value(QStringLiteral("isVisible")).toBool();
         if (params.contains(QStringLiteral("style")))
             applyStyleFromJson(*w, params.value(QStringLiteral("style")).toObject());
-        if (params.contains(QStringLiteral("page")))
+        if (hasPage)
         {
-            int newPage = params.value(QStringLiteral("page")).toInt();
-            if (newPage < 0 || newPage >= m_pages.size())
-            {
-                session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrNotFound,
-                                                                QStringLiteral("No such page")));
-                return;
-            }
             // Moving a Frame/SoloFrame moves its whole subtree with it, matching how "page" is
             // treated as a single shared value across a container's descendants elsewhere in
-            // this model (see vc.widget.reparent).
+            // this model (see vc.widget.reparent). Already validated above: w has no parent.
             setWidgetPageRecursive(w->id, newPage);
         }
 

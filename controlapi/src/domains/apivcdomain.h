@@ -52,7 +52,7 @@ class Doc;
  *    VirtualConsole's own constructor requires a live QQuickView* plus a ContextManager* (which per
  *    this project's CLAUDE.md drags in MainView2D/MainView3D and Qt3D) - there is no headless way to
  *    even name these types, let alone construct the container. Worse, qmlui/CMakeLists.txt compiles
- *    virtualconsole/*.cpp directly into add_executable(qlcplus5 ...), not into a separate library -
+ *    virtualconsole/(star).cpp directly into add_executable(qlcplus5 ...), not into a separate library -
  *    so adding those same .cpp files to controlapi's CMakeLists (a static lib also linked into
  *    qlcplus5) would compile every VCWidget/VirtualConsole symbol twice into the same final binary,
  *    an ODR violation at link time. Fixing that would mean carving qmlui's virtualconsole/ sources
@@ -106,7 +106,9 @@ private:
     {
         quint32 id = 0;
         QString widgetType;
-        int page = 0;
+        int page = 0; // invariant: always equal to the top-level ancestor's page - vc.widget.update
+                      // rejects a direct "page" change on any widget with a parent; use
+                      // vc.widget.reparent to move a nested widget instead.
         quint32 parentId = InvalidWidgetId; // InvalidWidgetId = "placed on the page root"
         QRectF geometry;
         int zIndex = 0;

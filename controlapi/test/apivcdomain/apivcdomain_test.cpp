@@ -476,6 +476,91 @@ void ApiVcDomain_Test::widgetUpdateAppliesGeometry()
     QCOMPARE(widget.value(QStringLiteral("isDisabled")).toBool(), true);
 }
 
+void ApiVcDomain_Test::widgetUpdateWithInvalidPageAppliesNothing()
+{
+    helloAndGetClientId();
+    int rev = currentDocRevision();
+
+    QJsonObject createParams;
+    createParams.insert(QStringLiteral("widgetType"), QStringLiteral("Label"));
+    createParams.insert(QStringLiteral("page"), 0);
+    QJsonObject geom;
+    geom.insert(QStringLiteral("x"), 0); geom.insert(QStringLiteral("y"), 0);
+    geom.insert(QStringLiteral("width"), 1); geom.insert(QStringLiteral("height"), 1);
+    createParams.insert(QStringLiteral("geometry"), geom);
+    createParams.insert(QStringLiteral("baseRevision"), rev);
+    QJsonObject createReply = sendAndWaitForReply(QStringLiteral("vc.widget.create"), createParams);
+    QString widgetId = createReply.value(QStringLiteral("result")).toObject().value(QStringLiteral("widgetId")).toString();
+    rev = currentDocRevision();
+
+    // isDisabled is valid and would normally apply cleanly, but page=99 does not exist - the whole
+    // request must be rejected atomically, with isDisabled left untouched (regression test for a
+    // bug where the page-range check ran AFTER geometry/isDisabled/etc. had already been written).
+    QJsonObject updateParams;
+    updateParams.insert(QStringLiteral("widgetId"), widgetId);
+    updateParams.insert(QStringLiteral("isDisabled"), true);
+    updateParams.insert(QStringLiteral("page"), 99);
+    updateParams.insert(QStringLiteral("baseRevision"), rev);
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("vc.widget.update"), updateParams, QStringLiteral("t-upd"));
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(),
+              QStringLiteral("NOT_FOUND"));
+
+    QJsonObject getParams;
+    getParams.insert(QStringLiteral("widgetId"), widgetId);
+    QJsonObject getReply = sendAndWaitForReply(QStringLiteral("vc.widget.get"), getParams, QStringLiteral("t-get"));
+    QCOMPARE(getReply.value(QStringLiteral("result")).toObject().value(QStringLiteral("isDisabled")).toBool(), false);
+    QCOMPARE(getReply.value(QStringLiteral("result")).toObject().value(QStringLiteral("page")).toInt(), 0);
+    QCOMPARE(currentDocRevision(), rev); // no setModified() should have happened either
+}
+
+void ApiVcDomain_Test::widgetUpdateRejectsPageChangeOnNestedWidget()
+{
+    helloAndGetClientId();
+    int rev = currentDocRevision();
+
+    QJsonObject frameParams;
+    frameParams.insert(QStringLiteral("widgetType"), QStringLiteral("Frame"));
+    frameParams.insert(QStringLiteral("page"), 0);
+    QJsonObject frameGeom;
+    frameGeom.insert(QStringLiteral("x"), 0); frameGeom.insert(QStringLiteral("y"), 0);
+    frameGeom.insert(QStringLiteral("width"), 100); frameGeom.insert(QStringLiteral("height"), 100);
+    frameParams.insert(QStringLiteral("geometry"), frameGeom);
+    frameParams.insert(QStringLiteral("baseRevision"), rev);
+    QJsonObject frameReply = sendAndWaitForReply(QStringLiteral("vc.widget.create"), frameParams, QStringLiteral("t-frame"));
+    QString frameId = frameReply.value(QStringLiteral("result")).toObject().value(QStringLiteral("widgetId")).toString();
+    rev = currentDocRevision();
+
+    QJsonObject childParams;
+    childParams.insert(QStringLiteral("widgetType"), QStringLiteral("Button"));
+    childParams.insert(QStringLiteral("page"), 0);
+    childParams.insert(QStringLiteral("parentId"), frameId);
+    QJsonObject childGeom;
+    childGeom.insert(QStringLiteral("x"), 5); childGeom.insert(QStringLiteral("y"), 5);
+    childGeom.insert(QStringLiteral("width"), 10); childGeom.insert(QStringLiteral("height"), 10);
+    childParams.insert(QStringLiteral("geometry"), childGeom);
+    childParams.insert(QStringLiteral("baseRevision"), rev);
+    QJsonObject childReply = sendAndWaitForReply(QStringLiteral("vc.widget.create"), childParams, QStringLiteral("t-child"));
+    QString childId = childReply.value(QStringLiteral("result")).toObject().value(QStringLiteral("widgetId")).toString();
+    rev = currentDocRevision();
+
+    // Second page for the child to (attempt to) move to.
+    QJsonObject pageParams;
+    pageParams.insert(QStringLiteral("index"), 1);
+    pageParams.insert(QStringLiteral("baseRevision"), rev);
+    sendAndWaitForReply(QStringLiteral("vc.page.create"), pageParams, QStringLiteral("t-p1"));
+    rev = currentDocRevision();
+
+    QJsonObject updateParams;
+    updateParams.insert(QStringLiteral("widgetId"), childId);
+    updateParams.insert(QStringLiteral("page"), 1);
+    updateParams.insert(QStringLiteral("baseRevision"), rev);
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("vc.widget.update"), updateParams, QStringLiteral("t-upd"));
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(),
+              QStringLiteral("INVALID_PARAMS"));
+}
+
 void ApiVcDomain_Test::widgetSetConfigMergesPatch()
 {
     helloAndGetClientId();

@@ -52,6 +52,8 @@ private slots:
     void widgetCreateRejectsUnknownType();
     void widgetUpdateRequiresAtLeastOneField();
     void widgetUpdateAppliesGeometry();
+    void widgetUpdateWithInvalidPageAppliesNothing();
+    void widgetUpdateRejectsPageChangeOnNestedWidget();
     void widgetSetConfigMergesPatch();
     void widgetDeleteRecursivelyDeletesChildren();
     void widgetReparentMovesWidgetAndAdoptsPage();
