@@ -27,6 +27,7 @@ class QWebSocketServer;
 class ApiSession;
 class ApiIoDomain;
 class ApiCoreDomain;
+class ApiFunctionsDomain;
 class Doc;
 
 /** Default port for the control API's WebSocket server. Distinct from
@@ -114,6 +115,7 @@ private:
     // one more of these here, nothing else in this class or in qmlui/app.cpp.
     ApiIoDomain *m_ioDomain;
     ApiCoreDomain *m_coreDomain;
+    ApiFunctionsDomain *m_functionsDomain;
 };
 
 #endif
