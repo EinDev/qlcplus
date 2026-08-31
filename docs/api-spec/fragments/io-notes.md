@@ -77,3 +77,20 @@ monitoring (`io.dmx.universe.*`), and Simple Desk (`io.simpleDesk.*`).
   `commandHistoryChanged` event - this is a genuinely distinct raw-channel
   surface from the Virtual Console, no overlap concern, just noting it's
   its own thing for the merged spec's prose.
+- **`io.simpleDesk.dump` added (2026-08-31)** - the one operation this
+  domain was missing: baking Simple Desk's currently-held live values into a
+  real, saved Scene Function (`SimpleDesk::dumpDmxChannels`'s wire
+  equivalent). Unlike the rest of `io.simpleDesk.*`, this is a §4a
+  structural mutation (creates/updates a Function in the project), so it
+  carries `baseRevision` and returns `docRevision` like any other
+  document-state write. Deliberately does **not** define a new
+  `io.simpleDesk.dumped`-style event: the structural side effect is
+  reported via the already-specified `functions.created`/`functions.updated`
+  events (`functions-core.yaml`) instead, per the repo owner's "prefer
+  fewer, more general methods" guidance (README.md) - a client watching
+  those two generic events already learns about this the same way it would
+  learn about any other new/changed Scene, with no `io.simpleDesk`-specific
+  event to special-case. `channelGroups` (an array of `QLCChannel::Group`
+  names) replaces `SimpleDesk::dumpDmxChannels`'s raw bitmask parameter for
+  the wire format - a JSON client shouldn't need to know QLC+'s internal
+  bit layout for channel groups.

@@ -1800,6 +1800,88 @@ messages:
               type: array
               items:
                 type: string
+  IoSimpleDeskDumpRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: io.simpleDesk.dump
+        params:
+          type: object
+          required:
+          - baseRevision
+          - nonZeroOnly
+          description: 'Unlike every other io.simpleDesk.* method, this is a §4a structural mutation:
+            it bakes Simple Desk''s currently-held live values (SimpleDesk::dumpDmxChannels) into a
+            real, saved Scene Function, so it needs baseRevision/docRevision like any other document-state
+            write.
+
+            '
+          properties:
+            baseRevision:
+              type: integer
+            targetSceneId:
+              type:
+              - string
+              - 'null'
+              description: Existing Scene Function id to merge the dumped values into. Omit or null
+                to create a new Scene instead (see name).
+            name:
+              type: string
+              description: Name for the newly-created Scene. Only used when targetSceneId is omitted;
+                ignored when dumping into an existing Scene.
+            channelGroups:
+              type: array
+              items:
+                type: string
+              description: QLCChannel::Group names (e.g. Intensity, Pan, Colour) to include. Empty
+                or omitted means every channel, matching SimpleDesk's "all channels" dump mode.
+            nonZeroOnly:
+              type: boolean
+  IoSimpleDeskDumpResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/IoSimpleDeskDumpOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  IoSimpleDeskDumpOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - sceneId
+          - docRevision
+          properties:
+            sceneId:
+              type: string
+            docRevision:
+              type: integer
+          description: 'The structural side effect (a Scene created or updated) is broadcast via the
+            existing functions.created/functions.updated events (functions-core.yaml), not a bespoke
+            io.simpleDesk event - see io-notes.md.
+
+            '
   IoPatchRemoveRequest:
     payload:
       type: object
@@ -2735,6 +2817,18 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/ioSimpleDeskCommandHistoryChangedEvent'
+  sendIoSimpleDeskDump:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/ioSimpleDeskDumpRequest'
+  receiveIoSimpleDeskDumpResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/ioSimpleDeskDumpResponse'
   sendIoPatchRemoveRequest:
     action: send
     channel:
