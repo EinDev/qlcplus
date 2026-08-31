@@ -54,6 +54,12 @@ private slots:
     void simpleDeskSetUniverseFilterBroadcastsEvent();
     void simpleDeskGetOnMissingUniverseIsNotFound();
 
+    void simpleDeskDumpCreatesNewSceneAndBumpsRevision();
+    void simpleDeskDumpWithStaleRevisionConflicts();
+    void simpleDeskDumpBroadcastsFunctionsCreatedEvent();
+    void simpleDeskDumpMergeIntoExistingSceneBroadcastsFunctionsUpdated();
+    void simpleDeskDumpOnMissingTargetSceneIsNotFound();
+
 private:
     /** Send a request and wait for exactly one more text message to arrive
      *  on client, returning it parsed as a JSON object. */

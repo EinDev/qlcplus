@@ -23,6 +23,7 @@
 
 #include "apiiodomain_test.h"
 #include "apiserver.h"
+#include "scene.h"
 #include "doc.h"
 
 static QString buildRequest(const QString &method, const QJsonObject &params, const QString &id = QStringLiteral("t-1"))
@@ -410,6 +411,136 @@ void ApiIoDomain_Test::simpleDeskGetOnMissingUniverseIsNotFound()
     // Doc(QObject*, int universes = 4) only patches ids 0-3 by default.
     params.insert(QStringLiteral("universeId"), 999);
     QJsonObject reply = sendAndWaitForReply(QStringLiteral("io.simpleDesk.get"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(),
+              QStringLiteral("NOT_FOUND"));
+}
+
+void ApiIoDomain_Test::simpleDeskDumpCreatesNewSceneAndBumpsRevision()
+{
+    helloAndGetClientId();
+    quint32 before = m_doc->docRevision();
+
+    QJsonObject params;
+    params.insert(QStringLiteral("baseRevision"), int(before));
+    params.insert(QStringLiteral("name"), QStringLiteral("My Dump"));
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("io.simpleDesk.dump"), params);
+
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QJsonObject result = reply.value(QStringLiteral("result")).toObject();
+    QVERIFY(result.value(QStringLiteral("sceneId")).toString().isEmpty() == false);
+    QVERIFY(quint32(result.value(QStringLiteral("docRevision")).toInt()) > before);
+
+    bool ok = false;
+    quint32 sceneId = result.value(QStringLiteral("sceneId")).toString().toUInt(&ok);
+    QVERIFY(ok);
+    Scene *scene = qobject_cast<Scene *>(m_doc->function(sceneId));
+    QVERIFY(scene != nullptr);
+    QCOMPARE(scene->name(), QStringLiteral("My Dump"));
+}
+
+void ApiIoDomain_Test::simpleDeskDumpWithStaleRevisionConflicts()
+{
+    helloAndGetClientId();
+    quint32 before = m_doc->docRevision();
+
+    QJsonObject params;
+    params.insert(QStringLiteral("baseRevision"), int(before) + 1); // deliberately stale
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("io.simpleDesk.dump"), params);
+
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QJsonObject error = reply.value(QStringLiteral("error")).toObject();
+    QCOMPARE(error.value(QStringLiteral("code")).toString(), QStringLiteral("CONFLICT"));
+    QCOMPARE(error.value(QStringLiteral("details")).toObject().value(QStringLiteral("docRevision")).toInt(), int(before));
+}
+
+void ApiIoDomain_Test::simpleDeskDumpBroadcastsFunctionsCreatedEvent()
+{
+    QString clientId = helloAndGetClientId();
+    quint32 before = m_doc->docRevision();
+
+    QSignalSpy spy(m_client, &QWebSocket::textMessageReceived);
+    QJsonObject params;
+    params.insert(QStringLiteral("baseRevision"), int(before));
+    params.insert(QStringLiteral("name"), QStringLiteral("Dump Two"));
+    m_client->sendTextMessage(buildRequest(QStringLiteral("io.simpleDesk.dump"), params, QStringLiteral("t-dump")));
+    QVERIFY(QTest::qWaitFor([&]() { return spy.count() >= 2; }, 2000));
+
+    QString sceneIdFromResponse;
+    bool sawEvent = false;
+    for (const QList<QVariant> &frame : spy)
+    {
+        QJsonObject obj = QJsonDocument::fromJson(frame.at(0).toString().toUtf8()).object();
+        QString type = obj.value(QStringLiteral("type")).toString();
+        if (type == QStringLiteral("response") && obj.value(QStringLiteral("id")).toString() == QStringLiteral("t-dump"))
+        {
+            sceneIdFromResponse = obj.value(QStringLiteral("result")).toObject().value(QStringLiteral("sceneId")).toString();
+        }
+        else if (type == QStringLiteral("event") && obj.value(QStringLiteral("topic")).toString() == QStringLiteral("functions.created"))
+        {
+            QJsonObject data = obj.value(QStringLiteral("data")).toObject();
+            QCOMPARE(data.value(QStringLiteral("function")).toObject().value(QStringLiteral("name")).toString(),
+                      QStringLiteral("Dump Two"));
+            QCOMPARE(data.value(QStringLiteral("function")).toObject().value(QStringLiteral("type")).toString(),
+                      QStringLiteral("Scene"));
+            QCOMPARE(obj.value(QStringLiteral("originClientId")).toString(), clientId);
+            sawEvent = true;
+        }
+    }
+    QVERIFY(sawEvent);
+    QVERIFY(sceneIdFromResponse.isEmpty() == false);
+}
+
+void ApiIoDomain_Test::simpleDeskDumpMergeIntoExistingSceneBroadcastsFunctionsUpdated()
+{
+    Scene *existing = new Scene(m_doc);
+    existing->setName(QStringLiteral("Existing Scene"));
+    QVERIFY(m_doc->addFunction(existing));
+
+    QString clientId = helloAndGetClientId();
+    quint32 before = m_doc->docRevision();
+
+    QSignalSpy spy(m_client, &QWebSocket::textMessageReceived);
+    QJsonObject params;
+    params.insert(QStringLiteral("baseRevision"), int(before));
+    params.insert(QStringLiteral("targetSceneId"), QString::number(existing->id()));
+    m_client->sendTextMessage(buildRequest(QStringLiteral("io.simpleDesk.dump"), params, QStringLiteral("t-merge")));
+    QVERIFY(QTest::qWaitFor([&]() { return spy.count() >= 2; }, 2000));
+
+    bool sawResponse = false, sawEvent = false;
+    for (const QList<QVariant> &frame : spy)
+    {
+        QJsonObject obj = QJsonDocument::fromJson(frame.at(0).toString().toUtf8()).object();
+        QString type = obj.value(QStringLiteral("type")).toString();
+        if (type == QStringLiteral("response") && obj.value(QStringLiteral("id")).toString() == QStringLiteral("t-merge"))
+        {
+            QCOMPARE(obj.value(QStringLiteral("ok")).toBool(), true);
+            QCOMPARE(obj.value(QStringLiteral("result")).toObject().value(QStringLiteral("sceneId")).toString(),
+                      QString::number(existing->id()));
+            sawResponse = true;
+        }
+        else if (type == QStringLiteral("event") && obj.value(QStringLiteral("topic")).toString() == QStringLiteral("functions.updated"))
+        {
+            QCOMPARE(obj.value(QStringLiteral("data")).toObject().value(QStringLiteral("functionId")).toString(),
+                      QString::number(existing->id()));
+            QCOMPARE(obj.value(QStringLiteral("originClientId")).toString(), clientId);
+            sawEvent = true;
+        }
+    }
+    QVERIFY(sawResponse);
+    QVERIFY(sawEvent);
+    QCOMPARE(existing->name(), QStringLiteral("Existing Scene")); // untouched - only targetSceneId, no rename
+}
+
+void ApiIoDomain_Test::simpleDeskDumpOnMissingTargetSceneIsNotFound()
+{
+    helloAndGetClientId();
+
+    QJsonObject params;
+    params.insert(QStringLiteral("baseRevision"), int(m_doc->docRevision()));
+    params.insert(QStringLiteral("targetSceneId"), QStringLiteral("999999"));
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("io.simpleDesk.dump"), params);
+
     QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
     QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(),
               QStringLiteral("NOT_FOUND"));

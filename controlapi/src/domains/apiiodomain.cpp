@@ -17,6 +17,7 @@
 
 #include <QJsonArray>
 #include <QJsonValue>
+#include <QSet>
 
 #include "apiiodomain.h"
 #include "apiserver.h"
@@ -31,6 +32,7 @@
 #include "fadechannel.h"
 #include "qlcchannel.h"
 #include "fixture.h"
+#include "scene.h"
 #include "mastertimer.h"
 #include "doc.h"
 
@@ -543,6 +545,165 @@ void ApiIoDomain::registerMethods()
         QJsonObject data;
         data.insert(QStringLiteral("universeId"), int(m_simpleDeskUniverseFilter));
         m_server->broadcast(QStringLiteral("io.simpleDesk.universeFilterChanged"), data, session->clientId(), false);
+    });
+
+    dispatcher->registerMethod(QStringLiteral("io.simpleDesk.dump"), [this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        quint32 baseRevision = quint32(params.value(QStringLiteral("baseRevision")).toInt());
+        if (baseRevision != m_doc->docRevision())
+        {
+            QJsonObject details;
+            details.insert(QStringLiteral("docRevision"), int(m_doc->docRevision()));
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrConflict,
+                                                            QStringLiteral("baseRevision is stale"), details));
+            return;
+        }
+
+        // channelGroups empty/omitted -> every channel of every patched
+        // fixture (SimpleDesk's "all channels" dump mode); otherwise only
+        // channels whose QLCChannel::Group is in the given set.
+        bool allChannels = true;
+        QSet<int> allowedGroups;
+        for (const QJsonValue &v : params.value(QStringLiteral("channelGroups")).toArray())
+        {
+            allChannels = false;
+            allowedGroups.insert(int(QLCChannel::stringToGroup(v.toString())));
+        }
+        bool nonZeroOnly = params.value(QStringLiteral("nonZeroOnly")).toBool();
+
+        // 1 - snapshot live pre-GM universe output, same source
+        // qmlui/functionmanager.cpp's dumpDmxValues() reads: this captures
+        // the full composed effect at this instant, not just this domain's
+        // own m_simpleDeskValues (part of what's live could be coming from
+        // a currently-running Function instead of a Simple Desk override).
+        QList<Universe *> ua = m_doc->inputOutputMap()->claimUniverses();
+        QByteArray preGMValues(ua.size() * 512, 0);
+        for (int i = 0; i < ua.count(); i++)
+        {
+            const int offset = i * 512;
+            preGMValues.replace(offset, 512, ua.at(i)->preGMValues());
+            if (ua.at(i)->passthrough())
+            {
+                for (int j = 0; j < 512; j++)
+                {
+                    const int ofs = offset + j;
+                    preGMValues[ofs] = char(ua.at(i)->applyPassthrough(j, uchar(preGMValues[ofs])));
+                }
+            }
+        }
+        m_doc->inputOutputMap()->releaseUniverses(false);
+
+        // This domain's own held overrides take precedence over the live
+        // snapshot above, same as SimpleDesk's own dumpDmxValues() override
+        // rule - a value just set via setChannel() this tick may not have
+        // reached the Universe's preGMValues() yet (writeDMX() runs on
+        // MasterTimer's own thread, see this class's own doc comment).
+        {
+            QMutexLocker locker(&m_simpleDeskMutex);
+            for (auto it = m_simpleDeskValues.constBegin(); it != m_simpleDeskValues.constEnd(); ++it)
+            {
+                if (int(it.key()) < preGMValues.size())
+                    preGMValues[int(it.key())] = char(it.value());
+            }
+        }
+
+        // 2 - resolve target Scene: merge into an existing one, or create new.
+        QJsonValue targetIdValue = params.value(QStringLiteral("targetSceneId"));
+        bool creatingNew = targetIdValue.isNull() || targetIdValue.isUndefined();
+        Scene *targetScene = nullptr;
+        QString requestedName = params.value(QStringLiteral("name")).toString();
+
+        if (creatingNew)
+        {
+            targetScene = new Scene(m_doc);
+            if (requestedName.isEmpty() == false)
+                targetScene->setName(requestedName);
+        }
+        else
+        {
+            bool ok = false;
+            quint32 sceneId = targetIdValue.toString().toUInt(&ok);
+            targetScene = ok ? qobject_cast<Scene *>(m_doc->function(sceneId)) : nullptr;
+            if (targetScene == nullptr)
+            {
+                session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrNotFound,
+                                                                QStringLiteral("No such Scene")));
+                return;
+            }
+        }
+
+        // 3 - collect + write values, across every patched fixture (this API
+        // has no "selected fixtures" concept - qmlui SimpleDesk's own
+        // fixture-tree selection is a UI ergonomics restriction that doesn't
+        // map onto a client composing arbitrary channels programmatically;
+        // channelGroups is the only filter axis here).
+        for (Fixture *fixture : m_doc->fixtures())
+        {
+            quint32 baseAddress = fixture->universeAddress();
+            for (quint32 chIndex = 0; chIndex < fixture->channels(); chIndex++)
+            {
+                if (allChannels == false)
+                {
+                    const QLCChannel *ch = fixture->channel(chIndex);
+                    if (ch == nullptr || allowedGroups.contains(int(ch->group())) == false)
+                        continue;
+                }
+
+                int address = int(baseAddress + chIndex);
+                if (address < 0 || address >= preGMValues.size())
+                    continue;
+
+                uchar value = uchar(preGMValues.at(address));
+                if (nonZeroOnly && value == 0)
+                    continue;
+
+                targetScene->setValue(SceneValue(fixture->id(), chIndex, value));
+            }
+        }
+
+        // 4 - persist if new (an existing target Scene's setValue() calls
+        // above already bumped docRevision themselves via Doc::slotFunctionChanged,
+        // since it's already connected/added).
+        if (creatingNew)
+        {
+            if (requestedName.isEmpty())
+                targetScene->setName(QStringLiteral("%1 %2").arg(targetScene->name()).arg(targetScene->id()));
+
+            if (m_doc->addFunction(targetScene) == false)
+            {
+                delete targetScene;
+                session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInternal,
+                                                                QStringLiteral("Could not add Scene")));
+                return;
+            }
+        }
+
+        QJsonObject result;
+        result.insert(QStringLiteral("sceneId"), QString::number(targetScene->id()));
+        result.insert(QStringLiteral("docRevision"), int(m_doc->docRevision()));
+        session->send(ApiEnvelope::buildOkResponse(id, result));
+
+        // The structural side effect is reported via the shared functions.*
+        // events (functions-core.yaml) rather than a bespoke io.simpleDesk
+        // event - see io-notes.md.
+        QJsonObject data;
+        data.insert(QStringLiteral("docRevision"), int(m_doc->docRevision()));
+        if (creatingNew)
+        {
+            QJsonObject functionSummary;
+            functionSummary.insert(QStringLiteral("id"), QString::number(targetScene->id()));
+            functionSummary.insert(QStringLiteral("name"), targetScene->name());
+            functionSummary.insert(QStringLiteral("type"), QStringLiteral("Scene"));
+            functionSummary.insert(QStringLiteral("path"), targetScene->path(true));
+            functionSummary.insert(QStringLiteral("hidden"), targetScene->isVisible() == false);
+            data.insert(QStringLiteral("function"), functionSummary);
+            m_server->broadcast(QStringLiteral("functions.created"), data, session->clientId(), false);
+        }
+        else
+        {
+            data.insert(QStringLiteral("functionId"), QString::number(targetScene->id()));
+            m_server->broadcast(QStringLiteral("functions.updated"), data, session->clientId(), false);
+        }
     });
 }
 
