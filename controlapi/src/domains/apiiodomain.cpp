@@ -458,10 +458,17 @@ void ApiIoDomain::registerMethods()
         int value = qBound(0, params.value(QStringLiteral("value")).toInt(), 255);
 
         {
+            // setChanged() must be inside the same locked scope as the data
+            // mutation, not after it - otherwise writeDMX() (which holds this
+            // same lock across its own hasChanged()/setChanged(false)) can
+            // interleave between the unlock and this call, drain with
+            // hasChanged() still false, and leave the new value unapplied
+            // until whatever the next tick happens to be. Mirrors
+            // SimpleDesk::setValue()'s own mutex scope (simpledesk.cpp).
             QMutexLocker locker(&m_simpleDeskMutex);
             m_simpleDeskValues[address] = uchar(value);
+            setChanged(true); // DMXSource::setChanged() - picked up by writeDMX()
         }
-        setChanged(true); // DMXSource::setChanged() - picked up by writeDMX()
 
         session->send(ApiEnvelope::buildOkResponse(id, QJsonObject()));
 
@@ -491,11 +498,13 @@ void ApiIoDomain::registerMethods()
         }
 
         {
+            // See setChannel's handler above for why setChanged() must stay
+            // inside this locked scope.
             QMutexLocker locker(&m_simpleDeskMutex);
             m_simpleDeskValues.remove(address);
             m_simpleDeskCommandQueue.append(qMakePair(int(SimpleDeskResetChannel), address));
+            setChanged(true);
         }
-        setChanged(true);
 
         session->send(ApiEnvelope::buildOkResponse(id, QJsonObject()));
 
@@ -517,6 +526,8 @@ void ApiIoDomain::registerMethods()
         }
 
         {
+            // See setChannel's handler above for why setChanged() must stay
+            // inside this locked scope.
             QMutexLocker locker(&m_simpleDeskMutex);
             quint32 start = universeId * 512;
             QMutableHashIterator<quint32, uchar> it(m_simpleDeskValues);
@@ -527,8 +538,8 @@ void ApiIoDomain::registerMethods()
                     it.remove();
             }
             m_simpleDeskCommandQueue.append(qMakePair(int(SimpleDeskResetUniverse), universeId));
+            setChanged(true);
         }
-        setChanged(true);
 
         session->send(ApiEnvelope::buildOkResponse(id, QJsonObject()));
 
