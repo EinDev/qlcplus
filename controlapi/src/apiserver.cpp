@@ -28,6 +28,7 @@
 #include "domains/apipalettedomain.h"
 #include "domains/apifixturesdomain.h"
 #include "domains/apifixturegroupdomain.h"
+#include "domains/apivcdomain.h"
 #include "qlcconfig.h"
 #include "doc.h"
 
@@ -51,6 +52,7 @@ ApiServer::ApiServer(QObject *parent, Doc *doc)
     m_paletteDomain = new ApiPaletteDomain(m_doc, this, this);
     m_fixturesDomain = new ApiFixturesDomain(m_doc, this, this);
     m_fixtureGroupDomain = new ApiFixtureGroupDomain(m_doc, this, this);
+    m_vcDomain = new ApiVcDomain(m_doc, this, this);
 }
 
 ApiServer::~ApiServer()

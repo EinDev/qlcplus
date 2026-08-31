@@ -11,6 +11,7 @@ set(CONTROLAPI_SOURCES
     domains/apipalettedomain.cpp domains/apipalettedomain.h
     domains/apifixturesdomain.cpp domains/apifixturesdomain.h
     domains/apifixturegroupdomain.cpp domains/apifixturegroupdomain.h
+    domains/apivcdomain.cpp domains/apivcdomain.h
 )
 
 # Static, linked directly into the qlcplus5 executable - same reasoning as
