@@ -25,6 +25,7 @@
 #include "domains/apiiodomain.h"
 #include "domains/apicoredomain.h"
 #include "domains/apifunctionsdomain.h"
+#include "domains/apipalettedomain.h"
 #include "qlcconfig.h"
 #include "doc.h"
 
@@ -45,6 +46,7 @@ ApiServer::ApiServer(QObject *parent, Doc *doc)
     m_ioDomain = new ApiIoDomain(m_doc, this, this);
     m_coreDomain = new ApiCoreDomain(m_doc, this, this);
     m_functionsDomain = new ApiFunctionsDomain(m_doc, this, this);
+    m_paletteDomain = new ApiPaletteDomain(m_doc, this, this);
 }
 
 ApiServer::~ApiServer()

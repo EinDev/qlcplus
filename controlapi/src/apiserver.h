@@ -28,6 +28,7 @@ class ApiSession;
 class ApiIoDomain;
 class ApiCoreDomain;
 class ApiFunctionsDomain;
+class ApiPaletteDomain;
 class Doc;
 
 /** Default port for the control API's WebSocket server. Distinct from
@@ -116,6 +117,7 @@ private:
     ApiIoDomain *m_ioDomain;
     ApiCoreDomain *m_coreDomain;
     ApiFunctionsDomain *m_functionsDomain;
+    ApiPaletteDomain *m_paletteDomain;
 };
 
 #endif
