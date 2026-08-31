@@ -19,11 +19,20 @@
 #define APIIODOMAIN_H
 
 #include <QHash>
+#include <QMap>
+#include <QMutex>
 #include <QObject>
+#include <QPair>
+#include <QSharedPointer>
+
+#include "dmxsource.h"
 
 class ApiServer;
 class Doc;
 class Universe;
+class GenericFader;
+class FadeChannel;
+class MasterTimer;
 
 /**
  * First real vertical slice of the control API (see docs/api-spec/fragments/io.yaml
@@ -34,17 +43,44 @@ class Universe;
  * constructor-injected-Doc*, connect-to-existing-signals pattern every
  * qmlui manager class already uses (e.g. qmlui/fixturemanager.cpp,
  * qmlui/simpledesk.cpp).
+ *
+ * Also implements the io.simpleDesk.* live-compose slice (get/setChannel/
+ * resetChannel/resetUniverse/setUniverseFilter - io.yaml ~1463-1800): a
+ * from-scratch, engine/src-only reimplementation of qmlui::SimpleDesk's
+ * DMXSource/GenericFader pattern (SimpleDesk itself is qmlui-only and
+ * unreachable from this deliberately qmlui-free module - see
+ * docs/agent-reports/2026-08-31-lighting-redesign-and-websocket-plan.md).
  */
-class ApiIoDomain : public QObject
+class ApiIoDomain : public QObject, public DMXSource
 {
     Q_OBJECT
 
 public:
     ApiIoDomain(Doc *doc, ApiServer *server, QObject *parent = nullptr);
+    ~ApiIoDomain() override;
+
+    /** @reimp DMXSource - pushes every live-held Simple Desk value through
+     *  this class's own per-universe GenericFader(s), mirroring
+     *  qmlui/simpledesk.cpp's writeDMX() exactly (see its own comments for
+     *  why the actual Universe/GenericFader manipulation has to happen here,
+     *  on MasterTimer's thread, rather than directly in a request handler). */
+    void writeDMX(MasterTimer *timer, QList<Universe *> universes) override;
 
 private:
     void registerMethods();
     void watchUniverse(Universe *universe);
+
+    /** Absolute-address (universeId<<9 + channel) held-value -> IoSimpleDeskChannel
+     *  JSON, per io.yaml's schema. Caller must hold m_simpleDeskMutex. */
+    QJsonObject simpleDeskChannelToJson(quint32 address) const;
+
+    /** Get-or-create this domain's own GenericFader for universeId (requested
+     *  at Universe::SimpleDesk priority - see this feature's plan doc for why
+     *  a second, unrelated Universe::SimpleDesk-priority fader coexisting
+     *  with the real SimpleDesk's is safe) and the FadeChannel within it for
+     *  (fixtureId, channel). universeId must already be < universes.count(). */
+    FadeChannel *simpleDeskFader(const QList<Universe *> &universes, quint32 universeId,
+                                  quint32 fixtureId, quint32 channel);
 
 private slots:
     void slotUniverseAdded(quint32 id);
@@ -83,6 +119,37 @@ private:
      *  their originClientId either way, so an unrelated/engine-driven change
      *  correctly gets a null origin. */
     QString m_pendingOriginClientId;
+
+    /** Guards every m_simpleDesk* member below: writeDMX() runs on
+     *  MasterTimer's own thread while request handlers run on whatever
+     *  thread ApiServer/this domain was constructed on (see apiserver.h's
+     *  own doc comment) - exactly the SimpleDesk::m_mutex situation
+     *  qmlui/simpledesk.h/.cpp already has to deal with. */
+    mutable QMutex m_simpleDeskMutex;
+
+    /** Currently-held live override values, keyed by absolute address
+     *  ((universeId<<9)+channel, matching IoSimpleDeskChannel's wire
+     *  encoding) - mirrors SimpleDesk::m_values. */
+    QHash<quint32, uchar> m_simpleDeskValues;
+
+    /** One GenericFader per universe this domain has ever written to,
+     *  mirroring SimpleDesk::m_fadersMap. */
+    QMap<quint32, QSharedPointer<GenericFader>> m_simpleDeskFaders;
+
+    enum SimpleDeskCommand { SimpleDeskResetChannel, SimpleDeskResetUniverse };
+
+    /** (command, address-or-universeId) pairs queued by resetChannel/
+     *  resetUniverse request handlers and drained by writeDMX() - the actual
+     *  Universe/GenericFader manipulation those commands need can only
+     *  safely happen on MasterTimer's thread, mirroring
+     *  SimpleDesk::m_commandQueue. */
+    QList<QPair<int, quint32>> m_simpleDeskCommandQueue;
+
+    /** io.simpleDesk.setUniverseFilter/get's "which universe is Simple
+     *  Desk's channel view currently targeting" - global engine state
+     *  shared by every connected client (io.yaml's own description of this
+     *  field), not persisted, not per-session. */
+    quint32 m_simpleDeskUniverseFilter = 0;
 };
 
 #endif

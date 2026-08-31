@@ -27,6 +27,11 @@
 #include "outputpatch.h"
 #include "inputpatch.h"
 #include "universe.h"
+#include "genericfader.h"
+#include "fadechannel.h"
+#include "qlcchannel.h"
+#include "fixture.h"
+#include "mastertimer.h"
 #include "doc.h"
 
 namespace {
@@ -156,6 +161,7 @@ QJsonObject grandMasterStateToJson(InputOutputMap *ioMap)
 
 ApiIoDomain::ApiIoDomain(Doc *doc, ApiServer *server, QObject *parent)
     : QObject(parent)
+    , DMXSource()
     , m_doc(doc)
     , m_server(server)
 {
@@ -163,6 +169,8 @@ ApiIoDomain::ApiIoDomain(Doc *doc, ApiServer *server, QObject *parent)
     Q_ASSERT(m_server != nullptr);
 
     registerMethods();
+
+    m_doc->masterTimer()->registerDMXSource(this);
 
     // Old-style string-based connect() deliberately, not the modern pointer
     // syntax: InputOutputMap/Universe live in qlcplusengine.dll, and this
@@ -180,6 +188,11 @@ ApiIoDomain::ApiIoDomain(Doc *doc, ApiServer *server, QObject *parent)
 
     for (Universe *universe : ioMap->universes())
         watchUniverse(universe);
+}
+
+ApiIoDomain::~ApiIoDomain()
+{
+    m_doc->masterTimer()->unregisterDMXSource(this);
 }
 
 void ApiIoDomain::watchUniverse(Universe *universe)
@@ -402,4 +415,272 @@ void ApiIoDomain::registerMethods()
         result.insert(QStringLiteral("values"), jsonValues);
         session->send(ApiEnvelope::buildOkResponse(id, result));
     });
+
+    dispatcher->registerMethod(QStringLiteral("io.simpleDesk.get"), [this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        quint32 universeId = quint32(params.value(QStringLiteral("universeId")).toInt());
+        if (m_doc->inputOutputMap()->universe(universeId) == nullptr)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrNotFound,
+                                                            QStringLiteral("No such universe")));
+            return;
+        }
+
+        QJsonArray channels;
+        {
+            QMutexLocker locker(&m_simpleDeskMutex);
+            quint32 start = universeId * 512;
+            for (auto it = m_simpleDeskValues.constBegin(); it != m_simpleDeskValues.constEnd(); ++it)
+            {
+                if (it.key() >= start && it.key() < start + 512)
+                    channels.append(simpleDeskChannelToJson(it.key()));
+            }
+        }
+
+        QJsonObject result;
+        result.insert(QStringLiteral("universeId"), int(universeId));
+        result.insert(QStringLiteral("channels"), channels);
+        // slidersNumber/currentPage mirror qmlui SimpleDesk's own channel-view
+        // pagination (PreviewContext), a UI-viewport concept this headless
+        // domain has no equivalent state for - reporting 0/0 rather than
+        // omitting the (required) fields. Revisit if a client ever needs
+        // this for anything beyond satisfying the schema.
+        result.insert(QStringLiteral("slidersNumber"), 0);
+        result.insert(QStringLiteral("currentPage"), 0);
+        session->send(ApiEnvelope::buildOkResponse(id, result));
+    });
+
+    dispatcher->registerMethod(QStringLiteral("io.simpleDesk.setChannel"), [this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        quint32 address = quint32(params.value(QStringLiteral("address")).toInt());
+        int value = qBound(0, params.value(QStringLiteral("value")).toInt(), 255);
+
+        {
+            QMutexLocker locker(&m_simpleDeskMutex);
+            m_simpleDeskValues[address] = uchar(value);
+        }
+        setChanged(true); // DMXSource::setChanged() - picked up by writeDMX()
+
+        session->send(ApiEnvelope::buildOkResponse(id, QJsonObject()));
+
+        QJsonObject data;
+        data.insert(QStringLiteral("address"), int(address));
+        data.insert(QStringLiteral("value"), value);
+        data.insert(QStringLiteral("overridden"), true);
+        m_server->broadcast(QStringLiteral("io.simpleDesk.channelChanged"), data, session->clientId(), false);
+    });
+
+    dispatcher->registerMethod(QStringLiteral("io.simpleDesk.resetChannel"), [this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        quint32 address = quint32(params.value(QStringLiteral("address")).toInt());
+
+        // The restored value (the fixture channel's default, or 0 for a raw/
+        // unpatched address) is knowable synchronously from static fixture-
+        // profile data - no need to wait for writeDMX() to actually touch the
+        // Universe before reporting it in the channelChanged event below.
+        quint32 fxID = m_doc->fixtureForAddress(address);
+        Fixture *fixture = m_doc->fixture(fxID);
+        int restoredValue = 0;
+        if (fixture != nullptr)
+        {
+            const QLCChannel *ch = fixture->channel(address - fixture->address());
+            if (ch != nullptr)
+                restoredValue = ch->defaultValue();
+        }
+
+        {
+            QMutexLocker locker(&m_simpleDeskMutex);
+            m_simpleDeskValues.remove(address);
+            m_simpleDeskCommandQueue.append(qMakePair(int(SimpleDeskResetChannel), address));
+        }
+        setChanged(true);
+
+        session->send(ApiEnvelope::buildOkResponse(id, QJsonObject()));
+
+        QJsonObject data;
+        data.insert(QStringLiteral("address"), int(address));
+        data.insert(QStringLiteral("value"), restoredValue);
+        data.insert(QStringLiteral("overridden"), false);
+        m_server->broadcast(QStringLiteral("io.simpleDesk.channelChanged"), data, session->clientId(), false);
+    });
+
+    dispatcher->registerMethod(QStringLiteral("io.simpleDesk.resetUniverse"), [this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        quint32 universeId = quint32(params.value(QStringLiteral("universeId")).toInt());
+        if (m_doc->inputOutputMap()->universe(universeId) == nullptr)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrNotFound,
+                                                            QStringLiteral("No such universe")));
+            return;
+        }
+
+        {
+            QMutexLocker locker(&m_simpleDeskMutex);
+            quint32 start = universeId * 512;
+            QMutableHashIterator<quint32, uchar> it(m_simpleDeskValues);
+            while (it.hasNext())
+            {
+                it.next();
+                if (it.key() >= start && it.key() < start + 512)
+                    it.remove();
+            }
+            m_simpleDeskCommandQueue.append(qMakePair(int(SimpleDeskResetUniverse), universeId));
+        }
+        setChanged(true);
+
+        session->send(ApiEnvelope::buildOkResponse(id, QJsonObject()));
+
+        QJsonObject data;
+        data.insert(QStringLiteral("universeId"), int(universeId));
+        m_server->broadcast(QStringLiteral("io.simpleDesk.universeReset"), data, session->clientId(), false);
+    });
+
+    dispatcher->registerMethod(QStringLiteral("io.simpleDesk.setUniverseFilter"), [this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        m_simpleDeskUniverseFilter = quint32(params.value(QStringLiteral("universeId")).toInt());
+        session->send(ApiEnvelope::buildOkResponse(id, QJsonObject()));
+
+        QJsonObject data;
+        data.insert(QStringLiteral("universeId"), int(m_simpleDeskUniverseFilter));
+        m_server->broadcast(QStringLiteral("io.simpleDesk.universeFilterChanged"), data, session->clientId(), false);
+    });
+}
+
+QJsonObject ApiIoDomain::simpleDeskChannelToJson(quint32 address) const
+{
+    // Caller must hold m_simpleDeskMutex - reads m_simpleDeskValues directly.
+    quint32 universeId = address >> 9;
+    quint32 channel = address & 0x01FF;
+    quint32 fxID = m_doc->fixtureForAddress(address);
+    Fixture *fixture = m_doc->fixture(fxID);
+
+    QJsonObject obj;
+    obj.insert(QStringLiteral("address"), int(address));
+    obj.insert(QStringLiteral("universeId"), int(universeId));
+    obj.insert(QStringLiteral("channel"), int(channel));
+    obj.insert(QStringLiteral("value"), int(m_simpleDeskValues.value(address)));
+    obj.insert(QStringLiteral("overridden"), true);
+
+    if (fixture != nullptr)
+    {
+        const QLCChannel *ch = fixture->channel(channel - fixture->address());
+        obj.insert(QStringLiteral("fixtureId"), int(fxID));
+        obj.insert(QStringLiteral("group"), ch != nullptr ? QJsonValue(QLCChannel::groupToString(ch->group()))
+                                                            : QJsonValue());
+    }
+    else
+    {
+        obj.insert(QStringLiteral("fixtureId"), QJsonValue());
+        obj.insert(QStringLiteral("group"), QJsonValue());
+    }
+    return obj;
+}
+
+FadeChannel *ApiIoDomain::simpleDeskFader(const QList<Universe *> &universes, quint32 universeId,
+                                           quint32 fixtureId, quint32 channel)
+{
+    QSharedPointer<GenericFader> fader = m_simpleDeskFaders.value(universeId, QSharedPointer<GenericFader>());
+    if (fader.isNull())
+    {
+        fader = universes[universeId]->requestFader(Universe::SimpleDesk);
+        m_simpleDeskFaders[universeId] = fader;
+    }
+    return fader->getChannelFader(m_doc, universes[universeId], fixtureId, channel);
+}
+
+void ApiIoDomain::writeDMX(MasterTimer *timer, QList<Universe *> universes)
+{
+    Q_UNUSED(timer)
+
+    QMutexLocker locker(&m_simpleDeskMutex);
+
+    for (const QPair<int, quint32> &command : std::as_const(m_simpleDeskCommandQueue))
+    {
+        if (command.first == SimpleDeskResetUniverse)
+        {
+            quint32 universeId = command.second;
+            if (universeId >= quint32(universes.count()))
+                continue;
+
+            QSharedPointer<GenericFader> fader = m_simpleDeskFaders.value(universeId, QSharedPointer<GenericFader>());
+            if (fader.isNull())
+                continue;
+
+            QHashIterator<quint32, FadeChannel> it(fader->channels());
+            while (it.hasNext())
+            {
+                it.next();
+                FadeChannel fc = it.value();
+                Fixture *fixture = m_doc->fixture(fc.fixture());
+                quint32 chIndex = fc.channel() & 0x01FF;
+                if (fixture != nullptr)
+                {
+                    const QLCChannel *ch = fixture->channel(chIndex);
+                    if (ch != nullptr)
+                        universes[universeId]->setChannelDefaultValue(fixture->address() + chIndex, ch->defaultValue());
+                }
+                else
+                {
+                    universes[universeId]->reset(chIndex, 1);
+                }
+            }
+            universes[universeId]->dismissFader(fader);
+            m_simpleDeskFaders.remove(universeId);
+        }
+        else // SimpleDeskResetChannel
+        {
+            quint32 address = command.second;
+            quint32 universeId = address >> 9;
+            if (universeId >= quint32(universes.count()))
+                continue;
+
+            QSharedPointer<GenericFader> fader = m_simpleDeskFaders.value(universeId, QSharedPointer<GenericFader>());
+            if (fader.isNull())
+                continue;
+
+            quint32 fxID = m_doc->fixtureForAddress(address);
+            Fixture *fixture = m_doc->fixture(fxID);
+            quint32 chIndex = fixture != nullptr ? address - fixture->address() : (address & 0x01FF);
+
+            FadeChannel fc(m_doc, fxID, chIndex);
+            fader->remove(&fc);
+            universes[universeId]->reset(address & 0x01FF, 1);
+            if (fixture != nullptr)
+            {
+                const QLCChannel *ch = fixture->channel(chIndex);
+                if (ch != nullptr)
+                    universes[universeId]->setChannelDefaultValue(address & 0x01FF, ch->defaultValue());
+            }
+        }
+    }
+    m_simpleDeskCommandQueue.clear();
+
+    if (hasChanged())
+    {
+        QHashIterator<quint32, uchar> it(m_simpleDeskValues);
+        while (it.hasNext())
+        {
+            it.next();
+            quint32 address = it.key();
+            quint32 universeId = address >> 9;
+            if (universeId >= quint32(universes.count()))
+                continue;
+
+            quint32 fxID = m_doc->fixtureForAddress(address);
+            Fixture *fixture = m_doc->fixture(fxID);
+            // Unlike qmlui/simpledesk.cpp's own writeDMX() (which passes the
+            // raw absolute address as "channel" for a non-fixture value -
+            // only correct when the value's universe index is 0), mask to
+            // the within-universe channel explicitly here: this domain's
+            // "address" encoding ((universeId<<9)+channel, per io.yaml) means
+            // that shortcut would silently misresolve for any universe > 0.
+            quint32 channel = fixture != nullptr ? address - fixture->address() : (address & 0x01FF);
+
+            FadeChannel *fc = simpleDeskFader(universes, universeId, fxID, channel);
+            fc->setCurrent(it.value());
+            fc->setTarget(it.value());
+            fc->addFlag(FadeChannel::Override);
+        }
+        setChanged(false);
+    }
 }

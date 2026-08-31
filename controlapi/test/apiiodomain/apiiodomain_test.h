@@ -47,6 +47,13 @@ private slots:
     void blackoutToggleBroadcastsLiveEvent();
     void dmxEventOnlyDeliveredAfterSubscribe();
 
+    void simpleDeskSetChannelIsReflectedInGet();
+    void simpleDeskSetChannelBroadcastsOverriddenTrue();
+    void simpleDeskResetChannelBroadcastsOverriddenFalse();
+    void simpleDeskResetUniverseClearsHeldValues();
+    void simpleDeskSetUniverseFilterBroadcastsEvent();
+    void simpleDeskGetOnMissingUniverseIsNotFound();
+
 private:
     /** Send a request and wait for exactly one more text message to arrive
      *  on client, returning it parsed as a JSON object. */

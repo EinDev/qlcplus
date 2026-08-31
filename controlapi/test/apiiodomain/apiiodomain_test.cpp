@@ -37,6 +37,8 @@ static QString buildRequest(const QString &method, const QJsonObject &params, co
 
 void ApiIoDomain_Test::init()
 {
+    // Doc(QObject*, int universes = 4) - a fresh Doc already has universes
+    // 0-3, no addUniverse() needed for the simpleDesk* cases below.
     m_doc = new Doc(nullptr);
     m_apiServer = new ApiServer(nullptr, m_doc);
     QVERIFY(m_apiServer->listen(0));
@@ -254,6 +256,163 @@ void ApiIoDomain_Test::dmxEventOnlyDeliveredAfterSubscribe()
     m_apiServer->broadcast(topic, data, QString(), true);
     QTest::qWait(200);
     QCOMPARE(spy2.count(), 0);
+}
+
+void ApiIoDomain_Test::simpleDeskSetChannelIsReflectedInGet()
+{
+    helloAndGetClientId();
+
+    QJsonObject setParams;
+    setParams.insert(QStringLiteral("address"), 5);
+    setParams.insert(QStringLiteral("value"), 200);
+    QJsonObject setReply = sendAndWaitForReply(QStringLiteral("io.simpleDesk.setChannel"), setParams);
+    QCOMPARE(setReply.value(QStringLiteral("ok")).toBool(), true);
+
+    QJsonObject getParams;
+    getParams.insert(QStringLiteral("universeId"), 0);
+    QJsonObject getReply = sendAndWaitForReply(QStringLiteral("io.simpleDesk.get"), getParams);
+    QCOMPARE(getReply.value(QStringLiteral("ok")).toBool(), true);
+
+    QJsonArray channels = getReply.value(QStringLiteral("result")).toObject().value(QStringLiteral("channels")).toArray();
+    QCOMPARE(channels.count(), 1);
+    QJsonObject ch = channels.at(0).toObject();
+    QCOMPARE(ch.value(QStringLiteral("address")).toInt(), 5);
+    QCOMPARE(ch.value(QStringLiteral("universeId")).toInt(), 0);
+    QCOMPARE(ch.value(QStringLiteral("channel")).toInt(), 5);
+    QCOMPARE(ch.value(QStringLiteral("value")).toInt(), 200);
+    QCOMPARE(ch.value(QStringLiteral("overridden")).toBool(), true);
+    QVERIFY(ch.value(QStringLiteral("fixtureId")).isNull());
+    QVERIFY(ch.value(QStringLiteral("group")).isNull());
+}
+
+void ApiIoDomain_Test::simpleDeskSetChannelBroadcastsOverriddenTrue()
+{
+    QString clientId = helloAndGetClientId();
+
+    QSignalSpy spy(m_client, &QWebSocket::textMessageReceived);
+    QJsonObject params;
+    params.insert(QStringLiteral("address"), 10);
+    params.insert(QStringLiteral("value"), 42);
+    m_client->sendTextMessage(buildRequest(QStringLiteral("io.simpleDesk.setChannel"), params, QStringLiteral("t-sc")));
+    QVERIFY(QTest::qWaitFor([&]() { return spy.count() >= 2; }, 2000));
+
+    bool sawEvent = false;
+    for (const QList<QVariant> &frame : spy)
+    {
+        QJsonObject obj = QJsonDocument::fromJson(frame.at(0).toString().toUtf8()).object();
+        if (obj.value(QStringLiteral("type")).toString() == QStringLiteral("event") &&
+            obj.value(QStringLiteral("topic")).toString() == QStringLiteral("io.simpleDesk.channelChanged"))
+        {
+            QJsonObject data = obj.value(QStringLiteral("data")).toObject();
+            QCOMPARE(data.value(QStringLiteral("address")).toInt(), 10);
+            QCOMPARE(data.value(QStringLiteral("value")).toInt(), 42);
+            QCOMPARE(data.value(QStringLiteral("overridden")).toBool(), true);
+            QCOMPARE(obj.value(QStringLiteral("originClientId")).toString(), clientId);
+            sawEvent = true;
+        }
+    }
+    QVERIFY(sawEvent);
+}
+
+void ApiIoDomain_Test::simpleDeskResetChannelBroadcastsOverriddenFalse()
+{
+    helloAndGetClientId();
+
+    QJsonObject setParams;
+    setParams.insert(QStringLiteral("address"), 7);
+    setParams.insert(QStringLiteral("value"), 99);
+    sendAndWaitForReply(QStringLiteral("io.simpleDesk.setChannel"), setParams);
+
+    QSignalSpy spy(m_client, &QWebSocket::textMessageReceived);
+    QJsonObject resetParams;
+    resetParams.insert(QStringLiteral("address"), 7);
+    m_client->sendTextMessage(buildRequest(QStringLiteral("io.simpleDesk.resetChannel"), resetParams, QStringLiteral("t-rc")));
+    QVERIFY(QTest::qWaitFor([&]() { return spy.count() >= 2; }, 2000));
+
+    bool sawEvent = false;
+    for (const QList<QVariant> &frame : spy)
+    {
+        QJsonObject obj = QJsonDocument::fromJson(frame.at(0).toString().toUtf8()).object();
+        if (obj.value(QStringLiteral("type")).toString() == QStringLiteral("event") &&
+            obj.value(QStringLiteral("topic")).toString() == QStringLiteral("io.simpleDesk.channelChanged"))
+        {
+            QJsonObject data = obj.value(QStringLiteral("data")).toObject();
+            QCOMPARE(data.value(QStringLiteral("address")).toInt(), 7);
+            // No fixture patched at address 7 in this test, so the "restored"
+            // value is the raw-channel default (0) - see resetChannel's own
+            // handler comment for why this is computed synchronously.
+            QCOMPARE(data.value(QStringLiteral("value")).toInt(), 0);
+            QCOMPARE(data.value(QStringLiteral("overridden")).toBool(), false);
+            sawEvent = true;
+        }
+    }
+    QVERIFY(sawEvent);
+
+    QJsonObject getParams;
+    getParams.insert(QStringLiteral("universeId"), 0);
+    QJsonObject getReply = sendAndWaitForReply(QStringLiteral("io.simpleDesk.get"), getParams);
+    QCOMPARE(getReply.value(QStringLiteral("result")).toObject().value(QStringLiteral("channels")).toArray().count(), 0);
+}
+
+void ApiIoDomain_Test::simpleDeskResetUniverseClearsHeldValues()
+{
+    helloAndGetClientId();
+
+    QJsonObject setParams1, setParams2;
+    setParams1.insert(QStringLiteral("address"), 1);
+    setParams1.insert(QStringLiteral("value"), 10);
+    setParams2.insert(QStringLiteral("address"), 2);
+    setParams2.insert(QStringLiteral("value"), 20);
+    sendAndWaitForReply(QStringLiteral("io.simpleDesk.setChannel"), setParams1);
+    sendAndWaitForReply(QStringLiteral("io.simpleDesk.setChannel"), setParams2);
+
+    QJsonObject resetParams;
+    resetParams.insert(QStringLiteral("universeId"), 0);
+    QJsonObject resetReply = sendAndWaitForReply(QStringLiteral("io.simpleDesk.resetUniverse"), resetParams);
+    QCOMPARE(resetReply.value(QStringLiteral("ok")).toBool(), true);
+
+    QJsonObject getParams;
+    getParams.insert(QStringLiteral("universeId"), 0);
+    QJsonObject getReply = sendAndWaitForReply(QStringLiteral("io.simpleDesk.get"), getParams);
+    QCOMPARE(getReply.value(QStringLiteral("result")).toObject().value(QStringLiteral("channels")).toArray().count(), 0);
+}
+
+void ApiIoDomain_Test::simpleDeskSetUniverseFilterBroadcastsEvent()
+{
+    QString clientId = helloAndGetClientId();
+
+    QSignalSpy spy(m_client, &QWebSocket::textMessageReceived);
+    QJsonObject params;
+    params.insert(QStringLiteral("universeId"), 0);
+    m_client->sendTextMessage(buildRequest(QStringLiteral("io.simpleDesk.setUniverseFilter"), params, QStringLiteral("t-uf")));
+    QVERIFY(QTest::qWaitFor([&]() { return spy.count() >= 2; }, 2000));
+
+    bool sawEvent = false;
+    for (const QList<QVariant> &frame : spy)
+    {
+        QJsonObject obj = QJsonDocument::fromJson(frame.at(0).toString().toUtf8()).object();
+        if (obj.value(QStringLiteral("type")).toString() == QStringLiteral("event") &&
+            obj.value(QStringLiteral("topic")).toString() == QStringLiteral("io.simpleDesk.universeFilterChanged"))
+        {
+            QCOMPARE(obj.value(QStringLiteral("data")).toObject().value(QStringLiteral("universeId")).toInt(), 0);
+            QCOMPARE(obj.value(QStringLiteral("originClientId")).toString(), clientId);
+            sawEvent = true;
+        }
+    }
+    QVERIFY(sawEvent);
+}
+
+void ApiIoDomain_Test::simpleDeskGetOnMissingUniverseIsNotFound()
+{
+    helloAndGetClientId();
+
+    QJsonObject params;
+    // Doc(QObject*, int universes = 4) only patches ids 0-3 by default.
+    params.insert(QStringLiteral("universeId"), 999);
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("io.simpleDesk.get"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(),
+              QStringLiteral("NOT_FOUND"));
 }
 
 QTEST_MAIN(ApiIoDomain_Test)
