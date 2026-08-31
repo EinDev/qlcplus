@@ -135,6 +135,9 @@ public:
         // have silently narrowed a script's stopFunction() to "only stop
         // what I started".
         ScriptStopFunction,
+        // The WebSocket Control API (controlapi/) triggering functions.start/
+        // functions.stop/functions.setPause on behalf of a remote client.
+        ControlApi,
     };
 
 private:
