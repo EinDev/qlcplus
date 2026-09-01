@@ -1,5 +1,6 @@
 add_executable(apivcdomain_test WIN32
     apivcdomain_test.cpp apivcdomain_test.h
+    fakevchost.cpp fakevchost.h
 )
 target_include_directories(apivcdomain_test PRIVATE
     ../../../plugins/interfaces

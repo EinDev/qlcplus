@@ -25,6 +25,7 @@
 #include "apivcdomain_test.h"
 #include "apiserver.h"
 #include "doc.h"
+#include "fakevchost.h"
 
 static QString buildRequest(const QString &method, const QJsonObject &params, const QString &id)
 {
@@ -39,7 +40,8 @@ static QString buildRequest(const QString &method, const QJsonObject &params, co
 void ApiVcDomain_Test::init()
 {
     m_doc = new Doc(nullptr);
-    m_apiServer = new ApiServer(nullptr, m_doc);
+    m_vcHost = new FakeVcHost();
+    m_apiServer = new ApiServer(m_vcHost, m_doc);
     QVERIFY(m_apiServer->listen(0));
 
     m_client = new QWebSocket();
@@ -53,6 +55,8 @@ void ApiVcDomain_Test::cleanup()
     m_client = nullptr;
     delete m_apiServer;
     m_apiServer = nullptr;
+    delete m_vcHost;
+    m_vcHost = nullptr;
     delete m_doc;
     m_doc = nullptr;
 }

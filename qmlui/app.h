@@ -26,6 +26,7 @@
 #include <QObject>
 #include "doc.h"
 #include "apiprojecthost.h"
+#include "apivchost.h"
 
 class MainView2D;
 class ShowManager;
@@ -37,6 +38,7 @@ class FixtureManager;
 class PaletteManager;
 class ContextManager;
 class VirtualConsole;
+class VCWidget;
 class FunctionManager;
 class QXmlStreamReader;
 class FixtureGroupEditor;
@@ -53,7 +55,7 @@ class QMouseEvent;
 
 #define KXMLQLCWorkspace QStringLiteral("Workspace")
 
-class App final : public QQuickView, public ApiProjectHost
+class App final : public QQuickView, public ApiProjectHost, public ApiVcHost
 {
     Q_OBJECT
     Q_DISABLE_COPY(App)
@@ -444,5 +446,51 @@ public:
 
 private:
     FixtureEditor *m_fixtureEditor;
+
+    /*********************************************************************
+     * ApiVcHost implementation (controlapi/src/apivchost.h)
+     *
+     * Drives the real, live m_virtualConsole object graph on behalf of
+     * ApiVcDomain (controlapi/src/domains/apivcdomain.cpp), obtained there via
+     * dynamic_cast<ApiVcHost*>(m_server->parent()) - App is ApiServer's Qt
+     * parent (see initDoc()/m_apiServer construction in app.cpp), exactly
+     * like it already is for ApiProjectHost. Implemented in
+     * app_apivchost.cpp, not app.cpp, to keep this substantial slice of
+     * VCWidget/VCPage/VCFrame-facing code out of app.cpp's own already large
+     * body.
+     *********************************************************************/
+public:
+    int vcPageCount() const override;
+    QJsonObject vcPageSnapshot(int index) const override;
+    int vcSelectedPage() const override;
+    void vcSetSelectedPage(int index) override;
+    void vcAddPage(int index) override;
+    bool vcDeletePage(int index, QJsonArray &deletedWidgetIds) override;
+    void vcRenamePage(int index, const QString &name) override;
+    bool vcSetPagePin(int index, const QString &currentPin, const QString &newPin) override;
+    bool vcValidatePagePin(int index, const QString &pin) const override;
+
+    bool vcWidgetExists(quint32 id) const override;
+    QString vcWidgetType(quint32 id) const override;
+    int vcWidgetPage(quint32 id) const override;
+    quint32 vcWidgetParentId(quint32 id) const override;
+    bool vcIsContainerWidget(quint32 id) const override;
+    QList<quint32> vcWidgetIds() const override;
+    QJsonObject vcWidgetSnapshot(quint32 id) const override;
+
+    quint32 vcCreateWidget(const QString &widgetType, int page, quint32 parentId,
+                            const QJsonObject &geometry, const QJsonObject &style,
+                            const QJsonObject &typeConfig, QString *error) override;
+    void vcDeleteWidgets(const QList<quint32> &ids, QJsonArray &deletedIds) override;
+    bool vcUpdateWidgetCommon(quint32 id, const QJsonObject &fields, QString *error) override;
+    void vcMoveTopLevelWidgetToPage(quint32 id, int newPage) override;
+    bool vcSetWidgetConfig(quint32 id, const QJsonObject &configPatch, QString *error) override;
+    bool vcReparentWidget(quint32 id, quint32 newParentId, QPointF newTopLeft, QString *error) override;
+    void vcRepositionWidgets(const QList<QPair<quint32, QJsonObject> > &updates) override;
+
+private:
+    /** Resolve a VC widget id to its live VCWidget instance via m_virtualConsole->widget(id), or
+     *  nullptr if not found - used by every ApiVcHost widget method above. */
+    VCWidget *vcFindWidget(quint32 id) const;
 };
 #endif // APP_H

@@ -23,6 +23,7 @@
 
 class Doc;
 class ApiServer;
+class FakeVcHost;
 class QWebSocket;
 
 /**
@@ -67,6 +68,7 @@ private:
 
 private:
     Doc *m_doc;
+    FakeVcHost *m_vcHost;
     ApiServer *m_apiServer;
     QWebSocket *m_client;
 };
