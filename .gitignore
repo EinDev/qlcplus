@@ -70,3 +70,6 @@ debian/qlcplus-data/
 debian/qlcplus-dbg/
 debian/qlcplus5-dbg/
 debian/tmp/
+
+# Python scratch tooling (dev_ws_client.py)
+__pycache__/
