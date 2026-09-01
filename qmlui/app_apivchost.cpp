@@ -362,7 +362,17 @@ QJsonObject widgetTypeConfigToJson(VCWidget *w)
 
 VCWidget *App::vcFindWidget(quint32 id) const
 {
-    return m_virtualConsole != nullptr ? m_virtualConsole->widget(id) : nullptr;
+    if (m_virtualConsole == nullptr)
+        return nullptr;
+
+    VCWidget *w = m_virtualConsole->widget(id);
+    // VCPage is itself a VCWidget (it derives from VCFrame) and is registered in the same
+    // VirtualConsole::m_widgetsMap as every other widget (see VirtualConsole::addPage()) - but a
+    // page is not a "widget" in vc.widget.* API terms (it IS a "page" in vc.page.* terms), so hide
+    // it here at the single lookup choke point every ApiVcHost widget method above goes through.
+    if (w != nullptr && qobject_cast<VCPage *>(w) != nullptr)
+        return nullptr;
+    return w;
 }
 
 static VCPage *vcTopLevelPageOf(VCWidget *w)
@@ -505,7 +515,19 @@ QList<quint32> App::vcWidgetIds() const
 {
     QList<quint32> ids;
     for (const QVariant &v : m_virtualConsole->widgetsList())
-        ids.append(v.toMap().value(QStringLiteral("id")).toUInt());
+    {
+        QVariantMap m = v.toMap();
+        // VirtualConsole::widgetsList() returns a single {"label": "<None>"} placeholder (no "id"
+        // key) when the VC has no widgets at all - skip it rather than parsing a phantom id 0.
+        if (m.contains(QStringLiteral("id")) == false)
+            continue;
+
+        VCWidget *w = m.value(QStringLiteral("classRef")).value<VCWidget *>();
+        if (w != nullptr && qobject_cast<VCPage *>(w) != nullptr)
+            continue; // pages are containers, not "widgets" in API terms - see vcFindWidget()
+
+        ids.append(m.value(QStringLiteral("id")).toUInt());
+    }
     return ids;
 }
 
