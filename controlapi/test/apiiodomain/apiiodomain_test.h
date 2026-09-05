@@ -49,6 +49,9 @@ private slots:
 
     void simpleDeskSetChannelIsReflectedInGet();
     void simpleDeskSetChannelBroadcastsOverriddenTrue();
+    void simpleDeskSetChannelsIsReflectedInGetAndDmxUniverse();
+    void simpleDeskSetChannelsBroadcastsOneEventPerEntry();
+    void simpleDeskSetChannelsRejectsMalformedEntryWithoutPartialApply();
     void simpleDeskResetChannelBroadcastsOverriddenFalse();
     void simpleDeskResetUniverseClearsHeldValues();
     void simpleDeskSetUniverseFilterBroadcastsEvent();

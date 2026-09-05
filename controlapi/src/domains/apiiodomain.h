@@ -45,7 +45,7 @@ class MasterTimer;
  * qmlui/simpledesk.cpp).
  *
  * Also implements the io.simpleDesk.* live-compose slice (get/setChannel/
- * resetChannel/resetUniverse/setUniverseFilter - io.yaml ~1463-1800): a
+ * setChannels/resetChannel/resetUniverse/setUniverseFilter - io.yaml ~1463-1800): a
  * from-scratch, engine/src-only reimplementation of qmlui::SimpleDesk's
  * DMXSource/GenericFader pattern (SimpleDesk itself is qmlui-only and
  * unreachable from this deliberately qmlui-free module - see

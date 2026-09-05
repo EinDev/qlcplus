@@ -1554,6 +1554,56 @@ messages:
       oneOf:
       - $ref: '#/components/messages/GenericAckResponse/payload'
       - $ref: '#/components/messages/ErrorResponse/payload'
+  IoSimpleDeskSetChannelsRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: io.simpleDesk.setChannels
+        params:
+          type: object
+          required:
+          - channels
+          description: 'Bulk variant of io.simpleDesk.setChannel: applies every {address, value}
+            entry from one request instead of requiring one WebSocket message per channel - for
+            high-frequency multi-channel writers (e.g. a live animation client driving dozens to
+            hundreds of channels per frame) where per-message serialization/dispatch overhead
+            otherwise dominates. All-or-nothing: the whole request is rejected with an ErrorResponse
+            and none of its entries are applied if any single entry is malformed (missing address/value,
+            or value outside 0-255). Still broadcasts one io.simpleDesk.channelChanged event per
+            entry, exactly as if setChannel had been called once per entry - no new bulk event type.'
+          properties:
+            channels:
+              type: array
+              minItems: 1
+              items:
+                type: object
+                required:
+                - address
+                - value
+                properties:
+                  address:
+                    type: integer
+                    description: 'Absolute address across all universes: (universeId << 9) + channel, 0-based
+                      (SimpleDesk::setAbsoluteChannelValue).'
+                  value:
+                    type: integer
+                    minimum: 0
+                    maximum: 255
+  IoSimpleDeskSetChannelsResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/GenericAckResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
   IoSimpleDeskChannelChangedEvent:
     payload:
       type: object
@@ -2745,6 +2795,18 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/ioSimpleDeskSetChannelResponse'
+  sendIoSimpleDeskSetChannels:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/ioSimpleDeskSetChannelsRequest'
+  receiveIoSimpleDeskSetChannelsResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/ioSimpleDeskSetChannelsResponse'
   receiveIoSimpleDeskChannelChanged:
     action: receive
     channel:

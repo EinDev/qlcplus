@@ -479,6 +479,71 @@ void ApiIoDomain::registerMethods()
         m_server->broadcast(QStringLiteral("io.simpleDesk.channelChanged"), data, session->clientId(), false);
     });
 
+    dispatcher->registerMethod(QStringLiteral("io.simpleDesk.setChannels"), [this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        // Bulk variant of setChannel above, for high-frequency multi-channel
+        // writers (e.g. a live animation client) that would otherwise pay
+        // per-WebSocket-message serialization/dispatch overhead once per
+        // channel per frame. Validate every entry before applying any of
+        // them - same all-or-nothing discipline as vc.widget.reposition's
+        // "widgets" array (apivcdomain.cpp) - so a single malformed entry
+        // can't leave the request partially applied.
+        QJsonArray items = params.value(QStringLiteral("channels")).toArray();
+        if (items.isEmpty())
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams,
+                                                            QStringLiteral("channels must not be empty")));
+            return;
+        }
+
+        QList<QPair<quint32, uchar>> entries;
+        entries.reserve(items.size());
+        for (const QJsonValue &v : items)
+        {
+            QJsonObject item = v.toObject();
+            if (item.contains(QStringLiteral("address")) == false || item.contains(QStringLiteral("value")) == false)
+            {
+                session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams,
+                                                                QStringLiteral("Each channels entry needs address and value")));
+                return;
+            }
+
+            int value = item.value(QStringLiteral("value")).toInt(-1);
+            if (value < 0 || value > 255)
+            {
+                session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams,
+                                                                QStringLiteral("value must be 0-255")));
+                return;
+            }
+
+            quint32 address = quint32(item.value(QStringLiteral("address")).toInt());
+            entries.append(qMakePair(address, uchar(value)));
+        }
+
+        {
+            // Same locked-scope discipline as setChannel above (see its own
+            // comment): setChanged() must stay inside this scope, but only
+            // needs to be called once for the whole batch - it's just a flag
+            // telling writeDMX() "something in m_simpleDeskValues changed
+            // since your last tick", not a per-channel counter.
+            QMutexLocker locker(&m_simpleDeskMutex);
+            for (const auto &entry : std::as_const(entries))
+                m_simpleDeskValues[entry.first] = entry.second;
+            setChanged(true); // DMXSource::setChanged() - picked up by writeDMX()
+        }
+
+        session->send(ApiEnvelope::buildOkResponse(id, QJsonObject()));
+
+        for (const auto &entry : std::as_const(entries))
+        {
+            QJsonObject data;
+            data.insert(QStringLiteral("address"), int(entry.first));
+            data.insert(QStringLiteral("value"), int(entry.second));
+            data.insert(QStringLiteral("overridden"), true);
+            m_server->broadcast(QStringLiteral("io.simpleDesk.channelChanged"), data, session->clientId(), false);
+        }
+    });
+
     dispatcher->registerMethod(QStringLiteral("io.simpleDesk.resetChannel"), [this](ApiSession *session, const QString &id, const QJsonObject &params)
     {
         quint32 address = quint32(params.value(QStringLiteral("address")).toInt());

@@ -23,6 +23,7 @@
 
 #include "apiiodomain_test.h"
 #include "apiserver.h"
+#include "mastertimer.h"
 #include "scene.h"
 #include "doc.h"
 
@@ -41,6 +42,22 @@ void ApiIoDomain_Test::init()
     // Doc(QObject*, int universes = 4) - a fresh Doc already has universes
     // 0-3, no addUniverse() needed for the simpleDesk* cases below.
     m_doc = new Doc(nullptr);
+    // Needed so ApiIoDomain::writeDMX() (registered as a DMXSource on this
+    // MasterTimer) actually gets ticked - the simpleDeskSetChannels* cases
+    // below verify the write reaches io.dmx.universe.get, not just the
+    // in-memory m_simpleDeskValues io.simpleDesk.get reads from. Same
+    // pattern as apifunctionsdomain_test.cpp's init(). startUniverses() is
+    // also needed here (unlike that suite): each Universe only actually
+    // applies its GenericFader-held values into postGMValues on its own
+    // worker QThread (Universe::processFaders(), ticked via MasterTimer's
+    // tickReady() -> Universe::tick() queued connection - see
+    // InputOutputMap::addUniverse()), and that thread is only started by
+    // InputOutputMap::startUniverses() (normally done by qmlui's
+    // App::initDoc(), not by a bare `new Doc()` - see this same file's
+    // older dmxEventOnlyDeliveredAfterSubscribe() comment, written before
+    // this was needed).
+    m_doc->masterTimer()->start();
+    m_doc->inputOutputMap()->startUniverses();
     m_apiServer = new ApiServer(nullptr, m_doc);
     QVERIFY(m_apiServer->listen(0));
 
@@ -55,6 +72,7 @@ void ApiIoDomain_Test::cleanup()
     m_client = nullptr;
     delete m_apiServer;
     m_apiServer = nullptr;
+    m_doc->masterTimer()->stop();
     delete m_doc;
     m_doc = nullptr;
 }
@@ -219,12 +237,14 @@ void ApiIoDomain_Test::dmxEventOnlyDeliveredAfterSubscribe()
     // Exercises ApiServer::broadcast()'s subscribeGated=true path directly
     // (the mechanism io.dmx.universe.*.changed relies on - see
     // ApiIoDomain::slotUniverseWritten) rather than driving a real per-
-    // universe QThread tick cycle end-to-end: Universe only runs its worker
-    // thread once InputOutputMap::startUniverses() has been called (normally
-    // done by qmlui's App::initDoc(), not by a bare `new Doc()`), and
-    // reliably timing a real cross-thread tick in a unit test would trade a
-    // lot of complexity for coverage this already gives: that a session
-    // only receives a subscribeGated topic after subscribing to it.
+    // universe QThread tick cycle end-to-end: even though init() now starts
+    // both MasterTimer and every Universe's worker thread (needed by the
+    // simpleDeskSetChannels* cases below, which do assert on a real,
+    // ticked-through io.dmx.universe.get read), reliably timing *this*
+    // test's assertion (an event fires only after subscribing) against a
+    // real cross-thread tick would still trade a lot of complexity for no
+    // extra coverage - a direct broadcast() call already proves the
+    // subscribe-gating behaviour this test is actually about.
     helloAndGetClientId();
     const QString topic = QStringLiteral("io.dmx.universe.1.changed");
     QJsonObject data;
@@ -313,6 +333,145 @@ void ApiIoDomain_Test::simpleDeskSetChannelBroadcastsOverriddenTrue()
         }
     }
     QVERIFY(sawEvent);
+}
+
+static QJsonObject channelEntry(int address, int value)
+{
+    QJsonObject o;
+    o.insert(QStringLiteral("address"), address);
+    o.insert(QStringLiteral("value"), value);
+    return o;
+}
+
+void ApiIoDomain_Test::simpleDeskSetChannelsIsReflectedInGetAndDmxUniverse()
+{
+    helloAndGetClientId();
+
+    QJsonArray channels;
+    channels.append(channelEntry(20, 50));
+    channels.append(channelEntry(21, 100));
+    channels.append(channelEntry(22, 150));
+
+    QJsonObject setParams;
+    setParams.insert(QStringLiteral("channels"), channels);
+    QJsonObject setReply = sendAndWaitForReply(QStringLiteral("io.simpleDesk.setChannels"), setParams);
+    QCOMPARE(setReply.value(QStringLiteral("ok")).toBool(), true);
+
+    QJsonObject getParams;
+    getParams.insert(QStringLiteral("universeId"), 0);
+    QJsonObject getReply = sendAndWaitForReply(QStringLiteral("io.simpleDesk.get"), getParams);
+    QCOMPARE(getReply.value(QStringLiteral("ok")).toBool(), true);
+
+    QJsonArray got = getReply.value(QStringLiteral("result")).toObject().value(QStringLiteral("channels")).toArray();
+    QCOMPARE(got.count(), 3);
+    QHash<int, QJsonObject> byAddress;
+    for (const QJsonValue &v : got)
+    {
+        QJsonObject ch = v.toObject();
+        byAddress[ch.value(QStringLiteral("address")).toInt()] = ch;
+    }
+    QCOMPARE(byAddress.value(20).value(QStringLiteral("value")).toInt(), 50);
+    QCOMPARE(byAddress.value(21).value(QStringLiteral("value")).toInt(), 100);
+    QCOMPARE(byAddress.value(22).value(QStringLiteral("value")).toInt(), 150);
+    QCOMPARE(byAddress.value(20).value(QStringLiteral("overridden")).toBool(), true);
+    QCOMPARE(byAddress.value(21).value(QStringLiteral("overridden")).toBool(), true);
+    QCOMPARE(byAddress.value(22).value(QStringLiteral("overridden")).toBool(), true);
+
+    // writeDMX() runs on MasterTimer's own thread (registered as a DMXSource -
+    // see apiiodomain.h) - poll io.dmx.universe.get until a tick has actually
+    // applied all three values to the Universe's post-GM output, rather than
+    // just landing in this domain's in-memory m_simpleDeskValues (which is
+    // all io.simpleDesk.get above proves on its own).
+    QVERIFY(QTest::qWaitFor([&]()
+    {
+        QJsonObject dmxReply = sendAndWaitForReply(QStringLiteral("io.dmx.universe.get"), getParams);
+        QJsonArray values = dmxReply.value(QStringLiteral("result")).toObject().value(QStringLiteral("values")).toArray();
+        if (values.size() < 23)
+            return false;
+        return values.at(20).toInt() == 50 && values.at(21).toInt() == 100 && values.at(22).toInt() == 150;
+    }, 2000));
+}
+
+void ApiIoDomain_Test::simpleDeskSetChannelsBroadcastsOneEventPerEntry()
+{
+    QString clientId = helloAndGetClientId();
+
+    QJsonArray channels;
+    channels.append(channelEntry(30, 11));
+    channels.append(channelEntry(31, 22));
+    channels.append(channelEntry(32, 33));
+
+    QJsonObject params;
+    params.insert(QStringLiteral("channels"), channels);
+
+    QSignalSpy spy(m_client, &QWebSocket::textMessageReceived);
+    m_client->sendTextMessage(buildRequest(QStringLiteral("io.simpleDesk.setChannels"), params, QStringLiteral("t-scs")));
+    // 1 response + 3 channelChanged events (one per entry, not one for the
+    // whole batch - see this method's own handler comment) = 4 frames.
+    QVERIFY(QTest::qWaitFor([&]() { return spy.count() >= 4; }, 2000));
+
+    QHash<int, QJsonObject> eventsByAddress;
+    for (const QList<QVariant> &frame : spy)
+    {
+        QJsonObject obj = QJsonDocument::fromJson(frame.at(0).toString().toUtf8()).object();
+        if (obj.value(QStringLiteral("type")).toString() == QStringLiteral("event") &&
+            obj.value(QStringLiteral("topic")).toString() == QStringLiteral("io.simpleDesk.channelChanged"))
+        {
+            QJsonObject data = obj.value(QStringLiteral("data")).toObject();
+            eventsByAddress[data.value(QStringLiteral("address")).toInt()] = data;
+            QCOMPARE(obj.value(QStringLiteral("originClientId")).toString(), clientId);
+        }
+    }
+    QCOMPARE(eventsByAddress.count(), 3);
+    QCOMPARE(eventsByAddress.value(30).value(QStringLiteral("value")).toInt(), 11);
+    QCOMPARE(eventsByAddress.value(30).value(QStringLiteral("overridden")).toBool(), true);
+    QCOMPARE(eventsByAddress.value(31).value(QStringLiteral("value")).toInt(), 22);
+    QCOMPARE(eventsByAddress.value(32).value(QStringLiteral("value")).toInt(), 33);
+}
+
+void ApiIoDomain_Test::simpleDeskSetChannelsRejectsMalformedEntryWithoutPartialApply()
+{
+    helloAndGetClientId();
+
+    QJsonObject malformedEntry;
+    malformedEntry.insert(QStringLiteral("address"), 41);
+    // missing "value" - the whole request must be rejected, not just this entry.
+
+    QJsonArray channels;
+    channels.append(channelEntry(40, 77));
+    channels.append(malformedEntry);
+
+    QJsonObject params;
+    params.insert(QStringLiteral("channels"), channels);
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("io.simpleDesk.setChannels"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QVERIFY(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString().isEmpty() == false);
+
+    QJsonObject getParams;
+    getParams.insert(QStringLiteral("universeId"), 0);
+    QJsonObject getReply = sendAndWaitForReply(QStringLiteral("io.simpleDesk.get"), getParams);
+    // Neither entry applied - not even the well-formed one that came before
+    // the malformed one in the array.
+    QCOMPARE(getReply.value(QStringLiteral("result")).toObject().value(QStringLiteral("channels")).toArray().count(), 0);
+
+    QJsonObject dmxReply = sendAndWaitForReply(QStringLiteral("io.dmx.universe.get"), getParams);
+    QJsonArray values = dmxReply.value(QStringLiteral("result")).toObject().value(QStringLiteral("values")).toArray();
+    QVERIFY(values.size() > 41);
+    QCOMPARE(values.at(40).toInt(), 0);
+    QCOMPARE(values.at(41).toInt(), 0);
+
+    // Second malformed-entry shape: an out-of-range value rather than a
+    // missing field - same all-or-nothing outcome.
+    QJsonArray channels2;
+    channels2.append(channelEntry(42, 88));
+    channels2.append(channelEntry(43, 300)); // out of 0-255
+    QJsonObject params2;
+    params2.insert(QStringLiteral("channels"), channels2);
+    QJsonObject reply2 = sendAndWaitForReply(QStringLiteral("io.simpleDesk.setChannels"), params2);
+    QCOMPARE(reply2.value(QStringLiteral("ok")).toBool(), false);
+
+    QJsonObject getReply2 = sendAndWaitForReply(QStringLiteral("io.simpleDesk.get"), getParams);
+    QCOMPARE(getReply2.value(QStringLiteral("result")).toObject().value(QStringLiteral("channels")).toArray().count(), 0);
 }
 
 void ApiIoDomain_Test::simpleDeskResetChannelBroadcastsOverriddenFalse()
