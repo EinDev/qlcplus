@@ -59,6 +59,7 @@ set(SRC_FILES
     shortcutmanager.cpp shortcutmanager.h
     showmanager.cpp showmanager.h
     simpledesk.cpp simpledesk.h
+    slowclickapplication.cpp slowclickapplication.h
     tardis/networkmanager.cpp tardis/networkmanager.h
     tardis/networkpacketizer.cpp tardis/networkpacketizer.h
     tardis/simplecrypt.cpp tardis/simplecrypt.h

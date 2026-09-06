@@ -31,6 +31,7 @@
 #include "apiserver.h"
 #include "qlcconfig.h"
 #include "qlcfile.h"
+#include "slowclickapplication.h"
 
 QFile logFile;
 
@@ -75,7 +76,7 @@ void printVersion()
 
 int main(int argc, char *argv[])
 {
-    QApplication app(argc, argv);
+    SlowClickApplication app(argc, argv);
 
     // Since Qt6, the default rendering backend is Rhi.
     // QLC+ doesn't support it yet so OpenGL have to be forced.
