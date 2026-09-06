@@ -96,6 +96,7 @@ Item
     {
         updateGeometry()
         updateTooltipText()
+        beatGridCanvas.refreshBeats()
     }
 
     function updateGeometry()
@@ -322,6 +323,59 @@ Item
 
             }
             context.stroke()
+        }
+    }
+
+    /* Beat grid for audio items with a detected BPM - both a visual aid and,
+       via ShowManager.getSnapEdges, a drag-snap source for OTHER items on
+       the timeline. Independent of the Show's own Markers-grid BPM. */
+    Canvas
+    {
+        id: beatGridCanvas
+        z: 3.5
+        anchors.fill: parent
+        contextType: "2d"
+
+        property var beatMsList: []
+        visible: beatMsList.length > 0
+
+        function refreshBeats()
+        {
+            beatMsList = (funcRef && funcRef.type === QLCFunction.AudioType)
+                        ? showManager.beatGridData(funcRef) : []
+            requestPaint()
+        }
+
+        onPaint:
+        {
+            context.clearRect(0, 0, width, height)
+            if (sfRef === null || beatMsList.length === 0)
+                return
+
+            context.strokeStyle = "#4CD3FF"
+            context.lineWidth = 1
+            context.beginPath()
+
+            for (var i = 0; i < beatMsList.length; i++)
+            {
+                var ms = beatMsList[i]
+                if (ms > sfRef.duration)
+                    break
+
+                var xPos = (timeDivision === Show.Time)
+                         ? TimeUtils.timeToSize(ms, timeScale, tickSize)
+                         : TimeUtils.timeToBeatSize(ms, bpmNumber, beatsDivision, tickSize)
+
+                context.moveTo(xPos, 0)
+                context.lineTo(xPos, itemRoot.height)
+            }
+            context.stroke()
+        }
+
+        Connections
+        {
+            target: (funcRef && funcRef.type === QLCFunction.AudioType) ? funcRef : null
+            function onBpmChanged() { beatGridCanvas.refreshBeats() }
         }
     }
 

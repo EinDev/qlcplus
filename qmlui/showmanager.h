@@ -348,6 +348,13 @@ public:
      */
     Q_INVOKABLE QVariantList previewData(Function *f) const;
 
+    /** Returns beat-marker offsets in ms, measured from the START OF THE AUDIO FILE
+     *  (i.e. NOT yet offset by any ShowFunction's startTime - callers combine this
+     *  with a specific item's own startTime/duration), for every beat from k=0 up
+     *  to f->totalDuration(). Empty list if f is not an Audio Function, or its BPM
+     *  analysis is not Done, or detectedBpm() <= 0. */
+    Q_INVOKABLE QVariantList beatGridData(Function *f) const;
+
     Q_INVOKABLE void copyToClipboard();
     Q_INVOKABLE void pasteFromClipboard();
 

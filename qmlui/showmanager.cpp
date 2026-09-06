@@ -28,6 +28,7 @@
 #include "tardis.h"
 #include "chaser.h"
 #include "scene.h"
+#include "audio.h"
 #include "track.h"
 #include "show.h"
 #include "doc.h"
@@ -201,6 +202,22 @@ QVariantList ShowManager::getSnapEdges(quint32 excludeFuncId,
         return edges;
 
     int beatsDivision = m_currentShow->beatsDivision();
+    bool cull = (viewportLeft >= 0 && viewportRight >= 0);
+
+    // ms -> pixel-X conversion, shared by item-edge and beat-marker emission below.
+    // sf->startTime()/duration() (and beat-marker ms values derived from them) are
+    // always real milliseconds now, so in Beats mode this must convert ms -> pixels-
+    // on-a-beat-ruler (mirrors TimeUtils.timeToBeatSize), not reinterpret the ms
+    // value as a beat-pseudo count.
+    auto msToPx = [&](double ms) -> double
+    {
+        if (timeDivision() == Show::Time)
+            return (ms * m_tickSize) / (m_timeScale * 1000.0);
+
+        int bpmNumber = m_currentShow->timeDivisionBPM();
+        double barDuration = bpmNumber > 0 ? (60000.0 / bpmNumber) * beatsDivision : 0.0;
+        return barDuration > 0.0 ? (m_tickSize * ms) / barDuration : 0.0;
+    };
 
     for (Track *track : m_currentShow->tracks())
     {
@@ -209,34 +226,48 @@ QVariantList ShowManager::getSnapEdges(quint32 excludeFuncId,
             if (sf->functionID() == excludeFuncId)
                 continue;
 
-            double startX, endX;
             quint32 endTime = sf->startTime() + sf->duration();
-
-            if (timeDivision() == Show::Time)
-            {
-                startX = ((double)sf->startTime() * m_tickSize) / (m_timeScale * 1000.0);
-                endX = ((double)endTime * m_tickSize) / (m_timeScale * 1000.0);
-            }
-            else
-            {
-                // sf->startTime()/duration() are always real milliseconds now, so this
-                // must convert ms -> pixels-on-a-beat-ruler (mirrors TimeUtils.timeToBeatSize),
-                // not reinterpret the ms value as a beat-pseudo count.
-                int bpmNumber = m_currentShow->timeDivisionBPM();
-                double barDuration = bpmNumber > 0 ? (60000.0 / bpmNumber) * beatsDivision : 0.0;
-                startX = barDuration > 0.0 ? (m_tickSize * (double)sf->startTime()) / barDuration : 0.0;
-                endX = barDuration > 0.0 ? (m_tickSize * (double)endTime) / barDuration : 0.0;
-            }
+            double startX = msToPx((double)sf->startTime());
+            double endX = msToPx((double)endTime);
 
             // filter: skip items entirely outside the visible viewport
-            if (viewportLeft >= 0 && viewportRight >= 0)
-            {
-                if (endX < viewportLeft || startX > viewportRight)
-                    continue;
-            }
+            if (cull && (endX < viewportLeft || startX > viewportRight))
+                continue;
 
             edges.append(startX);
             edges.append(endX);
+
+            // Beat-grid snap markers for audio clips with a completed BPM detection.
+            // Uses the clip's own detectedBpm/beatPhaseMs - independent of the
+            // Show's own Markers-grid BPM (m_currentShow->timeDivisionBPM()), which
+            // is only used above (via msToPx) for the axis-scale ms->px conversion.
+            Function *f = m_doc->function(sf->functionID());
+            if (f != nullptr && f->type() == Function::AudioType)
+            {
+                Audio *audio = qobject_cast<Audio *>(f);
+                if (audio != nullptr && audio->bpmAnalysisState() == Audio::Done && audio->detectedBpm() > 0.0)
+                {
+                    double periodMs = 60000.0 / audio->detectedBpm();
+                    double phaseMs = audio->beatPhaseMs();
+                    double clipDuration = (double)sf->duration();
+
+                    for (int k = 0; ; k++)
+                    {
+                        double t = phaseMs + (double)k * periodMs;
+                        if (t > clipDuration)
+                            break;
+
+                        double beatX = msToPx((double)sf->startTime() + t);
+
+                        if (cull && beatX < viewportLeft)
+                            continue;
+                        if (cull && beatX > viewportRight)
+                            break;
+
+                        edges.append(beatX);
+                    }
+                }
+            }
         }
     }
 
@@ -1709,6 +1740,35 @@ QVariantList ShowManager::previewData(Function *f) const
             data.append(f->totalDuration());
         }
         break;
+    }
+
+    return data;
+}
+
+QVariantList ShowManager::beatGridData(Function *f) const
+{
+    QVariantList data;
+    if (f == nullptr || f->type() != Function::AudioType)
+        return data;
+
+    Audio *audio = qobject_cast<Audio *>(f);
+    if (audio == nullptr || audio->bpmAnalysisState() != Audio::Done)
+        return data;
+
+    double bpm = audio->detectedBpm();
+    if (bpm <= 0.0)
+        return data;
+
+    double periodMs = 60000.0 / bpm;
+    double phaseMs = audio->beatPhaseMs();
+    double totalMs = static_cast<double>(f->totalDuration());
+
+    for (int k = 0; ; k++)
+    {
+        double t = phaseMs + (double)k * periodMs;
+        if (t > totalMs)
+            break;
+        data.append(t);
     }
 
     return data;
