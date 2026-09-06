@@ -156,6 +156,18 @@ private:
     QHash<TreeModelItem *, int> m_indexOfItem;
     QHash<int, int> m_customRoleToOwnerRole;
 
+    /** Set while a coalesced rebuild() is queued (see slotSourceStructureChanged()),
+     *  so a burst of structureChanged signals - e.g. one per function while a caller
+     *  like FunctionManager::updateFunctionsTree() clears and repopulates a tree of
+     *  hundreds of functions in one synchronous call - collapses into a single
+     *  rebuild() instead of one full re-flatten per signal. Does not affect
+     *  slotSourceInvalidated(), which still runs synchronously and immediately on
+     *  rowsAboutToBeRemoved/modelAboutToBeReset, so rows referencing about-to-be-freed
+     *  TreeModelItems are always dropped before the deletion actually happens - the
+     *  coalescing only defers the (comparatively expensive) rebuild, never the cheap,
+     *  safety-critical invalidation. */
+    bool m_rebuildScheduled = false;
+
 signals:
     void sourceModelChanged();
 };

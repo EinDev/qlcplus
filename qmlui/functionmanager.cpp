@@ -1831,17 +1831,6 @@ void FunctionManager::updateFunctionsTree()
     m_collectionCount = m_rgbMatrixCount = m_scriptCount = 0;
     m_showCount = m_audioCount = m_videoCount = 0;
 
-    // Suspend m_functionTree's own per-item notifications for the clear()+repopulate
-    // below (see TreeModel::setNotificationsSuspended()'s doc comment). Without this,
-    // every single addItem() call below fires structureChanged, and FunctionManager.qml's
-    // TreeFlatModel re-flattens the whole tree built so far on every one of them - for a
-    // project with hundreds of functions, that turns one filter keystroke/checkbox click
-    // into hundreds of full re-flattens. functionsListChanged(), emitted once at the end
-    // of this method, is this bulk update's own single "finished" signal - QML's
-    // Connections on it already calls flatFunctionsModel.rebuild() once, matching the
-    // pattern FixtureManager::updateGroupsTree() already uses for the fixture tree.
-    m_functionTree->setNotificationsSuspended(true);
-
     m_functionTree->clear();
 
     for (Function *func : sortedFunctions)
@@ -1878,8 +1867,6 @@ void FunctionManager::updateFunctionsTree()
     }
 
     restoreExpandedPaths();
-
-    m_functionTree->setNotificationsSuspended(false);
 
     //m_functionTree->printTree(); // enable for debug purposes
 

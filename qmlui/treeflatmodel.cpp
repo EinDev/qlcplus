@@ -91,7 +91,25 @@ void TreeFlatModel::slotSourceInvalidated()
 
 void TreeFlatModel::slotSourceStructureChanged()
 {
-    rebuild();
+    // Coalesce a burst of structureChanged signals (e.g. one per function while
+    // FunctionManager::updateFunctionsTree() clears and repopulates a tree of
+    // hundreds of functions in one synchronous call) into a single rebuild(),
+    // run once the current call stack unwinds back to the event loop - rather
+    // than one full re-flatten of the tree built so far per signal, which for a
+    // project with hundreds of functions turned one filter keystroke/checkbox
+    // click into hundreds of full re-flattens. Queued (not suspended/blocked)
+    // deliberately: slotSourceInvalidated() below still needs to see
+    // rowsAboutToBeRemoved/modelAboutToBeReset the moment they fire, so rows
+    // referencing about-to-be-freed TreeModelItems are dropped before the
+    // deletion happens, not after - only the rebuild itself is deferred.
+    if (m_rebuildScheduled)
+        return;
+
+    m_rebuildScheduled = true;
+    QMetaObject::invokeMethod(this, [this]() {
+        m_rebuildScheduled = false;
+        rebuild();
+    }, Qt::QueuedConnection);
 }
 
 void TreeFlatModel::appendSubtree(TreeModel *tree, int depth, QVector<FlatRow> &out)
