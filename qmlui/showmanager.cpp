@@ -116,11 +116,15 @@ void ShowManager::setCurrentShowID(int currentShowID)
         connect(m_currentShow, SIGNAL(stopped(quint32)), this, SLOT(slotShowStopped()));
         emit showDurationChanged(m_currentShow->totalDuration());
         emit showNameChanged(m_currentShow->name());
+        emit timeDivisionChanged(timeDivision());
+        emit beatsDivisionChanged(beatsDivision());
+        emit timeDivisionBPMChanged(timeDivisionBPM());
     }
     else
     {
         emit showDurationChanged(0);
         emit showNameChanged("");
+        emit timeDivisionBPMChanged(timeDivisionBPM());
     }
     emit tracksChanged();
     setPlaybackState(m_currentShow != nullptr ? m_currentShow->isRunning() : false,
@@ -218,7 +222,7 @@ QVariantList ShowManager::getSnapEdges(quint32 excludeFuncId,
                 // sf->startTime()/duration() are always real milliseconds now, so this
                 // must convert ms -> pixels-on-a-beat-ruler (mirrors TimeUtils.timeToBeatSize),
                 // not reinterpret the ms value as a beat-pseudo count.
-                int bpmNumber = m_doc->inputOutputMap()->bpmNumber();
+                int bpmNumber = m_currentShow->timeDivisionBPM();
                 double barDuration = bpmNumber > 0 ? (60000.0 / bpmNumber) * beatsDivision : 0.0;
                 startX = barDuration > 0.0 ? (m_tickSize * (double)sf->startTime()) / barDuration : 0.0;
                 endX = barDuration > 0.0 ? (m_tickSize * (double)endTime) / barDuration : 0.0;
@@ -282,6 +286,24 @@ int ShowManager::beatsDivision() const
         return 0;
 
     return m_currentShow->beatsDivision();
+}
+
+int ShowManager::timeDivisionBPM() const
+{
+    if (m_currentShow == nullptr)
+        return 120;
+
+    return m_currentShow->timeDivisionBPM();
+}
+
+void ShowManager::setTimeDivisionBPM(int BPM)
+{
+    if (m_currentShow == nullptr || BPM == m_currentShow->timeDivisionBPM())
+        return;
+
+    m_currentShow->setTimeDivisionBPM(BPM);
+    m_doc->setModified();
+    emit timeDivisionBPMChanged(BPM);
 }
 
 float ShowManager::timeScale() const
@@ -692,7 +714,7 @@ bool ShowManager::checkAndMoveItem(ShowFunction *sf, int originalTrackIdx, int n
             // per bar, not pixels-per-timeScale-second, so snap to the nearest whole
             // bar (in ms, via BPM/beatsDivision) instead of reusing the Time-mode
             // pixel round-trip above.
-            int bpmNumber = m_doc->inputOutputMap()->bpmNumber();
+            int bpmNumber = m_currentShow->timeDivisionBPM();
             int beatsDivision = m_currentShow->beatsDivision();
             if (bpmNumber > 0 && beatsDivision > 0)
             {

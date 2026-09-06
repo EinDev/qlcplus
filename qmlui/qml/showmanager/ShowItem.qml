@@ -39,7 +39,7 @@ Item
     property real timeScale: showManager.timeScale
     property real tickSize: showManager.tickSize
     property int beatsDivision: showManager.beatsDivision
-    property int bpmNumber: ioManager.bpmNumber
+    property int bpmNumber: showManager.timeDivisionBPM
     property bool isSelected: false
     property bool isDragging: false
     property color globalColor: showManager.itemsColor
@@ -165,7 +165,6 @@ Item
         }
         else
         {
-            var bpmNumber = ioManager.bpmNumber
             if (bpmNumber <= 0)
                 return rawDx
 
@@ -511,10 +510,10 @@ Item
                 var newTime
                 if (timeDivision === Show.Time)
                     newTime = TimeUtils.posToMs(itemRoot.x + showItemBody.x, timeScale, tickSize)
-                else if (ioManager.bpmNumber > 0)
+                else if (bpmNumber > 0)
                     // posToBeat stored a beat-pseudo count, not real ms - startTime is
                     // always real ms now, so this must go through posToBeatMs instead
-                    newTime = TimeUtils.posToBeatMs(itemRoot.x + showItemBody.x, tickSize, ioManager.bpmNumber, beatsDivision)
+                    newTime = TimeUtils.posToBeatMs(itemRoot.x + showItemBody.x, tickSize, bpmNumber, beatsDivision)
                 else
                     newTime = startTime
 
@@ -700,10 +699,10 @@ Item
                         newStartTime = TimeUtils.posToMs(itemRoot.x, timeScale, tickSize)
                         newDuration = TimeUtils.posToMs(itemRoot.width, timeScale, tickSize)
                     }
-                    else if (ioManager.bpmNumber > 0)
+                    else if (bpmNumber > 0)
                     {
-                        newStartTime = TimeUtils.posToBeatMs(itemRoot.x, tickSize, ioManager.bpmNumber, beatsDivision)
-                        newDuration = TimeUtils.posToBeatMs(itemRoot.width, tickSize, ioManager.bpmNumber, beatsDivision)
+                        newStartTime = TimeUtils.posToBeatMs(itemRoot.x, tickSize, bpmNumber, beatsDivision)
+                        newDuration = TimeUtils.posToBeatMs(itemRoot.width, tickSize, bpmNumber, beatsDivision)
                     }
                     else
                     {
@@ -844,10 +843,10 @@ Item
 
                     if (timeDivision === Show.Time)
                         newDuration = TimeUtils.posToMs(itemRoot.width, timeScale, tickSize)
-                    else if (ioManager.bpmNumber > 0)
+                    else if (bpmNumber > 0)
                         // was: Math.round(width / (tickSize / beatsDivision)) * 1000 - a beat-pseudo
                         // count, not real ms; duration is always real ms now, so use posToBeatMs
-                        newDuration = TimeUtils.posToBeatMs(itemRoot.width, tickSize, ioManager.bpmNumber, beatsDivision)
+                        newDuration = TimeUtils.posToBeatMs(itemRoot.width, tickSize, bpmNumber, beatsDivision)
                     else
                         newDuration = duration
 

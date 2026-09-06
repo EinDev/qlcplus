@@ -53,7 +53,7 @@ Rectangle
     {
         var xPos = (showManager.timeDivision === Show.Time)
                 ? TimeUtils.timeToSize(showManager.currentTime, timeScale, tickSize)
-                : TimeUtils.timeToBeatPosition(showManager.currentTime, tickSize, ioManager.bpmNumber, showManager.beatsDivision)
+                : TimeUtils.timeToBeatPosition(showManager.currentTime, tickSize, showManager.timeDivisionBPM, showManager.beatsDivision)
         xPos -= (timelineHeader.width / 2)
         if (xPos >= 0)
             xViewOffset = xPos
@@ -362,6 +362,29 @@ Rectangle
                 onValueChanged: showManager.timeDivision = currentValue
             }
 
+            RobotoText
+            {
+                label: qsTr("BPM")
+            }
+
+            CustomSpinBox
+            {
+                id: showBpmSpin
+                from: 20
+                to: 1000
+                enabled: showManager.isEditing && showManager.timeDivision !== Show.Time
+
+                Component.onCompleted: value = showManager.timeDivisionBPM
+
+                onValueModified: showManager.timeDivisionBPM = value
+
+                Connections
+                {
+                    target: showManager
+                    function onTimeDivisionBPMChanged(bpm) { showBpmSpin.value = bpm }
+                }
+            }
+
             ZoomItem
             {
                 implicitWidth: UISettings.mediumItemHeight * 1.3
@@ -479,7 +502,7 @@ Rectangle
                 if (timeDivision === Show.Time)
                     showManager.currentTime = TimeUtils.posToMs(mouseX, timeScale, tickSize)
                 else
-                    showManager.currentTime = TimeUtils.posToBeatMs(mouseX, tickSize, ioManager.bpmNumber, showManager.beatsDivision)
+                    showManager.currentTime = TimeUtils.posToBeatMs(mouseX, tickSize, showManager.timeDivisionBPM, showManager.beatsDivision)
                 showManager.resetItemsSelection()
             }
         }
@@ -574,8 +597,8 @@ Rectangle
                 {
                     if (showManager.timeDivision === Show.Time)
                         showManager.currentTime = TimeUtils.posToMs(mouse.x, timeScale, tickSize)
-                    else if (ioManager.bpmNumber > 0)
-                        showManager.currentTime = TimeUtils.posToBeatMs(mouse.x, tickSize, ioManager.bpmNumber, showManager.beatsDivision)
+                    else if (showManager.timeDivisionBPM > 0)
+                        showManager.currentTime = TimeUtils.posToBeatMs(mouse.x, tickSize, showManager.timeDivisionBPM, showManager.beatsDivision)
                     showManager.resetItemsSelection()
                 }
             }
@@ -640,10 +663,10 @@ Rectangle
                         var fTime
                         if (showManager.timeDivision === Show.Time)
                             fTime = TimeUtils.posToMs(itemsArea.contentX + drag.x, timeScale, tickSize)
-                        else if (ioManager.bpmNumber > 0)
+                        else if (showManager.timeDivisionBPM > 0)
                             // posToBeat stored a beat-pseudo count, not real ms - startTime is
                             // always real ms now, so this must go through posToBeatMs instead
-                            fTime = TimeUtils.posToBeatMs(itemsArea.contentX + drag.x, tickSize, ioManager.bpmNumber, showManager.beatsDivision)
+                            fTime = TimeUtils.posToBeatMs(itemsArea.contentX + drag.x, tickSize, showManager.timeDivisionBPM, showManager.beatsDivision)
                         else
                             fTime = 0
                         console.log("Drop on time1: " + fTime)
@@ -718,8 +741,8 @@ Rectangle
 
                             if (showManager.timeDivision === Show.Time)
                                 fTime = TimeUtils.posToMs(xViewOffset + drag.x, timeScale, tickSize)
-                            else if (ioManager.bpmNumber > 0)
-                                fTime = TimeUtils.posToBeatMs(xViewOffset + drag.x, tickSize, ioManager.bpmNumber, showManager.beatsDivision)
+                            else if (showManager.timeDivisionBPM > 0)
+                                fTime = TimeUtils.posToBeatMs(xViewOffset + drag.x, tickSize, showManager.timeDivisionBPM, showManager.beatsDivision)
                             else
                                 fTime = 0
 

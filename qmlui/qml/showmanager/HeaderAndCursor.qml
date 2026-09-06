@@ -40,7 +40,7 @@ Rectangle
     property real tickSize: showManager.tickSize
     property int currentTime: showManager.currentTime
     property int timeDivision: showManager.timeDivision
-    property int bpmNumber: ioManager.bpmNumber
+    property int bpmNumber: showManager.timeDivisionBPM
     property int beatsDivision: showManager.beatsDivision
     property bool showTimeMarkers: true
 
