@@ -31,6 +31,7 @@
 #include <QUrl>
 #include <QXmlStreamReader>
 #include <QRegularExpression>
+#include <QSet>
 
 #include <Qt3DCore/QTransform>
 #include <Qt3DCore/QNode>
@@ -1632,6 +1633,12 @@ void MainView3D::updateFixtureItem(Fixture *fixture, quint16 headIndex, quint16 
 
 void MainView3D::updateFixtureSelection(QList<quint32> fixtures)
 {
+    // fixtures.contains(fxID) below is checked once per entry in
+    // m_entitiesMap - with QList::contains that made the whole loop
+    // O(entities * fixtures). A QSet gives O(1) membership checks instead,
+    // so the loop is O(entities).
+    const QSet<quint32> selectedSet(fixtures.begin(), fixtures.end());
+
     QMapIterator<quint32, SceneItem*> it(m_entitiesMap);
     while (it.hasNext())
     {
@@ -1642,7 +1649,7 @@ void MainView3D::updateFixtureSelection(QList<quint32> fixtures)
         if (meshRef == nullptr || meshRef->m_rootItem == nullptr)
             return;
 
-        bool selected = fixtures.contains(fxID);
+        bool selected = selectedSet.contains(fxID);
         meshRef->m_rootItem->setProperty("isSelected", selected);
         if (meshRef->m_selectionBox != nullptr)
             meshRef->m_selectionBox->setProperty("isSelected", selected);

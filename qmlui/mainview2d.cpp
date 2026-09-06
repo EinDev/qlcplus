@@ -21,6 +21,7 @@
 #include <QQuickItem>
 #include <QQmlContext>
 #include <QQmlComponent>
+#include <QSet>
 
 #include "doc.h"
 #include "tardis.h"
@@ -654,15 +655,17 @@ void MainView2D::selectFixture(QQuickItem *fxItem, bool enable) const
 
 void MainView2D::updateFixtureSelection(QList<quint32> fixtures)
 {
+    // fixtures.contains(fxID) below is checked once per entry in m_itemsMap -
+    // with QList::contains that made the whole loop O(items * fixtures).
+    // A QSet gives O(1) membership checks instead, so the loop is O(items).
+    const QSet<quint32> selectedSet(fixtures.begin(), fixtures.end());
+
     QMapIterator<quint32, QQuickItem*> it(m_itemsMap);
     while (it.hasNext())
     {
         it.next();
         quint32 fxID = it.key();
-        bool enable = false;
-
-        if (fixtures.contains(fxID))
-            enable = true;
+        bool enable = selectedSet.contains(fxID);
 
         selectFixture(it.value(), enable);
     }
