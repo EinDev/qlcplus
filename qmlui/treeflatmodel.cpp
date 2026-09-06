@@ -93,17 +93,29 @@ void TreeFlatModel::slotSourceStructureChanged()
 {
     // Coalesce a burst of structureChanged signals (e.g. one per function while
     // FunctionManager::updateFunctionsTree() clears and repopulates a tree of
-    // hundreds of functions in one synchronous call) into a single rebuild(),
-    // run once the current call stack unwinds back to the event loop - rather
-    // than one full re-flatten of the tree built so far per signal, which for a
-    // project with hundreds of functions turned one filter keystroke/checkbox
-    // click into hundreds of full re-flattens. Queued (not suspended/blocked)
-    // deliberately: slotSourceInvalidated() below still needs to see
-    // rowsAboutToBeRemoved/modelAboutToBeReset the moment they fire, so rows
-    // referencing about-to-be-freed TreeModelItems are dropped before the
-    // deletion happens, not after - only the rebuild itself is deferred.
+    // hundreds of functions in one synchronous call) into a single deferred
+    // rebuild() per burst - rather than one full re-flatten of the tree built
+    // so far per signal, which for a project with hundreds of functions turned
+    // one filter keystroke/checkbox click into hundreds of full re-flattens.
+    //
+    // rowsAboutToBeRemoved/modelAboutToBeReset (slotSourceInvalidated() below)
+    // only ever fire on the ROOT tree, not on a nested child TreeModel removing
+    // one of its own items - structureChanged is what bubbles a removal at any
+    // depth up to the root (see TreeModel::addItem()'s wiring). Removing a
+    // nested FOLDER deletes that folder's own child TreeModel object outright
+    // (TreeModelItem::~TreeModelItem() deletes m_children), so any FlatRow
+    // still referencing that folder's now-freed TreeModel as its `owner` would
+    // be a dangling-pointer read in data()/setData() until the next rebuild().
+    // A purely deferred rebuild leaves that dangling exactly that long - so the
+    // FIRST signal of each burst still rebuilds synchronously, right here,
+    // closing the gap the moment it can open, same as every signal did before
+    // this coalescing existed. Only the rest of the burst (all the signals a
+    // bulk clear()+repopulate fires after that first one) gets absorbed into
+    // one deferred rebuild instead of one each.
     if (m_rebuildScheduled)
         return;
+
+    rebuild();
 
     m_rebuildScheduled = true;
     QMetaObject::invokeMethod(this, [this]() {
