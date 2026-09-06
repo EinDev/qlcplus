@@ -41,21 +41,24 @@ Rectangle
         VCWidget.CueListWidget
     ]
 
+    // virtualConsole.widgetsList() sorts and walks every widget in the whole
+    // console (not just this page), so it's only worth re-querying when the
+    // widget this list is being built for changes - not on every keystroke
+    // in the search box below. Cache it here and have filteredWidgetsList()
+    // do plain JS filtering over the cached array instead.
+    property var allWidgetsList: modelProvider ? virtualConsole.widgetsList(widgetFilters, modelProvider.id) : []
+
     function filteredWidgetsList()
     {
-        if (!modelProvider)
-            return []
-
-        var allWidgets = virtualConsole.widgetsList(widgetFilters, modelProvider.id)
         if (!searchFilter.length)
-            return allWidgets
+            return allWidgetsList
 
         var needle = searchFilter.toLowerCase()
         var wList = []
 
-        for (var i = 0; i < allWidgets.length; i++)
+        for (var i = 0; i < allWidgetsList.length; i++)
         {
-            var widget = allWidgets[i]
+            var widget = allWidgetsList[i]
             if (!widget.hasOwnProperty("id"))
                 continue
 
