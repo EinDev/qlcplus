@@ -35,6 +35,9 @@ class AudioEditor final : public FunctionEditor
     Q_PROPERTY(bool looped READ isLooped WRITE setLooped NOTIFY loopedChanged)
     Q_PROPERTY(qreal volume READ volume WRITE setVolume NOTIFY volumeChanged)
     Q_PROPERTY(int cardLineIndex READ cardLineIndex WRITE setCardLineIndex NOTIFY cardLineIndexChanged)
+    Q_PROPERTY(double bpm READ bpm NOTIFY bpmChanged)
+    Q_PROPERTY(double bpmConfidence READ bpmConfidence NOTIFY bpmChanged)
+    Q_PROPERTY(int bpmState READ bpmState NOTIFY bpmChanged)
 
 public:
     AudioEditor(QQuickView *view, Doc *doc, QObject *parent = 0);
@@ -64,12 +67,21 @@ public:
     int cardLineIndex() const;
     void setCardLineIndex(int cardLineIndex);
 
+    /** Get the detected BPM, confidence and analysis state of this Audio function */
+    double bpm() const;
+    double bpmConfidence() const;
+    int bpmState() const;
+
+    /** Manually (re-)trigger offline BPM detection */
+    Q_INVOKABLE void detectBpm();
+
 signals:
     void sourceFileNameChanged(QString sourceFileName);
     void mediaInfoChanged();
     void loopedChanged();
     void volumeChanged();
     void cardLineIndexChanged(int cardLineIndex);
+    void bpmChanged();
 
 private:
     /** Reference of the Audio currently being edited */

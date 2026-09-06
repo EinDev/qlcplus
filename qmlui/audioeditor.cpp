@@ -35,8 +35,11 @@ void AudioEditor::setFunctionID(quint32 ID)
     m_audio = qobject_cast<Audio *>(m_doc->function(ID));
     FunctionEditor::setFunctionID(ID);
     if (m_audio != nullptr)
+    {
         connect(m_audio, SIGNAL(totalDurationChanged()),
                 this, SIGNAL(mediaInfoChanged()));
+        connect(m_audio, SIGNAL(bpmChanged()), this, SIGNAL(bpmChanged()));
+    }
 }
 
 QString AudioEditor::sourceFileName() const
@@ -57,6 +60,7 @@ void AudioEditor::setSourceFileName(QString sourceFileName)
 
     Tardis::instance()->enqueueAction(Tardis::AudioSetSource, m_audio->id(), m_audio->getSourceFileName(), sourceFileName);
     m_audio->setSourceFileName(sourceFileName);
+    m_audio->requestBpmDetection(false);
     emit sourceFileNameChanged(sourceFileName);
     emit mediaInfoChanged();
     emit functionNameChanged(m_audio->name());
@@ -190,4 +194,27 @@ void AudioEditor::setCardLineIndex(int cardLineIndex)
         }
 
     }
+}
+
+double AudioEditor::bpm() const
+{
+    return m_audio ? m_audio->detectedBpm() : 0.0;
+}
+
+double AudioEditor::bpmConfidence() const
+{
+    return m_audio ? m_audio->bpmConfidence() : 0.0;
+}
+
+int AudioEditor::bpmState() const
+{
+    return m_audio ? int(m_audio->bpmAnalysisState()) : int(Audio::NotAnalyzed);
+}
+
+void AudioEditor::detectBpm()
+{
+    if (m_audio == nullptr)
+        return;
+
+    m_audio->requestBpmDetection(true);
 }

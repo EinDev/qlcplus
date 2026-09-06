@@ -185,6 +185,42 @@ Rectangle
             labelColor: UISettings.fgLight
         }
 
+        // row 5b
+        RobotoText
+        {
+            label: qsTr("BPM")
+            height: UISettings.listItemHeight
+        }
+        RowLayout
+        {
+            height: UISettings.listItemHeight
+
+            RobotoText
+            {
+                height: UISettings.listItemHeight
+                labelColor: UISettings.fgLight
+                label:
+                {
+                    switch (audioEditor.bpmState)
+                    {
+                        case 1: return qsTr("Detecting...")
+                        case 2: return audioEditor.bpm.toFixed(1)
+                        case 3: return qsTr("Detection failed")
+                        default: return qsTr("Not analyzed")
+                    }
+                }
+            }
+            IconButton
+            {
+                id: detectBpmBtn
+                faSource: FontAwesome.fa_rotate_right
+                faColor: UISettings.fgMain
+                tooltip: qsTr("Detect BPM")
+                enabled: audioEditor.bpmState !== 1
+                onClicked: audioEditor.detectBpm()
+            }
+        }
+
         // row 6
         RobotoText
         {

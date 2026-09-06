@@ -182,6 +182,14 @@ public:
 
     double confidence() const { return m_detector.confidence(); }
 
+    /** Current beat period in milliseconds, 0.0 if unknown. */
+    double beatPeriodMs() const;
+
+    /** Offset from frame 0 (file/stream start) to the nearest point on the
+     *  predicted beat grid, normalized into [0, beatPeriodMs()). Returns
+     *  -1.0 if there is no confident estimate yet. */
+    double beatPhaseMs() const;
+
 private:
     int m_sampleRate;
     int m_channels;

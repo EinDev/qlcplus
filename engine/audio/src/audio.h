@@ -41,6 +41,9 @@ class Audio final : public Function
      * Initialization
      *********************************************************************/
 public:
+    enum BpmAnalysisState { NotAnalyzed = 0, Analyzing, Done, Failed };
+    Q_ENUM(BpmAnalysisState)
+
     Audio(Doc* doc);
     virtual ~Audio();
 
@@ -74,6 +77,12 @@ public:
      * Properties
      *********************************************************************/
 public:
+    Q_PROPERTY(double detectedBpm READ detectedBpm NOTIFY bpmChanged)
+    Q_PROPERTY(double beatPeriodMs READ beatPeriodMs NOTIFY bpmChanged)
+    Q_PROPERTY(double beatPhaseMs READ beatPhaseMs NOTIFY bpmChanged)
+    Q_PROPERTY(double bpmConfidence READ bpmConfidence NOTIFY bpmChanged)
+    Q_PROPERTY(BpmAnalysisState bpmAnalysisState READ bpmAnalysisState NOTIFY bpmChanged)
+
     /**
      * Returns the duration of the source audio file loaded
      *
@@ -120,11 +129,42 @@ public:
 
     int adjustAttribute(qreal fraction, int attributeId) override;
 
+    /** Detected BPM of the source audio file, 0.0 if not (yet) analyzed */
+    double detectedBpm() const;
+
+    /** Beat period, in milliseconds, of the source audio file, 0.0 if unknown */
+    double beatPeriodMs() const;
+
+    /** Offset, in milliseconds, from file start to the nearest beat-grid
+     *  point, -1.0 if unknown */
+    double beatPhaseMs() const;
+
+    /** Confidence (~0..1) of the current BPM detection result */
+    double bpmConfidence() const;
+
+    /** Current state of the offline BPM analysis */
+    BpmAnalysisState bpmAnalysisState() const;
+
+    /** Kick off (or re-kick, if force) offline BPM detection on the current
+     *  source file. No-op if already Analyzing, or (when !force) already
+     *  Done/Failed. Never called from loadXML(). */
+    Q_INVOKABLE void requestBpmDetection(bool force = false);
+
 signals:
     void sourceFilenameChanged();
+    void bpmChanged();
 
 protected slots:
     void slotEndOfStream();
+
+private slots:
+    void slotBpmAnalysisDone(quint32 functionId, bool success, double bpm,
+                              double periodMs, double phaseMs, double confidence);
+
+private:
+    void setBpmResult(BpmAnalysisState state, double bpm, double periodMs,
+                       double phaseMs, double confidence);
+    void resetBpmResult();
 
 private:
     /** Instance of an AudioDecoder to perform actual audio decoding */
@@ -139,6 +179,13 @@ private:
     qint64 m_audioDuration;
     /** Startup volume of the audio file */
     qreal m_volume;
+
+    /** Offline BPM detection state and result */
+    BpmAnalysisState m_bpmState;
+    double m_detectedBpm;
+    double m_beatPeriodMs;
+    double m_beatPhaseMs;
+    double m_bpmConfidence;
 
     /*********************************************************************
      * Save & Load

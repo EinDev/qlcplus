@@ -587,6 +587,27 @@ void BeatTracker::reset()
     m_lastEmitFrame = -1.0;
 }
 
+double BeatTracker::beatPeriodMs() const
+{
+    if (m_detector.beatPeriodFrames() <= 0.0)
+        return 0.0;
+    return m_detector.beatPeriodFrames() * 1000.0 / m_extractor.frameRateHz();
+}
+
+double BeatTracker::beatPhaseMs() const
+{
+    if (m_detector.nextBeatFrame() < 0.0)
+        return -1.0;
+    double periodMs = beatPeriodMs();
+    if (periodMs <= 0.0)
+        return -1.0;
+    double nextMs = m_detector.nextBeatFrame() * 1000.0 / m_extractor.frameRateHz();
+    double phase = std::fmod(nextMs, periodMs);
+    if (phase < 0.0)
+        phase += periodMs;
+    return phase;
+}
+
 bool BeatTracker::processAudio(const int16_t *buffer, int bufferSize)
 {
     if (!buffer || bufferSize <= 0)

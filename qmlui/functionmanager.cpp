@@ -416,6 +416,7 @@ quint32 FunctionManager::createAudioVideoFunction(int type, QStringList fileList
                     {
                         Audio *audio = qobject_cast<Audio *>(f);
                         audio->setSourceFileName(filePath);
+                        audio->requestBpmDetection(false);
                         m_audioCount++;
                     }
                 }

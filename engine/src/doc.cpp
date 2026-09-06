@@ -36,6 +36,7 @@
 #include "qlcfixturedef.h"
 
 #include "monitorproperties.h"
+#include "audiobpmanalyzer.h"
 #include "audioplugincache.h"
 #include "rgbscriptscache.h"
 #include "channelsgroup.h"
@@ -66,6 +67,7 @@ Doc::Doc(QObject* parent, int universes)
     , m_rgbScriptsCache(new RGBScriptsCache(this))
     , m_ioPluginCache(new IOPluginCache(this))
     , m_audioPluginCache(new AudioPluginCache(this))
+    , m_audioBpmAnalyzer(nullptr)
     , m_masterTimer(new MasterTimer(this))
     , m_ioMap(new InputOutputMap(this, universes))
     , m_monitorProps(NULL)
@@ -273,6 +275,13 @@ IOPluginCache* Doc::ioPluginCache() const
 AudioPluginCache *Doc::audioPluginCache() const
 {
     return m_audioPluginCache;
+}
+
+AudioBpmAnalyzer *Doc::audioBpmAnalyzer() const
+{
+    if (m_audioBpmAnalyzer == nullptr)
+        m_audioBpmAnalyzer = new AudioBpmAnalyzer(const_cast<Doc *>(this));
+    return m_audioBpmAnalyzer;
 }
 
 InputOutputMap* Doc::inputOutputMap() const

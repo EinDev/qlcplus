@@ -42,6 +42,7 @@
 class AudioCapture;
 class RGBScriptsCache;
 class AudioPluginCache;
+class AudioBpmAnalyzer;
 class MonitorProperties;
 class Show;
 
@@ -142,6 +143,9 @@ public:
     /** Get the audio decoder plugin cache object */
     AudioPluginCache *audioPluginCache() const;
 
+    /** Get the (lazily-created) audio BPM analyzer, shared by all Audio functions */
+    AudioBpmAnalyzer *audioBpmAnalyzer() const;
+
     /** Get the DMX output map object */
     InputOutputMap *inputOutputMap() const;
 
@@ -160,6 +164,7 @@ private:
     RGBScriptsCache *m_rgbScriptsCache;
     IOPluginCache *m_ioPluginCache;
     AudioPluginCache *m_audioPluginCache;
+    mutable AudioBpmAnalyzer *m_audioBpmAnalyzer;
     MasterTimer *m_masterTimer;
     InputOutputMap *m_ioMap;
     mutable QSharedPointer<AudioCapture> m_inputCapture;

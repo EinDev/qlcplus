@@ -3,6 +3,7 @@ set(module_name "qlcplusaudio")
 add_library(${module_name}
     STATIC
     audio.cpp audio.h
+    audiobpmanalyzer.cpp audiobpmanalyzer.h
     audiocapture.cpp audiocapture.h
     audiodecoder.cpp audiodecoder.h
     audioparameters.cpp audioparameters.h

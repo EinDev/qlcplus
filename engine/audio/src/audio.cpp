@@ -23,6 +23,7 @@
 #include <QDebug>
 #include <QFile>
 
+#include "audiobpmanalyzer.h"
 #include "audiodecoder.h"
 #include "audiorenderer.h"
 #include "audioplugincache.h"
@@ -48,6 +49,12 @@
 #define KXMLQLCAudioDevice QStringLiteral("Device")
 #define KXMLQLCAudioVolume QStringLiteral("Volume")
 
+#define KXMLQLCAudioBpm QStringLiteral("Bpm")
+#define KXMLQLCAudioBpmValue QStringLiteral("bpm")
+#define KXMLQLCAudioBpmPeriod QStringLiteral("period")
+#define KXMLQLCAudioBpmPhase QStringLiteral("phase")
+#define KXMLQLCAudioBpmConfidence QStringLiteral("confidence")
+
 /*****************************************************************************
  * Initialization
  *****************************************************************************/
@@ -61,6 +68,11 @@ Audio::Audio(Doc* doc)
   , m_sourceFileName("")
   , m_audioDuration(0)
   , m_volume(1.0)
+  , m_bpmState(NotAnalyzed)
+  , m_detectedBpm(0.0)
+  , m_beatPeriodMs(0.0)
+  , m_beatPhaseMs(0.0)
+  , m_bpmConfidence(0.0)
 {
     setName(tr("New Audio"));
     setRunOrder(Audio::SingleShot);
@@ -116,6 +128,8 @@ bool Audio::copyFrom(const Function* function)
         return false;
 
     setSourceFileName(aud->m_sourceFileName);
+    setBpmResult(aud->m_bpmState, aud->m_detectedBpm, aud->m_beatPeriodMs,
+                 aud->m_beatPhaseMs, aud->m_bpmConfidence);
     m_audioDuration = aud->m_audioDuration;
 
     return Function::copyFrom(function);
@@ -144,6 +158,8 @@ void Audio::setTotalDuration(quint32 msec)
 
 bool Audio::setSourceFileName(QString filename)
 {
+    resetBpmResult();
+
     if (m_sourceFileName.isEmpty() == false)
     {
         // unload previous source
@@ -223,6 +239,80 @@ int Audio::adjustAttribute(qreal fraction, int attributeId)
     return attrIndex;
 }
 
+double Audio::detectedBpm() const
+{
+    return m_detectedBpm;
+}
+
+double Audio::beatPeriodMs() const
+{
+    return m_beatPeriodMs;
+}
+
+double Audio::beatPhaseMs() const
+{
+    return m_beatPhaseMs;
+}
+
+double Audio::bpmConfidence() const
+{
+    return m_bpmConfidence;
+}
+
+Audio::BpmAnalysisState Audio::bpmAnalysisState() const
+{
+    return m_bpmState;
+}
+
+void Audio::setBpmResult(BpmAnalysisState state, double bpm, double periodMs,
+                          double phaseMs, double confidence)
+{
+    m_bpmState = state;
+    m_detectedBpm = bpm;
+    m_beatPeriodMs = periodMs;
+    m_beatPhaseMs = phaseMs;
+    m_bpmConfidence = confidence;
+
+    emit bpmChanged();
+}
+
+void Audio::resetBpmResult()
+{
+    setBpmResult(NotAnalyzed, 0.0, 0.0, 0.0, 0.0);
+}
+
+void Audio::requestBpmDetection(bool force)
+{
+    if (m_sourceFileName.isEmpty() || !QFile(m_sourceFileName).exists())
+        return;
+    if (m_bpmState == Analyzing)
+        return;
+    if (!force && (m_bpmState == Done || m_bpmState == Failed))
+        return;
+
+    m_bpmState = Analyzing;
+    emit bpmChanged();
+
+    AudioBpmAnalyzer *analyzer = m_doc->audioBpmAnalyzer();
+    connect(analyzer, &AudioBpmAnalyzer::analysisDone,
+            this, &Audio::slotBpmAnalysisDone, Qt::UniqueConnection);
+    analyzer->requestAnalysis(id(), m_sourceFileName);
+}
+
+void Audio::slotBpmAnalysisDone(quint32 functionId, bool success, double bpm,
+                                 double periodMs, double phaseMs, double confidence)
+{
+    if (functionId != id())
+        return;
+    if (m_bpmState != Analyzing)
+        return;
+
+    setBpmResult(success ? Done : Failed,
+                 success ? bpm : 0.0, success ? periodMs : 0.0,
+                 success ? phaseMs : 0.0, success ? confidence : 0.0);
+    emit changed(id());
+}
+
 void Audio::slotEndOfStream()
 {
     if (!stopped())
@@ -275,6 +365,16 @@ bool Audio::saveXML(QXmlStreamWriter *doc) const
 
     doc->writeEndElement();
 
+    if (m_bpmState == Done)
+    {
+        doc->writeStartElement(KXMLQLCAudioBpm);
+        doc->writeAttribute(KXMLQLCAudioBpmValue, QString::number(m_detectedBpm, 'f', 2));
+        doc->writeAttribute(KXMLQLCAudioBpmPeriod, QString::number(m_beatPeriodMs, 'f', 2));
+        doc->writeAttribute(KXMLQLCAudioBpmPhase, QString::number(m_beatPhaseMs, 'f', 2));
+        doc->writeAttribute(KXMLQLCAudioBpmConfidence, QString::number(m_bpmConfidence, 'f', 3));
+        doc->writeEndElement();
+    }
+
     /* End the <Function> tag */
     doc->writeEndElement();
 
@@ -318,6 +418,17 @@ bool Audio::loadXML(QXmlStreamReader &root)
         else if (root.name() == KXMLQLCFunctionRunOrder)
         {
             loadXMLRunOrder(root);
+        }
+        else if (root.name() == KXMLQLCAudioBpm)
+        {
+            QXmlStreamAttributes attrs = root.attributes();
+            double bpm = attrs.value(KXMLQLCAudioBpmValue).toString().toDouble();
+            double period = attrs.value(KXMLQLCAudioBpmPeriod).toString().toDouble();
+            double phase = attrs.value(KXMLQLCAudioBpmPhase).toString().toDouble();
+            double confidence = attrs.hasAttribute(KXMLQLCAudioBpmConfidence)
+                                 ? attrs.value(KXMLQLCAudioBpmConfidence).toString().toDouble() : 0.0;
+            setBpmResult(Done, bpm, period, phase, confidence);
+            root.skipCurrentElement();
         }
         else
         {
