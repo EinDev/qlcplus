@@ -61,7 +61,11 @@ TextField
             controlRoot.text += text
     }
 
-    onFocusChanged: if (focus) selectAndFocus()
+    // Must not call selectAndFocus() here: re-setting focus on an item that
+    // has focus but no window yet (e.g. inside a closed Popup) re-emits
+    // focusChanged unconditionally on Qt >= 6.11, recursing until the JS
+    // stack overflows and freezing the UI thread.
+    onFocusChanged: if (focus) selectAll()
 
     background:
         Rectangle

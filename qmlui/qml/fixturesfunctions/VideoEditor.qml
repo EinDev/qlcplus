@@ -142,9 +142,9 @@ Rectangle
                             implicitWidth: UISettings.bigItemHeight * 3
                             implicitHeight: UISettings.listItemHeight
                             text: "http://"
-                            Component.onCompleted: selectAndFocus()
                         }
 
+                    onOpened: urlInputBox.selectAndFocus()
                     onAccepted: videoEditor.sourceFileName = urlInputBox.text
                 }
             }
