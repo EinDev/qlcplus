@@ -717,6 +717,12 @@ int Show::adjustAttribute(qreal fraction, int attributeId)
         }
     }
 
+    // The schedule snapshot carries the per-track intensity too: keep it
+    // current so a runner created later (e.g. a start from the Virtual
+    // Console) seeds from the live values, as preRun used to.
+    if (attrIndex >= 0)
+        markScheduleDirty();
+
     return attrIndex;
 }
 

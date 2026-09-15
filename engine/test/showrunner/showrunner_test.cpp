@@ -338,6 +338,43 @@ void ShowRunner_Test::scheduleNotifications()
     QCOMPARE(spy.count(), 1);
 }
 
+void ShowRunner_Test::queuedRebuildCoalesces()
+{
+    // In the app nobody calls rebuildSchedule() after an edit: markScheduleDirty()
+    // queues one rebuild on the event loop and a burst of edits (a drag, undo
+    // walking many steps) must collapse into a single rebuild per turn.
+    LiveShow ls(this, 0, 10000);
+    QCoreApplication::processEvents();          // drain the set-up edits' queued call
+    QVERIFY(ls.show->isScheduleDirty() == false);
+    QSignalSpy spy(ls.show, SIGNAL(scheduleChanged()));
+
+    // a runner created now has consumed the current snapshot
+    ShowRunner runner(ls.doc, ls.show->id());
+    QVERIFY(ls.show->takePendingSchedule().isNull());
+
+    for (int i = 1; i <= 20; i++)
+        ls.sf->setDuration(10000 + i * 100);
+    ls.track->setMute(true);
+    ls.track->setMute(false);
+    QVERIFY(ls.show->isScheduleDirty() == true);
+    QCOMPARE(spy.count(), 0);
+
+    QCoreApplication::processEvents();
+    QVERIFY(ls.show->isScheduleDirty() == false);
+    QCOMPARE(spy.count(), 1);
+
+    // the runner finds exactly one pending snapshot with the final values
+    QSharedPointer<const ShowSchedule> pending = ls.show->takePendingSchedule();
+    QVERIFY(pending.isNull() == false);
+    QCOMPARE(pending->timeClips.count(), 1);
+    QCOMPARE(pending->timeClips.at(0).end, quint32(12000));
+    QVERIFY(ls.show->takePendingSchedule().isNull());
+
+    // nothing dirty: another turn of the loop rebuilds nothing
+    QCoreApplication::processEvents();
+    QCOMPARE(spy.count(), 1);
+}
+
 void ShowRunner_Test::extendEndPastPlayhead()
 {
     // Scene clip 0-10s already ended at 12s; dragging its end to 20s must
@@ -576,6 +613,8 @@ void ShowRunner_Test::trackIntensityFollowsSchedule()
     int trackAttr = ls.show->tracks().indexOf(ls.track);
     QVERIFY(trackAttr >= 0);
     ls.show->adjustAttribute(0.5, trackAttr);
+    // a runner created later (Virtual Console start) must seed from this value
+    QVERIFY(ls.show->isScheduleDirty() == true);
     ls.commitEdit();
     runner.write(ls.timer());
 

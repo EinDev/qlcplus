@@ -41,6 +41,7 @@ private slots:
 
     /* Live rescheduling: edits made while the Show plays */
     void scheduleNotifications();
+    void queuedRebuildCoalesces();
     void extendEndPastPlayhead();
     void shrinkEndBeforePlayhead();
     void moveStartEarlierUnderPlayhead();
