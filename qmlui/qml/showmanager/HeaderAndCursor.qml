@@ -243,6 +243,17 @@ Rectangle
     {
         enabled: showTimeMarkers
         anchors.fill: parent
-        onClicked: (mouse) => tlHeaderCursorLayer.clicked(mouse.x, mouse.y)
+        // The cursor follows the press and any drag that follows it (the
+        // Show Manager previews the state under it as it moves). Without
+        // preventStealing the enclosing Flickable would take the drag
+        // over as a horizontal flick of the header; scrolling is still
+        // available through the scrollbar and the items area.
+        preventStealing: true
+        onPressed: (mouse) => tlHeaderCursorLayer.clicked(Math.max(0, mouse.x), mouse.y)
+        onPositionChanged: (mouse) =>
+        {
+            if (pressed)
+                tlHeaderCursorLayer.clicked(Math.max(0, mouse.x), mouse.y)
+        }
     }
 }

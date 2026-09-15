@@ -315,11 +315,14 @@ Rectangle
                 id: playbackBtn
                 width: parent.height - 6
                 height: width
+                // previewing is not playing: the cursor sits still, so the
+                // button offers to play from there
                 faSource: (showManager.isPlaying && !showManager.isPaused) ? FontAwesome.fa_pause : FontAwesome.fa_play
                 faColor: UISettings.fgMain
                 bgColor: showManager.isPaused ? "green" :
                          (showManager.isPlaying ? "darkorange" : UISettings.bgLight)
-                tooltip: (showManager.isPlaying && !showManager.isPaused) ? qsTr("Pause") : qsTr("Play or resume")
+                tooltip: (showManager.isPlaying && !showManager.isPaused) ? qsTr("Pause") :
+                         (showManager.isPreviewing ? qsTr("Play from the cursor") : qsTr("Play or resume"))
                 checkable: false
                 enabled: showManager.isEditing
                 onClicked: showManager.playShow()
@@ -332,10 +335,23 @@ Rectangle
                 faSource: FontAwesome.fa_stop
                 faColor: UISettings.fgMain
                 bgColor: showManager.isPlaying ? "red" : UISettings.bgLight
-                tooltip: qsTr("Stop or rewind")
+                tooltip: showManager.isPreviewing ? qsTr("Stop the preview") : qsTr("Stop or rewind")
                 checkable: false
                 enabled: showManager.isEditing
                 onClicked: showManager.stopShow()
+            }
+            IconButton
+            {
+                id: previewBtn
+                width: parent.height - 6
+                height: width
+                faSource: FontAwesome.fa_eye
+                faColor: UISettings.fgMain
+                tooltip: qsTr("Preview the Show at the cursor while it is stopped")
+                checkable: true
+                checked: showManager.previewEnabled
+                enabled: showManager.isEditing
+                onToggled: showManager.previewEnabled = checked
             }
 
             // filler
