@@ -128,6 +128,14 @@ if(WIN32)
     target_sources(${module_name} PRIVATE qmlui.rc)
 endif()
 
+# Spout video output (Windows only). The vendored SpoutDX SDK lives in
+# spout/ and only defines its target on WIN32; everywhere else QLC_SPOUT
+# stays undefined and the feature is compiled out.
+add_subdirectory(spout)
+if(WIN32)
+    target_compile_definitions(${module_name} PRIVATE QLC_SPOUT)
+endif()
+
 target_include_directories(${module_name} PRIVATE
     ../engine/audio/src
     ../engine/src
@@ -230,6 +238,10 @@ target_link_libraries(${module_name} PRIVATE
     qlcpluswebaccess
     qlcplusapiserver
 )
+
+if(WIN32)
+    target_link_libraries(${module_name} PRIVATE spoutdx)
+endif()
 
 if(ANDROID)
     target_link_libraries(${module_name} PRIVATE
