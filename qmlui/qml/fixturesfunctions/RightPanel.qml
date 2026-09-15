@@ -79,12 +79,12 @@ SidePanel
     function createFunctionAndEditor(fType)
     {
         var i
-        // reset the currently loaded item first
-        if (fType !== QLCFunction.ShowType || mainView.currentContext !== "SHOWMGR")
-            loaderSource = ""
 
         console.log("Requested to create function type " + fType)
 
+        // Audio and Video first ask for the file(s): nothing is created and
+        // the current pane stays as it is until the dialog gets accepted
+        // (cancelling it must leave the panel exactly as it was)
         if (fType === QLCFunction.AudioType)
         {
             var extList = functionManager.audioExtensions
@@ -116,6 +116,10 @@ SidePanel
             openFileDialog.open()
             return
         }
+
+        // reset the currently loaded item first
+        if (fType !== QLCFunction.ShowType || mainView.currentContext !== "SHOWMGR")
+            loaderSource = ""
 
         var newFuncID = functionManager.createFunction(fType, contextManager.selectedFixtureIDVariantList())
         var fEditor = functionManager.getEditorResource(newFuncID)
@@ -193,6 +197,14 @@ SidePanel
                 strArray.push("" + selectedFiles[i])
 
             console.log("File list: " + strArray)
+
+            if (strArray.length === 0)
+                return
+
+            // reset the currently loaded item first: the new editor may have
+            // the same source as the one currently shown, which would not
+            // reload otherwise
+            loaderSource = ""
 
             if (strArray.length === 1)
             {
