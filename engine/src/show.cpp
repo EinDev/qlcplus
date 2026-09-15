@@ -649,10 +649,9 @@ void Show::preRun(MasterTimer* timer)
         delete m_runner;
     }
 
+    // The runner seeds its clip lists and per-track intensity from the
+    // schedule snapshot, so nothing here walks m_tracks on the timer thread.
     m_runner = new ShowRunner(doc(), this->id(), elapsed());
-    int i = 0;
-    foreach (Track *track, m_tracks)
-        m_runner->adjustIntensity(getAttributeValue(i++), track);
 
     connect(m_runner, SIGNAL(timeChanged(quint32)), this, SIGNAL(timeChanged(quint32)));
     connect(m_runner, SIGNAL(showFinished()), this, SIGNAL(showFinished()));
@@ -671,7 +670,13 @@ void Show::write(MasterTimer* timer, QList<Universe *> universes)
     Q_UNUSED(universes);
 
     if (isPaused())
+    {
+        // Timeline edits still apply while paused so that a clip removed or
+        // shortened under the playhead releases its faders; the runner defers
+        // any resulting starts to the first unpaused tick.
+        m_runner->applyPendingSchedule();
         return;
+    }
 
     m_runner->write(timer);
 }

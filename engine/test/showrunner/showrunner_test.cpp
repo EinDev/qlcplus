@@ -53,7 +53,7 @@ void ShowRunner_Test::cleanupTestCase()
 void ShowRunner_Test::initRunner()
 {
     ShowRunner runner(m_doc, m_show->id());
-    QCOMPARE(runner.m_timeFunctions.count(), 1);
+    QCOMPARE(runner.m_schedule->timeClips.count(), 1);
     QCOMPARE(runner.m_totalRunTime, quint32(1000));
 }
 
@@ -68,7 +68,16 @@ void ShowRunner_Test::stopRunner()
 {
     ShowRunner runner(m_doc, m_show->id());
     runner.m_elapsedTime = 500;
-    runner.m_runningQueue.append(QPair<Function*,quint32>(m_scene,1000));
+    ShowRunner::RunningClip rc;
+    rc.sfId = 0;
+    rc.functionId = m_scene->id();
+    rc.trackId = m_track->id();
+    rc.start = 0;
+    rc.stopTime = 1000;
+    rc.tempo = Function::Time;
+    rc.function = m_scene;
+    rc.overrideId = -1;
+    runner.m_runningQueue.append(rc);
     runner.stop();
     QCOMPARE(runner.m_elapsedTime, quint32(0));
     QCOMPARE(runner.m_runningQueue.count(), 0);
@@ -106,7 +115,7 @@ void ShowRunner_Test::beatTempoUsesRealMilliseconds()
     QCOMPARE(localDoc.inputOutputMap()->bpmNumber(), 120);
 
     ShowRunner runner(&localDoc, show->id());
-    QCOMPARE(runner.m_beatFunctions.count(), 1);
+    QCOMPARE(runner.m_schedule->beatClips.count(), 1);
 
     MasterTimer *timer = localDoc.masterTimer();
 

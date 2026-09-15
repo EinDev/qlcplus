@@ -20,6 +20,8 @@
 #include <QMutex>
 #include <QDebug>
 
+#include <algorithm>
+
 #include "showrunner.h"
 #include "function.h"
 #include "track.h"
@@ -27,74 +29,41 @@
 
 #define TIMER_INTERVAL 50
 
-static bool compareShowFunctions(const ShowFunction *sf1, const ShowFunction *sf2)
-{
-    if (sf1->startTime() < sf2->startTime())
-        return true;
-    return false;
-}
-
 ShowRunner::ShowRunner(const Doc* doc, quint32 showID, quint32 startTime)
     : QObject(NULL)
     , m_doc(doc)
-    , m_currentTimeFunctionIndex(0)
+    , m_currentTimeClipIndex(0)
     , m_elapsedTime(startTime)
-    , m_currentBeatFunctionIndex(0)
+    , m_currentBeatClipIndex(0)
     , m_elapsedBeats(0)
     , beatSynced(false)
     , m_totalRunTime(0)
+    , m_startPassPending(false)
 {
     Q_ASSERT(m_doc != NULL);
     Q_ASSERT(showID != Show::invalidId());
 
     m_show = qobject_cast<Show*>(m_doc->function(showID));
     if (m_show == NULL)
-        return;
-
-    foreach (Track *track, m_show->tracks())
     {
-        // some sanity checks
-        if (track == NULL ||
-            track->id() == Track::invalidId())
-                continue;
-
-        if (track->isMute())
-            continue;
-
-        // get all the functions of the track and append them to the runner queue
-        foreach (ShowFunction *sfunc, track->showFunctions())
-        {
-            if (sfunc->startTime() + sfunc->duration(m_doc) <= startTime)
-                continue;
-
-            Function *f = m_doc->function(sfunc->functionID());
-            if (f == NULL)
-                continue;
-
-            if (f->tempoType() == Function::Time)
-                m_timeFunctions.append(sfunc);
-            else
-                m_beatFunctions.append(sfunc);
-
-            if (sfunc->startTime() + sfunc->duration(m_doc) > m_totalRunTime)
-                m_totalRunTime = sfunc->startTime() + sfunc->duration(m_doc);
-        }
-
-        // Initialize the intensity map
-        m_intensityMap[track->id()] = 1.0;
+        m_schedule = QSharedPointer<const ShowSchedule>(new ShowSchedule);
+        return;
     }
 
-    std::sort(m_timeFunctions.begin(), m_timeFunctions.end(), compareShowFunctions);
-    std::sort(m_beatFunctions.begin(), m_beatFunctions.end(), compareShowFunctions);
+    m_schedule = m_show->currentSchedule();
+    m_totalRunTime = m_schedule->totalRunTime;
+
+    for (auto it = m_schedule->intensity.constBegin(); it != m_schedule->intensity.constEnd(); ++it)
+        m_intensityMap[it.key()] = it.value();
 
 #if 1
     qDebug() << "Ordered list of ShowFunctions (time):";
-    foreach (ShowFunction *sfunc, m_timeFunctions)
-        qDebug() << "[Show] Function ID:" << sfunc->functionID() << "start time:" << sfunc->startTime() << "duration:" << sfunc->duration(m_doc);
+    foreach (const ScheduledClip &clip, m_schedule->timeClips)
+        qDebug() << "[Show] Function ID:" << clip.functionId << "start time:" << clip.start << "end time:" << clip.end;
 
     qDebug() << "Ordered list of ShowFunctions (beats):";
-    foreach (ShowFunction *sfunc, m_beatFunctions)
-        qDebug() << "[Show] Function ID:" << sfunc->functionID() << "start time:" << sfunc->startTime() << "duration:" << sfunc->duration(m_doc);
+    foreach (const ScheduledClip &clip, m_schedule->beatClips)
+        qDebug() << "[Show] Function ID:" << clip.functionId << "start time:" << clip.start << "end time:" << clip.end;
 #endif
     m_runningQueue.clear();
 
@@ -113,24 +82,19 @@ void ShowRunner::start()
 void ShowRunner::setPause(bool enable)
 {
     for (int i = 0; i < m_runningQueue.count(); i++)
-    {
-        Function *f = m_runningQueue.at(i).first;
-        f->setPause(enable);
-    }
+        m_runningQueue.at(i).function->setPause(enable);
 }
 
 void ShowRunner::stop()
 {
     m_elapsedTime = 0;
     m_elapsedBeats = 0;
-    m_currentTimeFunctionIndex = 0;
-    m_currentBeatFunctionIndex = 0;
+    m_currentTimeClipIndex = 0;
+    m_currentBeatClipIndex = 0;
+    m_startPassPending = false;
 
     for (int i = 0; i < m_runningQueue.count(); i++)
-    {
-        Function *f = m_runningQueue.at(i).first;
-        f->stop(functionParent());
-    }
+        m_runningQueue.at(i).function->stop(functionParent());
 
     m_runningQueue.clear();
     qDebug() << "ShowRunner stopped";
@@ -141,17 +105,220 @@ FunctionParent ShowRunner::functionParent() const
     return FunctionParent(FunctionParent::Function, m_show->id());
 }
 
+quint32 ShowRunner::now(Function::TempoType tempo) const
+{
+    return tempo == Function::Time ? m_elapsedTime : m_elapsedBeats;
+}
+
+bool ShowRunner::isOffsetSensitive(Function::Type type)
+{
+    // These honour the start offset handed to Function::start(): moving their
+    // clip's start while they play changes what should be heard/seen now, so
+    // they get restarted at the new offset. Scenes, matrices, EFX etc. only
+    // (re)fade in and would just glitch.
+    switch (type)
+    {
+        case Function::AudioType:
+        case Function::VideoType:
+        case Function::ChaserType:
+        case Function::SequenceType:
+            return true;
+        default:
+            return false;
+    }
+}
+
+int ShowRunner::runningIndex(quint32 sfId) const
+{
+    for (int i = 0; i < m_runningQueue.count(); i++)
+        if (m_runningQueue.at(i).sfId == sfId)
+            return i;
+    return -1;
+}
+
+bool ShowRunner::isFunctionShared(const Function *function, quint32 sfId) const
+{
+    for (int i = 0; i < m_runningQueue.count(); i++)
+    {
+        const RunningClip &rc = m_runningQueue.at(i);
+        if (rc.function == function && rc.sfId != sfId)
+            return true;
+    }
+    return false;
+}
+
+int ShowRunner::indexAfter(const QVector<ScheduledClip> &clips, quint32 now)
+{
+    auto it = std::upper_bound(clips.constBegin(), clips.constEnd(), now,
+                               [](quint32 value, const ScheduledClip &clip) { return value < clip.start; });
+    return int(it - clips.constBegin());
+}
+
+void ShowRunner::startClip(const ScheduledClip &clip, quint32 now)
+{
+    Function *f = m_doc->function(clip.functionId);
+    if (f == NULL)
+        return;
+
+    // this should happen only when a Show is not started from 0,
+    // or when the clip was (re)scheduled under the playhead
+    quint32 functionTimeOffset = now > clip.start ? now - clip.start : 0;
+
+    RunningClip rc;
+    rc.sfId = clip.sfId;
+    rc.functionId = clip.functionId;
+    rc.trackId = clip.trackId;
+    rc.start = clip.start;
+    rc.stopTime = clip.end;
+    rc.tempo = clip.tempo;
+    rc.function = f;
+    rc.overrideId = f->requestAttributeOverride(Function::Intensity, m_intensityMap.value(clip.trackId, 1.0));
+
+    f->start(m_doc->masterTimer(), functionParent(), functionTimeOffset);
+    m_runningQueue.append(rc);
+}
+
+void ShowRunner::stopClip(int index)
+{
+    RunningClip rc = m_runningQueue.takeAt(index);
+
+    // Function::start() dedups by parent, so two overlapping clips of the same
+    // Function share one run: leave it to the other clip.
+    if (isFunctionShared(rc.function, rc.sfId) == false)
+        rc.function->stop(functionParent());
+}
+
+void ShowRunner::startDueClips(const QVector<ScheduledClip> &clips, int &index, quint32 now)
+{
+    // clips are ordered by start time, so when we find an entry with start
+    // time greater than now, this phase is over
+    while (index < clips.count())
+    {
+        const ScheduledClip &clip = clips.at(index);
+        if (clip.start > now)
+            break;
+
+        // a clip that already ended (runner started past it, or it was
+        // rescheduled behind the playhead) is skipped, not started
+        if (clip.end > now && runningIndex(clip.sfId) == -1)
+            startClip(clip, now);
+
+        index++;
+    }
+}
+
+void ShowRunner::runStartPass()
+{
+    m_startPassPending = false;
+
+    const QVector<ScheduledClip> *lists[2] = { &m_schedule->timeClips, &m_schedule->beatClips };
+    for (const QVector<ScheduledClip> *clips : lists)
+    {
+        foreach (const ScheduledClip &clip, *clips)
+        {
+            quint32 now = this->now(clip.tempo);
+            if (clip.start > now)
+                break;
+            if (clip.isActiveAt(now) == false || runningIndex(clip.sfId) != -1)
+                continue;
+
+            Function *f = m_doc->function(clip.functionId);
+            if (f == NULL)
+                continue;
+
+            // A stop requested earlier this tick (restart, or an edit that
+            // moved the clip away and back) is completed by the MasterTimer
+            // only after this write(): starting now would have that postRun
+            // wipe the elapsed offset again. Retry on the next tick.
+            if (f->isRunning() && f->stopped())
+            {
+                m_startPassPending = true;
+                continue;
+            }
+
+            startClip(clip, now);
+        }
+    }
+}
+
+void ShowRunner::reconcile(const QSharedPointer<const ShowSchedule> &schedule)
+{
+    const ShowSchedule &s = *schedule;
+
+    // 1. Running clips: stop what is gone or no longer under the playhead,
+    //    restart what moved (only if the offset matters), update the rest.
+    for (int i = m_runningQueue.count() - 1; i >= 0; i--)
+    {
+        RunningClip &rc = m_runningQueue[i];
+        const ScheduledClip *clip = s.clip(rc.sfId);
+
+        if (clip == NULL || clip->isActiveAt(now(clip->tempo)) == false)
+        {
+            stopClip(i);
+            continue;
+        }
+
+        bool restart = clip->functionId != rc.functionId ||
+                       clip->tempo != rc.tempo ||
+                       (clip->start != rc.start && isOffsetSensitive(clip->type));
+        if (restart)
+        {
+            // the start pass below re-adds it at the new offset once the
+            // MasterTimer has completed the stop
+            stopClip(i);
+            continue;
+        }
+
+        rc.start = clip->start;
+        rc.stopTime = clip->end;
+        rc.trackId = clip->trackId;
+    }
+
+    // 2. Track intensity: attribute values by track ID (track IDs are
+    //    swapped by Show::moveTrack, so the old map may be stale).
+    QMap<quint32, qreal> intensityMap;
+    for (auto it = s.intensity.constBegin(); it != s.intensity.constEnd(); ++it)
+        intensityMap[it.key()] = it.value();
+
+    for (int i = 0; i < m_runningQueue.count(); i++)
+    {
+        RunningClip &rc = m_runningQueue[i];
+        qreal intensity = intensityMap.value(rc.trackId, 1.0);
+        if (rc.overrideId != Function::invalidAttributeId() &&
+            m_intensityMap.value(rc.trackId, 1.0) != intensity)
+                rc.function->adjustAttribute(intensity, rc.overrideId);
+    }
+    m_intensityMap = intensityMap;
+
+    // 3. Swap the schedule: phase 1 continues from the first clip starting
+    //    after the playhead; everything at or before it is handled by the
+    //    start pass, which starts the active clips that are not running.
+    m_schedule = schedule;
+    m_totalRunTime = s.totalRunTime;
+    m_currentTimeClipIndex = indexAfter(s.timeClips, m_elapsedTime);
+    m_currentBeatClipIndex = indexAfter(s.beatClips, m_elapsedBeats);
+    m_startPassPending = true;
+}
+
+void ShowRunner::applyPendingSchedule()
+{
+    if (m_show == NULL)
+        return;
+
+    QSharedPointer<const ShowSchedule> schedule = m_show->takePendingSchedule();
+    if (schedule.isNull() == false)
+        reconcile(schedule);
+}
+
 void ShowRunner::write(MasterTimer *timer)
 {
     //qDebug() << Q_FUNC_INFO << "elapsed:" << m_elapsedTime << ", total:" << m_totalRunTime;
 
-    // Phase 1. Check all the Functions that need to be started
-    // m_timeFunctions is ordered by startup time, so when we found an entry
-    // with start time greater than m_elapsed, this phase is over
-    bool startFunctionsDone = false;
+    // Phase 0. Pick up timeline edits made since the last tick
+    applyPendingSchedule();
 
     // check synchronization to beats (if show is beat-based)
-    if (m_show->tempoType() == Function::Beats)
+    if (m_schedule->showTempo == Function::Beats)
     {
         //qDebug() << Q_FUNC_INFO << "isBeat:" << timer->isBeat() << ", elapsed beats:" << m_elapsedBeats;
 
@@ -180,93 +347,14 @@ void ShowRunner::write(MasterTimer *timer)
             return;
     }
 
-    // check if there are time-based functions to start
-    while (startFunctionsDone == false)
-    {
-        if (m_currentTimeFunctionIndex == m_timeFunctions.count())
-            break;
+    // Clips (re)scheduled under the playhead by an edit, or whose start was
+    // deferred while the Show was paused
+    if (m_startPassPending)
+        runStartPass();
 
-        ShowFunction *sf = m_timeFunctions.at(m_currentTimeFunctionIndex);
-        quint32 funcStartTime = sf->startTime();
-        quint32 functionTimeOffset = 0;
-        Function *f = m_doc->function(sf->functionID());
-        if (f == nullptr)
-        {
-            m_currentTimeFunctionIndex++;
-            continue;
-        }
-
-        // this should happen only when a Show is not started from 0
-        if (m_elapsedTime > funcStartTime)
-        {
-            functionTimeOffset = m_elapsedTime - funcStartTime;
-            funcStartTime = m_elapsedTime;
-        }
-        if (m_elapsedTime >= funcStartTime)
-        {
-            foreach (Track *track, m_show->tracks())
-            {
-                if (track->showFunctions().contains(sf))
-                {
-                    int intOverrideId = f->requestAttributeOverride(Function::Intensity, m_intensityMap[track->id()]);
-                    //f->adjustAttribute(m_intensityMap[track->id()], Function::Intensity);
-                    sf->setIntensityOverrideId(intOverrideId);
-                    break;
-                }
-            }
-
-            f->start(m_doc->masterTimer(), functionParent(), functionTimeOffset);
-            m_runningQueue.append(QPair<Function *, quint32>(f, sf->startTime() + sf->duration(m_doc)));
-            m_currentTimeFunctionIndex++;
-        }
-        else
-            startFunctionsDone = true;
-    }
-
-    startFunctionsDone = false;
-
-    // check if there are beat-based functions to start
-    while (startFunctionsDone == false)
-    {
-        if (m_currentBeatFunctionIndex == m_beatFunctions.count())
-            break;
-
-        ShowFunction *sf = m_beatFunctions.at(m_currentBeatFunctionIndex);
-        quint32 funcStartTime = sf->startTime();
-        quint32 functionTimeOffset = 0;
-        Function *f = m_doc->function(sf->functionID());
-        if (f == nullptr)
-        {
-            m_currentBeatFunctionIndex++;
-            continue;
-        }
-
-        // this should happen only when a Show is not started from 0
-        if (m_elapsedBeats > funcStartTime)
-        {
-            functionTimeOffset = m_elapsedBeats - funcStartTime;
-            funcStartTime = m_elapsedBeats;
-        }
-        if (m_elapsedBeats >= funcStartTime)
-        {
-            foreach (Track *track, m_show->tracks())
-            {
-                if (track->showFunctions().contains(sf))
-                {
-                    int intOverrideId = f->requestAttributeOverride(Function::Intensity, m_intensityMap[track->id()]);
-                    //f->adjustAttribute(m_intensityMap[track->id()], Function::Intensity);
-                    sf->setIntensityOverrideId(intOverrideId);
-                    break;
-                }
-            }
-
-            f->start(m_doc->masterTimer(), functionParent(), functionTimeOffset);
-            m_runningQueue.append(QPair<Function *, quint32>(f, sf->startTime() + sf->duration(m_doc)));
-            m_currentBeatFunctionIndex++;
-        }
-        else
-            startFunctionsDone = true;
-    }
+    // Phase 1. Check all the Functions that need to be started
+    startDueClips(m_schedule->timeClips, m_currentTimeClipIndex, m_elapsedTime);
+    startDueClips(m_schedule->beatClips, m_currentBeatClipIndex, m_elapsedBeats);
 
     // Phase 2. Check if we need to stop some running Functions
     // It is done in reverse order for two reasons:
@@ -274,15 +362,14 @@ void ShowRunner::write(MasterTimer *timer)
     // 2- to avoid messing up with indices when an entry is removed
     for (int i = m_runningQueue.count() - 1; i >= 0; i--)
     {
-        Function *func = m_runningQueue.at(i).first;
-        quint32 stopTime = m_runningQueue.at(i).second;
-        quint32 currTime = func->tempoType() == Function::Time ? m_elapsedTime : m_elapsedBeats;
+        const RunningClip &rc = m_runningQueue.at(i);
+        quint32 currTime = now(rc.tempo);
 
         // if we passed the function stop time
-        if (currTime >= stopTime)
+        if (currTime >= rc.stopTime)
         {
             // stop the function
-            func->stop(functionParent());
+            rc.function->stop(functionParent());
             // remove it from the running queue
             m_runningQueue.removeAt(i);
         }
@@ -313,18 +400,10 @@ void ShowRunner::adjustIntensity(qreal fraction, const Track *track)
     qDebug() << Q_FUNC_INFO << "Track ID: " << track->id() << ", val:" << fraction;
     m_intensityMap[track->id()] = fraction;
 
-    foreach (ShowFunction *sf, track->showFunctions())
+    for (int i = 0; i < m_runningQueue.count(); i++)
     {
-        Function *f = m_doc->function(sf->functionID());
-        if (f == NULL)
-            continue;
-
-        for (int i = 0; i < m_runningQueue.count(); i++)
-        {
-            Function *rf = m_runningQueue.at(i).first;
-            if (f == rf)
-                f->adjustAttribute(fraction, sf->intensityOverrideId());
-        }
+        const RunningClip &rc = m_runningQueue.at(i);
+        if (rc.trackId == track->id() && rc.overrideId != Function::invalidAttributeId())
+            rc.function->adjustAttribute(fraction, rc.overrideId);
     }
 }
-
