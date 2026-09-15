@@ -673,6 +673,8 @@ void ApiFunctionsDomain::registerMethods()
             if (sourceError.isEmpty() == false)
             {
                 delete function;
+                if (boundScene != nullptr)
+                    doc->deleteFunction(boundScene->id());
                 session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams, sourceError));
                 return;
             }
