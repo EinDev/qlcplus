@@ -44,6 +44,7 @@ set(SRC_FILES
     freezewatchdog.cpp freezewatchdog.h
     functioneditor.cpp functioneditor.h
     functionmanager.cpp functionmanager.h
+    functionpathutils.cpp functionpathutils.h
     importmanager.cpp importmanager.h
     inputoutputmanager.cpp inputoutputmanager.h
     inputprofileeditor.cpp inputprofileeditor.h
