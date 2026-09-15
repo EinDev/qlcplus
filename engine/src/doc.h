@@ -563,6 +563,21 @@ public:
     QList <Function*> functionsByType(Function::Type type) const;
 
     /**
+     * Get the functions that reference $functionId, directly or through a
+     * nested function (a Scene placed in a Chaser placed on a Show track
+     * is "used" by both the Chaser and the Show). Built on the virtual
+     * Function::contains() the engine already uses for loop prevention, so
+     * it covers Shows, Chasers/Sequences and Collections. The function
+     * itself is never part of the result.
+     *
+     * @param functionId The ID of the function to look up
+     * @param typeMask Restrict the result to these Function::Type bits
+     *                 (OR-ed together); 0 means every type
+     * @return The referencing functions, in Doc order
+     */
+    QList <Function*> functionsUsing(quint32 functionId, int typeMask = 0) const;
+
+    /**
      * Return the Shows in this Doc that may still hold Show timeline values
      * written under the old, ambiguous beat-pseudo-count convention
      * (ADR 0001 decision 4) - see the .cpp for the exact, deliberately

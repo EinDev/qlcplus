@@ -60,6 +60,7 @@ private slots:
     void addFunction();
     void deleteFunction();
     void function();
+    void functionsUsing();
     void usage();
 
     void load();

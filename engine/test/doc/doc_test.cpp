@@ -33,7 +33,10 @@
 #include "scriptwrapper.h"
 #include "qlcphysical.h"
 #include "collection.h"
+#include "showfunction.h"
 #include "qlcchannel.h"
+#include "track.h"
+#include "show.h"
 #include "sequence.h"
 #include "qlcfile.h"
 #include "fixture.h"
@@ -899,6 +902,86 @@ void Doc_Test::function()
 
     m_doc->setStartupFunction(s1->id());
     QVERIFY(m_doc->startupFunction() == s1->id());
+}
+
+void Doc_Test::functionsUsing()
+{
+    Scene *placed = new Scene(m_doc);
+    placed->setName("placed");
+    m_doc->addFunction(placed);
+
+    Scene *stepped = new Scene(m_doc);
+    stepped->setName("stepped");
+    m_doc->addFunction(stepped);
+
+    Scene *unused = new Scene(m_doc);
+    unused->setName("unused");
+    m_doc->addFunction(unused);
+
+    // a Chaser stepping over "stepped"
+    Chaser *chaser = new Chaser(m_doc);
+    chaser->setName("chaser");
+    m_doc->addFunction(chaser);
+    QVERIFY(chaser->addStep(ChaserStep(stepped->id())));
+
+    // a Collection holding "placed"
+    Collection *collection = new Collection(m_doc);
+    collection->setName("collection");
+    m_doc->addFunction(collection);
+    QVERIFY(collection->addFunction(placed->id()));
+
+    // a Show with one track holding "placed" and the chaser as clips
+    Show *show = new Show(m_doc);
+    show->setName("show");
+    m_doc->addFunction(show);
+    Track *track = new Track(Function::invalidId(), show);
+    ShowFunction *sf1 = new ShowFunction(show->getLatestShowFunctionId());
+    sf1->setFunctionID(placed->id());
+    track->addShowFunction(sf1);
+    ShowFunction *sf2 = new ShowFunction(show->getLatestShowFunctionId());
+    sf2->setFunctionID(chaser->id());
+    track->addShowFunction(sf2);
+    QVERIFY(show->addTrack(track));
+
+    // a second Show that references nothing of the above
+    Show *otherShow = new Show(m_doc);
+    otherShow->setName("other show");
+    m_doc->addFunction(otherShow);
+    Track *otherTrack = new Track(Function::invalidId(), otherShow);
+    ShowFunction *sf3 = new ShowFunction(otherShow->getLatestShowFunctionId());
+    sf3->setFunctionID(unused->id());
+    otherTrack->addShowFunction(sf3);
+    QVERIFY(otherShow->addTrack(otherTrack));
+
+    // every type: direct clip, collection member
+    QList<Function *> users = m_doc->functionsUsing(placed->id());
+    QCOMPARE(users.count(), 2);
+    QVERIFY(users.contains(collection));
+    QVERIFY(users.contains(show));
+
+    // Shows only
+    users = m_doc->functionsUsing(placed->id(), Function::ShowType);
+    QCOMPARE(users, QList<Function *>() << show);
+
+    // indirect reference: "stepped" is on the show only through the chaser
+    users = m_doc->functionsUsing(stepped->id());
+    QCOMPARE(users.count(), 2);
+    QVERIFY(users.contains(chaser));
+    QVERIFY(users.contains(show));
+    QCOMPARE(m_doc->functionsUsing(stepped->id(), Function::ShowType), QList<Function *>() << show);
+    QCOMPARE(m_doc->functionsUsing(stepped->id(), Function::ChaserType), QList<Function *>() << chaser);
+
+    // the chaser itself is a clip of the show
+    QCOMPARE(m_doc->functionsUsing(chaser->id(), Function::ShowType), QList<Function *>() << show);
+
+    // "unused" lives only on the other show; the type mask can be OR-ed
+    QCOMPARE(m_doc->functionsUsing(unused->id()), QList<Function *>() << otherShow);
+    QCOMPARE(m_doc->functionsUsing(unused->id(), Function::ChaserType | Function::CollectionType).count(), 0);
+
+    // a function never uses itself, and nothing uses a Show or an unknown ID
+    QVERIFY(m_doc->functionsUsing(show->id()).isEmpty());
+    QVERIFY(m_doc->functionsUsing(Function::invalidId()).isEmpty());
+    QVERIFY(m_doc->functionsUsing(4242).isEmpty());
 }
 
 void Doc_Test::usage()

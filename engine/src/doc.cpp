@@ -1119,6 +1119,25 @@ QList<Function *> Doc::functionsByType(Function::Type type) const
     return list;
 }
 
+QList<Function *> Doc::functionsUsing(quint32 functionId, int typeMask) const
+{
+    QList <Function*> list;
+
+    if (functionId == Function::invalidId())
+        return list;
+
+    foreach (Function *f, m_functions)
+    {
+        if (f == NULL || f->id() == functionId)
+            continue;
+        if (typeMask != 0 && (int(f->type()) & typeMask) == 0)
+            continue;
+        if (f->contains(functionId))
+            list.append(f);
+    }
+    return list;
+}
+
 QList<Show *> Doc::possiblyAffectedLegacyBeatShows(const QString &creatorVersion) const
 {
     QList<Show *> result;
