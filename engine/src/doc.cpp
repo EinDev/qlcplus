@@ -57,6 +57,8 @@
  #include "audiocapture_qt6.h"
 #endif
 
+#include "mediaassets.h"
+
 #define AUTOSAVE_TIMEOUT    30 // seconds
 
 Doc::Doc(QObject* parent, int universes)
@@ -76,6 +78,7 @@ Doc::Doc(QObject* parent, int universes)
     , m_loadStatus(Cleared)
     , m_docRevision(0)
     , m_clipboard(new QLCClipboard(this))
+    , m_assets(new MediaAssets(this))
     , m_fixturesListCacheUpToDate(false)
     , m_latestFixtureId(0)
     , m_latestFixtureGroupId(0)
@@ -412,6 +415,11 @@ bool Doc::isKiosk() const
 /*********************************************************************
  * Clipboard
  *********************************************************************/
+
+MediaAssets *Doc::assets() const
+{
+    return m_assets;
+}
 
 QLCClipboard *Doc::clipboard()
 {

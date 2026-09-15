@@ -19,6 +19,7 @@ add_library(${module_name} SHARED
     dmxdumpfactoryproperties.cpp dmxdumpfactoryproperties.h
     dmxsource.h
     doc.cpp doc.h
+    mediaassets.cpp mediaassets.h
     efx.cpp efx.h
     efxfixture.cpp efxfixture.h
     fadechannel.cpp fadechannel.h

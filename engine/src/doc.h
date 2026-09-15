@@ -44,6 +44,7 @@ class RGBScriptsCache;
 class AudioPluginCache;
 class AudioBpmAnalyzer;
 class MonitorProperties;
+class MediaAssets;
 class Show;
 
 /** @addtogroup engine Engine
@@ -266,6 +267,16 @@ public:
 
 private:
     QLCClipboard *m_clipboard;
+
+    /*********************************************************************
+     * Media assets
+     *********************************************************************/
+public:
+    /** Get the project-local store for Audio/Video source files */
+    MediaAssets *assets() const;
+
+private:
+    MediaAssets *m_assets;
 
     /*********************************************************************
      * Fixture Instances
