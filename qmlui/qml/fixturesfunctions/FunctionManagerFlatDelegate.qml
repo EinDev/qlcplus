@@ -109,7 +109,15 @@ Item
                         }
 
                         if (mouseMods === -1)
-                            functionManager.selectFunctionID(iID, false)
+                        {
+                            // a folder row has no function ID: selecting "function -1"
+                            // would only clear the folder selection and the drop
+                            // would then move nothing
+                            if (qItem.itemType === App.FunctionDragItem)
+                                functionManager.selectFunctionID(iID, false)
+                            else
+                                functionManager.selectFolder(qItem.nodePath, false)
+                        }
 
                         fDragItem.itemsList = functionManager.selectedFunctionsID()
                         fDragItem.itemLabel = qItem.textLabel
