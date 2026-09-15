@@ -135,6 +135,7 @@ DWORD WINAPI reportThreadProc(LPVOID param)
     Diagnostics::writeReportLine(hFile, QStringLiteral("Crash type:       %1").arg(job->kind));
     for (const QString &line : job->details)
         Diagnostics::writeReportLine(hFile, line);
+    Diagnostics::appendProcessSnapshot(hFile);
     Diagnostics::writeReportLine(hFile, QString());
     Diagnostics::appendGdbAllThreadsBacktrace(hFile);
     Diagnostics::closeReportFile(hFile);

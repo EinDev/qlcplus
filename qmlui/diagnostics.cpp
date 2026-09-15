@@ -29,6 +29,13 @@
 
 #ifdef Q_OS_WIN
 #include <windows.h>
+// PSAPI_VERSION 1 = the classic psapi.dll exports (linked via psapi in
+// qmlui/CMakeLists.txt), independent of whatever _WIN32_WINNT the Qt
+// headers happen to set - the default would silently switch to the
+// kernel32 K32* variants and change the link requirement.
+#define PSAPI_VERSION 1
+#include <psapi.h>
+#include <tlhelp32.h>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -134,10 +141,15 @@ void Diagnostics::appendGdbAllThreadsBacktrace(void *hFileRaw)
     HANDLE hFile = static_cast<HANDLE>(hFileRaw);
     const qint64 pid = QCoreApplication::applicationPid();
 
-    writeReportLine(hFile, QStringLiteral("--- gdb -p %1 -batch -ex \"thread apply all bt\" ---").arg(pid));
+    writeReportLine(hFile, QStringLiteral("--- gdb -p %1 -batch -ex \"info sharedlibrary\" -ex \"thread apply all bt\" ---").arg(pid));
     FlushFileBuffers(hFile);
 
-    const QString cmdLine = QStringLiteral("\"%1\" -p %2 -batch -ex \"set pagination off\" -ex \"thread apply all bt\"")
+    // "info sharedlibrary" (every module's load address range) goes first:
+    // extractThreadSection() takes everything from a thread's header up to
+    // the next "\nThread " as that thread's section, and the crashing thread
+    // is regularly the last one gdb prints, so anything appended after the
+    // backtraces would end up inside its section in the dialog.
+    const QString cmdLine = QStringLiteral("\"%1\" -p %2 -batch -ex \"set pagination off\" -ex \"info sharedlibrary\" -ex \"thread apply all bt\"")
                                  .arg(resolveGdbPath())
                                  .arg(pid);
 
@@ -169,6 +181,58 @@ void Diagnostics::appendGdbAllThreadsBacktrace(void *hFileRaw)
     else
     {
         writeReportLine(hFile, QStringLiteral("(failed to launch gdb, GetLastError=%1)").arg(GetLastError()));
+    }
+}
+
+void Diagnostics::appendProcessSnapshot(void *hFileRaw)
+{
+    HANDLE hFile = static_cast<HANDLE>(hFileRaw);
+    const auto mb = [](quint64 bytes) { return QString::number(bytes / (1024 * 1024)); };
+
+    PROCESS_MEMORY_COUNTERS_EX pmc;
+    ZeroMemory(&pmc, sizeof(pmc));
+    pmc.cb = sizeof(pmc);
+    if (GetProcessMemoryInfo(GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS *>(&pmc), sizeof(pmc)))
+    {
+        writeReportLine(hFile, QStringLiteral("Process memory:   private %1 MB, working set %2 MB (peak %3 MB)")
+                                   .arg(mb(pmc.PrivateUsage), mb(pmc.WorkingSetSize), mb(pmc.PeakWorkingSetSize)));
+    }
+
+    DWORD handles = 0;
+    GetProcessHandleCount(GetCurrentProcess(), &handles);
+
+    // No direct "thread count of this process" API: walk a system thread
+    // snapshot and count the ones owned by us.
+    int threads = 0;
+    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+    if (snapshot != INVALID_HANDLE_VALUE)
+    {
+        const DWORD ownPid = GetCurrentProcessId();
+        THREADENTRY32 entry;
+        entry.dwSize = sizeof(entry);
+        if (Thread32First(snapshot, &entry))
+        {
+            do
+            {
+                if (entry.th32OwnerProcessID == ownPid)
+                    threads++;
+            } while (Thread32Next(snapshot, &entry));
+        }
+        CloseHandle(snapshot);
+    }
+    writeReportLine(hFile, QStringLiteral("Handles/threads:  %1 handles, %2 threads").arg(handles).arg(threads));
+
+    // Commit charge is what a std::bad_alloc actually ran into: a 64-bit
+    // process never exhausts its address space, only RAM + page file.
+    MEMORYSTATUSEX status;
+    ZeroMemory(&status, sizeof(status));
+    status.dwLength = sizeof(status);
+    if (GlobalMemoryStatusEx(&status))
+    {
+        writeReportLine(hFile, QStringLiteral("System memory:    commit %1 / %2 MB used, physical %3 / %4 MB free, load %5%")
+                                   .arg(mb(status.ullTotalPageFile - status.ullAvailPageFile), mb(status.ullTotalPageFile),
+                                        mb(status.ullAvailPhys), mb(status.ullTotalPhys))
+                                   .arg(status.dwMemoryLoad));
     }
 }
 

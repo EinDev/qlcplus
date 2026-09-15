@@ -165,6 +165,7 @@ void FreezeWatchdog::onFreezeDetected(qint64 heartbeatAgeMs)
     Diagnostics::writeReportLine(hFile, QStringLiteral("Heartbeat gap:    %1 ms (threshold %2 ms)").arg(heartbeatAgeMs).arg(kFreezeThresholdMs));
     Diagnostics::writeReportLine(hFile, QStringLiteral("Open project:     %1").arg(Diagnostics::currentProjectPath()));
     Diagnostics::writeReportLine(hFile, QStringLiteral("PID:              %1").arg(QCoreApplication::applicationPid()));
+    Diagnostics::appendProcessSnapshot(hFile);
     Diagnostics::writeReportLine(hFile, QString());
     Diagnostics::appendGdbAllThreadsBacktrace(hFile);
     Diagnostics::closeReportFile(hFile);

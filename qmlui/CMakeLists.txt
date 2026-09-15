@@ -248,7 +248,8 @@ target_link_libraries(${module_name} PRIVATE
 )
 
 if(WIN32)
-    target_link_libraries(${module_name} PRIVATE spoutdx)
+    # psapi: GetProcessMemoryInfo for the crash/freeze report snapshot
+    target_link_libraries(${module_name} PRIVATE spoutdx psapi)
 endif()
 
 if(ANDROID)
