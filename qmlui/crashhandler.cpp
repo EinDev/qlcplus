@@ -52,6 +52,56 @@ struct ReportJob
     unsigned long crashingTid;  // GetCurrentThreadId() of the thread that crashed
 };
 
+// The crashing thread's backtrace always begins with the reporter's own
+// plumbing - WaitForSingleObject <- produceReport <- whichever handler caught
+// the crash <- the OS/CRT exception dispatch - before reaching the frame that
+// actually faulted. Hide those from the dialog so the first frame the user
+// sees is the interesting one; the report file keeps the full trace.
+QString hideReporterFrames(const QString &section)
+{
+    static const char *const kMarkers[] = {
+        "produceReport", "crashMessageHandler", "unhandledExceptionFilter",
+        "abortSignalHandler", "KiUserExceptionDispatcher", "msvcrt!abort",
+        "UnhandledExceptionFilter (",
+    };
+    constexpr int kMaxFramesToScan = 20;
+
+    const QStringList lines = section.split(QLatin1Char('\n'));
+    int lastMarkerLine = -1;
+    int framesSeen = 0;
+    for (int i = 0; i < lines.size() && framesSeen < kMaxFramesToScan; ++i)
+    {
+        const QString &line = lines.at(i);
+        if (!line.startsWith(QLatin1Char('#')))
+            continue;
+        ++framesSeen;
+        for (const char *marker : kMarkers)
+        {
+            if (line.contains(QLatin1String(marker)))
+            {
+                lastMarkerLine = i;
+                break;
+            }
+        }
+    }
+    if (lastMarkerLine < 0)
+        return section;
+
+    // Never hide everything: if no frame survives, show the trace as-is.
+    bool frameRemains = false;
+    for (int i = lastMarkerLine + 1; i < lines.size() && !frameRemains; ++i)
+        frameRemains = lines.at(i).startsWith(QLatin1Char('#'));
+    if (!frameRemains)
+        return section;
+
+    QStringList out;
+    if (!lines.isEmpty() && lines.first().startsWith(QLatin1String("Thread ")))
+        out << lines.first();
+    out << QStringLiteral("(reporter-internal frames hidden - the full trace is in the report file)");
+    out += lines.mid(lastMarkerLine + 1);
+    return out.join(QLatin1Char('\n'));
+}
+
 // Runs on the helper thread. Everything that can block or pump messages
 // happens here, never on the crashing thread itself.
 DWORD WINAPI reportThreadProc(LPVOID param)
@@ -96,7 +146,7 @@ DWORD WINAPI reportThreadProc(LPVOID param)
     bool usedFullDumpFallback = false;
     if (!crashingThreadBacktrace.isEmpty())
     {
-        expanded = crashingThreadBacktrace;
+        expanded = hideReporterFrames(crashingThreadBacktrace);
     }
     else if (!fullReport.isEmpty())
     {
