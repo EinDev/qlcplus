@@ -61,3 +61,11 @@ Date: 2026-09-15. Scope per user decisions: Spout is a **new output mode of the 
 Recommended approach: add "Spout" as a third output mode of the Video function and implement it as a pure-C++ CPU path — `QMediaPlayer` + `QVideoSink` (no QQuickView at all), frames converted with `QVideoFrame::toImage()` and painted into an `ARGB32_Premultiplied` canvas of the configured sender size, pushed with vendored **SpoutDX** (`SendImage`, D3D11, own device, BGRA as-is). This avoids Qt's OpenGL render thread entirely; the QQuickRenderControl/SpoutGL GPU path stays as a later upgrade if 1080p60 CPU cost (~6-9 ms/frame) proves too high. Senders are pooled per name in `VideoProvider`, kept alive with a transparent frame while idle (OBS re-inits on sender loss/resize), and shared by clips on the same track. `ShowRunner::write` already resolves the owning Track per ShowFunction (showrunner.cpp:207-216); it passes "QLC+ <track name>" to the Video before `start()`, carried through `requestPlayback(QString)`; outside a Show the name falls back to "QLC+ <video name>". Spout2 is BSD-2 and builds with MinGW (upstream PRs #93/#114/#122, `-msse4`); MinGW64 has d3d11/dxgi libs. Milestone 1: vendored SpoutDX compiles and a debug hook shows transparent-then-red in OBS.
 
 Open questions for the user: (1) Create senders eagerly at document load for every Spout-mode video's track (so OBS can pick them before anything plays) or lazily on first play? (2) Should rotation/position/scale attributes apply in Spout mode, or be ignored (YAGNI)? (3) Audio in Spout mode: keep playing locally through QLC+'s audio output? (4) Accept the limitation that one Video function cannot play on two tracks simultaneously? (5) Default sender size: native video resolution, or fixed 1920×1080 per track?
+
+## Decisions (user, 2026-09-15)
+
+1. Senders are created at document load for every Spout-mode Video (OBS can pick them before anything plays).
+2. Rotation/position/scale attributes are ignored in Spout mode.
+3. Audio keeps playing locally through QLC+'s audio output in Spout mode.
+4. Accepted limitation: one Video function cannot play on two tracks at the same time.
+5. Default sender size: the video's native resolution.
