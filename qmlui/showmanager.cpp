@@ -805,8 +805,7 @@ QString ShowManager::overlappingItemName(ShowFunction *sf, int trackIdx, int sta
 
         quint32 fst = other->startTime();
         quint32 st = quint32(startTime);
-        if ((st >= fst && st <= fst + other->duration()) ||
-            (fst >= st && fst <= st + sf->duration()))
+        if (st < fst + other->duration() && fst < st + sf->duration())
         {
             return func->name();
         }
@@ -1710,8 +1709,9 @@ bool ShowManager::checkOverlapping(Track *track, ShowFunction *sourceFunc,
         if (func != nullptr)
         {
             quint32 fst = sf->startTime();
-            if ((startTime >= fst && startTime <= fst + sf->duration()) ||
-                (fst >= startTime && fst <= startTime + duration))
+            // half-open intervals: touching edges are legal, since snapping (getSnapEdges()
+            // includes item end edges) deliberately places clips back-to-back
+            if (startTime < fst + sf->duration() && fst < startTime + duration)
             {
                 return true;
             }
