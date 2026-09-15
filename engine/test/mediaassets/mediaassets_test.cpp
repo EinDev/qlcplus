@@ -122,9 +122,10 @@ void MediaAssets_Test::importCreatesHashDir()
     QVERIFY(m_doc->assets()->isManaged(source) == false);
     QVERIFY(m_doc->assets()->isManaged(m_doc->assets()->assetsDir() + "/a.wav") == false);
 
-    // no .partial leftovers
+    // no .partial leftovers: only the hash directory and the provenance manifest
     QDir store(m_doc->assets()->assetsDir());
-    QCOMPARE(store.entryList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot), QStringList() << hashDirFor("hello"));
+    QCOMPARE(store.entryList(QDir::Dirs | QDir::NoDotAndDotDot), QStringList() << hashDirFor("hello"));
+    QCOMPARE(store.entryList(QDir::Files), QStringList() << MediaAssets::manifestFileName());
 
     // nothing references the file yet
     QCOMPARE(m_doc->assets()->referenced(), QStringList());
@@ -148,7 +149,7 @@ void MediaAssets_Test::sameContentTwice()
     QDir hashDir(m_doc->assets()->assetsDir() + "/" + hashDirFor("hello"));
     QCOMPARE(hashDir.entryList(QDir::Files), QStringList() << "a.wav");
     QDir store(m_doc->assets()->assetsDir());
-    QCOMPARE(store.entryList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot).count(), 1);
+    QCOMPARE(store.entryList(QDir::Dirs | QDir::NoDotAndDotDot).count(), 1);
 }
 
 void MediaAssets_Test::differentContentSameBasename()
@@ -580,10 +581,11 @@ void MediaAssets_Test::backgroundImportRelinksLargeFile()
     QCOMPARE(progressSpy.last().at(1).toLongLong(), qint64(megabytes) * 1024 * 1024);
     QCOMPARE(progressSpy.last().at(2).toLongLong(), qint64(megabytes) * 1024 * 1024);
 
-    // no .partial leftovers
+    // no .partial leftovers (the manifest is the only file at the store root)
     QDir store(m_doc->assets()->assetsDir());
-    QCOMPARE(store.entryList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot),
+    QCOMPARE(store.entryList(QDir::Dirs | QDir::NoDotAndDotDot),
              QStringList() << hashDirForFile(source));
+    QCOMPARE(store.entryList(QDir::Files), QStringList() << MediaAssets::manifestFileName());
 }
 
 void MediaAssets_Test::backgroundImportDedupesAndRelinksVideo()
@@ -818,6 +820,318 @@ void MediaAssets_Test::removeUnreferencedDeletesOnlyStoreFiles()
     QCOMPARE(m_doc->assets()->removeUnreferenced(QStringList() << used << later), true);
     QVERIFY(QFile::exists(used) == false);
     QVERIFY(QFile::exists(later) == false);
+}
+
+/*****************************************************************************
+ * Provenance and reload from origin
+ *****************************************************************************/
+
+void MediaAssets_Test::rewriteFile(const QString &path, const QByteArray &content)
+{
+    QDateTime before = QFileInfo(path).lastModified();
+
+    QFile f(path);
+    QVERIFY(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    f.write(content);
+    f.close();
+
+    // an mtime the check cannot mistake for the recorded one
+    QFile touch(path);
+    QVERIFY(touch.open(QIODevice::ReadWrite));
+    QVERIFY(touch.setFileTime(before.addSecs(5), QFileDevice::FileModificationTime));
+    touch.close();
+}
+
+void MediaAssets_Test::originRecordedOnImport()
+{
+    m_doc->setWorkspacePath(m_tmp->path());
+    m_doc->assets()->setProjectFile(m_tmp->path() + "/show.qxw");
+
+    QString source = writeFile("src/lyrics.mp4", "take one");
+    QFileInfo info(source);
+    QString stored = m_doc->assets()->importFile(source);
+    QVERIFY(stored.isEmpty() == false);
+
+    MediaOrigin origin = m_doc->assets()->origin(stored);
+    QVERIFY(origin.isValid());
+    QCOMPARE(origin.path, source);
+    QCOMPARE(origin.size, info.size());
+    QCOMPARE(origin.mtime.toMSecsSinceEpoch(), info.lastModified().toMSecsSinceEpoch());
+    QCOMPARE(origin.sha1, QString::fromLatin1(QCryptographicHash::hash("take one", QCryptographicHash::Sha1).toHex()));
+
+    // the manifest sits at the store root, outside the <sha12>/ layout
+    QVERIFY(QFile::exists(m_doc->assets()->assetsDir() + "/" + MediaAssets::manifestFileName()));
+    QCOMPARE(m_doc->assets()->unreferenced(), QStringList() << stored);
+
+    Video *video = new Video(m_doc);
+    video->setSourceUrl(stored);
+    QVERIFY(m_doc->addFunction(video));
+    QCOMPARE(m_doc->assets()->originOf(video).path, source);
+    QVERIFY(m_doc->assets()->originAvailable(video));
+    QCOMPARE(m_doc->assets()->originChanged(video), false);
+    QVERIFY(m_doc->assets()->changedOrigins().isEmpty());
+
+    // nothing known about a copy that was never imported through the store,
+    // nor about an external reference
+    Audio *external = new Audio(m_doc);
+    external->setSourceFileName(writeFile("src/ext.wav", "external"));
+    QVERIFY(m_doc->addFunction(external));
+    QVERIFY(m_doc->assets()->originOf(external).isValid() == false);
+    QVERIFY(m_doc->assets()->originAvailable(external) == false);
+    QCOMPARE(m_doc->assets()->originChanged(external), false);
+}
+
+void MediaAssets_Test::originSurvivesSaveLoadAndRelocate()
+{
+    const QString workspace = QDir::cleanPath(m_tmp->path() + "/proj");
+    QDir().mkpath(workspace);
+    m_doc->setWorkspacePath(workspace);
+    m_doc->assets()->setProjectFile(workspace + "/show.qxw");
+
+    QString source = writeFile("src/song.wav", "wav-bytes");
+    QString stored = m_doc->assets()->importFile(source);
+    Audio *audio = new Audio(m_doc);
+    audio->setSourceFileName(stored);
+    QVERIFY(m_doc->addFunction(audio));
+
+    QBuffer buffer;
+    buffer.open(QIODevice::WriteOnly | QIODevice::Text);
+    QXmlStreamWriter xmlWriter(&buffer);
+    QVERIFY(m_doc->saveXML(&xmlWriter));
+    xmlWriter.setDevice(nullptr);
+    buffer.close();
+
+    // the .qxw itself carries no provenance: it lives in the store's manifest
+    const QString xml = QString::fromUtf8(buffer.data());
+    QVERIFY2(xml.contains("Origin") == false, qPrintable(xml));
+
+    // a fresh Doc bound to the same project reads it back
+    Doc other(this);
+    other.setWorkspacePath(workspace);
+    other.assets()->setProjectFile(workspace + "/show.qxw");
+    buffer.open(QIODevice::ReadOnly | QIODevice::Text);
+    QXmlStreamReader xmlReader(&buffer);
+    xmlReader.readNextStartElement();
+    QVERIFY(other.loadXML(xmlReader));
+    buffer.close();
+
+    QCOMPARE(other.functionsByType(Function::AudioType).count(), 1);
+    Function *loaded = other.functionsByType(Function::AudioType).first();
+    QCOMPARE(other.assets()->originOf(loaded).path, source);
+    QCOMPARE(other.assets()->originOf(loaded).sha1, m_doc->assets()->origin(stored).sha1);
+    QCOMPARE(other.assets()->originChanged(loaded), false);
+
+    // Save As: the copy and its provenance move together
+    const QString elsewhere = QDir::cleanPath(m_tmp->path() + "/elsewhere");
+    QDir().mkpath(elsewhere);
+    QVERIFY(other.assets()->relocateTo(elsewhere + "/copy.qxw"));
+    QString moved = static_cast<Audio *>(loaded)->getSourceFileName();
+    QVERIFY(moved.startsWith(elsewhere + "/copy.qxw.assets/"));
+    QCOMPARE(other.assets()->originOf(loaded).path, source);
+    QVERIFY(QFile::exists(elsewhere + "/copy.qxw.assets/" + MediaAssets::manifestFileName()));
+    QCOMPARE(MediaAssets::readManifest(elsewhere + "/copy.qxw.assets").count(), 1);
+}
+
+void MediaAssets_Test::originChangedAfterRewrite()
+{
+    m_doc->setWorkspacePath(m_tmp->path());
+    m_doc->assets()->setProjectFile(m_tmp->path() + "/show.qxw");
+
+    QString source = writeFile("src/lyrics.mp4", "take one");
+    QString stored = m_doc->assets()->importFile(source);
+    Video *video = new Video(m_doc);
+    video->setSourceUrl(stored);
+    video->setName("Lyrics wall");   // a custom name must survive the reload
+    QVERIFY(m_doc->addFunction(video));
+    QCOMPARE(m_doc->assets()->originChanged(video), false);
+
+    QSignalSpy reloadedSpy(m_doc->assets(), SIGNAL(originReloaded(quint32,QString,QString,quint32)));
+
+    // re-rendered: different bytes, same length, later mtime -> confirmed by hash
+    rewriteFile(source, "take two");
+    QCOMPARE(m_doc->assets()->originChanged(video), true);
+    QCOMPARE(m_doc->assets()->changedOrigins().count(), 1);
+    QVERIFY(m_doc->assets()->changedOrigins().first() == video);
+
+    MediaAssets::ReloadStatus status;
+    QString error;
+    QString fresh = m_doc->assets()->importOrigin(video, &status, &error);
+    QCOMPARE(status, MediaAssets::Reloaded);
+    QCOMPARE(fresh, m_doc->assets()->assetsDir() + "/" + hashDirFor("take two") + "/lyrics.mp4");
+    QVERIFY(fresh != stored);
+    QCOMPARE(video->sourceUrl(), stored);   // importOrigin() does not touch the function
+
+    m_doc->assets()->applyReload(video, fresh);
+    QCOMPARE(video->sourceUrl(), fresh);
+    QCOMPARE(video->name(), QString("Lyrics wall"));
+    QCOMPARE(reloadedSpy.count(), 1);
+    QCOMPARE(reloadedSpy.at(0).at(0).toUInt(), video->id());
+    QCOMPARE(reloadedSpy.at(0).at(1).toString(), stored);
+    QCOMPARE(reloadedSpy.at(0).at(2).toString(), fresh);
+    QCOMPARE(m_doc->assets()->originChanged(video), false);
+    QCOMPARE(m_doc->assets()->originOf(video).path, source);
+    QCOMPARE(m_doc->assets()->originOf(video).sha1,
+             QString::fromLatin1(QCryptographicHash::hash("take two", QCryptographicHash::Sha1).toHex()));
+
+    // never delete files: the previous copy is still there for an undo
+    QVERIFY(QFile::exists(stored));
+    QCOMPARE(m_doc->assets()->unreferenced(), QStringList() << stored);
+
+    // undo (the function goes back to the old copy): that copy's own
+    // provenance is what the check uses, so it reports the origin as changed
+    video->setSourceUrl(stored);
+    QCOMPARE(m_doc->assets()->originChanged(video), true);
+
+    // a different length is detected without hashing
+    rewriteFile(source, "take three, longer");
+    video->setSourceUrl(fresh);
+    QCOMPARE(m_doc->assets()->originChanged(video), true);
+
+    // the bulk path applies it in one go
+    MediaAssets::ReloadResult result = m_doc->assets()->reloadChanged();
+    QCOMPARE(result.reloaded, 1);
+    QCOMPARE(result.unchanged, 0);
+    QCOMPARE(result.missing, 0);
+    QCOMPARE(result.queued, 0);
+    QCOMPARE(video->sourceUrl(), m_doc->assets()->assetsDir() + "/" + hashDirFor("take three, longer") + "/lyrics.mp4");
+    QCOMPARE(m_doc->assets()->originChanged(video), false);
+
+    result = m_doc->assets()->reloadChanged();
+    QCOMPARE(result.reloaded, 0);
+    QCOMPARE(result.unchanged, 1);
+}
+
+void MediaAssets_Test::originTouchedButIdenticalIsUnchanged()
+{
+    m_doc->setWorkspacePath(m_tmp->path());
+    m_doc->assets()->setProjectFile(m_tmp->path() + "/show.qxw");
+
+    QString source = writeFile("src/song.wav", "same bytes");
+    QString stored = m_doc->assets()->importFile(source);
+    Audio *audio = new Audio(m_doc);
+    audio->setSourceFileName(stored);
+    QVERIFY(m_doc->addFunction(audio));
+
+    // re-saved without a change: the hash settles it and the recorded
+    // mtime is refreshed so the next check is cheap again
+    rewriteFile(source, "same bytes");
+    QCOMPARE(m_doc->assets()->originChanged(audio), false);
+    QCOMPARE(m_doc->assets()->origin(stored).mtime.toMSecsSinceEpoch(),
+             QFileInfo(source).lastModified().toMSecsSinceEpoch());
+
+    MediaAssets::ReloadStatus status;
+    QCOMPARE(m_doc->assets()->importOrigin(audio, &status), stored);
+    QCOMPARE(status, MediaAssets::Unchanged);
+}
+
+void MediaAssets_Test::reloadDedupesIdenticalContent()
+{
+    m_doc->setWorkspacePath(m_tmp->path());
+    m_doc->assets()->setProjectFile(m_tmp->path() + "/show.qxw");
+
+    QString source = writeFile("src/clip.mp4", "version A");
+    QString storedA = m_doc->assets()->importFile(source);
+    Video *video = new Video(m_doc);
+    video->setSourceUrl(storedA);
+    QVERIFY(m_doc->addFunction(video));
+
+    rewriteFile(source, "version B");
+    MediaAssets::ReloadStatus status;
+    QString storedB = m_doc->assets()->importOrigin(video, &status);
+    QCOMPARE(status, MediaAssets::Reloaded);
+    m_doc->assets()->applyReload(video, storedB);
+
+    // back to the first content: the existing <sha12>/ copy is reused, no
+    // third directory appears
+    rewriteFile(source, "version A");
+    QCOMPARE(m_doc->assets()->originChanged(video), true);
+    QString again = m_doc->assets()->importOrigin(video, &status);
+    QCOMPARE(status, MediaAssets::Reloaded);
+    QCOMPARE(again, storedA);
+    m_doc->assets()->applyReload(video, again);
+    QCOMPARE(video->sourceUrl(), storedA);
+    QCOMPARE(m_doc->assets()->originChanged(video), false);
+
+    QDir store(m_doc->assets()->assetsDir());
+    QCOMPARE(store.entryList(QDir::Dirs | QDir::NoDotAndDotDot).count(), 2);
+}
+
+void MediaAssets_Test::missingOriginIsUnavailable()
+{
+    m_doc->setWorkspacePath(m_tmp->path());
+    m_doc->assets()->setProjectFile(m_tmp->path() + "/show.qxw");
+
+    QString source = writeFile("src/gone.wav", "bytes");
+    QString stored = m_doc->assets()->importFile(source);
+    Audio *audio = new Audio(m_doc);
+    audio->setSourceFileName(stored);
+    QVERIFY(m_doc->addFunction(audio));
+
+    QVERIFY(QFile::remove(source));
+    QVERIFY(m_doc->assets()->originOf(audio).isValid());   // still recorded
+    QCOMPARE(m_doc->assets()->originAvailable(audio), false);
+    QCOMPARE(m_doc->assets()->originChanged(audio), false);
+    QVERIFY(m_doc->assets()->changedOrigins().isEmpty());
+
+    MediaAssets::ReloadStatus status;
+    QString error;
+    QCOMPARE(m_doc->assets()->importOrigin(audio, &status, &error), stored);
+    QCOMPARE(status, MediaAssets::Missing);
+    QVERIFY(error.contains("gone.wav"));
+
+    MediaAssets::ReloadResult result = m_doc->assets()->reloadChanged();
+    QCOMPARE(result.missing, 1);
+    QCOMPARE(result.reloaded, 0);
+    QCOMPARE(audio->getSourceFileName(), stored);
+}
+
+void MediaAssets_Test::reloadChangedQueuesLargeFiles()
+{
+    m_doc->setWorkspacePath(m_tmp->path());
+    m_doc->assets()->setProjectFile(m_tmp->path() + "/show.qxw");
+    m_doc->assets()->setBackgroundThreshold(2 * 1024 * 1024);
+
+    // imported while small, re-rendered to a size above the threshold
+    QString source = writeFile("src/big.mp4", "small at first");
+    QString stored = m_doc->assets()->importFile(source);
+    Video *video = new Video(m_doc);
+    video->setSourceUrl(stored);
+    QVERIFY(m_doc->addFunction(video));
+
+    QSignalSpy finishedSpy(m_doc->assets(), SIGNAL(importFinished(QString,QString,QString)));
+    QSignalSpy reloadedSpy(m_doc->assets(), SIGNAL(originReloaded(quint32,QString,QString,quint32)));
+
+    QVERIFY(QFile::remove(source));
+    QCOMPARE(writeLargeFile("src/big.mp4", 3), source);
+    QCOMPARE(m_doc->assets()->originChanged(video), true);
+
+    MediaAssets::ReloadResult result = m_doc->assets()->reloadChanged();
+    QCOMPARE(result.queued, 1);
+    QCOMPARE(result.reloaded, 0);
+    QVERIFY(m_doc->assets()->hasPendingImports());
+    QCOMPARE(video->sourceUrl(), stored);   // untouched until the copy lands
+
+    QTRY_COMPARE_WITH_TIMEOUT(finishedSpy.count(), 1, 60000);
+    QCOMPARE(reloadedSpy.count(), 1);
+    QString fresh = m_doc->assets()->assetsDir() + "/" + hashDirForFile(source) + "/big.mp4";
+    QCOMPARE(video->sourceUrl(), fresh);
+    QVERIFY(fresh != stored);
+    QCOMPARE(m_doc->assets()->originOf(video).path, source);
+    QCOMPARE(m_doc->assets()->originChanged(video), false);
+    QVERIFY(QFile::exists(stored));
+}
+
+void MediaAssets_Test::removeUnreferencedDropsOrigin()
+{
+    m_doc->setWorkspacePath(m_tmp->path());
+    m_doc->assets()->setProjectFile(m_tmp->path() + "/show.qxw");
+
+    QString stored = m_doc->assets()->importFile(writeFile("src/old.wav", "old"));
+    QVERIFY(m_doc->assets()->origin(stored).isValid());
+
+    QVERIFY(m_doc->assets()->removeUnreferenced(QStringList() << stored));
+    QVERIFY(m_doc->assets()->origin(stored).isValid() == false);
+    QCOMPARE(MediaAssets::readManifest(m_doc->assets()->assetsDir()).count(), 0);
 }
 
 QTEST_GUILESS_MAIN(MediaAssets_Test)

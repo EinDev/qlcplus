@@ -57,7 +57,21 @@ private slots:
     void collectExternalQueuesLargeFiles();
     void removeUnreferencedDeletesOnlyStoreFiles();
 
+    // increment 4: provenance and reload from origin
+    void originRecordedOnImport();
+    void originSurvivesSaveLoadAndRelocate();
+    void originChangedAfterRewrite();
+    void originTouchedButIdenticalIsUnchanged();
+    void reloadDedupesIdenticalContent();
+    void missingOriginIsUnavailable();
+    void reloadChangedQueuesLargeFiles();
+    void removeUnreferencedDropsOrigin();
+
 private:
+    /** Overwrite @path with @content and push its mtime clearly past the
+     *  old one (same-millisecond rewrites may keep it on some file systems) */
+    static void rewriteFile(const QString &path, const QByteArray &content);
+
     /** Write @content into <m_tmp>/<relativePath>, returns its absolute path */
     QString writeFile(const QString &relativePath, const QByteArray &content);
     /** First 12 hex characters of the SHA1 of @content */
