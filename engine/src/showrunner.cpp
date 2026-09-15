@@ -33,10 +33,9 @@
 ShowRunner::ShowRunner(const Doc* doc, quint32 showID, quint32 startTime)
     : QObject(NULL)
     , m_doc(doc)
-    , m_currentTimeClipIndex(0)
+    , m_currentClipIndex(0)
     , m_elapsedTime(startTime)
-    , m_currentBeatClipIndex(0)
-    , m_elapsedBeats(0)
+    , m_elapsedBeats(startTime)
     , beatSynced(false)
     , m_totalRunTime(0)
     , m_startPassPending(false)
@@ -58,12 +57,9 @@ ShowRunner::ShowRunner(const Doc* doc, quint32 showID, quint32 startTime)
         m_intensityMap[it.key()] = it.value();
 
 #if 1
-    qDebug() << "Ordered list of ShowFunctions (time):";
-    foreach (const ScheduledClip &clip, m_schedule->timeClips)
-        qDebug() << "[Show] Function ID:" << clip.functionId << "start time:" << clip.start << "end time:" << clip.end;
-
-    qDebug() << "Ordered list of ShowFunctions (beats):";
-    foreach (const ScheduledClip &clip, m_schedule->beatClips)
+    qDebug() << "Ordered list of ShowFunctions (clock:"
+             << (m_schedule->showTempo == Function::Beats ? "beats" : "time") << "):";
+    foreach (const ScheduledClip &clip, m_schedule->clips)
         qDebug() << "[Show] Function ID:" << clip.functionId << "start time:" << clip.start << "end time:" << clip.end;
 #endif
     m_runningQueue.clear();
@@ -90,8 +86,7 @@ void ShowRunner::stop()
 {
     m_elapsedTime = 0;
     m_elapsedBeats = 0;
-    m_currentTimeClipIndex = 0;
-    m_currentBeatClipIndex = 0;
+    m_currentClipIndex = 0;
     m_startPassPending = false;
 
     for (int i = 0; i < m_runningQueue.count(); i++)
@@ -106,9 +101,9 @@ FunctionParent ShowRunner::functionParent() const
     return FunctionParent(FunctionParent::Function, m_show->id());
 }
 
-quint32 ShowRunner::now(Function::TempoType tempo) const
+quint32 ShowRunner::now() const
 {
-    return tempo == Function::Time ? m_elapsedTime : m_elapsedBeats;
+    return m_schedule->showTempo == Function::Beats ? m_elapsedBeats : m_elapsedTime;
 }
 
 bool ShowRunner::isOffsetSensitive(Function::Type type)
@@ -186,7 +181,6 @@ void ShowRunner::startClip(const ScheduledClip &clip, quint32 now)
     rc.trackId = clip.trackId;
     rc.start = clip.start;
     rc.stopTime = clip.end;
-    rc.tempo = clip.tempo;
     rc.function = f;
     rc.overrideId = f->requestAttributeOverride(Function::Intensity, m_intensityMap.value(clip.trackId, 1.0));
 
@@ -205,13 +199,16 @@ void ShowRunner::stopClip(int index)
         rc.function->stop(functionParent());
 }
 
-void ShowRunner::startDueClips(const QVector<ScheduledClip> &clips, int &index, quint32 now)
+void ShowRunner::startDueClips()
 {
+    const QVector<ScheduledClip> &clips = m_schedule->clips;
+    quint32 now = this->now();
+
     // clips are ordered by start time, so when we find an entry with start
     // time greater than now, this phase is over
-    while (index < clips.count())
+    while (m_currentClipIndex < clips.count())
     {
-        const ScheduledClip &clip = clips.at(index);
+        const ScheduledClip &clip = clips.at(m_currentClipIndex);
         if (clip.start > now)
             break;
 
@@ -220,47 +217,55 @@ void ShowRunner::startDueClips(const QVector<ScheduledClip> &clips, int &index, 
         if (clip.end > now && runningIndex(clip.sfId) == -1)
             startClip(clip, now);
 
-        index++;
+        m_currentClipIndex++;
     }
 }
 
 void ShowRunner::runStartPass()
 {
     m_startPassPending = false;
+    quint32 now = this->now();
 
-    const QVector<ScheduledClip> *lists[2] = { &m_schedule->timeClips, &m_schedule->beatClips };
-    for (const QVector<ScheduledClip> *clips : lists)
+    foreach (const ScheduledClip &clip, m_schedule->clips)
     {
-        foreach (const ScheduledClip &clip, *clips)
+        if (clip.start > now)
+            break;
+        if (clip.isActiveAt(now) == false || runningIndex(clip.sfId) != -1)
+            continue;
+
+        Function *f = m_doc->function(clip.functionId);
+        if (f == NULL)
+            continue;
+
+        // A stop requested earlier this tick (restart, or an edit that
+        // moved the clip away and back) is completed by the MasterTimer
+        // only after this write(): starting now would have that postRun
+        // wipe the elapsed offset again. Retry on the next tick.
+        if (f->isRunning() && f->stopped())
         {
-            quint32 now = this->now(clip.tempo);
-            if (clip.start > now)
-                break;
-            if (clip.isActiveAt(now) == false || runningIndex(clip.sfId) != -1)
-                continue;
-
-            Function *f = m_doc->function(clip.functionId);
-            if (f == NULL)
-                continue;
-
-            // A stop requested earlier this tick (restart, or an edit that
-            // moved the clip away and back) is completed by the MasterTimer
-            // only after this write(): starting now would have that postRun
-            // wipe the elapsed offset again. Retry on the next tick.
-            if (f->isRunning() && f->stopped())
-            {
-                m_startPassPending = true;
-                continue;
-            }
-
-            startClip(clip, now);
+            m_startPassPending = true;
+            continue;
         }
+
+        startClip(clip, now);
     }
 }
 
 void ShowRunner::reconcile(const QSharedPointer<const ShowSchedule> &schedule)
 {
     const ShowSchedule &s = *schedule;
+
+    // 0. The Show's tempo decides which clock the clips are judged against.
+    //    Switching to Beats mid-run: the beat clock has not been advancing,
+    //    so align it to the real playhead here (for the checks below) and
+    //    again on the next beat pulse, which re-establishes beat sync.
+    if (s.showTempo != m_schedule->showTempo && s.showTempo == Function::Beats)
+    {
+        m_elapsedBeats = m_elapsedTime;
+        beatSynced = false;
+    }
+    m_schedule = schedule;
+    quint32 now = this->now();
 
     // 1. Running clips: stop what is gone or no longer under the playhead,
     //    restart what moved (only if the offset matters), update the rest.
@@ -269,14 +274,13 @@ void ShowRunner::reconcile(const QSharedPointer<const ShowSchedule> &schedule)
         RunningClip &rc = m_runningQueue[i];
         const ScheduledClip *clip = s.clip(rc.sfId);
 
-        if (clip == NULL || clip->isActiveAt(now(clip->tempo)) == false)
+        if (clip == NULL || clip->isActiveAt(now) == false)
         {
             stopClip(i);
             continue;
         }
 
         bool restart = clip->functionId != rc.functionId ||
-                       clip->tempo != rc.tempo ||
                        (clip->start != rc.start && isOffsetSensitive(clip->type));
         if (restart)
         {
@@ -307,13 +311,11 @@ void ShowRunner::reconcile(const QSharedPointer<const ShowSchedule> &schedule)
     }
     m_intensityMap = intensityMap;
 
-    // 3. Swap the schedule: phase 1 continues from the first clip starting
-    //    after the playhead; everything at or before it is handled by the
-    //    start pass, which starts the active clips that are not running.
-    m_schedule = schedule;
+    // 3. Phase 1 continues from the first clip starting after the playhead;
+    //    everything at or before it is handled by the start pass, which
+    //    starts the active clips that are not running.
     m_totalRunTime = s.totalRunTime;
-    m_currentTimeClipIndex = indexAfter(s.timeClips, m_elapsedTime);
-    m_currentBeatClipIndex = indexAfter(s.beatClips, m_elapsedBeats);
+    m_currentClipIndex = indexAfter(s.clips, now);
     m_startPassPending = true;
 }
 
@@ -343,6 +345,10 @@ void ShowRunner::write(MasterTimer *timer)
         {
             if (beatSynced == false)
             {
+                // The beat clock starts from wherever the real playhead is
+                // (the Show's start position, or the point at which the Show
+                // was switched to Beats while playing) and steps from here.
+                m_elapsedBeats = m_elapsedTime;
                 beatSynced = true;
                 qDebug() << "Beat synced";
             }
@@ -352,8 +358,8 @@ void ShowRunner::write(MasterTimer *timer)
                 // not a beat count, so advance it by the actual duration of one beat
                 // at the current BPM rather than a fixed pseudo-unit step. With no
                 // known BPM there is no way to convert a beat pulse into a real-ms
-                // increment, so leave it unchanged instead of guessing - any
-                // Beats-tempo functions simply won't start/stop until BPM is known.
+                // increment, so leave it unchanged instead of guessing - the
+                // clips simply won't start/stop until BPM is known.
                 int bpmNumber = m_doc->inputOutputMap()->bpmNumber();
                 if (bpmNumber > 0)
                     m_elapsedBeats += qRound(60000.0 / bpmNumber);
@@ -370,17 +376,16 @@ void ShowRunner::write(MasterTimer *timer)
         runStartPass();
 
     // Phase 1. Check all the Functions that need to be started
-    startDueClips(m_schedule->timeClips, m_currentTimeClipIndex, m_elapsedTime);
-    startDueClips(m_schedule->beatClips, m_currentBeatClipIndex, m_elapsedBeats);
+    startDueClips();
 
     // Phase 2. Check if we need to stop some running Functions
     // It is done in reverse order for two reasons:
     // 1- m_runningQueue is not ordered by stop time
     // 2- to avoid messing up with indices when an entry is removed
+    quint32 currTime = now();
     for (int i = m_runningQueue.count() - 1; i >= 0; i--)
     {
         const RunningClip &rc = m_runningQueue.at(i);
-        quint32 currTime = now(rc.tempo);
 
         // if we passed the function stop time
         if (currTime >= rc.stopTime)

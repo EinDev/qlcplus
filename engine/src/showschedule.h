@@ -51,8 +51,6 @@ struct ScheduledClip
     quint32 start = 0;
     /** End time on the timeline (start + resolved duration), in milliseconds */
     quint32 end = 0;
-    /** Tempo type of the clip's Function when the schedule was built */
-    Function::TempoType tempo = Function::Time;
     /** Type of the clip's Function when the schedule was built */
     Function::Type type = Function::Undefined;
 
@@ -62,26 +60,27 @@ struct ScheduledClip
 
 struct ShowSchedule
 {
-    /** Time-tempo clips, sorted by start time */
-    QVector<ScheduledClip> timeClips;
-    /** Beats-tempo clips, sorted by start time */
-    QVector<ScheduledClip> beatClips;
+    /** Every clip of the Show, sorted by start time */
+    QVector<ScheduledClip> clips;
     /** Latest clip end over the whole Show, in milliseconds */
     quint32 totalRunTime = 0;
     /** Track intensity (the Show's attribute values), keyed by track ID */
     QHash<quint32, qreal> intensity;
     /** IDs of every Function referenced by a clip (for cheap change filtering) */
     QSet<quint32> functionIds;
-    /** The Show's own tempo type when the schedule was built */
+    /**
+     * The Show's own tempo type when the schedule was built. It selects the
+     * clock every clip is started and stopped on: real elapsed time in a Time
+     * Show, the beat-quantised clock in a Beats Show (see ShowRunner::now()).
+     * A clip's Function tempo only governs how that Function steps internally,
+     * never when it comes and goes on the timeline.
+     */
     Function::TempoType showTempo = Function::Time;
 
     /** Find a clip by its ShowFunction ID, or nullptr if it is not scheduled */
     const ScheduledClip *clip(quint32 sfId) const
     {
-        for (const ScheduledClip &c : timeClips)
-            if (c.sfId == sfId)
-                return &c;
-        for (const ScheduledClip &c : beatClips)
+        for (const ScheduledClip &c : clips)
             if (c.sfId == sfId)
                 return &c;
         return nullptr;

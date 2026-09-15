@@ -55,8 +55,9 @@ Show::Show(Doc* doc) : Function(doc, Function::ShowType)
     // exactly like the Show tracks
     unregisterAttribute(tr("Intensity"));
 
-    // The schedule splits clips by their Function's tempo type and resolves a
-    // zero duration to the Function's own; both can change outside this Show.
+    // The schedule records which clock (real time or beats) this Show's clips
+    // start and stop on, and resolves a zero clip duration to the Function's
+    // own; the latter can change outside this Show.
     connect(this, &Function::tempoTypeChanged, this, &Show::markScheduleDirty);
     if (doc != NULL)
         connect(doc, &Doc::functionChanged, this, &Show::slotFunctionChanged);
@@ -613,14 +614,13 @@ QSharedPointer<const ShowSchedule> Show::buildSchedule() const
             clip.trackId = track->id();
             clip.start = sf->startTime();
             clip.end = sf->startTime() + sf->duration(doc());
-            clip.tempo = f->tempoType();
             clip.type = f->type();
 
-            if (clip.tempo == Function::Time)
-                schedule->timeClips.append(clip);
-            else
-                schedule->beatClips.append(clip);
-
+            // Which clock starts/stops the clip is the Show's tempo
+            // (schedule->showTempo), never the Function's: a Beats Function
+            // in a Time Show still comes and goes with the timeline the
+            // user edits, it only steps internally on the beat.
+            schedule->clips.append(clip);
             schedule->functionIds.insert(f->id());
 
             if (clip.end > schedule->totalRunTime)
@@ -629,8 +629,7 @@ QSharedPointer<const ShowSchedule> Show::buildSchedule() const
     }
 
     auto byStart = [](const ScheduledClip &a, const ScheduledClip &b) { return a.start < b.start; };
-    std::stable_sort(schedule->timeClips.begin(), schedule->timeClips.end(), byStart);
-    std::stable_sort(schedule->beatClips.begin(), schedule->beatClips.end(), byStart);
+    std::stable_sort(schedule->clips.begin(), schedule->clips.end(), byStart);
 
     return schedule;
 }

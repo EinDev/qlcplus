@@ -86,15 +86,19 @@ public:
         quint32 start;
         /** Timeline position at which the clip has to stop */
         quint32 stopTime;
-        Function::TempoType tempo;
         Function *function;
         /** Intensity attribute override ID on $function, or -1 */
         int overrideId;
     };
 
 private:
-    /** Timeline position relevant for a clip of the given tempo */
-    quint32 now(Function::TempoType tempo) const;
+    /**
+     * The playhead position clips are started and stopped against: the real
+     * elapsed time in a Time Show, the beat clock in a Beats Show. Both are
+     * milliseconds on the same timeline axis, the beat clock is merely
+     * quantised to beat pulses.
+     */
+    quint32 now() const;
 
     /** Whether the timeline start matters to how the Function plays */
     static bool isOffsetSensitive(Function::Type type);
@@ -112,7 +116,7 @@ private:
     void stopClip(int index);
 
     /** Phase 1: start every not-yet-considered clip whose start time has come */
-    void startDueClips(const QVector<ScheduledClip> &clips, int &index, quint32 now);
+    void startDueClips();
 
     /** Start every clip active at the playhead that is not running yet */
     void runStartPass();
@@ -132,21 +136,19 @@ private:
     /** The timeline snapshot currently being played */
     QSharedPointer<const ShowSchedule> m_schedule;
 
-    /** Index of the item in m_schedule->timeClips to be considered for playback */
-    int m_currentTimeClipIndex;
+    /** Index of the item in m_schedule->clips to be considered for playback */
+    int m_currentClipIndex;
 
     /** Elapsed time since runner start. Used also to move the cursor in the track view */
     quint32 m_elapsedTime;
 
-    /** Index of the item in m_schedule->beatClips to be considered for playback */
-    int m_currentBeatClipIndex;
-
-    /** Elapsed time since runner start, for Beats-tempo functions - in real
-     *  milliseconds like m_elapsedTime, NOT a beat count. ShowFunction::startTime()/
-     *  duration() are always real milliseconds regardless of a function's tempoType
-     *  (ADR 0001), so this must be kept in the same unit to compare directly against
-     *  them; it is advanced by the actual ms-per-beat (derived from BPM) on every
-     *  detected beat pulse, not by a fixed beat-pseudo-count step. */
+    /** The clock a Beats Show starts/stops its clips on - in real milliseconds
+     *  like m_elapsedTime, NOT a beat count. ShowFunction::startTime()/duration()
+     *  are always real milliseconds (ADR 0001), so this must be kept in the same
+     *  unit to compare directly against them; it is aligned to m_elapsedTime on
+     *  the beat that establishes sync and then advanced by the actual ms-per-beat
+     *  (derived from BPM) on every detected beat pulse, not by a fixed
+     *  beat-pseudo-count step. Unused (and not advanced) in a Time Show. */
     quint32 m_elapsedBeats;
 
     /** Flag used to sinchronize playback to beats */
