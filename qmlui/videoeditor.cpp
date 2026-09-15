@@ -71,6 +71,10 @@ void VideoEditor::detectMedia()
     else
     {
         QString sourceURL = m_video->sourceUrl();
+        // a previous probe (Replace/Reload) must not keep reporting into
+        // infoMap next to the new one
+        if (m_mediaPlayer)
+            delete m_mediaPlayer;
         m_mediaPlayer = new QMediaPlayer(this);
 
         connect(m_mediaPlayer, SIGNAL(metaDataChanged()),
@@ -131,6 +135,7 @@ void VideoEditor::setSourceFileName(QString sourceFileName)
     detectMedia();
 
     emit sourceFileNameChanged(sourceFileName);
+    emit originStateChanged();
     emit functionNameChanged(m_video->name());
     emit loopedChanged();
 }
@@ -158,6 +163,98 @@ QString VideoEditor::sourceDisplayName() const
 void VideoEditor::slotSourceRelinked(QString source)
 {
     emit sourceFileNameChanged(source);
+    emit originStateChanged();
+}
+
+QString VideoEditor::originPath() const
+{
+    if (m_video == nullptr)
+        return QString();
+
+    return m_doc->assets()->originOf(m_video).path;
+}
+
+bool VideoEditor::originAvailable() const
+{
+    if (m_video == nullptr)
+        return false;
+
+    if (sourceManaged())
+        return m_doc->assets()->originAvailable(m_video);
+
+    // an external local file is reloaded in place; a stream URL cannot be
+    const QString source = m_video->sourceUrl();
+    return source.contains("://") == false && QFileInfo(source).isFile();
+}
+
+bool VideoEditor::isOriginChanged() const
+{
+    if (m_video == nullptr)
+        return false;
+
+    return m_doc->assets()->originChanged(m_video);
+}
+
+QString VideoEditor::reloadTooltip() const
+{
+    if (m_video == nullptr)
+        return QString();
+
+    if (sourceManaged() == false)
+    {
+        if (m_video->sourceUrl().contains("://"))
+            return tr("A stream URL cannot be reloaded");
+        return tr("Reload the file from disk (re-reads resolution and duration)");
+    }
+
+    MediaOrigin origin = m_doc->assets()->originOf(m_video);
+    if (origin.isValid() == false)
+        return tr("No origin recorded for this copy");
+    if (QFileInfo(origin.path).isFile() == false)
+        return tr("Origin file not found: %1").arg(origin.path);
+
+    return tr("Re-import from %1").arg(origin.path);
+}
+
+void VideoEditor::reloadSource()
+{
+    if (m_video == nullptr)
+        return;
+
+    if (sourceManaged() == false)
+    {
+        // external reference: probe the same path again so a re-rendered
+        // file's new resolution/duration show up
+        if (m_video->sourceUrl().contains("://"))
+            return;
+        detectMedia();
+        emit mediaInfoChanged();
+        emit originStateChanged();
+        return;
+    }
+
+    MediaAssets::ReloadStatus status;
+    QString error;
+    const QString previous = m_video->sourceUrl();
+    const QString stored = m_doc->assets()->importOrigin(m_video, &status, &error);
+
+    if (status == MediaAssets::Reloaded)
+    {
+        // same undoable path as Replace: undo goes back to the previous
+        // copy, which stays on disk
+        Tardis::instance()->enqueueAction(Tardis::VideoSetSource, m_video->id(), previous, stored);
+        m_doc->assets()->applyReload(m_video, stored);
+        detectMedia();
+        emit sourceFileNameChanged(stored);
+        emit functionNameChanged(m_video->name());
+        emit loopedChanged();
+    }
+    else if (status == MediaAssets::Failed || status == MediaAssets::Missing)
+    {
+        qWarning() << Q_FUNC_INFO << "Reload failed:" << error;
+    }
+
+    emit originStateChanged();
 }
 
 QStringList VideoEditor::videoExtensions() const

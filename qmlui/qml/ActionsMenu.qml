@@ -373,6 +373,21 @@ Popup
 
         ContextMenuEntry
         {
+            id: mediaReload
+            faSource: FontAwesome.fa_arrows_rotate
+            faColor: UISettings.fgLight
+            entryText: qsTr("Reload changed media")
+            onEntered: submenuItem = null
+
+            onClicked:
+            {
+                menuRoot.close()
+                mainView.reloadChangedMedia()
+            }
+        }
+
+        ContextMenuEntry
+        {
             id: mediaCleanup
             faSource: FontAwesome.fa_broom
             faColor: UISettings.fgLight

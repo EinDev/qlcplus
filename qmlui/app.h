@@ -332,11 +332,25 @@ public:
      *  returns false if any entry was refused or could not be deleted */
     Q_INVOKABLE bool removeUnusedMedia(const QStringList &files);
 
+    /** Number of managed Audio/Video copies whose origin file changed on disk */
+    Q_INVOKABLE int changedMediaCount();
+
+    /** Re-import every managed copy whose origin changed on disk. Returns
+     *  { reloaded, queued, unchanged, missing, busy, failed, error } -
+     *  queued files finish in the background (see mediaImportStatus).
+     *  Never runs on its own: only from the actions menu / banner */
+    Q_INVOKABLE QVariantMap reloadChangedMedia();
+
 protected slots:
     void slotMediaImportStarted(QString source, qint64 bytes);
     void slotMediaImportProgress(QString source, qint64 done, qint64 total);
     void slotMediaImportFinished(QString source, QString target, QString error);
     void slotMediaPendingImportsChanged();
+
+    /** A reload re-pointed a function: a Video's new duration is only known
+     *  after a probe, so run one here (no editor may be open) and log the
+     *  old/new duration the way the engine does for Audio */
+    void slotMediaOriginReloaded(quint32 functionId, QString oldPath, QString newPath, quint32 oldDuration);
 
 private:
     void initDoc();

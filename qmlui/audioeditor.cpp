@@ -70,6 +70,95 @@ void AudioEditor::slotSourceRelinked()
 {
     if (m_audio != nullptr)
         emit sourceFileNameChanged(m_audio->getSourceFileName());
+    emit originStateChanged();
+}
+
+QString AudioEditor::originPath() const
+{
+    if (m_audio == nullptr)
+        return QString();
+
+    return m_doc->assets()->originOf(m_audio).path;
+}
+
+bool AudioEditor::originAvailable() const
+{
+    if (m_audio == nullptr)
+        return false;
+
+    if (sourceManaged())
+        return m_doc->assets()->originAvailable(m_audio);
+
+    // an external reference is reloaded in place
+    return QFileInfo(m_audio->getSourceFileName()).isFile();
+}
+
+bool AudioEditor::isOriginChanged() const
+{
+    if (m_audio == nullptr)
+        return false;
+
+    return m_doc->assets()->originChanged(m_audio);
+}
+
+QString AudioEditor::reloadTooltip() const
+{
+    if (m_audio == nullptr)
+        return QString();
+
+    if (sourceManaged() == false)
+        return tr("Reload the file from disk (re-reads duration, resets BPM)");
+
+    MediaOrigin origin = m_doc->assets()->originOf(m_audio);
+    if (origin.isValid() == false)
+        return tr("No origin recorded for this copy");
+    if (QFileInfo(origin.path).isFile() == false)
+        return tr("Origin file not found: %1").arg(origin.path);
+
+    return tr("Re-import from %1").arg(origin.path);
+}
+
+void AudioEditor::reloadSource()
+{
+    if (m_audio == nullptr)
+        return;
+
+    if (sourceManaged() == false)
+    {
+        // external reference: same path through the full setter, so the
+        // decoder, duration and BPM state follow whatever is on disk now
+        const QString name = m_audio->name();
+        m_audio->setSourceFileName(m_audio->getSourceFileName());
+        m_audio->setName(name);
+        m_audio->requestBpmDetection(false);
+        emit mediaInfoChanged();
+        emit loopedChanged();
+        emit originStateChanged();
+        return;
+    }
+
+    MediaAssets::ReloadStatus status;
+    QString error;
+    const QString previous = m_audio->getSourceFileName();
+    const QString stored = m_doc->assets()->importOrigin(m_audio, &status, &error);
+
+    if (status == MediaAssets::Reloaded)
+    {
+        // same undoable path as Replace: undo goes back to the previous
+        // copy, which stays on disk
+        Tardis::instance()->enqueueAction(Tardis::AudioSetSource, m_audio->id(), previous, stored);
+        m_doc->assets()->applyReload(m_audio, stored);
+        emit sourceFileNameChanged(stored);
+        emit mediaInfoChanged();
+        emit functionNameChanged(m_audio->name());
+        emit loopedChanged();
+    }
+    else if (status == MediaAssets::Failed || status == MediaAssets::Missing)
+    {
+        qWarning() << Q_FUNC_INFO << "Reload failed:" << error;
+    }
+
+    emit originStateChanged();
 }
 
 QString AudioEditor::sourceFileName() const
@@ -100,6 +189,7 @@ void AudioEditor::setSourceFileName(QString sourceFileName)
     m_audio->setSourceFileName(sourceFileName);
     m_audio->requestBpmDetection(false);
     emit sourceFileNameChanged(sourceFileName);
+    emit originStateChanged();
     emit mediaInfoChanged();
     emit functionNameChanged(m_audio->name());
     emit loopedChanged();

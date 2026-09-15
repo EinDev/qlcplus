@@ -103,15 +103,28 @@ Rectangle
 
             RobotoText
             {
-                width: selFileBtn.x - 5
+                width: reloadFileBtn.x - 5
                 fontSize: UISettings.textSizeDefault * 0.8
-                labelColor: UISettings.fgLight
+                labelColor: audioEditor.originChanged ? UISettings.selection : UISettings.fgLight
                 wrapText: true
                 // a managed copy shows its plain file name, an external
                 // reference its full path - the long .qxw.assets/<sha>/ path
-                // is nothing the user needs to read
-                label: audioEditor.sourceManaged ? qsTr("Managed: %1").arg(audioEditor.sourceDisplayName)
-                                                 : audioEditor.sourceDisplayName
+                // is nothing the user needs to read. A managed copy whose
+                // origin was re-rendered since the import says so, the
+                // Reload button next to it picks the new version up.
+                label: (audioEditor.sourceManaged ? qsTr("Managed: %1").arg(audioEditor.sourceDisplayName)
+                                                  : audioEditor.sourceDisplayName)
+                       + (audioEditor.originChanged ? " - " + qsTr("changed on disk") : "")
+            }
+            IconButton
+            {
+                id: reloadFileBtn
+                x: selFileBtn.x - width - 3
+                faSource: FontAwesome.fa_arrows_rotate
+                faColor: audioEditor.originChanged ? UISettings.selection : UISettings.fgMain
+                tooltip: audioEditor.reloadTooltip
+                enabled: audioEditor.originAvailable
+                onClicked: audioEditor.reloadSource()
             }
             IconButton
             {

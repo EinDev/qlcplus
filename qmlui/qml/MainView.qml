@@ -201,8 +201,17 @@ Rectangle
     // from the actions menu - nothing is ever collected unasked.
     function showExternalMediaNotice(count)
     {
-        externalMediaBanner.count = count
-        externalMediaBanner.visible = count > 0
+        externalMediaBanner.externalCount = count
+        externalMediaBanner.refresh()
+    }
+
+    // Managed copies whose origin file was re-rendered since the import
+    // (0 hides it). Shares the banner with the notice above: the external
+    // one comes first, this one follows once that is dealt with.
+    function showChangedMediaNotice(count)
+    {
+        externalMediaBanner.changedCount = count
+        externalMediaBanner.refresh()
     }
 
     // "Collect media into project" (actions menu / the banner above):
@@ -210,7 +219,8 @@ Rectangle
     // and repoints the functions, then reports what happened.
     function collectMediaIntoProject()
     {
-        externalMediaBanner.visible = false
+        externalMediaBanner.externalCount = 0
+        externalMediaBanner.refresh()
         var result = qlcplus.collectMedia()
         var text = qsTr("%1 file(s) copied into the project.").arg(result.copied)
         if (result.queued > 0)
@@ -220,6 +230,32 @@ Rectangle
         if (result.error)
             text += "\n" + result.error
         mediaResultPopup.title = qsTr("Collect media into project")
+        mediaResultPopup.message = text
+        mediaResultPopup.open()
+    }
+
+    // "Reload changed media" (actions menu / the banner): re-imports every
+    // managed copy whose origin file changed on disk and repoints the
+    // functions (the previous copies stay on disk), then reports what
+    // happened. Never runs unasked.
+    function reloadChangedMedia()
+    {
+        externalMediaBanner.changedCount = 0
+        externalMediaBanner.refresh()
+        var result = qlcplus.reloadChangedMedia()
+        var text = qsTr("%1 file(s) reloaded from their origin.").arg(result.reloaded)
+        if (result.queued > 0)
+            text += "\n" + qsTr("%1 large file(s) are being copied in the background.").arg(result.queued)
+        text += "\n" + qsTr("%1 file(s) unchanged.").arg(result.unchanged)
+        if (result.missing > 0)
+            text += "\n" + qsTr("%1 file(s) whose origin is no longer on disk.").arg(result.missing)
+        if (result.busy > 0)
+            text += "\n" + qsTr("%1 file(s) skipped because the function is running.").arg(result.busy)
+        if (result.failed > 0)
+            text += "\n" + qsTr("%1 file(s) could not be copied.").arg(result.failed)
+        if (result.error)
+            text += "\n" + result.error
+        mediaResultPopup.title = qsTr("Reload changed media")
         mediaResultPopup.message = text
         mediaResultPopup.open()
     }
@@ -908,9 +944,14 @@ Rectangle
         }
     }
 
-    // Non-blocking notice shown by showExternalMediaNotice() after a project
-    // with external Audio/Video sources was opened. Sits just under the main
-    // toolbar, above the views, and goes away on Collect or Dismiss.
+    // Non-blocking media notice shown after a project was opened, in one of
+    // two variants: Audio/Video sources living outside the media folder
+    // (showExternalMediaNotice, offers Collect) or managed copies whose
+    // origin file changed on disk since the import (showChangedMediaNotice,
+    // offers Reload). The external variant comes first; the changed one
+    // follows once that is collected or dismissed. Sits just under the
+    // main toolbar, above the views. Nothing is ever collected or reloaded
+    // unasked.
     Rectangle
     {
         id: externalMediaBanner
@@ -923,7 +964,30 @@ Rectangle
         border.width: 1
         border.color: UISettings.bgLight
 
-        property int count: 0
+        property int externalCount: 0
+        property int changedCount: 0
+        // which variant is showing: "external", "changed" or "" (hidden)
+        property string mode: ""
+
+        function refresh()
+        {
+            if (externalCount > 0)
+                mode = "external"
+            else if (changedCount > 0)
+                mode = "changed"
+            else
+                mode = ""
+            visible = mode !== ""
+        }
+
+        function dismiss()
+        {
+            if (mode === "external")
+                externalCount = 0
+            else if (mode === "changed")
+                changedCount = 0
+            refresh()
+        }
 
         RowLayout
         {
@@ -936,8 +1000,11 @@ Rectangle
             {
                 Layout.fillWidth: true
                 height: parent.height
-                label: qsTr("%1 audio/video file(s) referenced by this project live outside its media folder. " +
-                            "Collect them into the project so it can be moved as a whole.").arg(externalMediaBanner.count)
+                label: externalMediaBanner.mode === "changed"
+                       ? qsTr("%1 media file(s) changed on disk since they were imported. " +
+                              "Reload them to pick up the new version.").arg(externalMediaBanner.changedCount)
+                       : qsTr("%1 audio/video file(s) referenced by this project live outside its media folder. " +
+                              "Collect them into the project so it can be moved as a whole.").arg(externalMediaBanner.externalCount)
             }
 
             // inside a Layout only the Layout.* sizes count, a plain
@@ -946,8 +1013,14 @@ Rectangle
             {
                 Layout.preferredWidth: contentWidth + 24
                 Layout.preferredHeight: externalMediaBanner.height - 6
-                label: qsTr("Collect into project")
-                onClicked: mainView.collectMediaIntoProject()
+                label: externalMediaBanner.mode === "changed" ? qsTr("Reload") : qsTr("Collect into project")
+                onClicked:
+                {
+                    if (externalMediaBanner.mode === "changed")
+                        mainView.reloadChangedMedia()
+                    else
+                        mainView.collectMediaIntoProject()
+                }
             }
 
             GenericButton
@@ -955,7 +1028,7 @@ Rectangle
                 Layout.preferredWidth: contentWidth + 24
                 Layout.preferredHeight: externalMediaBanner.height - 6
                 label: qsTr("Dismiss")
-                onClicked: externalMediaBanner.visible = false
+                onClicked: externalMediaBanner.dismiss()
             }
         }
     }

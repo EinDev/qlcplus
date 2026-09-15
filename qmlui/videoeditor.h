@@ -33,6 +33,12 @@ class VideoEditor final : public FunctionEditor
     Q_PROPERTY(QString sourceFileName READ sourceFileName WRITE setSourceFileName NOTIFY sourceFileNameChanged)
     Q_PROPERTY(bool sourceManaged READ sourceManaged NOTIFY sourceFileNameChanged)
     Q_PROPERTY(QString sourceDisplayName READ sourceDisplayName NOTIFY sourceFileNameChanged)
+    /* getter/notify named apart from the property: "originChanged" is what
+     * Qt would expect as the NOTIFY of a property called "origin" */
+    Q_PROPERTY(QString originPath READ originPath NOTIFY originStateChanged)
+    Q_PROPERTY(bool originAvailable READ originAvailable NOTIFY originStateChanged)
+    Q_PROPERTY(bool originChanged READ isOriginChanged NOTIFY originStateChanged)
+    Q_PROPERTY(QString reloadTooltip READ reloadTooltip NOTIFY originStateChanged)
     Q_PROPERTY(QStringList videoExtensions READ videoExtensions CONSTANT)
     Q_PROPERTY(QStringList pictureExtensions READ pictureExtensions CONSTANT)
     Q_PROPERTY(QVariant mediaInfo READ mediaInfo NOTIFY mediaInfoChanged)
@@ -70,6 +76,24 @@ public:
     /** What the editor shows for the source: the file name alone for a
      *  managed copy, the full path or URL otherwise */
     QString sourceDisplayName() const;
+
+    /** Absolute path a managed copy was imported from, empty when unknown */
+    QString originPath() const;
+
+    /** True when the Reload button can do something: the origin of a
+     *  managed copy exists, or the source is an external local file */
+    bool originAvailable() const;
+
+    /** True when the origin file differs from the managed copy */
+    bool isOriginChanged() const;
+
+    /** Tooltip of the Reload button, explaining what it would do */
+    QString reloadTooltip() const;
+
+    /** Reload the file from disk: a managed copy is re-imported from its
+     *  origin (undoable, the previous copy stays on disk), an external
+     *  reference is re-probed in place (resolution, duration) */
+    Q_INVOKABLE void reloadSource();
 
     /** Get the supported video file types that can be decoded */
     QStringList videoExtensions() const;
@@ -144,6 +168,7 @@ protected slots:
 
 signals:
     void sourceFileNameChanged(QString sourceFileName);
+    void originStateChanged();
     void mediaInfoChanged();
     void screenIndexChanged(int screenIndex);
     void fullscreenChanged(bool fullscreen);

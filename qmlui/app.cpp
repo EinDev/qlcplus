@@ -36,12 +36,15 @@
 #include <QPrinter>
 #include <QPainter>
 #include <QScreen>
+#include <QMediaPlayer>
 #include <QFileInfo>
+#include <QPointer>
 #include <QDir>
 #include <unistd.h>
 
 #include "app.h"
 #include "mediaassets.h"
+#include "video.h"
 #include "uimanager.h"
 #include "simpledesk.h"
 #include "showmanager.h"
@@ -1155,6 +1158,62 @@ bool App::removeUnusedMedia(const QStringList &files)
     return ok;
 }
 
+int App::changedMediaCount()
+{
+    return m_doc->assets()->changedOrigins().count();
+}
+
+QVariantMap App::reloadChangedMedia()
+{
+    MediaAssets::ReloadResult result = m_doc->assets()->reloadChanged();
+
+    QVariantMap map;
+    map.insert("reloaded", result.reloaded);
+    map.insert("queued", result.queued);
+    map.insert("unchanged", result.unchanged);
+    map.insert("missing", result.missing);
+    map.insert("busy", result.busy);
+    map.insert("failed", result.failed);
+    map.insert("error", result.firstError);
+    return map;
+}
+
+void App::slotMediaOriginReloaded(quint32 functionId, QString oldPath, QString newPath, quint32 oldDuration)
+{
+    Q_UNUSED(oldPath)
+
+    Function *function = m_doc->function(functionId);
+    if (function == nullptr || function->type() != Function::VideoType)
+        return;   // Audio is synchronous: the engine already logged it
+
+    Video *video = static_cast<Video *>(function);
+    if (video->isPicture())
+        return;
+
+    // One-shot probe: the player deletes itself once the duration is in
+    QMediaPlayer *probe = new QMediaPlayer(this);
+    QPointer<Video> target(video);
+    connect(probe, &QMediaPlayer::durationChanged, this, [probe, target, oldDuration, newPath](qint64 duration)
+    {
+        if (duration <= 0)
+            return;
+        if (target.isNull() == false)
+        {
+            target->setTotalDuration(quint32(duration));
+            qDebug().noquote() << QStringLiteral("[Media] Reloaded \"%1\" from %2: duration %3 ms -> %4 ms "
+                                                 "(Show clips keep their own duration)")
+                                  .arg(target->name(), newPath).arg(oldDuration).arg(duration);
+        }
+        probe->deleteLater();
+    });
+    connect(probe, &QMediaPlayer::errorOccurred, this, [probe, newPath](QMediaPlayer::Error, const QString &message)
+    {
+        qWarning() << "[Media] Cannot probe the reloaded" << newPath << "-" << message;
+        probe->deleteLater();
+    });
+    probe->setSource(QUrl::fromLocalFile(newPath));
+}
+
 void App::slotMediaImportStarted(QString source, qint64 bytes)
 {
     Q_UNUSED(bytes)
@@ -1204,6 +1263,8 @@ void App::initDoc()
             this, SLOT(slotMediaImportFinished(QString,QString,QString)));
     connect(m_doc->assets(), SIGNAL(pendingImportsChanged()),
             this, SLOT(slotMediaPendingImportsChanged()));
+    connect(m_doc->assets(), SIGNAL(originReloaded(quint32,QString,QString,quint32)),
+            this, SLOT(slotMediaOriginReloaded(quint32,QString,QString,quint32)));
     connect(m_doc->masterTimer(), SIGNAL(functionListChanged()),
             this, SIGNAL(runningFunctionsCountChanged()));
 
@@ -1272,10 +1333,14 @@ void App::clearDocument()
     /* untitled again: new imports are staged in a temporary directory */
     m_doc->assets()->setProjectFile(QString());
 
-    /* the external-media banner belongs to the project that just went away */
+    /* the media banners belong to the project that just went away */
     if (rootObject() != nullptr)
+    {
         QMetaObject::invokeMethod(rootObject(), "showExternalMediaNotice",
                                    Qt::QueuedConnection, Q_ARG(QVariant, QVariant(0)));
+        QMetaObject::invokeMethod(rootObject(), "showChangedMediaNotice",
+                                   Qt::QueuedConnection, Q_ARG(QVariant, QVariant(0)));
+    }
     m_doc->resetModified();
     m_doc->inputOutputMap()->startUniverses();
     m_doc->masterTimer()->start();
@@ -1842,11 +1907,17 @@ bool App::loadXML(QXmlStreamReader &doc, bool goToConsole, bool fromMemory)
         // MainView.qml's showExternalMediaNotice). A count of 0 hides a
         // banner left over from the previously opened project.
         int external = m_doc->assets()->externalSources().count();
+        // Managed copies whose origin was re-rendered since the import: the
+        // same kind of banner offers a reload, never done unasked either
+        int changed = m_doc->assets()->changedOrigins().count();
         if (rootObject() != nullptr)
         {
             QMetaObject::invokeMethod(rootObject(), "showExternalMediaNotice",
                                        Qt::QueuedConnection,
                                        Q_ARG(QVariant, QVariant(external)));
+            QMetaObject::invokeMethod(rootObject(), "showChangedMediaNotice",
+                                       Qt::QueuedConnection,
+                                       Q_ARG(QVariant, QVariant(changed)));
         }
     }
 

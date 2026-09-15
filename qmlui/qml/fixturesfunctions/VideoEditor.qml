@@ -95,12 +95,23 @@ Rectangle
             {
                 Layout.fillWidth: true
                 fontSize: UISettings.textSizeDefault * 0.8
-                labelColor: UISettings.fgLight
+                labelColor: videoEditor.originChanged ? UISettings.selection : UISettings.fgLight
                 wrapText: true
                 // a managed copy shows its plain file name, an external
-                // reference (or a URL) the full string
-                label: videoEditor.sourceManaged ? qsTr("Managed: %1").arg(videoEditor.sourceDisplayName)
-                                                 : videoEditor.sourceDisplayName
+                // reference (or a URL) the full string. A managed copy whose
+                // origin was re-rendered since the import says so, the
+                // Reload button next to it picks the new version up.
+                label: (videoEditor.sourceManaged ? qsTr("Managed: %1").arg(videoEditor.sourceDisplayName)
+                                                  : videoEditor.sourceDisplayName)
+                       + (videoEditor.originChanged ? " - " + qsTr("changed on disk") : "")
+            }
+            IconButton
+            {
+                faSource: FontAwesome.fa_arrows_rotate
+                faColor: videoEditor.originChanged ? UISettings.selection : UISettings.fgMain
+                tooltip: videoEditor.reloadTooltip
+                enabled: videoEditor.originAvailable
+                onClicked: videoEditor.reloadSource()
             }
             IconButton
             {
