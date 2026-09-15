@@ -697,22 +697,33 @@ void ShowManager::deleteShowItem(ShowFunction *sf)
     }
 }
 
-bool ShowManager::checkAndMoveItem(ShowFunction *sf, int originalTrackIdx, int newTrackIdx, int newStartTime, bool itemSnapped)
+int ShowManager::checkAndMoveItem(ShowFunction *sf, int newTrackIdx, int newStartTime, bool itemSnapped)
 {
     if (m_currentShow == nullptr || sf == nullptr)
-        return false;
+        return -1;
 
-    //qDebug() << Q_FUNC_INFO << "origIdx:" << originalTrackIdx << "newIdx:" << newTrackIdx << "time:" << newStartTime;
+    // The source track is resolved from the ShowFunction itself rather than
+    // trusted from the QML item's trackIndex: that index could go stale (or
+    // point past the last track), and QList::at() on a bad index is undefined
+    // behavior in a release build.
+    Track *srcTrack = m_currentShow->getTrackFromShowFunctionID(sf->id());
+    if (srcTrack == nullptr)
+        return -1;
+
+    //qDebug() << Q_FUNC_INFO << "newIdx:" << newTrackIdx << "time:" << newStartTime;
 
     Track *dstTrack = nullptr;
 
     // check if it's moving on a new track or an existing one
     if (newTrackIdx >= m_currentShow->tracks().count())
     {
-        // create a new track here
+        // create a new track here. Only one track is ever created, so the
+        // item's real destination index is the new last index, no matter how
+        // far below the last track it was dropped.
         dstTrack = new Track(Function::invalidId(), m_currentShow);
         dstTrack->setName(tr("Track %1").arg(m_currentShow->tracks().count() + 1));
         m_currentShow->addTrack(dstTrack);
+        newTrackIdx = m_currentShow->tracks().count() - 1;
         emit tracksChanged();
     }
     else
@@ -721,7 +732,7 @@ bool ShowManager::checkAndMoveItem(ShowFunction *sf, int originalTrackIdx, int n
 
         bool overlapping = checkOverlapping(dstTrack, sf, newStartTime, sf->duration());
         if (overlapping == true)
-            return false;
+            return -1;
     }
 
     int newTime = newStartTime;
@@ -759,16 +770,15 @@ bool ShowManager::checkAndMoveItem(ShowFunction *sf, int originalTrackIdx, int n
     sf->setStartTime(newTime);
 
     // check if we need to move the ShowFunction to a different Track
-    if (newTrackIdx != originalTrackIdx)
+    if (dstTrack != srcTrack)
     {
-        Track *srcTrack = m_currentShow->tracks().at(originalTrackIdx);
         srcTrack->removeShowFunction(sf, false);
         dstTrack->addShowFunction(sf);
     }
 
     m_doc->setModified();
 
-    return true;
+    return newTrackIdx;
 }
 
 bool ShowManager::setShowItemStartTime(ShowFunction *sf, int startTime)

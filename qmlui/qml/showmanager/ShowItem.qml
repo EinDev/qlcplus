@@ -577,10 +577,12 @@ Item
 
                 if (newTrackIdx >= 0)
                 {
-                    var res = showManager.checkAndMoveItem(sfRef, trackIndex, newTrackIdx, newTime, itemSnapped)
+                    // the returned index is where the item really landed, which
+                    // can differ from newTrackIdx (only one new track is ever created)
+                    var res = showManager.checkAndMoveItem(sfRef, newTrackIdx, newTime, itemSnapped)
 
-                    if (res === true)
-                        trackIndex = newTrackIdx
+                    if (res >= 0)
+                        trackIndex = res
 
                     prCanvas.requestPaint()
                 }

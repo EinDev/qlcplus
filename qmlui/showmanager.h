@@ -285,14 +285,16 @@ public:
 
     /** Method invoked when moving an existing Show Item on the timeline.
      *  The new position is checked for overlapping against existing items on the
-     *  provided $newTrackIdx. On overlapping, false is returned and the UI
+     *  provided $newTrackIdx. On overlapping, -1 is returned and the UI
      *  will bring back the Item to its original position.
-     *  If there is enough space, then the item is (in case) removed from the
-     *  $originalTrackIdx and moved into $newTrackIdx and true is returned.
+     *  If there is enough space, then the item is (in case) removed from its
+     *  current track and moved into $newTrackIdx. A $newTrackIdx past the last
+     *  track creates exactly one new track and lands the item there.
+     *  Returns the index of the track the item actually ended up on, which the
+     *  UI must adopt as its row (it can differ from $newTrackIdx).
      */
-    Q_INVOKABLE bool checkAndMoveItem(ShowFunction *sf,  int originalTrackIdx,
-                                      int newTrackIdx, int newStartTime,
-                                      bool itemSnapped = false);
+    Q_INVOKABLE int checkAndMoveItem(ShowFunction *sf, int newTrackIdx,
+                                     int newStartTime, bool itemSnapped = false);
 
     /** Set the start time of a ShowFunction item (if not overlapping) */
     Q_INVOKABLE bool setShowItemStartTime(ShowFunction *sf, int startTime);
