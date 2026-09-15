@@ -111,6 +111,10 @@ public:
     /** Send a fully transparent (all-zero BGRA) frame of the sender size */
     void sendTransparent();
 
+    /** Change the sender size by sending a transparent frame of $size
+     *  (receivers re-initialize). No-op if not created or $size is empty. */
+    void resize(const QSize &size);
+
     /** Unregister the sender and release the D3D11 device. Safe to call
      *  when nothing was created. */
     void release();

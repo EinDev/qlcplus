@@ -125,6 +125,16 @@ void SpoutSender::sendTransparent()
     sendImage(m_transparent);
 }
 
+void SpoutSender::resize(const QSize &size)
+{
+    if (m_size.isValid() == false || size.isEmpty() || size == m_size)
+        return;
+
+    m_transparent = QImage(size, QImage::Format_ARGB32_Premultiplied);
+    m_transparent.fill(Qt::transparent);
+    sendImage(m_transparent);
+}
+
 void SpoutSender::release()
 {
     if (m_dx->IsInitialized())

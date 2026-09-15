@@ -163,7 +163,7 @@ void VideoProvider::slotRequestPlayback(QString spoutSenderName)
 }
 
 #if defined(Q_OS_WIN) && defined(QLC_SPOUT)
-SpoutSender *VideoProvider::spoutSender(const QString &name, const QSize &size)
+SpoutSender *VideoProvider::spoutSender(const QString &name, const QSize &size, const QString &sizedBy)
 {
     if (name.isEmpty())
         return nullptr;
@@ -188,7 +188,7 @@ SpoutSender *VideoProvider::spoutSender(const QString &name, const QSize &size)
     m_spoutSenders.insert(name, sender);
     qDebug().noquote() << "[Spout] created sender" << sender->name()
                        << "at" << size.width() << "x" << size.height()
-                       << "(requested name" << name << ") - sent initial transparent frame";
+                       << "(requested name" << name << ", sized by" << sizedBy << ") - sent initial transparent frame";
     return sender;
 }
 
@@ -206,6 +206,35 @@ void VideoProvider::releaseSpoutSender(const QString &name, QObject *owner)
 {
     if (ownsSpoutSender(name, owner))
         m_spoutOwners.remove(name);
+}
+
+bool VideoProvider::isSpoutSenderIdle(const QString &name) const
+{
+    return m_spoutOwners.value(name, nullptr) == nullptr;
+}
+
+void VideoProvider::fitSpoutSender(const QString &name, const QSize &size, bool exact, const QString &forVideo)
+{
+    SpoutSender *sender = m_spoutSenders.value(name, nullptr);
+    if (sender == nullptr || size.isEmpty())
+        return;
+
+    QSize target = exact ? size : sender->size().expandedTo(size);
+    if (target == sender->size())
+        return;
+
+    // a clip is rendering into it right now: it decides the size (see
+    // SpoutVideoPlayer::canvasSize), don't yank the receivers around
+    if (isSpoutSenderIdle(name) == false)
+    {
+        qDebug().noquote() << "[Spout] sender" << name << "is in use, not resized to"
+                           << target.width() << "x" << target.height() << "for" << forVideo;
+        return;
+    }
+
+    sender->resize(target);
+    qDebug().noquote() << "[Spout] sender" << name << "resized to" << target.width() << "x" << target.height()
+                       << "for" << forVideo << (exact ? "(its SpoutSize)" : "(largest native resolution)");
 }
 #endif
 
@@ -257,15 +286,25 @@ VideoContent::VideoContent(Video *video, VideoProvider *parent)
 
     slotDetectResolution();
 
+    // All connects to the Video are string-based on purpose: Video lives in
+    // the engine DLL and this MinGW build has no dllimport declarations, so
+    // a pointer-to-member such as &Video::outputModeChanged taken here is
+    // the import thunk, not the address moc registered inside the DLL -
+    // the pointer form fails at runtime with "signal not found".
     connect(m_video, SIGNAL(sourceChanged(QString)),
             this, SLOT(slotDetectResolution()));
     connect(m_video, SIGNAL(attributeChanged(int,qreal)),
             this, SLOT(slotAttributeChanged(int,qreal)));
 
     // eager Spout sender creation (document load, or the editor switching
-    // this video to Spout mode / changing the sender size)
-    connect(m_video, &Video::outputModeChanged, this, &VideoContent::ensureSpoutSender);
-    connect(m_video, &Video::spoutSizeChanged, this, &VideoContent::ensureSpoutSender);
+    // this video to Spout mode / changing the sender size / probing the
+    // resolution itself)
+    connect(m_video, SIGNAL(outputModeChanged(int)),
+            this, SLOT(slotOutputModeChanged(int)));
+    connect(m_video, SIGNAL(spoutSizeChanged(QSize)),
+            this, SLOT(ensureSpoutSender()));
+    connect(m_video, SIGNAL(metaDataChanged(QString,QVariant)),
+            this, SLOT(slotVideoMetaDataChanged(QString,QVariant)));
     ensureSpoutSender();
 }
 
@@ -457,7 +496,65 @@ void VideoContent::ensureSpoutSender()
         return;
     }
 
-    m_provider->spoutSender(m_video->defaultSpoutSenderName(), size);
+    // clips on the same Show track share one sender: whichever clip's
+    // resolution becomes known first creates it, later ones grow it to
+    // the largest native resolution (or force their SpoutSize)
+    QString name = m_video->defaultSpoutSenderName();
+    SpoutSender *existing = m_provider->spoutSender(name, QSize());
+    if (existing != nullptr)
+    {
+        qDebug().noquote() << "[Spout]" << m_video->name() << "shares sender" << name
+                           << "at" << existing->size().width() << "x" << existing->size().height();
+        m_provider->fitSpoutSender(name, size, m_video->spoutSize().isEmpty() == false, m_video->name());
+        return;
+    }
+
+    m_provider->spoutSender(name, size, m_video->name());
+#endif
+}
+
+void VideoContent::slotVideoMetaDataChanged(QString key, QVariant data)
+{
+    Q_UNUSED(data)
+    if (key == "Resolution")
+        ensureSpoutSender();
+}
+
+void VideoContent::slotOutputModeChanged(int mode)
+{
+#if defined(Q_OS_WIN) && defined(QLC_SPOUT)
+    if (mode == Video::Spout)
+    {
+        qDebug().noquote() << "[Spout]" << m_video->name() << "switched to Spout output";
+        ensureSpoutSender();
+        // deferred and nothing probing: (re)probe, the sender follows the
+        // resolution via slotVideoMetaDataChanged
+        if (m_video->spoutSize().isEmpty() && m_video->resolution().isEmpty()
+            && m_mediaPlayer == nullptr && m_video->isPicture() == false)
+        {
+            slotDetectResolution();
+        }
+        return;
+    }
+
+    // Switched away from Spout: stop a running Spout playback (it blanks
+    // the sender as it finishes) or blank the idle sender ourselves. The
+    // sender stays registered until document close, receivers such as OBS
+    // reset their source when a sender disappears.
+    if (m_spoutPlayer)
+    {
+        m_spoutPlayer->stopImmediately();
+        m_spoutPlayer = nullptr;
+    }
+    QString name = m_video->defaultSpoutSenderName();
+    SpoutSender *sender = m_provider->spoutSender(name, QSize());
+    if (sender != nullptr && m_provider->isSpoutSenderIdle(name))
+    {
+        sender->sendTransparent();
+        qDebug().noquote() << "[Spout]" << m_video->name() << "left Spout output - blanked sender" << name;
+    }
+#else
+    Q_UNUSED(mode)
 #endif
 }
 
@@ -546,8 +643,24 @@ void VideoContent::slotDetectResolution()
     }
     else
     {
+        // a previous probe still in flight (source changed twice in a
+        // row): drop it, its late metaDataChanged must not reach us
+        if (m_mediaPlayer != nullptr)
+        {
+            m_mediaPlayer->disconnect(this);
+            m_mediaPlayer->deleteLater();
+            m_mediaPlayer = nullptr;
+        }
+
         m_mediaPlayer = new QMediaPlayer();
 
+        // a failed probe (missing file, no multimedia backend) leaves the
+        // resolution unknown and a Spout sender deferred forever: say so
+        connect(m_mediaPlayer, &QMediaPlayer::errorOccurred, this,
+                [this](QMediaPlayer::Error, const QString &message)
+        {
+            qWarning().noquote() << "[Video] resolution probe of" << m_video->name() << "failed:" << message;
+        });
         connect(m_mediaPlayer, SIGNAL(durationChanged(qint64)),
                 this, SLOT(slotDurationChanged(qint64)));
         connect(m_mediaPlayer, SIGNAL(metaDataChanged()),
@@ -666,22 +779,30 @@ void VideoContent::slotDurationChanged(qint64 duration)
 
 void VideoContent::slotMetaDataChanged()
 {
+    if (m_mediaPlayer == nullptr)
+        return;
+
     QMediaMetaData md = m_mediaPlayer->metaData();
     foreach (QMediaMetaData::Key k, md.keys())
     {
         if (k == QMediaMetaData::Resolution)
         {
-            m_geometry.setSize(md.value(k).toSize());
-            // the editor also does this, but only once the Video is edited:
-            // the Spout sender size ("native" default) needs it at load
-            m_video->setResolution(md.value(k).toSize());
+            QSize size = md.value(k).toSize();
+            if (m_video->outputMode() == Video::Spout)
+                qDebug().noquote() << "[Spout] probed" << m_video->name() << "at" << size.width() << "x" << size.height();
+
+            m_geometry.setSize(size);
 
             disconnect(m_mediaPlayer, SIGNAL(metaDataChanged()),
                        this, SLOT(slotMetaDataChanged()));
             m_mediaPlayer->deleteLater();
             m_mediaPlayer = nullptr;
 
-            ensureSpoutSender();
+            // the editor also does this, but only once the Video is edited:
+            // the Spout sender size ("native" default) needs it at load.
+            // Emits Video::metaDataChanged -> slotVideoMetaDataChanged ->
+            // ensureSpoutSender()
+            m_video->setResolution(size);
             break;
         }
     }

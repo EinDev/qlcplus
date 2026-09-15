@@ -73,7 +73,7 @@ public:
     /** Get the sender registered under $name, creating it at $size if it
      *  doesn't exist yet. Returns null if creation failed (not retried
      *  until the next document load) or $size is empty. */
-    SpoutSender *spoutSender(const QString &name, const QSize &size);
+    SpoutSender *spoutSender(const QString &name, const QSize &size, const QString &sizedBy = QString());
 
     /** Make $owner the one and only current writer of sender $name */
     void claimSpoutSender(const QString &name, QObject *owner);
@@ -83,6 +83,14 @@ public:
 
     /** Drop $owner's claim on sender $name (no-op if it's not the owner) */
     void releaseSpoutSender(const QString &name, QObject *owner);
+
+    /** true if nobody currently writes into sender $name */
+    bool isSpoutSenderIdle(const QString &name) const;
+
+    /** Grow sender $name to at least $size (or exactly $size when $exact,
+     *  i.e. a Video's SpoutSize override), unless a clip is rendering into
+     *  it right now. $forVideo is only for the log. */
+    void fitSpoutSender(const QString &name, const QSize &size, bool exact, const QString &forVideo);
 #endif
 
 protected slots:
@@ -133,11 +141,6 @@ public:
     void seekContent(qint64 ms);
     void stopContent();
 
-    /** Create this content's Spout sender now if it is in Spout mode and
-     *  its size is known (see VideoProvider's sender pool). No-op on
-     *  platforms without Spout. */
-    void ensureSpoutSender();
-
 protected:
     QVariant getAttribute(quint32 id, const char *propName) const;
     void updateAttribute(quint32 id, const char *propName, QVariant value);
@@ -146,9 +149,20 @@ public slots:
     void slotDetectResolution();
     void slotAttributeChanged(int attrIndex, qreal value);
 
+    /** Create this content's Spout sender now if it is in Spout mode and
+     *  its size is known (see VideoProvider's sender pool). No-op on
+     *  platforms without Spout. */
+    void ensureSpoutSender();
+
 protected slots:
     void slotDurationChanged(qint64 duration);
     void slotMetaDataChanged();
+    /** Video::metaDataChanged: a "Resolution" from any prober (this content,
+     *  the editor) lets a deferred Spout sender be created */
+    void slotVideoMetaDataChanged(QString key, QVariant data);
+    /** Video::outputModeChanged: create the sender when switching to Spout,
+     *  blank it when switching away */
+    void slotOutputModeChanged(int mode);
     void slotWindowClosing();
     void slotSpoutPlayerFinished();
 

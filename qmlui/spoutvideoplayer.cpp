@@ -405,7 +405,7 @@ void SpoutVideoPlayer::render()
     if (m_sender == nullptr)
     {
         QSize preferred = m_video->spoutSize().isEmpty() ? m_lastFrame.size() : m_video->spoutSize();
-        m_sender = m_provider->spoutSender(m_senderName, preferred);
+        m_sender = m_provider->spoutSender(m_senderName, preferred, m_video->name());
         if (m_sender == nullptr)
             return;
     }
