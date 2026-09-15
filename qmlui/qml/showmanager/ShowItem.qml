@@ -63,6 +63,10 @@ Item
     property real previewOffsetY: 0
     property real previewWidthDelta: 0
     property bool showLandingPreview: false
+    // Name of the item the current landing spot would overlap ("" = free).
+    // Set live while dragging so the user sees *why* a drop will be refused
+    // instead of the item silently snapping back.
+    property string blockingItem: ""
 
     function getVisibleSnapEdges()
     {
@@ -405,9 +409,9 @@ Item
         width: itemRoot.width + previewWidthDelta
         height: itemRoot.height
         radius: 2
-        color: Qt.rgba(globalColor.r, globalColor.g, globalColor.b, 0.3)
+        color: blockingItem ? "#60FF0000" : Qt.rgba(globalColor.r, globalColor.g, globalColor.b, 0.3)
         border.width: 2
-        border.color: itemSnapped ? "#00FF00" : "#80FFFFFF"
+        border.color: blockingItem ? "#FF0000" : (itemSnapped ? "#00FF00" : "#80FFFFFF")
         visible: showLandingPreview
     }
 
@@ -542,13 +546,28 @@ Item
             previewOffsetY = (Math.round((itemRoot.y + dy) / itemRoot.height) * itemRoot.height) - itemRoot.y
             previewWidthDelta = 0
 
+            // would a drop on the previewed spot be refused for overlapping?
+            var landTrack = Math.round((itemRoot.y + previewOffsetY) / itemRoot.height)
+            var landX = itemRoot.x + previewOffsetX
+            var landTime
+            if (timeDivision === Show.Time)
+                landTime = TimeUtils.posToMs(landX, timeScale, tickSize)
+            else if (bpmNumber > 0)
+                landTime = TimeUtils.posToBeatMs(landX, tickSize, bpmNumber, beatsDivision)
+            else
+                landTime = startTime
+            blockingItem = showManager.overlappingItemName(sfRef, landTrack, landTime)
+
             var txt
             if (timeDivision === Show.Time)
                 txt = TimeUtils.msToString(TimeUtils.posToMs(itemRoot.x + showItemBody.x, timeScale, tickSize))
             else
                 txt = TimeUtils.beatsToString((itemRoot.x + showItemBody.x) / (tickSize / beatsDivision), beatsDivision)
 
-            infoText = qsTr("Position: ") + txt
+            if (blockingItem)
+                infoText = qsTr("Overlaps: ") + blockingItem
+            else
+                infoText = qsTr("Position: ") + txt
         }
         onReleased: (mouse) =>
         {
@@ -599,6 +618,7 @@ Item
             itemSnapped = false
             showOldPosGhost = false
             showLandingPreview = false
+            blockingItem = ""
             updateGeometry()
         }
 

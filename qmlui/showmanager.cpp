@@ -781,6 +781,40 @@ int ShowManager::checkAndMoveItem(ShowFunction *sf, int newTrackIdx, int newStar
     return newTrackIdx;
 }
 
+QString ShowManager::overlappingItemName(ShowFunction *sf, int trackIdx, int startTime) const
+{
+    if (m_currentShow == nullptr || sf == nullptr)
+        return QString();
+
+    if (trackIdx < 0 || trackIdx >= m_currentShow->tracks().count())
+        return QString();
+
+    Track *track = m_currentShow->tracks().at(trackIdx);
+    if (startTime < 0)
+        startTime = 0;
+
+    // same interval test as checkOverlapping(), but reporting who blocks
+    for (ShowFunction *other : track->showFunctions())
+    {
+        if (other == sf)
+            continue;
+
+        Function *func = m_doc->function(other->functionID());
+        if (func == nullptr)
+            continue;
+
+        quint32 fst = other->startTime();
+        quint32 st = quint32(startTime);
+        if ((st >= fst && st <= fst + other->duration()) ||
+            (fst >= st && fst <= st + sf->duration()))
+        {
+            return func->name();
+        }
+    }
+
+    return QString();
+}
+
 bool ShowManager::setShowItemStartTime(ShowFunction *sf, int startTime)
 {
     if (sf == nullptr)

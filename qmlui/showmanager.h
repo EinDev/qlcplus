@@ -296,6 +296,13 @@ public:
     Q_INVOKABLE int checkAndMoveItem(ShowFunction *sf, int newTrackIdx,
                                      int newStartTime, bool itemSnapped = false);
 
+    /** Live drag feedback: returns the name of the first item on track
+     *  $trackIdx that $sf would overlap if dropped at $startTime, or an
+     *  empty string when the spot is free (or the index is past the last
+     *  track, which would create a fresh, empty one). Uses the same
+     *  overlap rule that makes checkAndMoveItem() reject the drop. */
+    Q_INVOKABLE QString overlappingItemName(ShowFunction *sf, int trackIdx, int startTime) const;
+
     /** Set the start time of a ShowFunction item (if not overlapping) */
     Q_INVOKABLE bool setShowItemStartTime(ShowFunction *sf, int startTime);
 
