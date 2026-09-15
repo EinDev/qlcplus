@@ -1,6 +1,6 @@
 /*
   Q Light Controller Plus
-  freezewatchdog_resource.h
+  diagnostics_resource.h
 
   Copyright (c) Massimo Callegari
 
@@ -17,15 +17,20 @@
   limitations under the License.
 */
 
-// Shared control/dialog IDs between qmlui.rc (the dialog template) and
-// freezewatchdog.cpp (the code driving it). Kept in its own tiny header,
+// Shared control/dialog IDs between qmlui.rc (the dialog templates) and
+// diagnostics.cpp (the code driving them). Kept in its own tiny header,
 // included by both, so the two never drift apart.
-#ifndef FREEZEWATCHDOG_RESOURCE_H
-#define FREEZEWATCHDOG_RESOURCE_H
+//
+// Both diagnostic dialogs (freeze and crash) share the same control layout
+// and IDs - only the dialog ID, caption and intro text differ - so one
+// dialog procedure (Diagnostics::showReportDialog) drives either of them.
+#ifndef DIAGNOSTICS_RESOURCE_H
+#define DIAGNOSTICS_RESOURCE_H
 
 #define IDD_FREEZE_DIALOG   101
-#define IDC_FREEZE_EDIT     1001
-#define IDC_FREEZE_COPY     1002
+#define IDD_CRASH_DIALOG    102
+#define IDC_DIAG_EDIT       1001
+#define IDC_DIAG_COPY       1002
 #define IDC_STATIC          -1
 
-#endif // FREEZEWATCHDOG_RESOURCE_H
+#endif // DIAGNOSTICS_RESOURCE_H

@@ -96,7 +96,8 @@ public:
 
     /** Thread-safe. Records the currently open project path so a freeze
      *  report can mention what was open when it happened. Pass an empty
-     *  string when nothing is open. */
+     *  string when nothing is open. Forwards to Diagnostics::
+     *  setCurrentProjectPath(), which the crash reporter reads too. */
     static void setCurrentProjectPath(const QString &path);
 
     /**
@@ -133,8 +134,8 @@ private:
     // Windows thread ID of the GUI thread, captured via GetCurrentThreadId()
     // in start() (called on that thread). Used to pick the blocked thread's
     // own section out of gdb's "thread apply all bt" output - see
-    // extractMainThreadSection() in freezewatchdog.cpp. Plain `unsigned long`
-    // (matches DWORD) so this header doesn't need <windows.h>.
+    // Diagnostics::extractThreadSection(). Plain `unsigned long` (matches
+    // DWORD) so this header doesn't need <windows.h>.
     unsigned long m_mainThreadId { 0 };
 };
 

@@ -39,7 +39,8 @@ set(SRC_FILES
     fixturemanager.cpp fixturemanager.h
     fixtureutils.cpp fixtureutils.h
     folderbrowser.cpp folderbrowser.h
-    freezewatchdog.cpp freezewatchdog.h freezewatchdog_resource.h
+    diagnostics.cpp diagnostics.h diagnostics_resource.h
+    freezewatchdog.cpp freezewatchdog.h
     functioneditor.cpp functioneditor.h
     functionmanager.cpp functionmanager.h
     importmanager.cpp importmanager.h
