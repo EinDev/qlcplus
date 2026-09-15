@@ -125,6 +125,29 @@ struct LiveShow
     {
         show->rebuildSchedule();
     }
+
+    /** Turn the Show into a Beats Show with a known beat source: the
+     *  Internal generator at MasterTimer's default 120 BPM. (Its beats are
+     *  only ever raised inside MasterTimer::timerTick(), which clears them
+     *  again before returning, so the runner never sees one unless a test
+     *  pulses it explicitly - see pulseBeat().) */
+    void makeBeatsShow()
+    {
+        show->setTempoType(Function::Beats);
+        commitEdit();
+        doc->inputOutputMap()->setBeatGeneratorType(InputOutputMap::Internal);
+    }
+
+    /** One detected beat pulse processed by the runner. MasterTimer normally
+     *  clears its own "beat requested" flag once per real timer tick after
+     *  every listener has seen it; since no timer thread is running here,
+     *  clear it manually so each call represents exactly one beat. */
+    void pulseBeat(ShowRunner &runner)
+    {
+        timer()->requestBeat();
+        runner.write(timer());
+        timer()->m_beatRequested = false;
+    }
 };
 
 static bool queueHas(const ShowRunner &runner, quint32 sfId)
@@ -190,74 +213,76 @@ void ShowRunner_Test::stopRunner()
     QCOMPARE(runner.m_runningQueue.count(), 0);
 }
 
-void ShowRunner_Test::beatTempoUsesRealMilliseconds()
+void ShowRunner_Test::beatsShowRunsOnWallClock()
 {
-    // Regression test for the ShowRunner beat-path unit bug: ShowFunction::startTime()/
-    // duration() are always real milliseconds (ADR 0001), but ShowRunner::write() used
-    // to track beat-tempo functions' elapsed time in an old "beat count x 1000"
-    // pseudo-unit that no longer matches those stored values. Uses its own local Doc/
-    // Show/Track/Scene, independent of the class fixture above, since it needs a
-    // Beats-tempo Show/function and a known BPM.
-    Doc localDoc(this);
-    Show *show = new Show(&localDoc);
-    localDoc.addFunction(show);
-    show->setTempoType(Function::Beats);
+    // ShowFunction::startTime()/duration() are real milliseconds laid out on
+    // the Show's own BPM grid (ADR 0001), so a Beats Show starts and stops its
+    // clips on the wall clock exactly like a Time Show - never on a clock
+    // stepped by the global beat generator, whose BPM may differ or be
+    // unknown. The only beat-specific behaviour is the start: the Show holds
+    // until the first beat pulse so that its timeline lines up with the grid.
+    LiveShow ls(this, 3000, 2000, 60000);
+    ls.scene->setTempoType(Function::Beats);
+    ls.makeBeatsShow();
+    QCOMPARE(ls.doc->inputOutputMap()->bpmNumber(), 120);
 
-    Scene *scene = new Scene(&localDoc);
-    localDoc.addFunction(scene);
-    scene->setTempoType(Function::Beats);
+    ShowRunner runner(ls.doc, ls.show->id());
+    QVERIFY(runner.m_schedule->showTempo == Function::Beats);
+    QCOMPARE(runner.m_schedule->clips.count(), 2);
+    QVERIFY(runner.m_waitingForBeat == true);
 
-    Track *track = new Track(scene->id());
-    ShowFunction *sf = new ShowFunction(show->getLatestShowFunctionId());
-    sf->setFunctionID(scene->id());
-    sf->setStartTime(3000);
-    sf->setDuration(2000);
-    track->addShowFunction(sf);
-    show->addTrack(track);
-
-    // Give the Doc a known, non-zero BPM. InputOutputMap::bpmNumber() returns 0
-    // (Disabled) until a beat generator type is set; MasterTimer defaults to 120 BPM,
-    // so 60000/120 = 500ms per beat exactly - no rounding to account for below.
-    localDoc.inputOutputMap()->setBeatGeneratorType(InputOutputMap::Internal);
-    QCOMPARE(localDoc.inputOutputMap()->bpmNumber(), 120);
-
-    ShowRunner runner(&localDoc, show->id());
-    QCOMPARE(runner.m_schedule->clips.count(), 1);
-
-    MasterTimer *timer = localDoc.masterTimer();
-
-    // Simulate one detected beat pulse being processed by the runner. MasterTimer
-    // normally clears its own "beat requested" flag once per real timer tick after
-    // every listener has seen it; since no timer thread is running here, clear it
-    // manually so each call represents exactly one beat.
-    auto pulseBeat = [&]() {
-        timer->requestBeat();
-        runner.write(timer);
-        timer->m_beatRequested = false;
-    };
-
-    // First beat only establishes beat sync; m_elapsedBeats must not advance yet.
-    pulseBeat();
-    QCOMPARE(runner.m_elapsedBeats, quint32(0));
-
-    // 5 more beats = 2500ms elapsed, still short of the 3000ms startTime.
+    // no beat yet: nothing starts and the playhead does not move
     for (int i = 0; i < 5; i++)
-        pulseBeat();
-    QCOMPARE(runner.m_elapsedBeats, quint32(2500));
+        runner.write(ls.timer());
+    QCOMPARE(runner.m_elapsedTime, quint32(0));
     QCOMPARE(runner.m_runningQueue.count(), 0);
 
-    // 6th beat reaches 3000ms == startTime: the function must start now, not at
-    // beat-pseudo-count 3000 (which under the old unit would be beat #3, i.e. 1500ms
-    // early) nor fail to start at all.
-    pulseBeat();
-    QCOMPARE(runner.m_elapsedBeats, quint32(3000));
-    QCOMPARE(runner.m_runningQueue.count(), 1);
+    // the first beat releases the Show: the filler starts, the playhead runs
+    ls.pulseBeat(runner);
+    QVERIFY(runner.m_waitingForBeat == false);
+    QVERIFY(queueHas(runner, ls.fillerSf->id()) == true);
+    QCOMPARE(runner.m_elapsedTime, quint32(MasterTimer::tick()));
 
-    // 4 more beats reach startTime + duration = 5000ms: the function must stop now.
-    for (int i = 0; i < 4; i++)
-        pulseBeat();
-    QCOMPARE(runner.m_elapsedBeats, quint32(5000));
-    QCOMPARE(runner.m_runningQueue.count(), 0);
+    // from here on the clip follows the wall clock, with no further beats
+    ls.advanceTo(runner, 3000);
+    QVERIFY(queueHas(runner, ls.sf->id()) == false);
+    runner.write(ls.timer());
+    QVERIFY(queueHas(runner, ls.sf->id()) == true);
+    QCOMPARE(ls.scene->elapsed(), quint32(0));
+
+    ls.advanceTo(runner, 5000);
+    QVERIFY(queueHas(runner, ls.sf->id()) == true);
+    runner.write(ls.timer());
+    QVERIFY(queueHas(runner, ls.sf->id()) == false);
+}
+
+void ShowRunner_Test::beatsShowWithoutBpmPlays()
+{
+    // With the beat generator disabled there is no beat source at all
+    // (bpmNumber() == 0, no pulse will ever come): a Beats Show must not
+    // hold for a beat but start straight away on the wall clock.
+    LiveShow ls(this, 1000, 2000, 60000);
+    ls.show->setTempoType(Function::Beats);
+    ls.commitEdit();
+    QCOMPARE(ls.doc->inputOutputMap()->bpmNumber(), 0);
+
+    ShowRunner runner(ls.doc, ls.show->id());
+    QVERIFY(runner.m_waitingForBeat == true);
+
+    runner.write(ls.timer());
+    QVERIFY(runner.m_waitingForBeat == false);
+    QVERIFY(queueHas(runner, ls.fillerSf->id()) == true);
+    QCOMPARE(runner.m_elapsedTime, quint32(MasterTimer::tick()));
+
+    ls.advanceTo(runner, 1000);
+    runner.write(ls.timer());
+    QVERIFY(queueHas(runner, ls.sf->id()) == true);
+    ls.timer()->timerTick();
+    QVERIFY(ls.scene->isRunning() == true);
+
+    ls.advanceTo(runner, 3000);
+    runner.write(ls.timer());
+    QVERIFY(queueHas(runner, ls.sf->id()) == false);
 }
 
 /****************************************************************************
@@ -714,66 +739,43 @@ void ShowRunner_Test::pausedAppliesStopsDefersStarts()
 
 void ShowRunner_Test::beatClipReschedule()
 {
-    // Same setup as beatTempoUsesRealMilliseconds: 120 BPM = 500ms per beat,
-    // Beats-tempo Scene clip 3000-5000ms.
-    Doc localDoc(this);
-    Show *show = new Show(&localDoc);
-    localDoc.addFunction(show);
-    show->setTempoType(Function::Beats);
+    // Live edits in a Beats Show apply on the wall clock like in a Time Show:
+    // Beats-tempo Scene clip 3000-5000ms, released by one beat pulse, then
+    // shrunk under the playhead and extended back over it.
+    LiveShow ls(this, 3000, 2000, 60000);
+    ls.scene->setTempoType(Function::Beats);
+    ls.makeBeatsShow();
 
-    Scene *scene = new Scene(&localDoc);
-    localDoc.addFunction(scene);
-    scene->setTempoType(Function::Beats);
-
-    Track *track = new Track(scene->id(), show);
-    show->addTrack(track);
-    ShowFunction *sf = track->createShowFunction(scene->id());
-    sf->setStartTime(3000);
-    sf->setDuration(2000);
-    show->rebuildSchedule();
-
-    localDoc.inputOutputMap()->setBeatGeneratorType(InputOutputMap::Internal);
-    QCOMPARE(localDoc.inputOutputMap()->bpmNumber(), 120);
-
-    ShowRunner runner(&localDoc, show->id());
+    ShowRunner runner(ls.doc, ls.show->id());
     QVERIFY(runner.m_schedule->showTempo == Function::Beats);
-    QCOMPARE(runner.m_schedule->clips.count(), 1);
+    ls.pulseBeat(runner);
 
-    MasterTimer *timer = localDoc.masterTimer();
-    auto pulseBeat = [&]() {
-        timer->requestBeat();
-        runner.write(timer);
-        timer->m_beatRequested = false;
-    };
+    ls.advanceTo(runner, 3500);
+    QVERIFY(queueHas(runner, ls.sf->id()) == true);
 
-    for (int i = 0; i < 7; i++)
-        pulseBeat();
-    QCOMPARE(runner.m_elapsedBeats, quint32(3000));
-    QVERIFY(queueHas(runner, sf->id()) == true);
+    // shrink to 3000-3400: gone from under the playhead, stopped at once
+    ls.sf->setDuration(400);
+    ls.commitEdit();
+    runner.write(ls.timer());
+    QVERIFY(queueHas(runner, ls.sf->id()) == false);
+    ls.timer()->timerTick();
+    QVERIFY(ls.scene->isRunning() == false);
 
-    // shrink to 3000-3500: the next beat (3500) passes the new end
-    sf->setDuration(500);
-    show->rebuildSchedule();
-    pulseBeat();
-    QCOMPARE(runner.m_elapsedBeats, quint32(3500));
-    QVERIFY(queueHas(runner, sf->id()) == false);
-
-    // extend to 3000-7000: the clip is under the beat playhead again and
-    // restarts at the right offset (the start pass runs after this beat
-    // has advanced the beat playhead to 4000)
-    sf->setDuration(4000);
-    show->rebuildSchedule();
-    pulseBeat();
-    QCOMPARE(runner.m_elapsedBeats, quint32(4000));
-    QVERIFY(queueHas(runner, sf->id()) == true);
-    QCOMPARE(scene->elapsed(), quint32(1000));
-    QCOMPARE(runner.m_totalRunTime, quint32(7000));
+    // extend to 3000-7000: under the playhead again, restarts at the offset
+    // the wall clock has reached (no beat needed for any of this)
+    ls.advanceTo(runner, 4000);
+    ls.sf->setDuration(4000);
+    ls.commitEdit();
+    runner.write(ls.timer());
+    QVERIFY(queueHas(runner, ls.sf->id()) == true);
+    QCOMPARE(ls.scene->elapsed(), quint32(1000));
+    QCOMPARE(runner.m_totalRunTime, quint32(60000));
 
     // and phase 2 still stops it at the new end
-    for (int i = 0; i < 6; i++)
-        pulseBeat();
-    QCOMPARE(runner.m_elapsedBeats, quint32(7000));
-    QVERIFY(queueHas(runner, sf->id()) == false);
+    ls.advanceTo(runner, 7000);
+    QVERIFY(queueHas(runner, ls.sf->id()) == true);
+    runner.write(ls.timer());
+    QVERIFY(queueHas(runner, ls.sf->id()) == false);
 }
 
 /****************************************************************************
@@ -818,11 +820,10 @@ void ShowRunner_Test::beatsFunctionInTimeShowRunsOnRealTime()
     QCOMPARE(runner.m_schedule->clips.count(), 2);
     QCOMPARE(runner.m_totalRunTime, quint32(20000));
 
-    // the runner never sees a beat pulse: the beat clock must not matter
+    // the runner never sees a beat pulse: it must not matter
     ls.advanceTo(runner, 3000);
     QVERIFY(queueHas(runner, sf->id()) == false);
     QVERIFY(chaser->isRunning() == false);
-    QCOMPARE(runner.m_elapsedBeats, quint32(0));
 
     runner.write(ls.timer());
     QVERIFY(queueHas(runner, sf->id()) == true);
@@ -875,103 +876,73 @@ void ShowRunner_Test::beatsFunctionInTimeShowReschedule()
     QVERIFY(chaser->isRunning() == false);
 }
 
-void ShowRunner_Test::timeFunctionInBeatsShowRunsOnBeatClock()
+void ShowRunner_Test::timeFunctionInBeatsShowRunsOnWallClock()
 {
-    // The mirror case: in a Beats Show every clip follows the beat clock,
-    // whatever its Function's tempo. A Time-tempo Scene clip 500-1500ms is
-    // not started while only the real clock passes 500ms; it starts on the
-    // beat that brings the beat clock there, and stops on the beat that
-    // reaches its end.
+    // A Time-tempo Scene clip 500-1500ms in a Beats Show: once the Show has
+    // been released by its first beat, the clip starts and stops as the
+    // wall clock passes its bounds, with no further beat pulse at all.
     LiveShow ls(this, 500, 1000, 60000);
-    ls.show->setTempoType(Function::Beats);
-    ls.commitEdit();
+    ls.makeBeatsShow();
     QVERIFY(ls.scene->tempoType() == Function::Time);
-
-    ls.doc->inputOutputMap()->setBeatGeneratorType(InputOutputMap::Internal);
-    QCOMPARE(ls.doc->inputOutputMap()->bpmNumber(), 120);
 
     ShowRunner runner(ls.doc, ls.show->id());
     QVERIFY(runner.m_schedule->showTempo == Function::Beats);
-    MasterTimer *timer = ls.timer();
-    auto pulseBeat = [&]() {
-        timer->requestBeat();
-        runner.write(timer);
-        timer->m_beatRequested = false;
-    };
 
-    // sync beat: both clocks at 0, the filler starts
-    pulseBeat();
-    QCOMPARE(runner.m_elapsedBeats, quint32(0));
+    ls.pulseBeat(runner);
     QVERIFY(queueHas(runner, ls.fillerSf->id()) == true);
-
-    // 80 plain ticks (20ms each, plus the sync beat's own) take the real
-    // clock to 1620ms - past the clip's whole span - without a beat:
-    // neither started nor stopped
-    for (int i = 0; i < 80; i++)
-        runner.write(timer);
-    QCOMPARE(runner.m_elapsedTime, quint32(81 * MasterTimer::tick()));
-    QVERIFY(runner.m_elapsedTime > 1500);
-    QCOMPARE(runner.m_elapsedBeats, quint32(0));
     QVERIFY(queueHas(runner, ls.sf->id()) == false);
 
-    pulseBeat();
-    QCOMPARE(runner.m_elapsedBeats, quint32(500));
+    ls.advanceTo(runner, 500);
+    runner.write(ls.timer());
     QVERIFY(queueHas(runner, ls.sf->id()) == true);
     QCOMPARE(ls.scene->elapsed(), quint32(0));
+    ls.timer()->timerTick();
+    QVERIFY(ls.scene->isRunning() == true);
 
-    pulseBeat();
-    QCOMPARE(runner.m_elapsedBeats, quint32(1000));
+    ls.advanceTo(runner, 1500);
     QVERIFY(queueHas(runner, ls.sf->id()) == true);
-
-    pulseBeat();
-    QCOMPARE(runner.m_elapsedBeats, quint32(1500));
+    runner.write(ls.timer());
     QVERIFY(queueHas(runner, ls.sf->id()) == false);
+    ls.timer()->timerTick();
+    QVERIFY(ls.scene->isRunning() == false);
 }
 
 void ShowRunner_Test::beatsShowStartedMidTimeline()
 {
-    // Playing a Beats Show from the cursor: the beat clock has to start from
-    // the Show's start position, not from 0, or every clip would be late by
-    // that much. Clip 3000-5000ms, runner started at 2500ms.
+    // Playing a Beats Show from the cursor: the playhead starts from the
+    // Show's start position and every clip is judged against it. Clip
+    // 3000-5000ms, runner started at 2500ms.
     LiveShow ls(this, 3000, 2000, 60000);
-    ls.show->setTempoType(Function::Beats);
-    ls.commitEdit();
+    ls.makeBeatsShow();
 
-    ls.doc->inputOutputMap()->setBeatGeneratorType(InputOutputMap::Internal);
     ShowRunner runner(ls.doc, ls.show->id(), 2500);
-    MasterTimer *timer = ls.timer();
-    auto pulseBeat = [&]() {
-        timer->requestBeat();
-        runner.write(timer);
-        timer->m_beatRequested = false;
-    };
+    QCOMPARE(runner.m_elapsedTime, quint32(2500));
 
-    pulseBeat();
-    QCOMPARE(runner.m_elapsedBeats, quint32(2500));
+    ls.pulseBeat(runner);
     QVERIFY(queueHas(runner, ls.sf->id()) == false);
     QVERIFY(queueHas(runner, ls.fillerSf->id()) == true);
     QCOMPARE(ls.fillerScene->elapsed(), quint32(2500));
 
-    pulseBeat();
-    QCOMPARE(runner.m_elapsedBeats, quint32(3000));
+    ls.advanceTo(runner, 3000);
+    runner.write(ls.timer());
     QVERIFY(queueHas(runner, ls.sf->id()) == true);
     QCOMPARE(ls.scene->elapsed(), quint32(0));
 
-    for (int i = 0; i < 4; i++)
-        pulseBeat();
-    QCOMPARE(runner.m_elapsedBeats, quint32(5000));
+    ls.advanceTo(runner, 5000);
+    runner.write(ls.timer());
     QVERIFY(queueHas(runner, ls.sf->id()) == false);
 }
 
 void ShowRunner_Test::showTempoSwitchWhilePlaying()
 {
-    // Switching the Show from Time to Beats while it plays: the running clip
-    // keeps running, the beat clock picks up from the real playhead on the
-    // next beat, and from then on the clip stops on the beat clock.
+    // Switching the Show from Time to Beats while it plays must not hold the
+    // playhead for a beat: the running clip keeps running, the playhead keeps
+    // moving, and the clip still stops on the wall clock - no beat pulse is
+    // ever needed.
     LiveShow ls(this, 0, 10000, 60000);
     ls.doc->inputOutputMap()->setBeatGeneratorType(InputOutputMap::Internal);
     ShowRunner runner(ls.doc, ls.show->id());
-    MasterTimer *timer = ls.timer();
+    QVERIFY(runner.m_waitingForBeat == false);
 
     ls.advanceTo(runner, 2000);
     QVERIFY(queueHas(runner, ls.sf->id()) == true);
@@ -981,33 +952,17 @@ void ShowRunner_Test::showTempoSwitchWhilePlaying()
     QVERIFY(ls.show->isScheduleDirty() == true);
     ls.commitEdit();
 
-    // the switch is picked up and playback waits for a beat to sync
-    runner.write(timer);
+    runner.write(ls.timer());
     QVERIFY(runner.m_schedule->showTempo == Function::Beats);
-    QVERIFY(runner.beatSynced == false);
+    QVERIFY(runner.m_waitingForBeat == false);
     QVERIFY(queueHas(runner, ls.sf->id()) == true);
-    QCOMPARE(runner.m_elapsedTime, quint32(2000));
-    timer->timerTick();
+    QCOMPARE(runner.m_elapsedTime, quint32(2000 + MasterTimer::tick()));
+    ls.timer()->timerTick();
     QVERIFY(ls.scene->isRunning() == true);
 
-    auto pulseBeat = [&]() {
-        timer->requestBeat();
-        runner.write(timer);
-        timer->m_beatRequested = false;
-    };
-
-    pulseBeat();
-    QVERIFY(runner.beatSynced == true);
-    QCOMPARE(runner.m_elapsedBeats, quint32(2000));
+    ls.advanceTo(runner, 10000);
     QVERIFY(queueHas(runner, ls.sf->id()) == true);
-
-    // 16 beats = 8000ms: the beat clock reaches the clip's end at 10000ms
-    for (int i = 0; i < 15; i++)
-        pulseBeat();
-    QCOMPARE(runner.m_elapsedBeats, quint32(9500));
-    QVERIFY(queueHas(runner, ls.sf->id()) == true);
-    pulseBeat();
-    QCOMPARE(runner.m_elapsedBeats, quint32(10000));
+    runner.write(ls.timer());
     QVERIFY(queueHas(runner, ls.sf->id()) == false);
     QVERIFY(queueHas(runner, ls.fillerSf->id()) == true);
 }

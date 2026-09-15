@@ -93,10 +93,9 @@ public:
 
 private:
     /**
-     * The playhead position clips are started and stopped against: the real
-     * elapsed time in a Time Show, the beat clock in a Beats Show. Both are
-     * milliseconds on the same timeline axis, the beat clock is merely
-     * quantised to beat pulses.
+     * The playhead position clips are started and stopped against: the wall
+     * clock (m_elapsedTime), in a Beats Show as much as in a Time Show - see
+     * the definition for why not a beat-stepped clock.
      */
     quint32 now() const;
 
@@ -142,17 +141,10 @@ private:
     /** Elapsed time since runner start. Used also to move the cursor in the track view */
     quint32 m_elapsedTime;
 
-    /** The clock a Beats Show starts/stops its clips on - in real milliseconds
-     *  like m_elapsedTime, NOT a beat count. ShowFunction::startTime()/duration()
-     *  are always real milliseconds (ADR 0001), so this must be kept in the same
-     *  unit to compare directly against them; it is aligned to m_elapsedTime on
-     *  the beat that establishes sync and then advanced by the actual ms-per-beat
-     *  (derived from BPM) on every detected beat pulse, not by a fixed
-     *  beat-pseudo-count step. Unused (and not advanced) in a Time Show. */
-    quint32 m_elapsedBeats;
-
-    /** Flag used to sinchronize playback to beats */
-    bool beatSynced;
+    /** True while a Beats Show holds its start for the first beat pulse
+     *  (only ever set before the first tick, never re-armed by a live
+     *  tempo switch; skipped when no beat source is active) */
+    bool m_waitingForBeat;
 
     /** Total time the runner has to run */
     quint32 m_totalRunTime;

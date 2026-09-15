@@ -69,11 +69,11 @@ struct ShowSchedule
     /** IDs of every Function referenced by a clip (for cheap change filtering) */
     QSet<quint32> functionIds;
     /**
-     * The Show's own tempo type when the schedule was built. It selects the
-     * clock every clip is started and stopped on: real elapsed time in a Time
-     * Show, the beat-quantised clock in a Beats Show (see ShowRunner::now()).
-     * A clip's Function tempo only governs how that Function steps internally,
-     * never when it comes and goes on the timeline.
+     * The Show's own tempo type when the schedule was built. A Beats Show
+     * holds its start for the first beat pulse; the clips themselves are
+     * started and stopped on the wall clock in either case (see
+     * ShowRunner::now()). A clip's Function tempo only governs how that
+     * Function steps internally, never when it comes and goes on the timeline.
      */
     Function::TempoType showTempo = Function::Time;
 

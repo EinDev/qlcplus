@@ -55,8 +55,8 @@ Show::Show(Doc* doc) : Function(doc, Function::ShowType)
     // exactly like the Show tracks
     unregisterAttribute(tr("Intensity"));
 
-    // The schedule records which clock (real time or beats) this Show's clips
-    // start and stop on, and resolves a zero clip duration to the Function's
+    // The schedule records this Show's tempo (a Beats Show waits for a beat
+    // before starting) and resolves a zero clip duration to the Function's
     // own; the latter can change outside this Show.
     connect(this, &Function::tempoTypeChanged, this, &Show::markScheduleDirty);
     if (doc != NULL)

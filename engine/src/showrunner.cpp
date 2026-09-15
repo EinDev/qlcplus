@@ -35,8 +35,7 @@ ShowRunner::ShowRunner(const Doc* doc, quint32 showID, quint32 startTime)
     , m_doc(doc)
     , m_currentClipIndex(0)
     , m_elapsedTime(startTime)
-    , m_elapsedBeats(startTime)
-    , beatSynced(false)
+    , m_waitingForBeat(false)
     , m_totalRunTime(0)
     , m_startPassPending(false)
 {
@@ -52,13 +51,13 @@ ShowRunner::ShowRunner(const Doc* doc, quint32 showID, quint32 startTime)
 
     m_schedule = m_show->currentSchedule();
     m_totalRunTime = m_schedule->totalRunTime;
+    m_waitingForBeat = m_schedule->showTempo == Function::Beats;
 
     for (auto it = m_schedule->intensity.constBegin(); it != m_schedule->intensity.constEnd(); ++it)
         m_intensityMap[it.key()] = it.value();
 
 #if 1
-    qDebug() << "Ordered list of ShowFunctions (clock:"
-             << (m_schedule->showTempo == Function::Beats ? "beats" : "time") << "):";
+    qDebug() << "Ordered list of ShowFunctions:";
     foreach (const ScheduledClip &clip, m_schedule->clips)
         qDebug() << "[Show] Function ID:" << clip.functionId << "start time:" << clip.start << "end time:" << clip.end;
 #endif
@@ -85,8 +84,8 @@ void ShowRunner::setPause(bool enable)
 void ShowRunner::stop()
 {
     m_elapsedTime = 0;
-    m_elapsedBeats = 0;
     m_currentClipIndex = 0;
+    m_waitingForBeat = m_schedule->showTempo == Function::Beats;
     m_startPassPending = false;
 
     for (int i = 0; i < m_runningQueue.count(); i++)
@@ -103,7 +102,11 @@ FunctionParent ShowRunner::functionParent() const
 
 quint32 ShowRunner::now() const
 {
-    return m_schedule->showTempo == Function::Beats ? m_elapsedBeats : m_elapsedTime;
+    // Clip positions are real milliseconds laid out on the Show's own BPM
+    // grid (ADR 0001), so they are judged against the wall clock in a Beats
+    // Show too: a clock stepped by the global beat generator's BPM, which can
+    // differ from the Show's or be unknown, would drift or never move.
+    return m_elapsedTime;
 }
 
 bool ShowRunner::isOffsetSensitive(Function::Type type)
@@ -255,15 +258,8 @@ void ShowRunner::reconcile(const QSharedPointer<const ShowSchedule> &schedule)
 {
     const ShowSchedule &s = *schedule;
 
-    // 0. The Show's tempo decides which clock the clips are judged against.
-    //    Switching to Beats mid-run: the beat clock has not been advancing,
-    //    so align it to the real playhead here (for the checks below) and
-    //    again on the next beat pulse, which re-establishes beat sync.
-    if (s.showTempo != m_schedule->showTempo && s.showTempo == Function::Beats)
-    {
-        m_elapsedBeats = m_elapsedTime;
-        beatSynced = false;
-    }
+    // A tempo switch while playing does not re-arm the beat wait: the
+    // playhead is already moving and the clips follow the wall clock anyway.
     m_schedule = schedule;
     quint32 now = this->now();
 
@@ -336,38 +332,17 @@ void ShowRunner::write(MasterTimer *timer)
     // Phase 0. Pick up timeline edits made since the last tick
     applyPendingSchedule();
 
-    // check synchronization to beats (if show is beat-based)
-    if (m_schedule->showTempo == Function::Beats)
+    // A Beats Show starts on a beat pulse, so that its timeline lines up
+    // with the beat grid - but only while a beat source is active: with the
+    // generator disabled (bpmNumber() == 0) no pulse would ever come, and
+    // the Show has to play on the wall clock rather than never start.
+    if (m_waitingForBeat)
     {
-        //qDebug() << Q_FUNC_INFO << "isBeat:" << timer->isBeat() << ", elapsed beats:" << m_elapsedBeats;
-
-        if (timer->isBeat())
-        {
-            if (beatSynced == false)
-            {
-                // The beat clock starts from wherever the real playhead is
-                // (the Show's start position, or the point at which the Show
-                // was switched to Beats while playing) and steps from here.
-                m_elapsedBeats = m_elapsedTime;
-                beatSynced = true;
-                qDebug() << "Beat synced";
-            }
-            else
-            {
-                // m_elapsedBeats tracks real elapsed milliseconds (see showrunner.h),
-                // not a beat count, so advance it by the actual duration of one beat
-                // at the current BPM rather than a fixed pseudo-unit step. With no
-                // known BPM there is no way to convert a beat pulse into a real-ms
-                // increment, so leave it unchanged instead of guessing - the
-                // clips simply won't start/stop until BPM is known.
-                int bpmNumber = m_doc->inputOutputMap()->bpmNumber();
-                if (bpmNumber > 0)
-                    m_elapsedBeats += qRound(60000.0 / bpmNumber);
-            }
-        }
-
-        if (beatSynced == false)
+        if (timer->isBeat() == false && m_doc->inputOutputMap()->bpmNumber() > 0)
             return;
+
+        m_waitingForBeat = false;
+        qDebug() << "Beat synced";
     }
 
     // Clips (re)scheduled under the playhead by an edit, or whose start was

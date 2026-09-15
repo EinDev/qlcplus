@@ -37,7 +37,8 @@ private slots:
     void initRunner();
     void intensity();
     void stopRunner();
-    void beatTempoUsesRealMilliseconds();
+    void beatsShowRunsOnWallClock();
+    void beatsShowWithoutBpmPlays();
 
     /* Live rescheduling: edits made while the Show plays */
     void scheduleNotifications();
@@ -57,7 +58,7 @@ private slots:
     /* The Show's tempo, not the Function's, picks the clock a clip runs on */
     void beatsFunctionInTimeShowRunsOnRealTime();
     void beatsFunctionInTimeShowReschedule();
-    void timeFunctionInBeatsShowRunsOnBeatClock();
+    void timeFunctionInBeatsShowRunsOnWallClock();
     void beatsShowStartedMidTimeline();
     void showTempoSwitchWhilePlaying();
 
