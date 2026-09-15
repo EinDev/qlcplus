@@ -378,17 +378,17 @@ SidePanel
                         return
                     }
 
-                    if (info.functionIds.length === 0 && info.folderCount > 0)
+                    if (info.visibleCount === 0 && info.folderCount > 0)
                     {
                         // only empty folders: nothing to lose, no confirmation
-                        deleteItemsPopup.performDeletion([])
+                        deleteItemsPopup.performDeletion(info.functionIds)
                         return
                     }
 
                     var selNames = functionManager.selectedItemNames()
                     var message = qsTr("Are you sure you want to delete the following items?") + "\n" + selNames
                     if (info.folderCount > 0)
-                        message += "\n\n" + qsTr("%n function(s) will be deleted, including those inside the selected folder(s).", "", info.functionIds.length)
+                        message += "\n\n" + qsTr("%n function(s) will be deleted, including those inside the selected folder(s).", "", info.visibleCount)
                     deleteItemsPopup.functionIds = info.functionIds
                     deleteItemsPopup.message = message
                     deleteItemsPopup.open()

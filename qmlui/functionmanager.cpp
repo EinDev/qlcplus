@@ -229,10 +229,8 @@ quint32 FunctionManager::addFunctiontoDoc(Function *func, QString name, bool sel
     if (!treePath.isEmpty())
         func->setPath(FunctionPathUtils::toFunctionPath(treePath, TreeModel::separator()));
 
-    // an empty folder is a real folder from now on (the tree node itself is
-    // kept: TreeModelItem::addChild() turns the empty leaf into a parent)
-    forgetEmptyFolders(treePath);
-
+    // (an empty folder it lands in becomes a real folder through
+    // addFunctionTreeItem(), reached via Doc::functionAdded)
     if (m_doc->addFunction(func) == true)
     {
         if (select)
@@ -1298,19 +1296,22 @@ bool FunctionManager::setFolderPath(QString oldAbsPath, QString newPath, bool is
 
         const QString updatedPath = FunctionPathUtils::rebase(currentPath, oldAbsPath, newAbsPath, sep);
         m_emptyFolderList.removeAt(i);
-        if (!m_emptyFolderList.contains(updatedPath))
+        // still empty only if the destination does not already hold functions there
+        if (!m_emptyFolderList.contains(updatedPath) && functionsInFolder(updatedPath).isEmpty())
         {
             m_emptyFolderList.append(updatedPath);
             movedEmptyFolders.append(updatedPath);
         }
     }
 
+    bool functionsMoved = false;
     for (Function *f : m_doc->functions())
     {
         QString funcPath = f->path(true);
         if (!FunctionPathUtils::isInFolder(funcPath, funcOldPrefix, QLatin1Char('/')))
             continue;
 
+        functionsMoved = true;
         QString repPath = FunctionPathUtils::rebase(funcPath, funcOldPrefix, funcNewPrefix, QLatin1Char('/'));
         if (isRelative)
         {
@@ -1350,9 +1351,10 @@ bool FunctionManager::setFolderPath(QString oldAbsPath, QString newPath, bool is
             }
         }
 
-        // the destination (and its ancestors) is a real folder now
-        if (!m_emptyFolderList.contains(newAbsPath))
-            forgetEmptyFolders(FunctionPathUtils::parentPath(newAbsPath, sep));
+        // functions landed in the destination: it (and its ancestors, and a
+        // same-named empty folder that was already there) is a real folder now
+        if (functionsMoved)
+            forgetEmptyFolders(newAbsPath);
     }
 
     for (int i = 0; i < m_selectedFolderList.count(); ++i)
@@ -1479,8 +1481,10 @@ void FunctionManager::deleteSelectedFolders()
         // A parent that only held this subfolder would silently vanish on
         // the next tree rebuild (folders exist only through their contents):
         // keep it around as an empty folder instead.
+        // (unless the parent itself was deleted in this same round, e.g. "A"
+        // and "A`X" both selected - its node is gone then)
         const QString parent = FunctionPathUtils::parentPath(path, sep);
-        if (!parent.isEmpty() && !folderExists(parent))
+        if (!parent.isEmpty() && !folderExists(parent) && m_functionTree->itemAtPath(parent) != nullptr)
             m_emptyFolderList.append(parent);
     }
 
@@ -1541,10 +1545,19 @@ QVariantMap FunctionManager::selectionDeletionInfo()
     }
 
     QVariantList idList;
+    int visibleCount = 0;
     for (quint32 id : ids)
+    {
         idList.append(id);
+        // hidden helpers (e.g. a Sequence's bound Scene) go along with their
+        // folder but are not something the user sees, so don't count them
+        Function *f = m_doc->function(id);
+        if (f != nullptr && f->isVisible())
+            visibleCount++;
+    }
 
     info.insert("functionIds", idList);
+    info.insert("visibleCount", visibleCount);
     info.insert("folderCount", m_selectedFolderList.count());
     info.insert("blockedMessage", blockedMessage);
 
@@ -1897,6 +1910,10 @@ void FunctionManager::addFunctionTreeItem(Function *func)
     if (func == nullptr || func->isVisible() == false)
         return;
 
+    // whatever route added this function (New button, undo of a delete, the
+    // control API, a Show import), its folder is no longer an empty one
+    forgetEmptyFolders(FunctionPathUtils::toTreePath(func->path(true), TreeModel::separator()));
+
     bool expandAll = m_searchFilter.length() >= SEARCH_MIN_CHARS;
 
     QQmlEngine::setObjectOwnership(func, QQmlEngine::CppOwnership);
@@ -1951,8 +1968,6 @@ void FunctionManager::updateFunctionsTree()
     QStringList pathsList;
     QList<Function *> sortedFunctions = m_doc->functions();
     std::sort(sortedFunctions.begin(), sortedFunctions.end(), functionLess);
-    QStringList sortedEmptyFolders = m_emptyFolderList;
-    std::sort(sortedEmptyFolders.begin(), sortedEmptyFolders.end(), caseInsensitiveLess);
 
     storeExpandedPaths();
 
@@ -1979,6 +1994,12 @@ void FunctionManager::updateFunctionsTree()
         QString treePath = path.replace("/", TreeModel::separator());
         m_functionTree->setPathData(treePath, folderParams);
     }
+
+    // Only now: addFunctionTreeItem() above has just dropped every folder that
+    // turned out to hold functions from the list, so no folder can be added
+    // twice (TreeModel::addItem() would insert a second row for it).
+    QStringList sortedEmptyFolders = m_emptyFolderList;
+    std::sort(sortedEmptyFolders.begin(), sortedEmptyFolders.end(), caseInsensitiveLess);
 
     for (QString &folderPath : sortedEmptyFolders)
     {

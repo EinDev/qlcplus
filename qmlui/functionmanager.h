@@ -168,6 +168,8 @@ public:
      *  including every function inside the selected folders) would do, so the
      *  UI can confirm or refuse BEFORE anything is touched. Keys:
      *  - "functionIds": the full, deduplicated list of function IDs that would go
+     *  - "visibleCount": how many of those the user can actually see (hidden
+     *    helpers such as a Sequence's bound Scene are excluded)
      *  - "folderCount": the number of selected folders
      *  - "blockedMessage": non-empty if the deletion must be refused, i.e. some
      *    of those functions are still placed on a Show that is not itself being
