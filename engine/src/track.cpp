@@ -116,6 +116,7 @@ void Track::setMute(bool state)
     m_isMute = state;
 
     emit muteChanged(state);
+    emit changed(id());
 }
 
 bool Track::isMute() const
@@ -134,6 +135,8 @@ ShowFunction *Track::createShowFunction(quint32 functionID)
     ShowFunction *func = new ShowFunction(uId);
     func->setFunctionID(functionID);
     m_functions.append(func);
+    attachShowFunction(func);
+    emit changed(id());
 
     return func;
 }
@@ -144,8 +147,22 @@ bool Track::addShowFunction(ShowFunction *func)
         return false;
 
     m_functions.append(func);
+    attachShowFunction(func);
+    emit changed(id());
 
     return true;
+}
+
+void Track::attachShowFunction(ShowFunction *func)
+{
+    connect(func, &ShowFunction::startTimeChanged, this, &Track::slotShowFunctionChanged);
+    connect(func, &ShowFunction::durationChanged, this, &Track::slotShowFunctionChanged);
+    connect(func, &ShowFunction::functionIDChanged, this, &Track::slotShowFunctionChanged);
+}
+
+void Track::slotShowFunctionChanged()
+{
+    emit changed(id());
 }
 
 ShowFunction *Track::showFunction(quint32 id) const
@@ -163,8 +180,11 @@ bool Track::removeShowFunction(ShowFunction *function, bool performDelete)
         return false;
 
     ShowFunction *func = m_functions.takeAt(m_functions.indexOf(function));
+    disconnect(func, nullptr, this, nullptr);
     if (performDelete && func)
         delete func;
+
+    emit changed(id());
 
     return true;
 }
@@ -322,6 +342,9 @@ bool Track::postLoad(Doc* doc)
             modified = true;
         }
     }
+    if (modified)
+        emit changed(id());
+
     return modified;
 }
 

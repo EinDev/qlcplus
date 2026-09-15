@@ -151,7 +151,14 @@ public:
     /** Returns the list of ShowFunctions added to this Track */
     QList <ShowFunction *> showFunctions() const;
 
+private slots:
+    /** Relay a timeline-relevant ShowFunction change as this Track's changed() */
+    void slotShowFunctionChanged();
+
 private:
+    /** Start relaying $func's timeline changes (start, duration, function) */
+    void attachShowFunction(ShowFunction *func);
+
     /** List of Function IDs present in this track */
     QList <ShowFunction *> m_functions;
 
