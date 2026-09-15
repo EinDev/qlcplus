@@ -26,6 +26,7 @@ set(SRC_FILES
     collectioneditor.cpp collectioneditor.h
     colorfilters.cpp colorfilters.h
     contextmanager.cpp contextmanager.h
+    crashhandler.cpp crashhandler.h
     efxeditor.cpp efxeditor.h
     fixturebrowser.cpp fixturebrowser.h
     fixtureremapmanager.cpp fixtureremapmanager.h

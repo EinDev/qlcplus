@@ -26,6 +26,7 @@
 
 #include "app.h"
 #include "asynclogwriter.h"
+#include "crashhandler.h"
 #include "freezewatchdog.h"
 #include "networkmanager.h"
 #include "apiserver.h"
@@ -218,6 +219,11 @@ int main(int argc, char *argv[])
         });
     }
 
+    // Crash reporter (see qmlui/crashhandler.h). Installed after the -d log
+    // handler above on purpose: it wraps whatever message handler is current
+    // and chains every message to it, only adding the report on QtFatalMsg.
+    CrashHandler::install();
+
     // language settings
     QString locale = parser.value(localeOption);
 
@@ -315,6 +321,14 @@ int main(int argc, char *argv[])
         if (secs <= 0)
             secs = 20;
         QTimer::singleShot(3000, &app, [secs]() { FreezeWatchdog::debugBlockMainThread(secs); });
+    }
+
+    // Dev-only: deliberately crash (QLCPLUS_DEBUG_CRASH=fatal|segv|abort) to
+    // verify the crash reporter end-to-end. Same gating rationale as above.
+    if (qEnvironmentVariableIsSet("QLCPLUS_DEBUG_CRASH"))
+    {
+        const QString mode = qEnvironmentVariable("QLCPLUS_DEBUG_CRASH");
+        QTimer::singleShot(3000, &app, [mode]() { CrashHandler::debugTriggerCrash(mode); });
     }
 #endif
 
