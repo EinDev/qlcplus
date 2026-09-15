@@ -143,6 +143,18 @@ messages:
                 '
               items:
                 type: string
+            source:
+              type: string
+              description: 'Audio/Video only. Absolute path of the media file on the engine host, or (Video
+                only) a scheme:// stream URL. A local file is copied into the project''s media store
+                (<project>.qxw.assets/<sha1-12>/<basename>, MediaAssets::importOrKeep) and the function
+                points at that copy - the original is never touched. Files of 50 MB or more are copied on
+                a background thread: the function points at the original until the copy lands, which
+                functions.get reports as typeDetail.importPending. Without an explicit name the function
+                is named after the file. A missing file, a source on any other type, or a URL on an Audio
+                is INVALID_PARAMS and nothing is created.
+
+                '
             baseRevision:
               type: integer
   FunctionsCreateResponse:
@@ -484,6 +496,15 @@ messages:
                 description for how a step's own hold/duration relate.
             blendMode:
               $ref: '#/components/schemas/FunctionsBlendModeEnum'
+            source:
+              type: string
+              description: 'Audio/Video only: replace the media file of THIS function, same rules and
+                store copy as functions.create''s source. Like the editors'' "Replace file", the function
+                is renamed after the new file and the previous managed copy is left on disk (only an
+                explicit "Remove unused media" deletes store files). A missing file is INVALID_PARAMS and
+                no other field of this call is applied.
+
+                '
             baseRevision:
               type: integer
   FunctionsUpdateResponse:

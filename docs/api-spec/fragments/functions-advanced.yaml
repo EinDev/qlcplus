@@ -3446,11 +3446,18 @@ schemas:
     type: object
     required:
     - functionId
-    - config
+    - source
+    - managed
     - docRevision
     properties:
       functionId:
         type: string
+      source:
+        $ref: '#/components/schemas/FunctionsMediaSource'
+      managed:
+        $ref: '#/components/schemas/FunctionsMediaManaged'
+      importPending:
+        $ref: '#/components/schemas/FunctionsMediaImportPending'
       config:
         $ref: '#/components/schemas/FunctionsAudioConfig'
       docRevision:
@@ -3459,15 +3466,38 @@ schemas:
     type: object
     required:
     - functionId
-    - config
+    - source
+    - managed
     - docRevision
     properties:
       functionId:
         type: string
+      source:
+        $ref: '#/components/schemas/FunctionsMediaSource'
+      managed:
+        $ref: '#/components/schemas/FunctionsMediaManaged'
+      importPending:
+        $ref: '#/components/schemas/FunctionsMediaImportPending'
       config:
         $ref: '#/components/schemas/FunctionsVideoConfig'
       docRevision:
         type: integer
+  FunctionsMediaSource:
+    type: string
+    description: 'The Audio/Video source as the engine holds it. For a file in the project''s media
+      store (managed = true) this is the workspace-relative path the .qxw persists, e.g.
+      "show.qxw.assets/3f2a9c1b7d5e/intro.wav" (absolute only while the project is still untitled and
+      has no workspace directory). Otherwise the raw absolute path or scheme:// URL.
+
+      '
+  FunctionsMediaManaged:
+    type: boolean
+    description: True when the source lives in <project>.qxw.assets/<sha1-12>/ and moves with the
+      project; false for an external file reference or a stream URL.
+  FunctionsMediaImportPending:
+    type: boolean
+    description: True while a background copy of this source into the media store is still running
+      (large files); the function is relinked to the copy, and managed becomes true, once it lands.
 operations:
   sendFunctionsRgbMatrixListAlgorithms:
     action: send

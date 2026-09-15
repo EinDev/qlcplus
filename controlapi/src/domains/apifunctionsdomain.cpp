@@ -17,6 +17,7 @@
 
 #include <QJsonArray>
 #include <QJsonValue>
+#include <QFileInfo>
 #include <QSet>
 
 #include "apifunctionsdomain.h"
@@ -39,6 +40,7 @@
 #include "show.h"
 #include "audio.h"
 #include "video.h"
+#include "mediaassets.h"
 #include "fixture.h"
 #include "doc.h"
 
@@ -255,6 +257,86 @@ QJsonObject sequenceDetailToJson(Sequence *sequence)
 // the fuller FunctionsAudioDetail/FunctionsRgbMatrixDetail/FunctionsScriptDetail/
 // FunctionsShowDetail/FunctionsVideoDetail schemas (functions-advanced.yaml
 // territory) - a deliberate, tracked gap, not an oversight.
+/**
+ * Audio/Video source as the API reports it: `source` is the path relative
+ * to the workspace directory for a managed copy (what the .qxw stores), the
+ * raw path/URL otherwise; `managed` says whether it lives in the project's
+ * media store; `importPending` is true while a background copy of it is
+ * still running (the function is relinked to the copy once that ends).
+ */
+void mediaSourceToJson(Doc *doc, const QString &source, QJsonObject &obj)
+{
+    MediaAssets *assets = doc->assets();
+    bool managed = assets->isManaged(source);
+    // an untitled project has no workspace path yet: normalize would then
+    // relativize against the process CWD, so keep the absolute path there
+    bool relative = managed && doc->workspacePath().isEmpty() == false;
+    obj.insert(QStringLiteral("source"), relative ? doc->normalizeComponentPath(source) : source);
+    obj.insert(QStringLiteral("managed"), managed);
+    obj.insert(QStringLiteral("importPending"), assets->pendingImports().contains(source));
+}
+
+QJsonObject audioDetailToJson(Doc *doc, Audio *audio)
+{
+    QJsonObject obj;
+    obj.insert(QStringLiteral("functionId"), QString::number(audio->id()));
+    mediaSourceToJson(doc, audio->getSourceFileName(), obj);
+    obj.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
+    return obj;
+}
+
+QJsonObject videoDetailToJson(Doc *doc, Video *video)
+{
+    QJsonObject obj;
+    obj.insert(QStringLiteral("functionId"), QString::number(video->id()));
+    mediaSourceToJson(doc, video->sourceUrl(), obj);
+    obj.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
+    return obj;
+}
+
+/**
+ * Apply a functions.create/functions.update `source` param to an Audio or
+ * Video: a local file is copied into the project's media store first
+ * (MediaAssets::importOrKeep - a large file comes back as the source path
+ * and is relinked when the background copy lands), a `scheme://` URL is
+ * passed through for Video. Returns false with @error set when the file
+ * does not exist or the type takes no source. The full setters rename the
+ * function after the file, so callers re-apply an explicit name afterwards.
+ */
+bool applyMediaSource(Doc *doc, Function *function, const QString &source, QString *error)
+{
+    bool isUrl = source.contains(QStringLiteral("://"));
+
+    if (function->type() != Function::AudioType && function->type() != Function::VideoType)
+    {
+        *error = QStringLiteral("source is only valid for Audio and Video functions");
+        return false;
+    }
+    if (isUrl && function->type() == Function::AudioType)
+    {
+        *error = QStringLiteral("Audio source must be a local file");
+        return false;
+    }
+    if (isUrl == false && QFileInfo(source).isFile() == false)
+    {
+        *error = QStringLiteral("Media file not found: ") + source;
+        return false;
+    }
+
+    QString stored = isUrl ? source : doc->assets()->importOrKeep(source);
+    if (function->type() == Function::AudioType)
+    {
+        Audio *audio = static_cast<Audio *>(function);
+        audio->setSourceFileName(stored);
+        audio->requestBpmDetection(false);
+    }
+    else
+    {
+        static_cast<Video *>(function)->setSourceUrl(stored);
+    }
+    return true;
+}
+
 QJsonObject typeDetailToJson(Function *function)
 {
     switch (function->type())
@@ -265,6 +347,10 @@ QJsonObject typeDetailToJson(Function *function)
         return chaserDetailToJson(qobject_cast<Chaser *>(function), false);
     case Function::SequenceType:
         return sequenceDetailToJson(qobject_cast<Sequence *>(function));
+    case Function::AudioType:
+        return audioDetailToJson(function->doc(), static_cast<Audio *>(function));
+    case Function::VideoType:
+        return videoDetailToJson(function->doc(), static_cast<Video *>(function));
     default:
     {
         QJsonObject obj;
@@ -570,6 +656,28 @@ void ApiFunctionsDomain::registerMethods()
             }
         }
 
+        // Audio/Video: the media file to use, validated before the function
+        // exists so a bad path leaves nothing behind
+        QString source = params.value(QStringLiteral("source")).toString();
+        if (params.contains(QStringLiteral("source")))
+        {
+            bool isUrl = source.contains(QStringLiteral("://"));
+            QString sourceError;
+            if (type != Function::AudioType && type != Function::VideoType)
+                sourceError = QStringLiteral("source is only valid for Audio and Video functions");
+            else if (isUrl && type == Function::AudioType)
+                sourceError = QStringLiteral("Audio source must be a local file");
+            else if (isUrl == false && QFileInfo(source).isFile() == false)
+                sourceError = QStringLiteral("Media file not found: ") + source;
+
+            if (sourceError.isEmpty() == false)
+            {
+                delete function;
+                session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams, sourceError));
+                return;
+            }
+        }
+
         if (doc->addFunction(function) == false)
         {
             delete function;
@@ -578,6 +686,16 @@ void ApiFunctionsDomain::registerMethods()
             session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInternal,
                                                             QStringLiteral("Could not add function")));
             return;
+        }
+
+        if (params.contains(QStringLiteral("source")))
+        {
+            QString sourceError;
+            applyMediaSource(doc, function, source, &sourceError);
+            // the setters name the function after the file - an explicit
+            // name wins, like the Function Manager's own editors
+            if (name.isEmpty() == false)
+                function->setName(name);
         }
 
         QJsonObject result;
@@ -727,6 +845,19 @@ void ApiFunctionsDomain::registerMethods()
             session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrConflict,
                                                             QStringLiteral("baseRevision is stale"), conflictDetails(doc)));
             return;
+        }
+
+        if (params.contains(QStringLiteral("source")))
+        {
+            // Audio/Video only: validated first so nothing else changes on a
+            // bad path. Renames the function after the new file, like the
+            // editors' own "Replace file" does.
+            QString sourceError;
+            if (applyMediaSource(doc, function, params.value(QStringLiteral("source")).toString(), &sourceError) == false)
+            {
+                session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams, sourceError));
+                return;
+            }
         }
 
         if (params.contains(QStringLiteral("runOrder")))
