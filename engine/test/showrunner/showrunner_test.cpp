@@ -19,8 +19,11 @@
 
 #include <QtTest>
 #define private public
+#define protected public
 #include "showrunner.h"
 #include "mastertimer.h"
+#include "universe.h"
+#undef protected
 #undef private
 #include "show.h"
 #include "track.h"
@@ -61,11 +64,15 @@ struct LiveShow
         doc = new Doc(parent);
 
         // Scene::write() stops a Scene with no values on its first tick, so
-        // every test Scene needs at least one channel to keep running
+        // every test Scene needs at least one channel to keep running. A
+        // real generic dimmer definition makes that channel an Intensity
+        // channel of the universe (zeroed every fader cycle, faded out to
+        // zero on stop), which the DMX assertions below rely on.
         fixture = new Fixture(doc);
         fixture->setAddress(0);
         fixture->setUniverse(0);
-        fixture->setChannels(1);
+        QLCFixtureDef *dimmerDef = fixture->genericDimmerDef(1);
+        fixture->setFixtureDefinition(dimmerDef, fixture->genericDimmerMode(dimmerDef, 1));
         doc->addFixture(fixture);
 
         show = new Show(doc);
@@ -150,15 +157,29 @@ struct LiveShow
         timer()->m_beatRequested = false;
     }
 
-    /** Frozen (scrub mode) runner: $n ticks of runner + MasterTimer. The
-     *  playhead does not move while frozen, so advanceTo() would never
-     *  return here. */
+    QList<Universe *> universes() const { return doc->inputOutputMap()->universes(); }
+
+    /** One fader cycle on every universe, as the universe threads would run
+     *  it once the MasterTimer's tick reached them (no thread runs here). */
+    void processFaders()
+    {
+        foreach (Universe *universe, universes())
+            universe->processFaders(MasterTimer::tick());
+    }
+
+    /** DMX value the faders wrote for $address of universe 0 */
+    uchar dmx(int address) const { return universes().at(0)->preGMValue(address); }
+
+    /** Frozen (scrub mode) runner: $n full ticks - runner, MasterTimer and
+     *  the universes' fader cycle. The playhead does not move while frozen,
+     *  so advanceTo() would never return here. */
     void frozenTicks(ShowRunner &runner, int n)
     {
         for (int i = 0; i < n; i++)
         {
-            runner.write(timer());
+            runner.write(timer(), universes());
             timer()->timerTick();
+            processFaders();
         }
     }
 };
@@ -995,30 +1016,36 @@ void ShowRunner_Test::scrubStartsAndFreezes()
 
     ShowRunner runner(ls.doc, ls.show->id(), 12000);
     QSignalSpy timeSpy(&runner, SIGNAL(timeChanged(quint32)));
+    QCOMPARE(ls.dmx(0), uchar(0));
 
-    runner.write(ls.timer());
+    runner.write(ls.timer(), ls.universes());
     QVERIFY(runner.m_frozen == true);
     QVERIFY(queueHas(runner, ls.sf->id()) == true);
     QVERIFY(queueHas(runner, ls.fillerSf->id()) == true);
     QCOMPARE(ls.scene->elapsed(), quint32(12000));
     QCOMPARE(ls.scene->overrideFadeInSpeed(), uint(0));
     QCOMPARE(runner.m_elapsedTime, quint32(12000));
-    ls.timer()->timerTick();                // preRun + first write
+    ls.timer()->timerTick();                // preRun + first write: faders exist
+    ls.processFaders();                     // ...and snap to their targets
     QVERIFY(ls.scene->isRunning() == true);
     QVERIFY(ls.scene->isPaused() == false);
+    QCOMPARE(ls.dmx(0), uchar(255));
 
-    // one more tick to let the faders land, then it is held
-    runner.write(ls.timer());
+    // held once the universes completed two fader cycles since the start
+    runner.write(ls.timer(), ls.universes());
     ls.timer()->timerTick();
+    ls.processFaders();
     QVERIFY(ls.scene->isPaused() == false);
-    runner.write(ls.timer());
+    runner.write(ls.timer(), ls.universes());
     ls.timer()->timerTick();
+    ls.processFaders();
     QVERIFY(ls.scene->isPaused() == true);
     QVERIFY(ls.fillerScene->isPaused() == true);
 
     ls.frozenTicks(runner, 10);
     QVERIFY(ls.scene->isRunning() == true);
     QVERIFY(ls.scene->isPaused() == true);
+    QCOMPARE(ls.dmx(0), uchar(255));
     QCOMPARE(runner.m_elapsedTime, quint32(12000));
     QCOMPARE(timeSpy.count(), 0);
 }
@@ -1254,6 +1281,70 @@ void ShowRunner_Test::showStopClearsScrubMode()
     QVERIFY(ls.show->isScrubMode() == false);
     quint32 ms = 0;
     QVERIFY(ls.show->takeSeekRequest(ms) == false);
+}
+
+void ShowRunner_Test::scrubHoldWaitsForFaderCycles()
+{
+    // The universe threads are ticked by the MasterTimer through the GUI
+    // thread's event loop: while that is busy no fader cycle runs, and a
+    // clip paused meanwhile would hold at zero. So the hold waits for two
+    // completed fader cycles on every universe, not for two timer ticks.
+    LiveShow ls(this, 0, 20000, 60000);
+    ls.show->setScrubMode(true);
+    ShowRunner runner(ls.doc, ls.show->id(), 5000);
+
+    // five timer ticks with the universes stalled: not held, nothing written
+    for (int i = 0; i < 5; i++)
+    {
+        runner.write(ls.timer(), ls.universes());
+        ls.timer()->timerTick();
+    }
+    QVERIFY(ls.scene->isRunning() == true);
+    QVERIFY(ls.scene->isPaused() == false);
+    QCOMPARE(ls.dmx(0), uchar(0));
+
+    // the universes catch up: one cycle writes the values, the second one
+    // proves they are there - and only then is the clip held
+    ls.processFaders();
+    runner.write(ls.timer(), ls.universes());
+    ls.timer()->timerTick();
+    QCOMPARE(ls.dmx(0), uchar(255));
+    QVERIFY(ls.scene->isPaused() == false);
+    ls.processFaders();
+    runner.write(ls.timer(), ls.universes());
+    ls.timer()->timerTick();
+    QVERIFY(ls.scene->isPaused() == true);
+    ls.frozenTicks(runner, 5);
+    QCOMPARE(ls.dmx(0), uchar(255));
+}
+
+void ShowRunner_Test::stopOfHeldSceneFadesOut()
+{
+    // A held Scene's faders are paused; stopping it must un-pause them
+    // first, or a fade-out would never progress and the channel would sit
+    // at its last value for good. No filler here: it drives the same
+    // channel, and HTP would keep it up.
+    LiveShow ls(this, 0, 20000);
+    ls.scene->setFadeOutSpeed(200);
+    ls.show->setScrubMode(true);
+    ShowRunner runner(ls.doc, ls.show->id(), 5000);
+    ls.frozenTicks(runner, 3);
+    QVERIFY(ls.scene->isPaused() == true);
+    QCOMPARE(ls.dmx(0), uchar(255));
+
+    // seeking past the clip stops it
+    ls.show->requestSeek(30000);
+    runner.write(ls.timer(), ls.universes());
+    QVERIFY(queueHas(runner, ls.sf->id()) == false);
+    QVERIFY(ls.scene->stopped() == true);
+    QVERIFY(ls.scene->isPaused() == false);
+    ls.timer()->timerTick();                // postRun: faders set to fade out
+    QVERIFY(ls.scene->isRunning() == false);
+
+    // the fade-out runs to zero within its 200ms (plus one cycle of slack)
+    for (int i = 0; i < 12; i++)
+        ls.processFaders();
+    QCOMPARE(ls.dmx(0), uchar(0));
 }
 
 // Guiless rather than appless: Chaser::createRunner() moves its runner to

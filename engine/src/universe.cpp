@@ -58,6 +58,7 @@ Universe::Universe(quint32 id, GrandMaster *gm, QObject *parent)
     , m_channelsMask(new QByteArray(UNIVERSE_SIZE, char(0)))
     , m_modifiedZeroValues(new QByteArray(UNIVERSE_SIZE, char(0)))
     , m_running(false)
+    , m_faderCycles(0)
 #if QT_VERSION < QT_VERSION_CHECK(5, 14, 0)
     , m_fadersMutex(QMutex::Recursive)
 #endif
@@ -311,6 +312,11 @@ void Universe::setFaderFadeOut(int fadeTime)
     }
 }
 
+quint32 Universe::faderCycles() const
+{
+    return m_faderCycles.load(std::memory_order_acquire);
+}
+
 void Universe::tick()
 {
     // Keep at most one pending tick to avoid queueing stale work when running late.
@@ -360,6 +366,9 @@ void Universe::processFaders(uint elapsedMs)
 
     if (dataChanged)
         emit universeWritten(id(), QByteArray(postGM.constData(), postGM.size()));
+
+    // counted once the writes above are visible to whoever reads it
+    m_faderCycles.fetch_add(1, std::memory_order_release);
 }
 
 void Universe::run()

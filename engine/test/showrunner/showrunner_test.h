@@ -71,6 +71,8 @@ private slots:
     void scrubHonoursMute();
     void unfreezeResumesAndResetsFadeIn();
     void showStopClearsScrubMode();
+    void scrubHoldWaitsForFaderCycles();
+    void stopOfHeldSceneFadesOut();
 
 private:
     Doc *m_doc;

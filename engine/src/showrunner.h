@@ -30,6 +30,7 @@
 #include "showschedule.h"
 
 class Function;
+class Universe;
 class Track;
 class Show;
 class Doc;
@@ -70,7 +71,14 @@ public:
     /** Stop the runner */
     void stop();
 
-    void write(MasterTimer *timer);
+    /**
+     * One tick. $universes are the universes claimed for this tick (as
+     * handed to Function::write); the runner only reads their fader cycle
+     * counters, to know when a clip started in scrub mode has actually
+     * written its values and can be held. Without them (tests driving the
+     * runner directly) the hold falls back to counting ticks.
+     */
+    void write(MasterTimer *timer, const QList<Universe *> &universes = QList<Universe *>());
 
     /**
      * Consume a schedule rebuilt by the Show since the last tick, if any, and
@@ -96,6 +104,8 @@ public:
         int overrideId;
         /** Value of m_tickCount when the clip was started (see holdClips) */
         quint32 startedAt;
+        /** Universe::faderCycles() of each universe when it was started (see holdClips) */
+        QVector<quint32> startCycles;
     };
 
 private:
@@ -139,8 +149,11 @@ private:
     /** Move the playhead to $ms and adjust the running clips to it */
     void seek(quint32 ms);
 
-    /** Frozen: pause every running clip that has had time to reach its state */
+    /** Frozen: pause every running clip whose faders have written its state */
     void holdClips();
+
+    /** True once $rc's faders have run at least twice since it was started */
+    bool fadersHaveRun(const RunningClip &rc) const;
 
 private:
     const Doc *m_doc;
@@ -176,6 +189,9 @@ private:
 
     /** Number of write() calls so far; clips record it when started */
     quint32 m_tickCount;
+
+    /** The universes handed to the current write() */
+    QList<Universe *> m_universes;
 
 private:
     FunctionParent functionParent() const;

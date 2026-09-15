@@ -700,8 +700,6 @@ void Show::setPause(bool enable)
 
 void Show::write(MasterTimer* timer, QList<Universe *> universes)
 {
-    Q_UNUSED(universes);
-
     if (isPaused())
     {
         // Timeline edits still apply while paused so that a clip removed or
@@ -711,7 +709,7 @@ void Show::write(MasterTimer* timer, QList<Universe *> universes)
         return;
     }
 
-    m_runner->write(timer);
+    m_runner->write(timer, universes);
 }
 
 void Show::postRun(MasterTimer* timer, QList<Universe *> universes)

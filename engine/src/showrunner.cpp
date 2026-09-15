@@ -24,6 +24,7 @@
 
 #include "showrunner.h"
 #include "function.h"
+#include "universe.h"
 #include "track.h"
 #include "show.h"
 #include "video.h"
@@ -91,7 +92,13 @@ void ShowRunner::stop()
     m_startPassPending = false;
 
     for (int i = 0; i < m_runningQueue.count(); i++)
-        m_runningQueue.at(i).function->stop(functionParent());
+    {
+        Function *f = m_runningQueue.at(i).function;
+        // a clip held by scrub mode: let its fade-out run (see stopClip)
+        if (f->isPaused())
+            f->setPause(false);
+        f->stop(functionParent());
+    }
 
     m_runningQueue.clear();
     qDebug() << "ShowRunner stopped";
@@ -195,6 +202,9 @@ void ShowRunner::startClip(const ScheduledClip &clip, quint32 now)
     rc.function = f;
     rc.overrideId = f->requestAttributeOverride(Function::Intensity, m_intensityMap.value(clip.trackId, 1.0));
     rc.startedAt = m_tickCount;
+    rc.startCycles.reserve(m_universes.count());
+    foreach (const Universe *universe, m_universes)
+        rc.startCycles.append(universe->faderCycles());
 
     // Frozen, a clip has to land on its target values before it is held:
     // no fade-in (Scenes and Chaser steps honour the override)
@@ -212,7 +222,14 @@ void ShowRunner::stopClip(int index)
     // Function::start() dedups by parent, so two overlapping clips of the same
     // Function share one run: leave it to the other clip.
     if (isFunctionShared(rc.function, rc.sfId) == false)
+    {
+        // A clip held by scrub mode has its faders paused; a Scene's
+        // postRun() leaves them so, and a paused fader never completes
+        // its fade-out (it would sit at its last value for good).
+        if (rc.function->isPaused())
+            rc.function->setPause(false);
         rc.function->stop(functionParent());
+    }
 }
 
 void ShowRunner::startDueClips()
@@ -403,6 +420,25 @@ void ShowRunner::seek(quint32 ms)
         emit timeChanged(m_elapsedTime);
 }
 
+bool ShowRunner::fadersHaveRun(const RunningClip &rc) const
+{
+    // The faders a clip creates on its first write() are stepped by the
+    // universe threads, which the MasterTimer ticks through a queued
+    // connection: while the GUI thread is busy (a video window opening,
+    // say) no fader cycle happens at all, however many timer ticks pass.
+    // So wait for two completed cycles on every universe: the first one to
+    // start after the clip's faders exist has certainly landed by then.
+    if (m_universes.isEmpty() || rc.startCycles.count() != m_universes.count())
+        return m_tickCount - rc.startedAt >= 2;
+
+    for (int i = 0; i < m_universes.count(); i++)
+    {
+        if (m_universes.at(i)->faderCycles() - rc.startCycles.at(i) < 2)
+            return false;
+    }
+    return true;
+}
+
 void ShowRunner::holdClips()
 {
     for (int i = 0; i < m_runningQueue.count(); i++)
@@ -412,17 +448,18 @@ void ShowRunner::holdClips()
 
         // A pause before the Function's preRun is a no-op, and a Scene
         // paused before its faders took their first step would hold at
-        // zero: give every clip two ticks after its start to land.
-        if (f->isRunning() && f->isPaused() == false && m_tickCount - rc.startedAt >= 2)
+        // zero for good: hold a clip only once its values are written.
+        if (f->isRunning() && f->isPaused() == false && fadersHaveRun(rc))
             f->setPause(true);
     }
 }
 
-void ShowRunner::write(MasterTimer *timer)
+void ShowRunner::write(MasterTimer *timer, const QList<Universe *> &universes)
 {
     //qDebug() << Q_FUNC_INFO << "elapsed:" << m_elapsedTime << ", total:" << m_totalRunTime;
 
     m_tickCount++;
+    m_universes = universes;
 
     // Phase 0. Pick up timeline edits made since the last tick, then the
     // scrub requests posted by the GUI (see Show::setScrubMode)

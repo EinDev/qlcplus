@@ -363,6 +363,16 @@ public:
      *  This is used from the fadeAndStopAll functionality */
     void setFaderFadeOut(int fadeTime);
 
+    /**
+     * Number of fader cycles (processFaders() runs) completed so far. The
+     * cycle runs on this universe's thread, ticked by the MasterTimer through
+     * a queued connection that goes through the GUI thread's event loop, so
+     * it can lag behind the timer ticks whenever the GUI thread is busy. A
+     * Function that must not pause before its faders have written (see
+     * ShowRunner::holdClips) watches this instead of counting timer ticks.
+     */
+    quint32 faderCycles() const;
+
 public slots:
     void tick();
 
@@ -380,6 +390,7 @@ protected:
 
     /** Indicated if the DMX writer worker thread is running */
     std::atomic<bool> m_running;
+    std::atomic<quint32> m_faderCycles;
 
     /** IMPORTANT: this is the list of faders that will compose
      *  the Universe values. The order is very important ! */
