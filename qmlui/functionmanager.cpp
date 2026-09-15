@@ -1473,6 +1473,69 @@ void FunctionManager::deleteSelectedFolders()
     emit selectedFolderCountChanged(0);
 }
 
+QVariantMap FunctionManager::selectionDeletionInfo()
+{
+    QVariantMap info;
+    QList<quint32> ids;
+
+    for (const QVariant &fID : m_selectedIDList)
+    {
+        quint32 id = fID.toUInt();
+        if (m_doc->function(id) != nullptr && !ids.contains(id))
+            ids.append(id);
+    }
+
+    for (const QString &path : m_selectedFolderList)
+    {
+        for (Function *f : functionsInFolder(path))
+        {
+            if (!ids.contains(f->id()))
+                ids.append(f->id());
+        }
+    }
+
+    // Functions placed on a Show (directly, or through a Chaser/Collection
+    // clip) must stay: the Show would be left with dangling clips. A Show
+    // that is itself part of the deletion does not count.
+    QMap<QString, int> affectedPerShow;
+    int blockedCount = 0;
+    for (quint32 id : ids)
+    {
+        bool blocked = false;
+        for (Function *show : m_doc->functionsUsing(id, Function::ShowType))
+        {
+            if (ids.contains(show->id()))
+                continue;
+            affectedPerShow[show->name()]++;
+            blocked = true;
+        }
+        if (blocked)
+            blockedCount++;
+    }
+
+    QString blockedMessage;
+    if (blockedCount > 0)
+    {
+        QStringList showLines;
+        for (auto it = affectedPerShow.constBegin(); it != affectedPerShow.constEnd(); ++it)
+            showLines.append(tr("'%1' (%n function(s))", "", it.value()).arg(it.key()));
+
+        blockedMessage = tr("%n of the selected function(s) cannot be deleted because they are still used by a Show:",
+                            "", blockedCount) + "\n" + showLines.join("\n") + "\n\n" +
+                         tr("Remove them from the Show first. Nothing has been deleted.");
+    }
+
+    QVariantList idList;
+    for (quint32 id : ids)
+        idList.append(id);
+
+    info.insert("functionIds", idList);
+    info.insert("folderCount", m_selectedFolderList.count());
+    info.insert("blockedMessage", blockedMessage);
+
+    return info;
+}
+
 /*********************************************************************
  * DMX values (dumping and Scene editor)
  *********************************************************************/

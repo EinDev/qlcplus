@@ -164,6 +164,16 @@ public:
     /** Delete the list of Function IDs in $IDList. This happens AFTER a popup confirmation */
     Q_INVOKABLE void deleteFunctions(QVariantList IDList);
 
+    /** Describe what deleting the current selection (functions and folders,
+     *  including every function inside the selected folders) would do, so the
+     *  UI can confirm or refuse BEFORE anything is touched. Keys:
+     *  - "functionIds": the full, deduplicated list of function IDs that would go
+     *  - "folderCount": the number of selected folders
+     *  - "blockedMessage": non-empty if the deletion must be refused, i.e. some
+     *    of those functions are still placed on a Show that is not itself being
+     *    deleted. The text names the Show(s) and how many functions are affected. */
+    Q_INVOKABLE QVariantMap selectionDeletionInfo();
+
     /** Move the currently selected Function to the specified $newPath */
     Q_INVOKABLE void moveFunctions(QString newPath);
 
@@ -221,16 +231,6 @@ protected:
     void storeExpandedPaths();
     void restoreExpandedPaths();
 
-signals:
-    void functionsListChanged();
-    void searchFilterChanged();
-    void sceneCountChanged();
-    void chaserCountChanged();
-    void sequenceCountChanged();
-    void efxCountChanged();
-    void collectionCountChanged();
-    void rgbMatrixCountChanged();
-    void scriptCountChanged();
     /** Tree path (TreeModel::separator() notation) of the folder the current
      *  selection points at: the first selected folder, else the folder of the
      *  first selected function, else the root (empty). New functions and new
@@ -249,6 +249,16 @@ signals:
      *  the empty-folder bookkeeping. */
     void forgetEmptyFolders(const QString &treePath);
 
+signals:
+    void functionsListChanged();
+    void searchFilterChanged();
+    void sceneCountChanged();
+    void chaserCountChanged();
+    void sequenceCountChanged();
+    void efxCountChanged();
+    void collectionCountChanged();
+    void rgbMatrixCountChanged();
+    void scriptCountChanged();
     void showCountChanged();
     void audioCountChanged();
     void videoCountChanged();

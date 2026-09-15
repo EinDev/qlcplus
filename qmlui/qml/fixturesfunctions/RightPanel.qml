@@ -19,6 +19,7 @@
 
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Controls
 import QtQuick.Dialogs
 
 import org.qlcplus.classes 1.0
@@ -247,6 +248,17 @@ SidePanel
         }
     }
 
+    // Plain informational popup (OK only) for refused operations: a name
+    // clash on create/rename, or a deletion blocked by a Show reference.
+    // Also reachable from the function list loaded into this panel, whose
+    // id lookups resolve through this Loader's context.
+    CustomPopupDialog
+    {
+        id: fmGenericPopup
+        standardButtons: Dialog.Ok
+        title: qsTr("Function Manager")
+    }
+
     Rectangle
     {
         width: collapseWidth
@@ -359,9 +371,31 @@ SidePanel
                 counter: selectedItemsCount && !functionManager.isEditing
                 onClicked:
                 {
+                    // what would actually go: the selected functions plus every
+                    // function inside the selected folders (by full path)
+                    var info = functionManager.selectionDeletionInfo()
+
+                    if (info.blockedMessage.length)
+                    {
+                        // some of them are still placed on a Show: refuse, delete nothing
+                        fmGenericPopup.message = info.blockedMessage
+                        fmGenericPopup.open()
+                        return
+                    }
+
+                    if (info.functionIds.length === 0 && info.folderCount > 0)
+                    {
+                        // only empty folders: nothing to lose, no confirmation
+                        deleteItemsPopup.performDeletion([])
+                        return
+                    }
+
                     var selNames = functionManager.selectedItemNames()
-                    //console.log(selNames)
-                    deleteItemsPopup.message = qsTr("Are you sure you want to delete the following items?") + "\n" + selNames
+                    var message = qsTr("Are you sure you want to delete the following items?") + "\n" + selNames
+                    if (info.folderCount > 0)
+                        message += "\n\n" + qsTr("%n function(s) will be deleted, including those inside the selected folder(s).", "", info.functionIds.length)
+                    deleteItemsPopup.functionIds = info.functionIds
+                    deleteItemsPopup.message = message
                     deleteItemsPopup.open()
                 }
 
@@ -369,11 +403,14 @@ SidePanel
                 {
                     id: deleteItemsPopup
                     title: qsTr("Delete items")
-                    onAccepted:
-                    {
-                        var funcIdList = functionManager.selectedFunctionsID()
 
-                        // check if we're deleting the curennt show
+                    // the full list of function IDs the confirmation was shown for
+                    property var functionIds: []
+
+                    function performDeletion(funcIdList)
+                    {
+                        // check if we're deleting the current show, directly or
+                        // because it lives inside a deleted folder
                         var showFuncId = showManager.currentShowID
 
                         for (var i = 0; i < funcIdList.length; i++)
@@ -386,8 +423,10 @@ SidePanel
                         }
 
                         functionManager.deleteSelectedFolders()
-                        functionManager.deleteFunctions(funcIdList)
+                        functionManager.deleteFunctions(functionManager.selectedFunctionsID())
                     }
+
+                    onAccepted: performDeletion(functionIds)
                 }
             }
             IconButton
