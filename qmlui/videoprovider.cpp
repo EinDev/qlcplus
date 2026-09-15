@@ -25,6 +25,24 @@
 #include "videoprovider.h"
 #include "doc.h"
 
+#if defined(Q_OS_WIN) && defined(QLC_SPOUT)
+#include "spoutvideoplayer.h"
+#include "spoutsender.h"
+#endif
+
+/** Fade in/out times of a Video, in ms, 0 = none (mirrors VideoContext.qml) */
+static void videoFadeTimes(const Video *video, int &fadeIn, int &fadeOut)
+{
+    uint in  = video->overrideFadeInSpeed()  != Function::defaultSpeed() ? video->overrideFadeInSpeed()  : video->fadeInSpeed();
+    uint out = video->overrideFadeOutSpeed() != Function::defaultSpeed() ? video->overrideFadeOutSpeed() : video->fadeOutSpeed();
+    if (in == Function::defaultSpeed() || in == Function::infiniteSpeed())
+        in = 0;
+    if (out == Function::defaultSpeed() || out == Function::infiniteSpeed())
+        out = 0;
+    fadeIn = int(in);
+    fadeOut = int(out);
+}
+
 VideoProvider::VideoProvider(QQuickView *view, Doc *doc, QObject *parent)
     : QObject(parent)
     , m_view(view)
@@ -44,7 +62,29 @@ VideoProvider::VideoProvider(QQuickView *view, Doc *doc, QObject *parent)
 
 VideoProvider::~VideoProvider()
 {
+    // Contents first (their Spout players blank the senders they own),
+    // then the senders themselves: this is the only place senders are
+    // released, i.e. on document clear/close
+    for (VideoContent *vc : std::as_const(m_videoMap))
+    {
+        if (vc)
+        {
+            vc->destroyContext();
+            delete vc;
+        }
+    }
     m_videoMap.clear();
+
+#if defined(Q_OS_WIN) && defined(QLC_SPOUT)
+    for (auto it = m_spoutSenders.constBegin(); it != m_spoutSenders.constEnd(); ++it)
+    {
+        if (it.value() != nullptr)
+            qDebug().noquote() << "[Spout] releasing sender" << it.key();
+        delete it.value();
+    }
+    m_spoutSenders.clear();
+    m_spoutOwners.clear();
+#endif
 }
 
 void VideoProvider::shutdown()
@@ -95,7 +135,7 @@ void VideoProvider::slotFunctionAdded(quint32 id)
     Video *video = qobject_cast<Video *>(func);
     m_videoMap[id] = new VideoContent(video, this);
 
-    connect(video, SIGNAL(requestPlayback()), this, SLOT(slotRequestPlayback()));
+    connect(video, SIGNAL(requestPlayback(QString)), this, SLOT(slotRequestPlayback(QString)));
     connect(video, SIGNAL(requestPause(bool)), this, SLOT(slotRequestPause(bool)));
     connect(video, SIGNAL(requestStop()), this, SLOT(slotRequestStop()));
 }
@@ -109,15 +149,62 @@ void VideoProvider::slotFunctionRemoved(quint32 id)
     }
 }
 
-void VideoProvider::slotRequestPlayback()
+void VideoProvider::slotRequestPlayback(QString spoutSenderName)
 {
     Video *video = qobject_cast<Video *>(sender());
     if (video == nullptr)
         return;
 
     if (m_videoMap.contains(video->id()))
-        m_videoMap[video->id()]->playContent();
+        m_videoMap[video->id()]->playContent(spoutSenderName);
 }
+
+#if defined(Q_OS_WIN) && defined(QLC_SPOUT)
+SpoutSender *VideoProvider::spoutSender(const QString &name, const QSize &size)
+{
+    if (name.isEmpty())
+        return nullptr;
+
+    if (m_spoutSenders.contains(name))
+        return m_spoutSenders.value(name);
+
+    if (size.isEmpty())
+        return nullptr;
+
+    SpoutSender *sender = new SpoutSender();
+    if (sender->create(name, size.width(), size.height()) == false)
+    {
+        qWarning().noquote() << "[Spout] could not create sender" << name
+                             << size.width() << "x" << size.height() << "- Spout output disabled for it";
+        delete sender;
+        // remember the failure so it isn't retried on every frame
+        m_spoutSenders.insert(name, nullptr);
+        return nullptr;
+    }
+
+    m_spoutSenders.insert(name, sender);
+    qDebug().noquote() << "[Spout] created sender" << sender->name()
+                       << "at" << size.width() << "x" << size.height()
+                       << "(requested name" << name << ") - sent initial transparent frame";
+    return sender;
+}
+
+void VideoProvider::claimSpoutSender(const QString &name, QObject *owner)
+{
+    m_spoutOwners.insert(name, owner);
+}
+
+bool VideoProvider::ownsSpoutSender(const QString &name, const QObject *owner) const
+{
+    return m_spoutOwners.value(name, nullptr) == owner;
+}
+
+void VideoProvider::releaseSpoutSender(const QString &name, QObject *owner)
+{
+    if (ownsSpoutSender(name, owner))
+        m_spoutOwners.remove(name);
+}
+#endif
 
 void VideoProvider::slotRequestPause(bool enable)
 {
@@ -144,10 +231,14 @@ void VideoProvider::slotRequestStop()
  *********************************************************************/
 
 VideoContent::VideoContent(Video *video, VideoProvider *parent)
-    : m_provider(parent)
+    : QObject(parent)
+    , m_provider(parent)
     , m_video(video)
     , m_mediaPlayer(nullptr)
     , m_viewContext(nullptr)
+#if defined(Q_OS_WIN) && defined(QLC_SPOUT)
+    , m_spoutPlayer(nullptr)
+#endif
 {
     Q_ASSERT(video != nullptr);
 
@@ -157,6 +248,20 @@ VideoContent::VideoContent(Video *video, VideoProvider *parent)
             this, SLOT(slotDetectResolution()));
     connect(m_video, SIGNAL(attributeChanged(int,qreal)),
             this, SLOT(slotAttributeChanged(int,qreal)));
+
+    // eager Spout sender creation (document load, or the editor switching
+    // this video to Spout mode / changing the sender size)
+    connect(m_video, &Video::outputModeChanged, this, &VideoContent::ensureSpoutSender);
+    connect(m_video, &Video::spoutSizeChanged, this, &VideoContent::ensureSpoutSender);
+    ensureSpoutSender();
+}
+
+VideoContent::~VideoContent()
+{
+#if defined(Q_OS_WIN) && defined(QLC_SPOUT)
+    if (m_spoutPlayer)
+        m_spoutPlayer->stopImmediately();
+#endif
 }
 
 quint32 VideoContent::id() const
@@ -170,6 +275,11 @@ void VideoContent::destroyContext()
     QPointer<QQuickView> context = m_viewContext;
     m_viewContext = nullptr;
 
+#if defined(Q_OS_WIN) && defined(QLC_SPOUT)
+    if (m_spoutPlayer)
+        m_spoutPlayer->stopImmediately();
+#endif
+
     if (m_video->fullscreen())
     {
         m_provider->setFullscreenContext(nullptr);
@@ -182,8 +292,20 @@ void VideoContent::destroyContext()
     }
 }
 
-void VideoContent::playContent()
+void VideoContent::playContent(const QString &spoutSenderName)
 {
+    if (m_video->outputMode() == Video::Spout)
+    {
+#if defined(Q_OS_WIN) && defined(QLC_SPOUT)
+        playSpoutContent(spoutSenderName);
+        return;
+#else
+        Q_UNUSED(spoutSenderName)
+        qWarning() << "[Spout] Spout output is not available on this platform, playing"
+                   << m_video->name() << "in a window instead";
+#endif
+    }
+
     QScreen *vScreen = nullptr;
 
     if (m_video->fullscreen())
@@ -231,12 +353,8 @@ void VideoContent::playContent()
         m_viewContext->rootContext()->setContextProperty("videoContent", this);
     }
 
-    uint fadeIn  = m_video->overrideFadeInSpeed()  != Function::defaultSpeed() ? m_video->overrideFadeInSpeed()  : m_video->fadeInSpeed();
-    uint fadeOut = m_video->overrideFadeOutSpeed() != Function::defaultSpeed() ? m_video->overrideFadeOutSpeed() : m_video->fadeOutSpeed();
-    if (fadeIn == Function::defaultSpeed() || fadeIn == Function::infiniteSpeed())
-        fadeIn = 0;
-    if (fadeOut == Function::defaultSpeed() || fadeOut == Function::infiniteSpeed())
-        fadeOut = 0;
+    int fadeIn = 0, fadeOut = 0;
+    videoFadeTimes(m_video, fadeIn, fadeOut);
 
     QQuickItem *root = m_viewContext->rootObject();
     if (root == nullptr)
@@ -246,15 +364,15 @@ void VideoContent::playContent()
     {
         QMetaObject::invokeMethod(root, "addPicture",
                                   Q_ARG(QVariant, QVariant::fromValue(m_video)),
-                                  Q_ARG(QVariant, (int)fadeIn),
-                                  Q_ARG(QVariant, (int)fadeOut));
+                                  Q_ARG(QVariant, fadeIn),
+                                  Q_ARG(QVariant, fadeOut));
     }
     else
     {
         QMetaObject::invokeMethod(root, "addVideo",
                                   Q_ARG(QVariant, QVariant::fromValue(m_video)),
-                                  Q_ARG(QVariant, (int)fadeIn),
-                                  Q_ARG(QVariant, (int)fadeOut),
+                                  Q_ARG(QVariant, fadeIn),
+                                  Q_ARG(QVariant, fadeOut),
                                   Q_ARG(QVariant, (int)m_video->elapsed()));
     }
 
@@ -277,8 +395,69 @@ void VideoContent::playContent()
     }
 }
 
+#if defined(Q_OS_WIN) && defined(QLC_SPOUT)
+void VideoContent::playSpoutContent(const QString &spoutSenderName)
+{
+    // A previous run of this same Video still fading out: cut it short,
+    // the new run takes the sender over
+    if (m_spoutPlayer)
+    {
+        m_spoutPlayer->stopImmediately();
+        m_spoutPlayer = nullptr;
+    }
+
+    QString name = spoutSenderName.isEmpty() ? m_video->defaultSpoutSenderName() : spoutSenderName;
+
+    int fadeIn = 0, fadeOut = 0;
+    videoFadeTimes(m_video, fadeIn, fadeOut);
+
+    m_spoutPlayer = new SpoutVideoPlayer(m_video, m_provider, name, this);
+    connect(m_spoutPlayer, &SpoutVideoPlayer::finished, this, &VideoContent::slotSpoutPlayerFinished);
+    m_spoutPlayer->start(fadeIn, fadeOut, m_video->isPicture() ? 0 : qint64(m_video->elapsed()));
+}
+#endif
+
+void VideoContent::slotSpoutPlayerFinished()
+{
+#if defined(Q_OS_WIN) && defined(QLC_SPOUT)
+    SpoutVideoPlayer *player = qobject_cast<SpoutVideoPlayer *>(sender());
+    if (player == nullptr)
+        return;
+
+    if (player == m_spoutPlayer)
+        m_spoutPlayer = nullptr;
+    player->deleteLater();
+#endif
+}
+
+void VideoContent::ensureSpoutSender()
+{
+#if defined(Q_OS_WIN) && defined(QLC_SPOUT)
+    if (m_video->outputMode() != Video::Spout)
+        return;
+
+    QSize size = m_video->spoutSize().isEmpty() ? m_video->resolution() : m_video->spoutSize();
+    if (size.isEmpty())
+    {
+        qDebug().noquote() << "[Spout] sender for" << m_video->name()
+                           << "deferred until its resolution is known";
+        return;
+    }
+
+    m_provider->spoutSender(m_video->defaultSpoutSenderName(), size);
+#endif
+}
+
 void VideoContent::pauseContent(bool enable)
 {
+#if defined(Q_OS_WIN) && defined(QLC_SPOUT)
+    if (m_spoutPlayer)
+    {
+        m_spoutPlayer->pause(enable);
+        return;
+    }
+#endif
+
     if (m_viewContext == nullptr)
         return;
 
@@ -293,6 +472,14 @@ void VideoContent::pauseContent(bool enable)
 
 void VideoContent::stopContent()
 {
+#if defined(Q_OS_WIN) && defined(QLC_SPOUT)
+    if (m_spoutPlayer)
+    {
+        m_spoutPlayer->stop();
+        return;
+    }
+#endif
+
     if (m_viewContext == nullptr)
         return;
 
@@ -450,11 +637,17 @@ void VideoContent::slotMetaDataChanged()
         if (k == QMediaMetaData::Resolution)
         {
             m_geometry.setSize(md.value(k).toSize());
+            // the editor also does this, but only once the Video is edited:
+            // the Spout sender size ("native" default) needs it at load
+            m_video->setResolution(md.value(k).toSize());
 
             disconnect(m_mediaPlayer, SIGNAL(metaDataChanged()),
                        this, SLOT(slotMetaDataChanged()));
             m_mediaPlayer->deleteLater();
             m_mediaPlayer = nullptr;
+
+            ensureSpoutSender();
+            break;
         }
     }
 }
