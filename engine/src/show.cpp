@@ -47,6 +47,8 @@ Show::Show(Doc* doc) : Function(doc, Function::ShowType)
     , m_latestShowFunctionID(0)
     , m_scheduleDirty(true)
     , m_rebuildQueued(false)
+    , m_scrubMode(0)
+    , m_seekRequest(-1)
     , m_runner(NULL)
 {
     setName(tr("New Show"));
@@ -635,6 +637,38 @@ QSharedPointer<const ShowSchedule> Show::buildSchedule() const
 }
 
 /*****************************************************************************
+ * Scrubbing
+ *****************************************************************************/
+
+void Show::setScrubMode(bool enable)
+{
+    m_scrubMode.storeRelease(enable ? 1 : 0);
+}
+
+bool Show::isScrubMode() const
+{
+    return m_scrubMode.loadAcquire() != 0;
+}
+
+void Show::requestSeek(quint32 ms)
+{
+    m_seekRequest.storeRelease(qint64(ms));
+}
+
+bool Show::takeSeekRequest(quint32 &ms)
+{
+    // One atomic for flag and value: a separate flag could be cleared by
+    // the runner between the GUI storing a new value and the runner reading
+    // it, which would replay the same seek on the next tick.
+    qint64 request = m_seekRequest.fetchAndStoreOrdered(-1);
+    if (request < 0)
+        return false;
+
+    ms = quint32(request);
+    return true;
+}
+
+/*****************************************************************************
  * Running
  *****************************************************************************/
 
@@ -688,6 +722,12 @@ void Show::postRun(MasterTimer* timer, QList<Universe *> universes)
         delete m_runner;
         m_runner = NULL;
     }
+
+    // Scrub mode belongs to the run that requested it: a later start (from
+    // the Virtual Console, say) must not find a stale flag and freeze.
+    m_scrubMode.storeRelease(0);
+    m_seekRequest.storeRelease(-1);
+
     Function::postRun(timer, universes);
 }
 

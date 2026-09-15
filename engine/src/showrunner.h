@@ -47,6 +47,11 @@ class Doc;
  * every tick, reconciling whatever is currently playing against it. That is
  * what lets timeline edits made while the Show plays take effect at the
  * playhead without racing the GUI thread.
+ *
+ * Scrub mode (Show::setScrubMode / Show::requestSeek, read once per tick)
+ * freezes the runner: the playhead only moves by seek, clips under it are
+ * started without fade-in and held paused, Audio is skipped, and the Show
+ * never ends. Leaving scrub mode resumes normal playback from there.
  */
 class ShowRunner final : public QObject
 {
@@ -89,6 +94,8 @@ public:
         Function *function;
         /** Intensity attribute override ID on $function, or -1 */
         int overrideId;
+        /** Value of m_tickCount when the clip was started (see holdClips) */
+        quint32 startedAt;
     };
 
 private:
@@ -126,6 +133,15 @@ private:
     /** Move $index past every clip in $clips starting at or before $now */
     static int indexAfter(const QVector<ScheduledClip> &clips, quint32 now);
 
+    /** Enter/leave the frozen (scrub) state, see the class comment */
+    void setFrozen(bool frozen);
+
+    /** Move the playhead to $ms and adjust the running clips to it */
+    void seek(quint32 ms);
+
+    /** Frozen: pause every running clip that has had time to reach its state */
+    void holdClips();
+
 private:
     const Doc *m_doc;
 
@@ -154,6 +170,12 @@ private:
 
     /** Set by reconcile(): clips active at the playhead may need starting */
     bool m_startPassPending;
+
+    /** True while the Show is in scrub mode (see Show::setScrubMode) */
+    bool m_frozen;
+
+    /** Number of write() calls so far; clips record it when started */
+    quint32 m_tickCount;
 
 private:
     FunctionParent functionParent() const;

@@ -38,6 +38,8 @@ ShowRunner::ShowRunner(const Doc* doc, quint32 showID, quint32 startTime)
     , m_waitingForBeat(false)
     , m_totalRunTime(0)
     , m_startPassPending(false)
+    , m_frozen(false)
+    , m_tickCount(0)
 {
     Q_ASSERT(m_doc != NULL);
     Q_ASSERT(showID != Show::invalidId());
@@ -174,6 +176,12 @@ void ShowRunner::startClip(const ScheduledClip &clip, quint32 now)
     if (f == NULL)
         return;
 
+    // Scrubbing is silent: an Audio clip is not started at all (its
+    // renderer would burst before the pause reached it). It is not queued
+    // either, so the start pass on unfreeze starts it at the right offset.
+    if (m_frozen && clip.type == Function::AudioType)
+        return;
+
     // this should happen only when a Show is not started from 0,
     // or when the clip was (re)scheduled under the playhead
     quint32 functionTimeOffset = now > clip.start ? now - clip.start : 0;
@@ -186,9 +194,14 @@ void ShowRunner::startClip(const ScheduledClip &clip, quint32 now)
     rc.stopTime = clip.end;
     rc.function = f;
     rc.overrideId = f->requestAttributeOverride(Function::Intensity, m_intensityMap.value(clip.trackId, 1.0));
+    rc.startedAt = m_tickCount;
+
+    // Frozen, a clip has to land on its target values before it is held:
+    // no fade-in (Scenes and Chaser steps honour the override)
+    uint overrideFadeIn = m_frozen ? 0 : Function::defaultSpeed();
 
     applySpoutSenderName(f, m_show->track(clip.trackId));
-    f->start(m_doc->masterTimer(), functionParent(), functionTimeOffset);
+    f->start(m_doc->masterTimer(), functionParent(), functionTimeOffset, overrideFadeIn);
     m_runningQueue.append(rc);
 }
 
@@ -325,12 +338,106 @@ void ShowRunner::applyPendingSchedule()
         reconcile(schedule);
 }
 
+void ShowRunner::setFrozen(bool frozen)
+{
+    m_frozen = frozen;
+
+    if (frozen)
+    {
+        // The playhead does not move while frozen, and it must not hold for
+        // a pulse when it starts moving again either: playback continues
+        // from wherever the scrub left it.
+        m_waitingForBeat = false;
+        return;
+    }
+
+    for (int i = 0; i < m_runningQueue.count(); i++)
+    {
+        Function *f = m_runningQueue.at(i).function;
+        // The fade-in override outlives the start (a Chaser reads it on
+        // every step): back to the Function's own speeds before it plays on
+        f->setOverrideFadeInSpeed(Function::defaultSpeed());
+        f->setPause(false);
+    }
+
+    // Audio clips under the playhead were skipped while frozen
+    m_startPassPending = true;
+}
+
+void ShowRunner::seek(quint32 ms)
+{
+    m_elapsedTime = ms;
+    quint32 now = this->now();
+
+    // Same policy as reconcile(): stop what is no longer under the
+    // playhead, restart what depends on the offset, keep the rest holding
+    // its state. A Video seeks in place instead of restarting: a restart
+    // per cursor move would tear its window/sender down and up again.
+    for (int i = m_runningQueue.count() - 1; i >= 0; i--)
+    {
+        const RunningClip &rc = m_runningQueue.at(i);
+        const ScheduledClip *clip = m_schedule->clip(rc.sfId);
+
+        if (clip == NULL || clip->isActiveAt(now) == false)
+        {
+            stopClip(i);
+            continue;
+        }
+
+        if (clip->type == Function::VideoType)
+        {
+            Video *video = qobject_cast<Video *>(rc.function);
+            if (video != NULL)
+                video->seekTo(now - clip->start);
+            continue;
+        }
+
+        if (isOffsetSensitive(clip->type))
+            stopClip(i);    // the start pass re-adds it at the new offset
+    }
+
+    m_currentClipIndex = indexAfter(m_schedule->clips, now);
+    m_startPassPending = true;
+
+    if (m_frozen == false)
+        emit timeChanged(m_elapsedTime);
+}
+
+void ShowRunner::holdClips()
+{
+    for (int i = 0; i < m_runningQueue.count(); i++)
+    {
+        const RunningClip &rc = m_runningQueue.at(i);
+        Function *f = rc.function;
+
+        // A pause before the Function's preRun is a no-op, and a Scene
+        // paused before its faders took their first step would hold at
+        // zero: give every clip two ticks after its start to land.
+        if (f->isRunning() && f->isPaused() == false && m_tickCount - rc.startedAt >= 2)
+            f->setPause(true);
+    }
+}
+
 void ShowRunner::write(MasterTimer *timer)
 {
     //qDebug() << Q_FUNC_INFO << "elapsed:" << m_elapsedTime << ", total:" << m_totalRunTime;
 
-    // Phase 0. Pick up timeline edits made since the last tick
+    m_tickCount++;
+
+    // Phase 0. Pick up timeline edits made since the last tick, then the
+    // scrub requests posted by the GUI (see Show::setScrubMode)
     applyPendingSchedule();
+
+    if (m_show != NULL)
+    {
+        bool frozen = m_show->isScrubMode();
+        if (frozen != m_frozen)
+            setFrozen(frozen);
+
+        quint32 seekMs = 0;
+        if (m_show->takeSeekRequest(seekMs))
+            seek(seekMs);
+    }
 
     // A Beats Show starts on a beat pulse, so that its timeline lines up
     // with the beat grid - but only while a beat source is active: with the
@@ -370,6 +477,15 @@ void ShowRunner::write(MasterTimer *timer)
             // remove it from the running queue
             m_runningQueue.removeAt(i);
         }
+    }
+
+    // Frozen: the clips under the playhead are held where they are, the
+    // playhead stays put (no timeChanged) and a cursor past the last clip
+    // shows "nothing" rather than ending the Show.
+    if (m_frozen)
+    {
+        holdClips();
+        return;
     }
 
     // Phase 3. Check if this is the end of the Show

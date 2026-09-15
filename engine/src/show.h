@@ -21,6 +21,7 @@
 #define SHOW_H
 
 #include <QSharedPointer>
+#include <QAtomicInteger>
 #include <QMutex>
 #include <QList>
 #include <QSet>
@@ -233,6 +234,39 @@ private:
     QSharedPointer<const ShowSchedule> m_pendingSchedule;
     bool m_scheduleDirty;
     bool m_rebuildQueued;
+
+    /*********************************************************************
+     * Scrubbing
+     *********************************************************************/
+public:
+    /**
+     * Enter/leave scrub mode. While the Show runs in scrub mode its runner
+     * is frozen: the playhead does not advance, every clip under it is
+     * started (with no fade-in) and then held paused, Audio clips are
+     * skipped, and the Show never ends on its own. The Show Manager uses
+     * this to preview the state at the cursor while the Show is stopped:
+     * start() the Show at the cursor with scrub mode on, requestSeek() on
+     * every cursor move, and leave scrub mode to play on seamlessly.
+     *
+     * Thread-safe: the flag is consumed by the runner on the MasterTimer
+     * thread at its next tick. Cleared automatically when the Show stops.
+     */
+    void setScrubMode(bool enable);
+    bool isScrubMode() const;
+
+    /**
+     * Ask the runner to move the playhead to $ms. Requests posted between
+     * two ticks coalesce into the last one. Thread-safe.
+     */
+    void requestSeek(quint32 ms);
+
+    /** Runner side: take the pending seek request, if any, into $ms */
+    bool takeSeekRequest(quint32 &ms);
+
+private:
+    QAtomicInteger<int> m_scrubMode;
+    /** Pending seek position in ms, or -1 for none */
+    QAtomicInteger<qint64> m_seekRequest;
 
     /*********************************************************************
      * Running
