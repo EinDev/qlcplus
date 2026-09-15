@@ -237,6 +237,9 @@ public:
      *  not inside this store) */
     MediaOrigin origin(const QString &storedPath) const;
 
+    /** Absolute Audio/Video source of @function, empty for URLs/other types */
+    static QString sourceOf(Function *function);
+
     /** Provenance of the managed copy an Audio/Video points at */
     MediaOrigin originOf(Function *function) const;
 
@@ -359,9 +362,6 @@ private:
 
     /** Write the in-memory manifest to the current store */
     void saveManifest();
-
-    /** Absolute Audio/Video source of @function, empty for URLs/other types */
-    static QString sourceOf(Function *function);
 
     /** Full SHA1 hex of a file on disk, empty on error */
     static QString hashFile(const QString &path);
