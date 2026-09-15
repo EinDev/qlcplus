@@ -26,6 +26,7 @@
 #include "function.h"
 #include "track.h"
 #include "show.h"
+#include "video.h"
 
 #define TIMER_INTERVAL 50
 
@@ -154,6 +155,21 @@ int ShowRunner::indexAfter(const QVector<ScheduledClip> &clips, quint32 now)
     return int(it - clips.constBegin());
 }
 
+/**
+ * A Video in Spout mode publishes under "QLC+ <track name>" when it is
+ * played from a Show, so that one OBS/receiver source per track keeps
+ * working whichever clip is playing on it. The name has to be set before
+ * Function::start(), because Video::preRun() hands it to the GUI thread.
+ */
+static void applySpoutSenderName(Function *f, const Track *track)
+{
+    Video *video = qobject_cast<Video *>(f);
+    if (video == nullptr || track == nullptr || video->outputMode() != Video::Spout)
+        return;
+
+    video->setRuntimeSenderName(Video::spoutSenderNameForTrack(track->name()));
+}
+
 void ShowRunner::startClip(const ScheduledClip &clip, quint32 now)
 {
     Function *f = m_doc->function(clip.functionId);
@@ -174,6 +190,7 @@ void ShowRunner::startClip(const ScheduledClip &clip, quint32 now)
     rc.function = f;
     rc.overrideId = f->requestAttributeOverride(Function::Intensity, m_intensityMap.value(clip.trackId, 1.0));
 
+    applySpoutSenderName(f, m_show->track(clip.trackId));
     f->start(m_doc->masterTimer(), functionParent(), functionTimeOffset);
     m_runningQueue.append(rc);
 }
