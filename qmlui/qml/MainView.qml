@@ -939,18 +939,20 @@ Rectangle
                             "Collect them into the project so it can be moved as a whole.").arg(externalMediaBanner.count)
             }
 
+            // inside a Layout only the Layout.* sizes count, a plain
+            // width would be overridden by the (zero) implicit width
             GenericButton
             {
-                height: parent.height - 6
-                width: contentWidth
+                Layout.preferredWidth: contentWidth + 24
+                Layout.preferredHeight: externalMediaBanner.height - 6
                 label: qsTr("Collect into project")
                 onClicked: mainView.collectMediaIntoProject()
             }
 
             GenericButton
             {
-                height: parent.height - 6
-                width: contentWidth
+                Layout.preferredWidth: contentWidth + 24
+                Layout.preferredHeight: externalMediaBanner.height - 6
                 label: qsTr("Dismiss")
                 onClicked: externalMediaBanner.visible = false
             }
