@@ -455,6 +455,14 @@ void Video::stopFromUI()
         stop(FunctionParent::master(FunctionParent::VideoWindowClosed));
 }
 
+void Video::seekTo(quint32 ms)
+{
+    if (isRunning() == false)
+        return;
+
+    emit requestSeek(qint64(ms));
+}
+
 /*********************************************************************
  * Save & Load
  *********************************************************************/

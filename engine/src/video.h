@@ -106,6 +106,17 @@ public slots:
     /** Stop the function from the UI (used on EndOfMedia) */
     Q_INVOKABLE void stopFromUI();
 
+    /**
+     * Move the playback position of a running Video to $ms into the media
+     * without restarting it: the player keeps its window/Spout sender and
+     * just seeks. Used by the Show runner while scrubbing, where a restart
+     * per cursor move would tear the window down and up again at up to
+     * 20 Hz. Safe to call from the MasterTimer thread: it only emits
+     * requestSeek(), which the GUI-side player consumes. No-op unless the
+     * Video is running.
+     */
+    void seekTo(quint32 ms);
+
     /*********************************************************************
      * Capabilities
      *********************************************************************/
@@ -229,6 +240,8 @@ signals:
      *  parameterless SIGNAL(requestPlayback()) connections valid. */
     void requestPlayback(QString spoutSenderName = QString());
     void requestPause(bool enable);
+    /** Emitted by seekTo(): the player should jump to $ms into the media */
+    void requestSeek(qint64 ms);
     void requestStop();
     void requestBrightnessVolumeAdjust(qreal value);
 
