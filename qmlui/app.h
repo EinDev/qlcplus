@@ -336,6 +336,7 @@ protected slots:
     void slotMediaImportStarted(QString source, qint64 bytes);
     void slotMediaImportProgress(QString source, qint64 done, qint64 total);
     void slotMediaImportFinished(QString source, QString target, QString error);
+    void slotMediaPendingImportsChanged();
 
 private:
     void initDoc();

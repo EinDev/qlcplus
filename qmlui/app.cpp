@@ -1159,6 +1159,13 @@ void App::slotMediaImportProgress(QString source, qint64 done, qint64 total)
                          .arg(QFileInfo(source).fileName()).arg(percent));
 }
 
+void App::slotMediaPendingImportsChanged()
+{
+    // a copy cancelled by closing the project never reports importFinished
+    if (m_doc->assets()->hasPendingImports() == false)
+        setMediaImportStatus(QString());
+}
+
 void App::slotMediaImportFinished(QString source, QString target, QString error)
 {
     Q_UNUSED(source)
@@ -1186,6 +1193,8 @@ void App::initDoc()
             this, SLOT(slotMediaImportProgress(QString,qint64,qint64)));
     connect(m_doc->assets(), SIGNAL(importFinished(QString,QString,QString)),
             this, SLOT(slotMediaImportFinished(QString,QString,QString)));
+    connect(m_doc->assets(), SIGNAL(pendingImportsChanged()),
+            this, SLOT(slotMediaPendingImportsChanged()));
     connect(m_doc->masterTimer(), SIGNAL(functionListChanged()),
             this, SIGNAL(runningFunctionsCountChanged()));
 
@@ -1253,6 +1262,11 @@ void App::clearDocument()
     setFileName(QString());
     /* untitled again: new imports are staged in a temporary directory */
     m_doc->assets()->setProjectFile(QString());
+
+    /* the external-media banner belongs to the project that just went away */
+    if (rootObject() != nullptr)
+        QMetaObject::invokeMethod(rootObject(), "showExternalMediaNotice",
+                                   Qt::QueuedConnection, Q_ARG(QVariant, QVariant(0)));
     m_doc->resetModified();
     m_doc->inputOutputMap()->startUniverses();
     m_doc->masterTimer()->start();
@@ -1814,8 +1828,10 @@ bool App::loadXML(QXmlStreamReader &doc, bool goToConsole, bool fromMemory)
         // Audio/Video sources outside the project's media store: offer to
         // collect them, never do it unasked (a non-blocking banner, see
         // MainView.qml's showExternalMediaNotice)
+        // MainView.qml's showExternalMediaNotice). A count of 0 hides a
+        // banner left over from the previously opened project.
         int external = m_doc->assets()->externalSources().count();
-        if (external > 0 && rootObject() != nullptr)
+        if (rootObject() != nullptr)
         {
             QMetaObject::invokeMethod(rootObject(), "showExternalMediaNotice",
                                        Qt::QueuedConnection,

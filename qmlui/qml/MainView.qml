@@ -194,14 +194,15 @@ Rectangle
         legacyShowTimingDialog.open()
     }
 
-    // Called once per file-open by App::loadXML() when $count Audio/Video
-    // sources live outside the project's media store. A non-blocking banner
+    // Called once per file-open by App::loadXML() with the number of
+    // Audio/Video sources living outside the project's media store (0 hides
+    // the banner, also sent by App::clearDocument()). A non-blocking banner
     // (not a modal dialog): the user can keep working and collect later
     // from the actions menu - nothing is ever collected unasked.
     function showExternalMediaNotice(count)
     {
         externalMediaBanner.count = count
-        externalMediaBanner.visible = true
+        externalMediaBanner.visible = count > 0
     }
 
     // "Collect media into project" (actions menu / the banner above):
