@@ -44,6 +44,8 @@ class Video final : public Function
     Q_PROPERTY(QVector3D rotation READ rotation WRITE setRotation NOTIFY rotationChanged)
     Q_PROPERTY(int zIndex READ zIndex WRITE setZIndex NOTIFY zIndexChanged)
     Q_PROPERTY(bool fullscreen READ fullscreen WRITE setFullscreen)
+    Q_PROPERTY(int outputMode READ outputMode WRITE setOutputMode NOTIFY outputModeChanged)
+    Q_PROPERTY(QSize spoutSize READ spoutSize WRITE setSpoutSize NOTIFY spoutSizeChanged)
 
     /*********************************************************************
      * Initialization
@@ -61,6 +63,22 @@ public:
         WidthScale,
         HeightScale
     };
+
+    /**
+     * Where the rendered content goes when the Video runs.
+     *
+     * Windowed and Fullscreen render into an on-screen window on screen().
+     * Spout renders into a named Spout sender (Windows only, see
+     * spoutSenderName()) and opens no window at all; screen(),
+     * customGeometry(), rotation() and zIndex() are ignored in that mode.
+     */
+    enum OutputMode
+    {
+        Windowed = 0,
+        Fullscreen,
+        Spout
+    };
+    Q_ENUM(OutputMode)
 
     Video(Doc* doc);
     virtual ~Video();
@@ -146,9 +164,49 @@ public:
     int screen() const;
     void setScreen(int index);
 
-    /** Get/Set the video to be rendered in windowed or fullscreen mode */
+    /** Get/Set the video to be rendered in windowed or fullscreen mode.
+     *  Kept for API compatibility: fullscreen() is true only in Fullscreen
+     *  mode, setFullscreen(true/false) selects Fullscreen/Windowed. */
     bool fullscreen() const;
     void setFullscreen(bool enable);
+
+    /** Get/Set the output mode (see OutputMode) */
+    OutputMode outputMode() const;
+    void setOutputMode(OutputMode mode);
+    void setOutputMode(int mode);
+
+    /** Get/Set the Spout sender size. An empty size (the default, 0x0)
+     *  means "use the native resolution of the source". */
+    QSize spoutSize() const;
+    void setSpoutSize(QSize size);
+
+    /** Get/Set the runtime Spout sender name. Set by the Show runner right
+     *  before start() to spoutSenderNameForTrack(track name) and cleared
+     *  again in postRun(). Empty when the Video is not running from a Show. */
+    QString runtimeSenderName() const;
+    void setRuntimeSenderName(const QString &name);
+
+    /** The Spout sender name to publish under when this Video is started
+     *  right now: runtimeSenderName() if set, defaultSpoutSenderName()
+     *  otherwise. Emitted as the argument of requestPlayback(), so the
+     *  GUI thread never has to read it across threads. */
+    QString spoutSenderName() const;
+
+    /**
+     * The Spout sender name this Video resolves to when no Show is
+     * running it. This is the name used to create the sender at document
+     * load (so receivers like OBS can pick it before anything plays) and
+     * when the Video is started from the Function Manager or the Virtual
+     * Console. The rule is:
+     *   - "QLC+ <track name>" of the first Show track (Shows and tracks in
+     *     ID order) that contains this Video, so it matches the name the
+     *     Show runner will use for that track, else
+     *   - "QLC+ <Video name>" if no Show track contains it.
+     */
+    QString defaultSpoutSenderName() const;
+
+    /** The sender name used for a Video played from a Show track */
+    static QString spoutSenderNameForTrack(const QString &trackName);
 
     /** Get the current Video intensity */
     qreal intensity() const;
@@ -164,7 +222,12 @@ signals:
     void zIndexChanged(int index);
     void totalTimeChanged(qint64);
     void metaDataChanged(QString key, QVariant data);
-    void requestPlayback();
+    void outputModeChanged(int mode);
+    void spoutSizeChanged(QSize size);
+    /** Emitted from preRun() (MasterTimer thread) with the sender name to
+     *  use for this run (see spoutSenderName()). The default argument keeps
+     *  parameterless SIGNAL(requestPlayback()) connections valid. */
+    void requestPlayback(QString spoutSenderName = QString());
     void requestPause(bool enable);
     void requestStop();
     void requestBrightnessVolumeAdjust(qreal value);
@@ -189,8 +252,12 @@ private:
     int m_zIndex;
     /** Index of the screen where to render the video */
     int m_screen;
-    /** Flag that indicates if the video has to go fullscreen */
-    bool m_fullscreen;
+    /** Where the content is rendered (window, fullscreen or Spout) */
+    OutputMode m_outputMode;
+    /** Spout sender size, 0x0 = native resolution */
+    QSize m_spoutSize;
+    /** Spout sender name set by the Show runner for the current run */
+    QString m_runtimeSenderName;
 
     /*********************************************************************
      * Save & Load

@@ -25,6 +25,9 @@
 
 #include "video.h"
 #include "doc.h"
+#include "show.h"
+#include "track.h"
+#include "showfunction.h"
 
 #define KXMLQLCVideoSource      QStringLiteral("Source")
 #define KXMLQLCVideoScreen      QStringLiteral("Screen")
@@ -32,6 +35,11 @@
 #define KXMLQLCVideoGeometry    QStringLiteral("Geometry")
 #define KXMLQLCVideoRotation    QStringLiteral("Rotation")
 #define KXMLQLCVideoZIndex      QStringLiteral("ZIndex")
+#define KXMLQLCVideoOutput      QStringLiteral("Output")
+#define KXMLQLCVideoOutputSpout QStringLiteral("spout")
+#define KXMLQLCVideoSpoutSize   QStringLiteral("SpoutSize")
+
+#define KSpoutSenderPrefix      QStringLiteral("QLC+ ")
 
 const QStringList Video::m_defaultVideoCaps =
         QStringList() << "*.avi" << "*.wmv" << "*.mkv" << "*.mp4" << "*.mov" << "*.mpg" << "*.mpeg" << "*.flv" << "*.webm";
@@ -53,7 +61,8 @@ Video::Video(Doc* doc)
   , m_rotation(QVector3D(0, 0, 0))
   , m_zIndex(1)
   , m_screen(0)
-  , m_fullscreen(false)
+  , m_outputMode(Windowed)
+  , m_spoutSize(QSize(0, 0))
 {
     setName(tr("New Video"));
     setRunOrder(Video::SingleShot);
@@ -112,6 +121,8 @@ bool Video::copyFrom(const Function* function)
 
     setSourceUrl(vid->m_sourceUrl);
     m_videoDuration = vid->m_videoDuration;
+    m_outputMode = vid->m_outputMode;
+    m_spoutSize = vid->m_spoutSize;
 
     return Function::copyFrom(function);
 }
@@ -307,11 +318,101 @@ int Video::screen() const
 
 void Video::setFullscreen(bool enable)
 {
-    if (m_fullscreen == enable)
+    setOutputMode(enable ? Fullscreen : Windowed);
+}
+
+Video::OutputMode Video::outputMode() const
+{
+    return m_outputMode;
+}
+
+void Video::setOutputMode(OutputMode mode)
+{
+    if (m_outputMode == mode)
         return;
 
-    m_fullscreen = enable;
+    m_outputMode = mode;
+    emit outputModeChanged(int(m_outputMode));
     emit changed(id());
+}
+
+void Video::setOutputMode(int mode)
+{
+    switch (mode)
+    {
+        case Fullscreen: setOutputMode(Fullscreen); break;
+        case Spout: setOutputMode(Spout); break;
+        default: setOutputMode(Windowed); break;
+    }
+}
+
+QSize Video::spoutSize() const
+{
+    return m_spoutSize;
+}
+
+void Video::setSpoutSize(QSize size)
+{
+    // a negative or half-set size makes no sense for a sender: treat it
+    // as "native resolution"
+    if (size.width() <= 0 || size.height() <= 0)
+        size = QSize(0, 0);
+
+    if (m_spoutSize == size)
+        return;
+
+    m_spoutSize = size;
+    emit spoutSizeChanged(m_spoutSize);
+    emit changed(id());
+}
+
+QString Video::runtimeSenderName() const
+{
+    return m_runtimeSenderName;
+}
+
+void Video::setRuntimeSenderName(const QString &name)
+{
+    m_runtimeSenderName = name;
+}
+
+QString Video::spoutSenderName() const
+{
+    if (m_runtimeSenderName.isEmpty() == false)
+        return m_runtimeSenderName;
+
+    return defaultSpoutSenderName();
+}
+
+QString Video::defaultSpoutSenderName() const
+{
+    // First Show track (Shows, then tracks, in ID order) containing this
+    // Video: the Show runner names the sender after the track it plays
+    // from, and this rule picks the same name for the track a user is
+    // most likely to have put the clip on, so the sender created at
+    // document load is the one the Show will actually feed.
+    for (Function *f : m_doc->functionsByType(Function::ShowType))
+    {
+        Show *show = qobject_cast<Show *>(f);
+        if (show == nullptr)
+            continue;
+
+        for (Track *track : show->tracks())
+        {
+            for (ShowFunction *sf : track->showFunctions())
+            {
+                if (sf->functionID() == id())
+                    return spoutSenderNameForTrack(track->name());
+            }
+        }
+    }
+
+    return KSpoutSenderPrefix + name();
+}
+
+QString Video::spoutSenderNameForTrack(const QString &trackName)
+{
+    return KSpoutSenderPrefix + trackName;
 }
 
 qreal Video::intensity() const
@@ -321,7 +422,7 @@ qreal Video::intensity() const
 
 bool Video::fullscreen() const
 {
-    return m_fullscreen;
+    return m_outputMode == Fullscreen;
 }
 
 int Video::adjustAttribute(qreal fraction, int attributeId)
@@ -377,8 +478,18 @@ bool Video::saveXML(QXmlStreamWriter *doc) const
     doc->writeStartElement(KXMLQLCVideoSource);
     if (m_screen > 0)
         doc->writeAttribute(KXMLQLCVideoScreen, QString::number(m_screen));
-    if (m_fullscreen == true)
+    // Fullscreen keeps its pre-Spout shape so older builds load it unchanged.
+    // Spout is a separate attribute: an older build that doesn't know it
+    // silently falls back to Windowed instead of misreading the project.
+    if (m_outputMode == Fullscreen)
         doc->writeAttribute(KXMLQLCVideoFullscreen, "1");
+    else if (m_outputMode == Spout)
+        doc->writeAttribute(KXMLQLCVideoOutput, KXMLQLCVideoOutputSpout);
+    if (m_spoutSize.isEmpty() == false)
+    {
+        QString size = QString("%1,%2").arg(m_spoutSize.width()).arg(m_spoutSize.height());
+        doc->writeAttribute(KXMLQLCVideoSpoutSize, size);
+    }
 #ifdef QMLUI
     if (m_customGeometry.isNull() == false)
     {
@@ -438,6 +549,20 @@ bool Video::loadXML(QXmlStreamReader &root)
                     setFullscreen(true);
                 else
                     setFullscreen(false);
+            }
+
+            // read after Fullscreen so that Spout wins if both are present
+            if (attrs.hasAttribute(KXMLQLCVideoOutput))
+            {
+                if (attrs.value(KXMLQLCVideoOutput).toString() == KXMLQLCVideoOutputSpout)
+                    setOutputMode(Spout);
+            }
+
+            if (attrs.hasAttribute(KXMLQLCVideoSpoutSize))
+            {
+                QStringList slist = attrs.value(KXMLQLCVideoSpoutSize).toString().split(",");
+                if (slist.count() == 2)
+                    setSpoutSize(QSize(slist.at(0).toInt(), slist.at(1).toInt()));
             }
 #ifdef QMLUI
             if (attrs.hasAttribute(KXMLQLCVideoGeometry))
@@ -507,7 +632,10 @@ void Video::postLoad()
  *********************************************************************/
 void Video::preRun(MasterTimer* timer)
 {
-    emit requestPlayback();
+    // The sender name is resolved here, on the MasterTimer thread, and
+    // handed over as a signal argument: the GUI-side player must never
+    // read m_runtimeSenderName itself.
+    emit requestPlayback(spoutSenderName());
     Function::preRun(timer);
 }
 
@@ -531,5 +659,8 @@ void Video::write(MasterTimer* timer, QList<Universe *> universes)
 void Video::postRun(MasterTimer* timer, QList<Universe*> universes)
 {
     emit requestStop();
+    // The name only applies to the run a Show started; the next start
+    // (from a Show or otherwise) sets or resolves its own.
+    m_runtimeSenderName.clear();
     Function::postRun(timer, universes);
 }
