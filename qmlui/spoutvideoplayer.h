@@ -94,6 +94,11 @@ public:
     /** Pause/resume decoding (no-op for pictures) */
     void pause(bool enable);
 
+    /** Jump to $positionMs into the media (no-op for pictures). Before the
+     *  media has loaded the position is applied once it has, like the
+     *  start position. */
+    void seek(qint64 positionMs);
+
     /** Request a stop: fades out if a fade-out time was given, then sends a
      *  transparent frame and emits finished(). Idempotent. */
     void stop();

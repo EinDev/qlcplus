@@ -91,6 +91,7 @@ protected slots:
 
     void slotRequestPlayback(QString spoutSenderName);
     void slotRequestPause(bool enable);
+    void slotRequestSeek(qint64 ms);
     void slotRequestStop();
 
 private:
@@ -128,6 +129,8 @@ public:
      *  Video::spoutSenderName()), ignored otherwise. */
     void playContent(const QString &spoutSenderName);
     void pauseContent(bool enable);
+    /** Jump to $ms into the media without restarting it (Video::seekTo) */
+    void seekContent(qint64 ms);
     void stopContent();
 
     /** Create this content's Spout sender now if it is in Spout mode and

@@ -169,6 +169,18 @@ void SpoutVideoPlayer::pause(bool enable)
         m_player->play();
 }
 
+void SpoutVideoPlayer::seek(qint64 positionMs)
+{
+    if (m_active == false || m_video->isPicture())
+        return;
+
+    QMediaPlayer::MediaStatus status = m_player->mediaStatus();
+    if (status == QMediaPlayer::NoMedia || status == QMediaPlayer::LoadingMedia)
+        m_startPosition = positionMs;   // slotMediaStatusChanged applies it
+    else
+        m_player->setPosition(positionMs);
+}
+
 void SpoutVideoPlayer::stop()
 {
     if (m_active == false || m_stopRequested)

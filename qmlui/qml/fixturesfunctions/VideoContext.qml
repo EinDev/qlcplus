@@ -82,6 +82,13 @@ Rectangle
         }
     }
 
+    function seekContent(id, ms)
+    {
+        var cIdx = mediaArray.indexOf(id)
+        if (cIdx > -1)
+            mediaItems[cIdx].seekPlayback(ms)
+    }
+
     function cleanupItem(item)
     {
         var cIdx = mediaItems.indexOf(item)
@@ -249,6 +256,17 @@ Rectangle
             function resumePlayback()
             {
                 player.play()
+            }
+
+            function seekPlayback(ms)
+            {
+                // Before the media has loaded the position is applied by
+                // onMediaStatusChanged, like the initial start time
+                if (player.mediaStatus === MediaPlayer.NoMedia ||
+                    player.mediaStatus === MediaPlayer.LoadingMedia)
+                    mediaRect.startTime = ms
+                else
+                    player.position = ms
             }
 
             NumberAnimation on fadeMultiplier
@@ -421,6 +439,7 @@ Rectangle
             function stopPlayback() { }
             function pausePlayback() { }
             function resumePlayback() { }
+            function seekPlayback(ms) { }
 
             NumberAnimation on fadeMultiplier
             {

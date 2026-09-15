@@ -137,6 +137,7 @@ void VideoProvider::slotFunctionAdded(quint32 id)
 
     connect(video, SIGNAL(requestPlayback(QString)), this, SLOT(slotRequestPlayback(QString)));
     connect(video, SIGNAL(requestPause(bool)), this, SLOT(slotRequestPause(bool)));
+    connect(video, SIGNAL(requestSeek(qint64)), this, SLOT(slotRequestSeek(qint64)));
     connect(video, SIGNAL(requestStop()), this, SLOT(slotRequestStop()));
 }
 
@@ -214,6 +215,16 @@ void VideoProvider::slotRequestPause(bool enable)
 
     if (m_videoMap.contains(video->id()))
         m_videoMap[video->id()]->pauseContent(enable);
+}
+
+void VideoProvider::slotRequestSeek(qint64 ms)
+{
+    Video *video = qobject_cast<Video *>(sender());
+    if (video == nullptr)
+        return;
+
+    if (m_videoMap.contains(video->id()))
+        m_videoMap[video->id()]->seekContent(ms);
 }
 
 void VideoProvider::slotRequestStop()
@@ -468,6 +479,28 @@ void VideoContent::pauseContent(bool enable)
     QMetaObject::invokeMethod(root, "pauseContent",
                               Q_ARG(QVariant, m_video->id()),
                               Q_ARG(QVariant, enable));
+}
+
+void VideoContent::seekContent(qint64 ms)
+{
+#if defined(Q_OS_WIN) && defined(QLC_SPOUT)
+    if (m_spoutPlayer)
+    {
+        m_spoutPlayer->seek(ms);
+        return;
+    }
+#endif
+
+    if (m_viewContext == nullptr)
+        return;
+
+    QQuickItem *root = m_viewContext->rootObject();
+    if (root == nullptr)
+        return;
+
+    QMetaObject::invokeMethod(root, "seekContent",
+                              Q_ARG(QVariant, m_video->id()),
+                              Q_ARG(QVariant, (int)ms));
 }
 
 void VideoContent::stopContent()
