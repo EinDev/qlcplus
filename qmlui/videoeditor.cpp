@@ -32,6 +32,9 @@ VideoEditor::VideoEditor(QQuickView *view, Doc *doc, QObject *parent)
     , m_mediaPlayer(nullptr)
 {
     m_view->rootContext()->setContextProperty("videoEditor", this);
+
+    // the default sender name follows the function name
+    connect(this, &FunctionEditor::functionNameChanged, this, &VideoEditor::spoutSenderNameChanged);
 }
 
 VideoEditor::~VideoEditor()
@@ -75,6 +78,10 @@ void VideoEditor::setFunctionID(quint32 ID)
     FunctionEditor::setFunctionID(ID);
 
     detectMedia();
+
+    emit outputModeChanged(outputMode());
+    emit spoutSizeChanged(spoutSize());
+    emit spoutSenderNameChanged();
 }
 
 QString VideoEditor::sourceFileName() const
@@ -207,6 +214,75 @@ void VideoEditor::setFullscreen(bool fullscreen)
     Tardis::instance()->enqueueAction(Tardis::VideoSetFullscreen, m_video->id(), m_video->fullscreen(), fullscreen);
     m_video->setFullscreen(fullscreen);
     emit fullscreenChanged(fullscreen);
+    emit outputModeChanged(outputMode());
+}
+
+int VideoEditor::outputMode() const
+{
+    if (m_video != nullptr)
+        return int(m_video->outputMode());
+
+    return int(Video::Windowed);
+}
+
+void VideoEditor::setOutputMode(int mode)
+{
+    if (m_video == nullptr || int(m_video->outputMode()) == mode)
+        return;
+
+    if (mode == Video::Spout && spoutAvailable() == false)
+    {
+        qWarning() << "Spout output is not available in this build";
+        return;
+    }
+
+    bool wasFullscreen = m_video->fullscreen();
+    Tardis::instance()->enqueueAction(Tardis::VideoSetOutputMode, m_video->id(), int(m_video->outputMode()), mode);
+    m_video->setOutputMode(mode);
+    emit outputModeChanged(outputMode());
+    if (wasFullscreen != m_video->fullscreen())
+        emit fullscreenChanged(m_video->fullscreen());
+}
+
+bool VideoEditor::spoutAvailable() const
+{
+#if defined(Q_OS_WIN) && defined(QLC_SPOUT)
+    return true;
+#else
+    return false;
+#endif
+}
+
+QSize VideoEditor::spoutSize() const
+{
+    if (m_video != nullptr)
+        return m_video->spoutSize();
+
+    return QSize(0, 0);
+}
+
+void VideoEditor::setSpoutSize(QSize size)
+{
+    if (m_video == nullptr)
+        return;
+
+    if (size.width() <= 0 || size.height() <= 0)
+        size = QSize(0, 0);
+
+    if (m_video->spoutSize() == size)
+        return;
+
+    Tardis::instance()->enqueueAction(Tardis::VideoSetSpoutSize, m_video->id(), m_video->spoutSize(), size);
+    m_video->setSpoutSize(size);
+    emit spoutSizeChanged(m_video->spoutSize());
+}
+
+QString VideoEditor::spoutSenderName() const
+{
+    if (m_video == nullptr)
+        return QString();
+
+    return m_video->defaultSpoutSenderName();
 }
 
 bool VideoEditor::isLooped() const

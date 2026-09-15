@@ -235,6 +235,8 @@ Rectangle
             id: screenCombo
             height: UISettings.listItemHeight
             Layout.fillWidth: true
+            // a Spout sender has no screen
+            enabled: videoEditor.outputMode !== VideoFunction.Spout
             textRole: ""
             model: videoEditor.screenList
             currentIndex: videoEditor.screenIndex
@@ -254,8 +256,8 @@ Rectangle
                 implicitWidth: UISettings.iconSizeMedium
                 implicitHeight: implicitWidth
                 ButtonGroup.group: outputModeGroup
-                checked: !videoEditor.fullscreen
-                onClicked: if (checked) videoEditor.fullscreen = false
+                checked: videoEditor.outputMode === VideoFunction.Windowed
+                onClicked: if (checked) videoEditor.outputMode = VideoFunction.Windowed
             }
             RobotoText
             {
@@ -268,21 +270,102 @@ Rectangle
                 implicitWidth: UISettings.iconSizeMedium
                 implicitHeight: implicitWidth
                 ButtonGroup.group: outputModeGroup
-                checked: videoEditor.fullscreen
-                onClicked: if (checked) videoEditor.fullscreen = true
+                checked: videoEditor.outputMode === VideoFunction.Fullscreen
+                onClicked: if (checked) videoEditor.outputMode = VideoFunction.Fullscreen
             }
             RobotoText
             {
                 height: UISettings.listItemHeight
                 label: qsTr("Fullscreen")
             }
+
+            // Spout output exists only in Windows builds with QLC_SPOUT
+            CustomCheckBox
+            {
+                visible: videoEditor.spoutAvailable
+                implicitWidth: UISettings.iconSizeMedium
+                implicitHeight: implicitWidth
+                ButtonGroup.group: outputModeGroup
+                checked: videoEditor.outputMode === VideoFunction.Spout
+                onClicked: if (checked) videoEditor.outputMode = VideoFunction.Spout
+            }
+            RobotoText
+            {
+                visible: videoEditor.spoutAvailable
+                height: UISettings.listItemHeight
+                label: qsTr("Spout")
+            }
         }
 
-        // row 9
+        // row 8a (Spout only): sender size
+        RobotoText
+        {
+            visible: videoEditor.outputMode === VideoFunction.Spout
+            height: UISettings.listItemHeight
+            label: qsTr("Sender size")
+        }
+        RowLayout
+        {
+            visible: videoEditor.outputMode === VideoFunction.Spout
+            height: UISettings.listItemHeight
+            Layout.fillWidth: true
+            spacing: 5
+
+            function updateSpoutSize()
+            {
+                videoEditor.spoutSize = Qt.size(spoutWSpin.value, spoutHSpin.value)
+            }
+
+            RobotoText { label: qsTr("W") }
+            CustomSpinBox
+            {
+                id: spoutWSpin
+                Layout.fillWidth: true
+                from: 0
+                to: 16384
+                value: videoEditor.spoutSize.width
+                onValueModified: parent.updateSpoutSize()
+            }
+            RobotoText { label: qsTr("H") }
+            CustomSpinBox
+            {
+                id: spoutHSpin
+                Layout.fillWidth: true
+                from: 0
+                to: 16384
+                value: videoEditor.spoutSize.height
+                onValueModified: parent.updateSpoutSize()
+            }
+            RobotoText
+            {
+                fontSize: UISettings.textSizeDefault * 0.8
+                labelColor: UISettings.fgLight
+                label: qsTr("(0 = native resolution)")
+            }
+        }
+
+        // row 8b (Spout only): resolved sender name
+        RobotoText
+        {
+            visible: videoEditor.outputMode === VideoFunction.Spout
+            height: UISettings.listItemHeight
+            label: qsTr("Sender name")
+        }
+        RobotoText
+        {
+            visible: videoEditor.outputMode === VideoFunction.Spout
+            height: UISettings.listItemHeight
+            Layout.fillWidth: true
+            label: videoEditor.spoutSenderName
+            labelColor: UISettings.fgLight
+        }
+
+        // row 9 (geometry, rotation and layer are ignored in Spout mode)
         RobotoText { label: qsTr("Geometry"); height: UISettings.listItemHeight }
         RowLayout
         {
             height: UISettings.listItemHeight
+            enabled: videoEditor.outputMode !== VideoFunction.Spout
 
             ButtonGroup { id: geometryGroup }
 
@@ -415,6 +498,7 @@ Rectangle
             height: UISettings.listItemHeight
             spacing: 5
             Layout.fillWidth: true
+            enabled: videoEditor.outputMode !== VideoFunction.Spout
 
             RobotoText { label: qsTr("X") }
             CustomSpinBox
@@ -461,6 +545,7 @@ Rectangle
         {
             id: layerSpin
             Layout.fillWidth: true
+            enabled: videoEditor.outputMode !== VideoFunction.Spout
             from: 1
             to: 100
             value: videoEditor.layer

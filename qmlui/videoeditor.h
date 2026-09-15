@@ -37,6 +37,10 @@ class VideoEditor final : public FunctionEditor
     Q_PROPERTY(QStringList screenList READ screenList CONSTANT)
     Q_PROPERTY(int screenIndex READ screenIndex WRITE setScreenIndex NOTIFY screenIndexChanged)
     Q_PROPERTY(bool fullscreen READ isFullscreen WRITE setFullscreen NOTIFY fullscreenChanged)
+    Q_PROPERTY(int outputMode READ outputMode WRITE setOutputMode NOTIFY outputModeChanged)
+    Q_PROPERTY(bool spoutAvailable READ spoutAvailable CONSTANT)
+    Q_PROPERTY(QSize spoutSize READ spoutSize WRITE setSpoutSize NOTIFY spoutSizeChanged)
+    Q_PROPERTY(QString spoutSenderName READ spoutSenderName NOTIFY spoutSenderNameChanged)
     Q_PROPERTY(bool looped READ isLooped WRITE setLooped NOTIFY loopedChanged)
     Q_PROPERTY(bool hasCustomGeometry READ hasCustomGeometry CONSTANT)
     Q_PROPERTY(QRect customGeometry READ customGeometry WRITE setCustomGeometry NOTIFY customGeometryChanged)
@@ -73,6 +77,21 @@ public:
     bool isFullscreen() const;
     void setFullscreen(bool fullscreen);
 
+    /** Get/Set the output mode (Video::OutputMode) of this Video function */
+    int outputMode() const;
+    void setOutputMode(int mode);
+
+    /** true if this build can output to Spout (Windows, QLC_SPOUT) */
+    bool spoutAvailable() const;
+
+    /** Get/Set the Spout sender size of this Video function (0x0 = native) */
+    QSize spoutSize() const;
+    void setSpoutSize(QSize size);
+
+    /** The Spout sender name this Video resolves to outside a running Show
+     *  (see Video::defaultSpoutSenderName()) */
+    QString spoutSenderName() const;
+
     /** Get/Set looped attribute for this Video function */
     bool isLooped() const;
     void setLooped(bool looped);
@@ -103,6 +122,9 @@ signals:
     void mediaInfoChanged();
     void screenIndexChanged(int screenIndex);
     void fullscreenChanged(bool fullscreen);
+    void outputModeChanged(int mode);
+    void spoutSizeChanged(QSize size);
+    void spoutSenderNameChanged();
     void loopedChanged();
     void customGeometryChanged(QRect customGeometry);
     void rotationChanged(QVector3D rotation);

@@ -252,6 +252,8 @@ public:
         VideoSetSource = 0x1700,
         VideoSetScreenIndex,
         VideoSetFullscreen,
+        VideoSetOutputMode,
+        VideoSetSpoutSize,
         VideoSetGeometry,
         VideoSetRotation,
         VideoSetLayer,

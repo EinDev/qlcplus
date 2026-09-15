@@ -1347,6 +1347,19 @@ int Tardis::processAction(TardisAction &action, bool undo)
             member(qobject_cast<Video *>(m_doc->function(action.m_objID)), value->toBool());
         }
         break;
+        case VideoSetOutputMode:
+        {
+            Video *video = qobject_cast<Video *>(m_doc->function(action.m_objID));
+            if (video)
+                video->setOutputMode(value->toInt());
+        }
+        break;
+        case VideoSetSpoutSize:
+        {
+            auto member = std::mem_fn(&Video::setSpoutSize);
+            member(qobject_cast<Video *>(m_doc->function(action.m_objID)), value->toSize());
+        }
+        break;
         case VideoSetGeometry:
         {
             auto member = std::mem_fn(&Video::setCustomGeometry);
