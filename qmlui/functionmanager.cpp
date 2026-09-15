@@ -25,6 +25,7 @@
 #include "audioplugincache.h"
 #include "collectioneditor.h"
 #include "functionmanager.h"
+#include "functionpathutils.h"
 #include "rgbmatrixeditor.h"
 #include "treemodelitem.h"
 #include "chasereditor.h"
@@ -969,8 +970,27 @@ void FunctionManager::moveFunctions(QString newPath)
         wasEmptyNode = true;
     }
 
+    // remember where the functions come from: a folder left without any
+    // function would silently vanish on the next tree rebuild otherwise
+    QStringList sourceFolders;
+    for (QVariant &fID : m_selectedIDList)
+    {
+        Function *f = m_doc->function(fID.toUInt());
+        if (f == nullptr || f->path(true).isEmpty())
+            continue;
+        QString sourcePath = FunctionPathUtils::toTreePath(f->path(true), sep);
+        if (sourcePath != newPath && !sourceFolders.contains(sourcePath))
+            sourceFolders.append(sourcePath);
+    }
+
     for (QVariant &fID : m_selectedIDList)
         moveFunction(fID.toUInt(), newPath);
+
+    for (const QString &sourcePath : sourceFolders)
+    {
+        if (!folderExists(sourcePath) && m_functionTree->itemAtPath(sourcePath) != nullptr)
+            m_emptyFolderList.append(sourcePath);
+    }
 
     if (wasEmptyNode)
     {
@@ -983,13 +1003,7 @@ void FunctionManager::moveFunctions(QString newPath)
     if (movingFunctions && !newPath.isEmpty())
     {
         // The drop target and its ancestors are no longer empty.
-        QStringList tokens = newPath.split(sep, Qt::SkipEmptyParts);
-        QString acc;
-        for (const QString &token : tokens)
-        {
-            acc = acc.isEmpty() ? token : acc + sep + token;
-            m_emptyFolderList.removeAll(acc);
-        }
+        forgetEmptyFolders(newPath);
     }
 
     if (movingFolders)
@@ -1002,19 +1016,13 @@ void FunctionManager::moveFunctions(QString newPath)
                 continue;
 
             // Disallow dropping a folder into itself or any of its descendants.
-            if (path == newPath || (!newPath.isEmpty() && newPath.startsWith(path + sep)))
+            if (FunctionPathUtils::isMoveIntoOwnSubtree(path, newPath, sep))
+            {
+                qDebug() << "Refusing to move folder" << path << "into its own subtree" << newPath;
                 continue;
+            }
 
-            QStringList tokens = path.split(TreeModel::separator());
-            if (tokens.isEmpty())
-                continue;
-
-            QString newAbsPath;
-            if (newPath.isEmpty())
-                newAbsPath = tokens.last();
-            else
-                newAbsPath = newPath + sep + tokens.last();
-
+            QString newAbsPath = FunctionPathUtils::movedFolderPath(path, newPath, sep);
             if (newAbsPath == path)
                 continue;
 
@@ -1108,9 +1116,13 @@ bool FunctionManager::renameSelectedItems(QString newName, bool numbering, int s
 
     int currNumber = startNumber;
 
-    // rename folders first
-    for (QString &path : m_selectedFolderList)
-        setFolderPath(path, newName, true);
+    // rename folders first (on a copy: setFolderPath() rewrites the selection)
+    const QStringList selectedFolders = m_selectedFolderList;
+    for (const QString &path : selectedFolders)
+    {
+        if (setFolderPath(path, newName, true) == false)
+            return false;
+    }
 
     for (QVariant &id : m_selectedIDList) // C++11
     {
@@ -1219,69 +1231,72 @@ int FunctionManager::selectedFolderCount() const
     return m_selectedFolderList.count();
 }
 
-void FunctionManager::setFolderPath(QString oldAbsPath, QString newPath, bool isRelative)
+bool FunctionManager::setFolderPath(QString oldAbsPath, QString newPath, bool isRelative)
 {
     if (oldAbsPath.isEmpty())
-        return;
+        return false;
 
-    QStringList tokens = oldAbsPath.split(TreeModel::separator());
+    const QChar sep = TreeModel::separator();
     QString newAbsPath;
 
     if (isRelative)
     {
-        tokens.removeLast();
-        tokens.append(newPath);
-        newAbsPath = tokens.join(TreeModel::separator());
+        newPath = newPath.simplified();
+        if (newPath.isEmpty() || newPath.contains(sep) || newPath.contains('/'))
+            return false;
+
+        newAbsPath = FunctionPathUtils::renamedFolderPath(oldAbsPath, newPath, sep);
+        if (newAbsPath == oldAbsPath)
+            return true;
+
+        // an in-place relabel cannot merge two tree nodes: refuse a sibling clash
+        if (folderExists(newAbsPath))
+            return false;
 
         // change the item label first
-        m_functionTree->setItemRoleData(oldAbsPath, tokens.last(), TreeModel::LabelRole);
+        m_functionTree->setItemRoleData(oldAbsPath, newPath, TreeModel::LabelRole);
         // once label has changed, the item can now be accessed with the new path
-        m_functionTree->setItemRoleData(newAbsPath, tokens.last(), TreeModel::PathRole);
+        m_functionTree->setItemRoleData(newAbsPath, newPath, TreeModel::PathRole);
     }
     else
     {
         newAbsPath = newPath;
+        if (newAbsPath == oldAbsPath)
+            return true;
+        if (FunctionPathUtils::isMoveIntoOwnSubtree(oldAbsPath, newAbsPath, sep))
+            return false;
     }
-
-    tokens = newAbsPath.split(TreeModel::separator());
 
     qDebug() << "Folder path changed from" << oldAbsPath << "to" << newAbsPath;
 
-    const QString treePrefix = oldAbsPath + TreeModel::separator();
-    const QString funcOldPrefix = QString(oldAbsPath).replace(TreeModel::separator(), "/");
-    const QString funcNewPrefix = QString(newAbsPath).replace(TreeModel::separator(), "/");
+    const QString funcOldPrefix = FunctionPathUtils::toFunctionPath(oldAbsPath, sep);
+    const QString funcNewPrefix = FunctionPathUtils::toFunctionPath(newAbsPath, sep);
 
-    auto hasTreePrefix = [&oldAbsPath, &treePrefix](const QString &path) {
-        return path == oldAbsPath || path.startsWith(treePrefix);
-    };
-
-    auto hasFuncPrefix = [&funcOldPrefix](const QString &path) {
-        return path == funcOldPrefix || path.startsWith(funcOldPrefix + "/");
-    };
-
+    // empty folders inside the renamed/moved one follow it (deduplicated: a
+    // move can land on a folder that already exists at the destination)
     QStringList movedEmptyFolders;
-    for (int i = 0; i < m_emptyFolderList.count(); ++i)
+    for (int i = m_emptyFolderList.count() - 1; i >= 0; i--)
     {
         const QString currentPath = m_emptyFolderList.at(i);
-        if (!hasTreePrefix(currentPath))
+        if (!FunctionPathUtils::isInFolder(currentPath, oldAbsPath, sep))
             continue;
 
-        const QString suffix = currentPath.mid(oldAbsPath.length());
-        const QString updatedPath = newAbsPath + suffix;
-        m_emptyFolderList[i] = updatedPath;
-
-        if (!movedEmptyFolders.contains(updatedPath))
+        const QString updatedPath = FunctionPathUtils::rebase(currentPath, oldAbsPath, newAbsPath, sep);
+        m_emptyFolderList.removeAt(i);
+        if (!m_emptyFolderList.contains(updatedPath))
+        {
+            m_emptyFolderList.append(updatedPath);
             movedEmptyFolders.append(updatedPath);
+        }
     }
 
     for (Function *f : m_doc->functions())
     {
         QString funcPath = f->path(true);
-        if (!hasFuncPrefix(funcPath))
+        if (!FunctionPathUtils::isInFolder(funcPath, funcOldPrefix, QLatin1Char('/')))
             continue;
 
-        QString repPath = funcPath;
-        repPath.replace(0, funcOldPrefix.length(), funcNewPrefix);
+        QString repPath = FunctionPathUtils::rebase(funcPath, funcOldPrefix, funcNewPrefix, QLatin1Char('/'));
         if (isRelative)
         {
             Tardis::instance()->enqueueAction(Tardis::FunctionSetPath, f->id(), funcPath, repPath);
@@ -1289,8 +1304,7 @@ void FunctionManager::setFolderPath(QString oldAbsPath, QString newPath, bool is
         }
         else
         {
-            repPath.replace("/", TreeModel::separator());
-            moveFunction(f->id(), repPath);
+            moveFunction(f->id(), FunctionPathUtils::toTreePath(repPath, sep));
         }
     }
 
@@ -1301,8 +1315,8 @@ void FunctionManager::setFolderPath(QString oldAbsPath, QString newPath, bool is
         if (!movedEmptyFolders.isEmpty())
         {
             std::sort(movedEmptyFolders.begin(), movedEmptyFolders.end(),
-                      [](const QString &left, const QString &right) {
-                return left.count(TreeModel::separator()) < right.count(TreeModel::separator());
+                      [sep](const QString &left, const QString &right) {
+                return left.count(sep) < right.count(sep);
             });
 
             QVariantList folderParams;
@@ -1311,64 +1325,103 @@ void FunctionManager::setFolderPath(QString oldAbsPath, QString newPath, bool is
 
             for (const QString &folderPath : movedEmptyFolders)
             {
-                QStringList folderTokens = folderPath.split(TreeModel::separator(), Qt::SkipEmptyParts);
-                if (folderTokens.isEmpty())
+                // the destination may already have this folder (merge)
+                if (m_functionTree->itemAtPath(folderPath) != nullptr)
                     continue;
 
-                QString folderName = folderTokens.takeLast();
-                QString folderBasePath = folderTokens.join(TreeModel::separator());
-                m_functionTree->addItem(folderName, folderParams, folderBasePath,
+                m_functionTree->addItem(FunctionPathUtils::lastSegment(folderPath, sep), folderParams,
+                                        FunctionPathUtils::parentPath(folderPath, sep),
                                         TreeModel::EmptyNode | TreeModel::Expanded);
             }
         }
+
+        // the destination (and its ancestors) is a real folder now
+        if (!m_emptyFolderList.contains(newAbsPath))
+            forgetEmptyFolders(FunctionPathUtils::parentPath(newAbsPath, sep));
     }
 
     for (int i = 0; i < m_selectedFolderList.count(); ++i)
     {
         const QString selectedPath = m_selectedFolderList.at(i);
-        if (!hasTreePrefix(selectedPath))
+        if (!FunctionPathUtils::isInFolder(selectedPath, oldAbsPath, sep))
             continue;
 
-        const QString suffix = selectedPath.mid(oldAbsPath.length());
-        m_selectedFolderList[i] = newAbsPath + suffix;
+        m_selectedFolderList[i] = FunctionPathUtils::rebase(selectedPath, oldAbsPath, newAbsPath, sep);
     }
 
     //m_functionTree->printTree();
+    return true;
+}
+
+QString FunctionManager::selectionBasePath() const
+{
+    if (m_selectedFolderList.count())
+        return m_selectedFolderList.first();
+
+    if (m_selectedIDList.count())
+    {
+        Function *firstFunc = m_doc->function(m_selectedIDList.first().toUInt());
+        if (firstFunc)
+            return FunctionPathUtils::toTreePath(firstFunc->path(true), TreeModel::separator());
+    }
+
+    return QString();
+}
+
+QList<Function *> FunctionManager::functionsInFolder(const QString &treePath) const
+{
+    QList<Function *> list;
+    const QString funcPath = FunctionPathUtils::toFunctionPath(treePath, TreeModel::separator());
+
+    for (Function *f : m_doc->functions())
+    {
+        if (f != nullptr && FunctionPathUtils::isInFolder(f->path(true), funcPath, QLatin1Char('/')))
+            list.append(f);
+    }
+
+    return list;
+}
+
+bool FunctionManager::folderExists(const QString &treePath) const
+{
+    if (treePath.isEmpty())
+        return true;
+
+    if (m_emptyFolderList.contains(treePath))
+        return true;
+
+    // an empty folder nested in a registered empty folder ("A`B" registers only "A`B")
+    for (const QString &emptyPath : m_emptyFolderList)
+    {
+        if (FunctionPathUtils::isDescendantOf(emptyPath, treePath, TreeModel::separator()))
+            return true;
+    }
+
+    return !functionsInFolder(treePath).isEmpty();
+}
+
+void FunctionManager::forgetEmptyFolders(const QString &treePath)
+{
+    QString acc;
+    for (const QString &token : treePath.split(TreeModel::separator(), Qt::SkipEmptyParts))
+    {
+        acc = FunctionPathUtils::join(acc, token, TreeModel::separator());
+        m_emptyFolderList.removeAll(acc);
+    }
 }
 
 bool FunctionManager::createFolder(QString folderName)
 {
-    QString basePath;
-    QString compPath;
-
-    // check if there is some selected folder
-    if (m_selectedFolderList.count())
-    {
-        basePath = m_selectedFolderList.first();
-    }
-    else if (m_selectedIDList.count())
-    {
-        quint32 firstID = m_selectedIDList.first().toUInt();
-        Function *firstFunc = m_doc->function(firstID);
-        if (firstFunc)
-            basePath = firstFunc->path(true).replace("/", TreeModel::separator());
-    }
-
-    if (basePath.isEmpty())
-        compPath = folderName;
-    else
-        compPath = QString("%1%2%3").arg(basePath).arg(TreeModel::separator()).arg(folderName);
-
-    // check if a folder with the same name already exists
-    if (m_emptyFolderList.contains(compPath))
+    folderName = folderName.simplified();
+    if (folderName.isEmpty() || folderName.contains(TreeModel::separator()) || folderName.contains('/'))
         return false;
 
-    QString lowerPath = compPath.toLower();
-    for (Function *f : m_doc->functions())
-    {
-        if (f->path(true).toLower().startsWith(lowerPath))
-            return false;
-    }
+    const QString basePath = selectionBasePath();
+    const QString compPath = FunctionPathUtils::join(basePath, folderName, TreeModel::separator());
+
+    // check if a folder with the same full path already exists (empty or not)
+    if (folderExists(compPath))
+        return false;
 
     m_emptyFolderList.append(compPath);
 
@@ -1384,42 +1437,36 @@ bool FunctionManager::createFolder(QString folderName)
 
 void FunctionManager::deleteSelectedFolders()
 {
-    for (QString &path : m_selectedFolderList)
+    const QChar sep = TreeModel::separator();
+    const QStringList selectedFolders = m_selectedFolderList;
+
+    for (const QString &path : selectedFolders)
     {
-        if (m_emptyFolderList.contains(path))
+        if (path.isEmpty())
+            continue;
+
+        // Every function in this folder or in any of its subfolders goes,
+        // matching on the FULL path: deleting "A`X" must leave "X" (and
+        // "A`XY") untouched.
+        for (Function *func : functionsInFolder(path))
+            deleteFunction(func->id());
+
+        // Empty (sub)folders are not backed by any function, so drop them
+        // from the bookkeeping too.
+        for (int i = m_emptyFolderList.count() - 1; i >= 0; i--)
         {
-            m_emptyFolderList.removeAll(path);
-        }
-        else
-        {
-            // Function paths use '/' as separator, while folder paths in the tree
-            // use TreeModel::separator(). Convert before comparing.
-            QString slashedPath = QString(path).replace(TreeModel::separator(), '/');
-
-            for (Function *func : m_doc->functions())
-            {
-                if (func == nullptr)
-                    continue;
-
-                QString funcPath = func->path(true);
-                // Delete a function if it lives in this folder or in any of its subfolders,
-                // matching on a folder boundary to avoid catching sibling folders that
-                // share the same prefix (e.g. "Foo" must not match "Foobar").
-                if (funcPath == slashedPath || funcPath.startsWith(slashedPath + '/'))
-                    deleteFunction(func->id());
-            }
-
-            // Empty subfolders nested under the deleted one are not backed by any
-            // function, so remove them from the empty folder list as well.
-            for (int i = m_emptyFolderList.count() - 1; i >= 0; i--)
-            {
-                const QString &emptyPath = m_emptyFolderList.at(i);
-                if (emptyPath.startsWith(path + TreeModel::separator()))
-                    m_emptyFolderList.removeAt(i);
-            }
+            if (FunctionPathUtils::isInFolder(m_emptyFolderList.at(i), path, sep))
+                m_emptyFolderList.removeAt(i);
         }
 
         m_functionTree->removeItem(path);
+
+        // A parent that only held this subfolder would silently vanish on
+        // the next tree rebuild (folders exist only through their contents):
+        // keep it around as an empty folder instead.
+        const QString parent = FunctionPathUtils::parentPath(path, sep);
+        if (!parent.isEmpty() && !folderExists(parent))
+            m_emptyFolderList.append(parent);
     }
 
     m_selectedFolderList.clear();

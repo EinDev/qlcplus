@@ -231,6 +231,24 @@ signals:
     void collectionCountChanged();
     void rgbMatrixCountChanged();
     void scriptCountChanged();
+    /** Tree path (TreeModel::separator() notation) of the folder the current
+     *  selection points at: the first selected folder, else the folder of the
+     *  first selected function, else the root (empty). New functions and new
+     *  folders are created there. */
+    QString selectionBasePath() const;
+
+    /** The functions living in $treePath or any of its subfolders (full-path
+     *  membership: "A`X" never matches "X" or "A`XY"). */
+    QList<Function *> functionsInFolder(const QString &treePath) const;
+
+    /** True if a folder with exactly $treePath exists, either backed by
+     *  functions or registered as an empty one. */
+    bool folderExists(const QString &treePath) const;
+
+    /** $treePath (and every ancestor) just received a function: drop them from
+     *  the empty-folder bookkeeping. */
+    void forgetEmptyFolders(const QString &treePath);
+
     void showCountChanged();
     void audioCountChanged();
     void videoCountChanged();
@@ -292,8 +310,15 @@ public:
     /** Return the number of currently selected folders */
     int selectedFolderCount() const;
 
-    /** Change the path of an existing folder and all its children */
-    Q_INVOKABLE void setFolderPath(QString oldAbsPath, QString newPath, bool isRelative);
+    /** Change the path of an existing folder and all its children.
+     *  $isRelative renames the folder in place ($newPath is the new name),
+     *  otherwise $newPath is the new absolute tree path (drag and drop).
+     *  Returns false, changing nothing, if a folder already exists at the
+     *  target path (rename), or if the target is the folder itself or one of
+     *  its own subfolders (move). A move onto a folder that already exists
+     *  merges the two: since folders are nothing but the functions' path
+     *  strings, two folders with the same full path are the same folder. */
+    Q_INVOKABLE bool setFolderPath(QString oldAbsPath, QString newPath, bool isRelative);
 
     /** Create an empty folder with path starting from the currently
      *  selected item */

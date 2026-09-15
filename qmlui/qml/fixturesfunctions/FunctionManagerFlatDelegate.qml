@@ -169,7 +169,17 @@ Item
 
             function onPathChanged(oldPath, newPath)
             {
-                functionManager.setFolderPath(oldPath, newPath, true)
+                if (functionManager.setFolderPath(oldPath, newPath, true))
+                    return
+
+                // refused (e.g. a sibling folder already has that name): tell the
+                // user, if this list is hosted by the right panel (the popup id
+                // resolves through the Loader's context)
+                if (typeof fmGenericPopup !== "undefined")
+                {
+                    fmGenericPopup.message = qsTr("An item with the same name already exists.\nPlease provide a different name.")
+                    fmGenericPopup.open()
+                }
             }
         }
 
