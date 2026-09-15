@@ -28,6 +28,7 @@ add_subdirectory(inputoutputmap)
 add_subdirectory(inputpatch)
 add_subdirectory(keypadparser)
 add_subdirectory(mastertimer)
+add_subdirectory(mediaassets)
 add_subdirectory(monitorproperties)
 add_subdirectory(outputpatch)
 add_subdirectory(qlccapability)
@@ -109,6 +110,7 @@ set(QLCPLUS_ENGINE_TESTS
     inputpatch_test
     keypadparser_test
     mastertimer_test
+    mediaassets_test
     monitorproperties_test
     outputpatch_test
     qlccapability_test
