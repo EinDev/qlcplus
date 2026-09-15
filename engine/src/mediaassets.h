@@ -23,9 +23,49 @@
 #include <QObject>
 #include <QScopedPointer>
 #include <QStringList>
+#include <QThread>
+#include <QList>
 
 class QTemporaryDir;
 class Doc;
+
+/** @addtogroup engine Engine
+ * @{
+ */
+
+/**
+ * Background copy of one file into a store directory, owned and serialized
+ * by MediaAssets. It only touches files: the function relink happens in
+ * MediaAssets on the main thread once copyFinished() arrives.
+ */
+class MediaCopyJob : public QThread
+{
+    Q_OBJECT
+    Q_DISABLE_COPY(MediaCopyJob)
+
+public:
+    MediaCopyJob(const QString &source, const QString &storeDir, qint64 size, QObject *parent = nullptr);
+
+    QString source() const;
+    QString storeDir() const;
+    qint64 size() const;
+
+signals:
+    /** Bytes copied so far / total bytes */
+    void progress(qint64 done, qint64 total);
+    /** @target is the stored absolute path, or empty with @error set */
+    void copyFinished(const QString &target, const QString &error);
+
+protected:
+    void run() override;
+
+private:
+    QString m_source;
+    QString m_storeDir;
+    qint64 m_size;
+};
+
+/** @} */
 
 /** @addtogroup engine Engine
  * @{
@@ -82,8 +122,50 @@ public:
      * copy is impossible (unreadable source, full disk) the warning is
      * logged and @sourcePath itself is returned, so the user's pick is kept
      * as an external reference instead of being lost.
+     *
+     * Files of backgroundThreshold() bytes or more are not copied here:
+     * the (absolute) @sourcePath is returned immediately, a MediaCopyJob
+     * copies the file on a worker thread, and every Audio/Video pointing at
+     * @sourcePath is relinked to the stored copy when importFinished() fires.
+     * A save that happens in between simply writes the external path.
      */
     QString importOrKeep(const QString &sourcePath);
+
+    /** Size from which importOrKeep() copies on a worker thread (50 MB) */
+    static const qint64 DefaultBackgroundThreshold = qint64(50) * 1024 * 1024;
+
+    qint64 backgroundThreshold() const;
+    void setBackgroundThreshold(qint64 bytes);
+
+    /** True while at least one background copy is queued or running */
+    bool hasPendingImports() const;
+
+    /** Sources currently queued or being copied, running one first */
+    QStringList pendingImports() const;
+
+    /** Outcome of collectExternal() */
+    struct CollectResult
+    {
+        int copied = 0;     ///< imported and relinked synchronously
+        int queued = 0;     ///< handed to a background copy (relinked later)
+        int failed = 0;     ///< missing or unreadable sources, left as they were
+        QString firstError;
+    };
+
+    /**
+     * Import every externalSources() entry into the store and relink the
+     * functions using it. Sources above backgroundThreshold() are queued
+     * like importOrKeep() does; URLs are never touched.
+     */
+    CollectResult collectExternal();
+
+    /**
+     * Delete the given files from the store. Only files inside this store's
+     * <sha12>/ layout that no function references are removed; anything
+     * else in the list is refused (returns false with @error set) and left
+     * alone. Emptied <sha12>/ directories are removed too.
+     */
+    bool removeUnreferenced(const QStringList &files, QString *error = nullptr);
 
     /** True if @path lies in this store's <sha12>/ layout */
     bool isManaged(const QString &path) const;
@@ -111,7 +193,35 @@ signals:
     /** Emitted whenever the store directory changes (bind or relocate) */
     void assetsDirChanged();
 
+    /** A background copy of @source (@bytes long) started */
+    void importStarted(const QString &source, qint64 bytes);
+
+    /** Progress of the running background copy */
+    void importProgress(const QString &source, qint64 done, qint64 total);
+
+    /** A background copy ended: @target is the stored path the functions
+     *  were relinked to, or empty with @error set (the external reference
+     *  is kept in that case) */
+    void importFinished(const QString &source, const QString &target, const QString &error);
+
+    /** hasPendingImports()/pendingImports() changed */
+    void pendingImportsChanged();
+
+private slots:
+    void slotJobProgress(qint64 done, qint64 total);
+    void slotJobFinished(const QString &target, const QString &error);
+
 private:
+    /** Queue a background copy of @absSource into @storeDir (no-op if already queued) */
+    void enqueueJob(const QString &absSource, const QString &storeDir, qint64 size);
+
+    /** Start the first queued job if none is running */
+    void startNextJob();
+
+    /** Interrupt and discard every queued/running job (blocks until the
+     *  running one has stopped) */
+    void cancelPendingImports();
+
     /** Hash @sourcePath while copying it into the store; returns the stored
      *  absolute path. Synchronous for now - kept separate so a background
      *  copy can replace it without changing the public API. */
@@ -133,6 +243,8 @@ private:
     Doc *m_doc;
     QString m_projectFile;
     QScopedPointer<QTemporaryDir> m_stagingDir;
+    QList<MediaCopyJob *> m_jobs;   ///< running job first, then the queue
+    qint64 m_backgroundThreshold;
 };
 
 /** @} */
