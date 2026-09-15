@@ -289,7 +289,12 @@ void SpoutVideoPlayer::slotFrameChanged(const QVideoFrame &frame)
     // throws std::bad_alloc. Only the frame the sink currently holds is
     // worth converting; older deliveries are dropped unread, which keeps
     // the queue drained at the delivery rate.
-    if (m_frameGate.accept(frame.startTime(), m_videoSink->videoFrame().startTime()) == false)
+    // Not while a hold is pending: the hold logic below wants to see the
+    // frame at the seek target itself (it pauses on the delivery after it),
+    // and a collapsed burst could skip past that window. Frames only flow
+    // for a moment then, so there is nothing to bound.
+    if (m_holdRequested == false &&
+        m_frameGate.accept(frame.startTime(), m_videoSink->videoFrame().startTime()) == false)
         return;
 
     // Qt's converter throws std::bad_alloc (QByteArray::resize in the RHI
