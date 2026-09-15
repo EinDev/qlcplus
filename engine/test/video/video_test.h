@@ -35,7 +35,11 @@ private slots:
 
     void basic();
     void properties();
+    void outputMode();
+    void spoutSenderName();
     void saveLoad();
+    void saveLoadSpout();
+    void loadLegacyFullscreen();
 
 private:
     Doc* m_doc;
