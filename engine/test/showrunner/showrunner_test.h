@@ -54,6 +54,13 @@ private slots:
     void pausedAppliesStopsDefersStarts();
     void beatClipReschedule();
 
+    /* The Show's tempo, not the Function's, picks the clock a clip runs on */
+    void beatsFunctionInTimeShowRunsOnRealTime();
+    void beatsFunctionInTimeShowReschedule();
+    void timeFunctionInBeatsShowRunsOnBeatClock();
+    void beatsShowStartedMidTimeline();
+    void showTempoSwitchWhilePlaying();
+
 private:
     Doc *m_doc;
     Show *m_show;

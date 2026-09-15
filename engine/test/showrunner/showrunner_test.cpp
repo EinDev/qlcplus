@@ -160,8 +160,8 @@ void ShowRunner_Test::cleanupTestCase()
 void ShowRunner_Test::initRunner()
 {
     ShowRunner runner(m_doc, m_show->id());
-    QCOMPARE(runner.m_schedule->timeClips.count(), 1);
-    QCOMPARE(runner.m_schedule->beatClips.count(), 0);
+    QCOMPARE(runner.m_schedule->clips.count(), 1);
+    QVERIFY(runner.m_schedule->showTempo == Function::Time);
     QCOMPARE(runner.m_totalRunTime, quint32(1000));
 }
 
@@ -182,7 +182,6 @@ void ShowRunner_Test::stopRunner()
     rc.trackId = m_track->id();
     rc.start = 0;
     rc.stopTime = 1000;
-    rc.tempo = Function::Time;
     rc.function = m_scene;
     rc.overrideId = -1;
     runner.m_runningQueue.append(rc);
@@ -223,7 +222,7 @@ void ShowRunner_Test::beatTempoUsesRealMilliseconds()
     QCOMPARE(localDoc.inputOutputMap()->bpmNumber(), 120);
 
     ShowRunner runner(&localDoc, show->id());
-    QCOMPARE(runner.m_schedule->beatClips.count(), 1);
+    QCOMPARE(runner.m_schedule->clips.count(), 1);
 
     MasterTimer *timer = localDoc.masterTimer();
 
@@ -366,8 +365,8 @@ void ShowRunner_Test::queuedRebuildCoalesces()
     // the runner finds exactly one pending snapshot with the final values
     QSharedPointer<const ShowSchedule> pending = ls.show->takePendingSchedule();
     QVERIFY(pending.isNull() == false);
-    QCOMPARE(pending->timeClips.count(), 1);
-    QCOMPARE(pending->timeClips.at(0).end, quint32(12000));
+    QCOMPARE(pending->clips.count(), 1);
+    QCOMPARE(pending->clips.at(0).end, quint32(12000));
     QVERIFY(ls.show->takePendingSchedule().isNull());
 
     // nothing dirty: another turn of the loop rebuilds nothing
@@ -738,7 +737,7 @@ void ShowRunner_Test::beatClipReschedule()
 
     ShowRunner runner(&localDoc, show->id());
     QVERIFY(runner.m_schedule->showTempo == Function::Beats);
-    QCOMPARE(runner.m_schedule->beatClips.count(), 1);
+    QCOMPARE(runner.m_schedule->clips.count(), 1);
 
     MasterTimer *timer = localDoc.masterTimer();
     auto pulseBeat = [&]() {
@@ -775,6 +774,242 @@ void ShowRunner_Test::beatClipReschedule()
         pulseBeat();
     QCOMPARE(runner.m_elapsedBeats, quint32(7000));
     QVERIFY(queueHas(runner, sf->id()) == false);
+}
+
+/****************************************************************************
+ * Which clock a clip runs on is the Show's tempo, not the Function's
+ ****************************************************************************/
+
+/**
+ * A Beats-tempo Chaser (two Scene steps, looping, so it keeps running for as
+ * long as the runner lets it) added to $ls on its own track.
+ */
+static ShowFunction *addBeatsChaserClip(LiveShow &ls, Chaser *&chaser, quint32 start, quint32 duration)
+{
+    chaser = new Chaser(ls.doc);
+    chaser->setName("beats chaser");
+    chaser->setTempoType(Function::Beats);
+    chaser->addStep(ChaserStep(ls.makeScene("step 1")->id()));
+    chaser->addStep(ChaserStep(ls.makeScene("step 2")->id()));
+    ls.doc->addFunction(chaser);
+
+    Track *track = new Track(chaser->id(), ls.show);
+    ls.show->addTrack(track);
+    ShowFunction *sf = track->createShowFunction(chaser->id());
+    sf->setStartTime(start);
+    sf->setDuration(duration);
+    ls.commitEdit();
+    return sf;
+}
+
+void ShowRunner_Test::beatsFunctionInTimeShowRunsOnRealTime()
+{
+    // Regression: a Beats-tempo Function placed in a Time Show never started,
+    // because the runner used to pick the clock from the Function's tempo and
+    // only advanced the beat clock in a Beats Show. The Show's timeline is
+    // real time here, so the clip has to come and go with m_elapsedTime -
+    // the Chaser only steps on the beat internally.
+    LiveShow ls(this, 0, 20000);
+    Chaser *chaser = NULL;
+    ShowFunction *sf = addBeatsChaserClip(ls, chaser, 3000, 2000);
+
+    ShowRunner runner(ls.doc, ls.show->id());
+    QVERIFY(runner.m_schedule->showTempo == Function::Time);
+    QCOMPARE(runner.m_schedule->clips.count(), 2);
+    QCOMPARE(runner.m_totalRunTime, quint32(20000));
+
+    // the runner never sees a beat pulse: the beat clock must not matter
+    ls.advanceTo(runner, 3000);
+    QVERIFY(queueHas(runner, sf->id()) == false);
+    QVERIFY(chaser->isRunning() == false);
+    QCOMPARE(runner.m_elapsedBeats, quint32(0));
+
+    runner.write(ls.timer());
+    QVERIFY(queueHas(runner, sf->id()) == true);
+    QCOMPARE(chaser->elapsed(), quint32(0));
+    ls.timer()->timerTick();
+    QVERIFY(chaser->isRunning() == true);
+
+    // advanceTo() leaves the playhead at 5000ms before the tick that runs there
+    ls.advanceTo(runner, 5000);
+    QVERIFY(queueHas(runner, sf->id()) == true);
+    QVERIFY(chaser->isRunning() == true);
+
+    // start + duration = 5000ms: stopped on the real clock, like any clip
+    runner.write(ls.timer());
+    QVERIFY(queueHas(runner, sf->id()) == false);
+    QVERIFY(chaser->stopped() == true);
+    ls.timer()->timerTick();
+    QVERIFY(chaser->isRunning() == false);
+    QVERIFY(queueHas(runner, ls.sf->id()) == true);
+}
+
+void ShowRunner_Test::beatsFunctionInTimeShowReschedule()
+{
+    // Same clip, ended at 5000ms; at 7000ms its end is dragged to 12000ms:
+    // it restarts under the playhead at the right offset and stops at the
+    // new end, on the real clock.
+    LiveShow ls(this, 0, 20000);
+    Chaser *chaser = NULL;
+    ShowFunction *sf = addBeatsChaserClip(ls, chaser, 3000, 2000);
+    ShowRunner runner(ls.doc, ls.show->id());
+
+    ls.advanceTo(runner, 7000);
+    QVERIFY(queueHas(runner, sf->id()) == false);
+    QVERIFY(chaser->isRunning() == false);
+
+    sf->setDuration(9000);
+    ls.commitEdit();
+    runner.write(ls.timer());
+
+    QVERIFY(queueHas(runner, sf->id()) == true);
+    QCOMPARE(chaser->elapsed(), quint32(4000));
+    ls.timer()->timerTick();
+    QVERIFY(chaser->isRunning() == true);
+
+    ls.advanceTo(runner, 12000);
+    QVERIFY(queueHas(runner, sf->id()) == true);
+    runner.write(ls.timer());
+    QVERIFY(queueHas(runner, sf->id()) == false);
+    ls.timer()->timerTick();
+    QVERIFY(chaser->isRunning() == false);
+}
+
+void ShowRunner_Test::timeFunctionInBeatsShowRunsOnBeatClock()
+{
+    // The mirror case: in a Beats Show every clip follows the beat clock,
+    // whatever its Function's tempo. A Time-tempo Scene clip 500-1500ms is
+    // not started while only the real clock passes 500ms; it starts on the
+    // beat that brings the beat clock there, and stops on the beat that
+    // reaches its end.
+    LiveShow ls(this, 500, 1000, 60000);
+    ls.show->setTempoType(Function::Beats);
+    ls.commitEdit();
+    QVERIFY(ls.scene->tempoType() == Function::Time);
+
+    ls.doc->inputOutputMap()->setBeatGeneratorType(InputOutputMap::Internal);
+    QCOMPARE(ls.doc->inputOutputMap()->bpmNumber(), 120);
+
+    ShowRunner runner(ls.doc, ls.show->id());
+    QVERIFY(runner.m_schedule->showTempo == Function::Beats);
+    MasterTimer *timer = ls.timer();
+    auto pulseBeat = [&]() {
+        timer->requestBeat();
+        runner.write(timer);
+        timer->m_beatRequested = false;
+    };
+
+    // sync beat: both clocks at 0, the filler starts
+    pulseBeat();
+    QCOMPARE(runner.m_elapsedBeats, quint32(0));
+    QVERIFY(queueHas(runner, ls.fillerSf->id()) == true);
+
+    // 80 plain ticks (20ms each, plus the sync beat's own) take the real
+    // clock to 1620ms - past the clip's whole span - without a beat:
+    // neither started nor stopped
+    for (int i = 0; i < 80; i++)
+        runner.write(timer);
+    QCOMPARE(runner.m_elapsedTime, quint32(81 * MasterTimer::tick()));
+    QVERIFY(runner.m_elapsedTime > 1500);
+    QCOMPARE(runner.m_elapsedBeats, quint32(0));
+    QVERIFY(queueHas(runner, ls.sf->id()) == false);
+
+    pulseBeat();
+    QCOMPARE(runner.m_elapsedBeats, quint32(500));
+    QVERIFY(queueHas(runner, ls.sf->id()) == true);
+    QCOMPARE(ls.scene->elapsed(), quint32(0));
+
+    pulseBeat();
+    QCOMPARE(runner.m_elapsedBeats, quint32(1000));
+    QVERIFY(queueHas(runner, ls.sf->id()) == true);
+
+    pulseBeat();
+    QCOMPARE(runner.m_elapsedBeats, quint32(1500));
+    QVERIFY(queueHas(runner, ls.sf->id()) == false);
+}
+
+void ShowRunner_Test::beatsShowStartedMidTimeline()
+{
+    // Playing a Beats Show from the cursor: the beat clock has to start from
+    // the Show's start position, not from 0, or every clip would be late by
+    // that much. Clip 3000-5000ms, runner started at 2500ms.
+    LiveShow ls(this, 3000, 2000, 60000);
+    ls.show->setTempoType(Function::Beats);
+    ls.commitEdit();
+
+    ls.doc->inputOutputMap()->setBeatGeneratorType(InputOutputMap::Internal);
+    ShowRunner runner(ls.doc, ls.show->id(), 2500);
+    MasterTimer *timer = ls.timer();
+    auto pulseBeat = [&]() {
+        timer->requestBeat();
+        runner.write(timer);
+        timer->m_beatRequested = false;
+    };
+
+    pulseBeat();
+    QCOMPARE(runner.m_elapsedBeats, quint32(2500));
+    QVERIFY(queueHas(runner, ls.sf->id()) == false);
+    QVERIFY(queueHas(runner, ls.fillerSf->id()) == true);
+    QCOMPARE(ls.fillerScene->elapsed(), quint32(2500));
+
+    pulseBeat();
+    QCOMPARE(runner.m_elapsedBeats, quint32(3000));
+    QVERIFY(queueHas(runner, ls.sf->id()) == true);
+    QCOMPARE(ls.scene->elapsed(), quint32(0));
+
+    for (int i = 0; i < 4; i++)
+        pulseBeat();
+    QCOMPARE(runner.m_elapsedBeats, quint32(5000));
+    QVERIFY(queueHas(runner, ls.sf->id()) == false);
+}
+
+void ShowRunner_Test::showTempoSwitchWhilePlaying()
+{
+    // Switching the Show from Time to Beats while it plays: the running clip
+    // keeps running, the beat clock picks up from the real playhead on the
+    // next beat, and from then on the clip stops on the beat clock.
+    LiveShow ls(this, 0, 10000, 60000);
+    ls.doc->inputOutputMap()->setBeatGeneratorType(InputOutputMap::Internal);
+    ShowRunner runner(ls.doc, ls.show->id());
+    MasterTimer *timer = ls.timer();
+
+    ls.advanceTo(runner, 2000);
+    QVERIFY(queueHas(runner, ls.sf->id()) == true);
+    QVERIFY(ls.scene->isRunning() == true);
+
+    ls.show->setTempoType(Function::Beats);
+    QVERIFY(ls.show->isScheduleDirty() == true);
+    ls.commitEdit();
+
+    // the switch is picked up and playback waits for a beat to sync
+    runner.write(timer);
+    QVERIFY(runner.m_schedule->showTempo == Function::Beats);
+    QVERIFY(runner.beatSynced == false);
+    QVERIFY(queueHas(runner, ls.sf->id()) == true);
+    QCOMPARE(runner.m_elapsedTime, quint32(2000));
+    timer->timerTick();
+    QVERIFY(ls.scene->isRunning() == true);
+
+    auto pulseBeat = [&]() {
+        timer->requestBeat();
+        runner.write(timer);
+        timer->m_beatRequested = false;
+    };
+
+    pulseBeat();
+    QVERIFY(runner.beatSynced == true);
+    QCOMPARE(runner.m_elapsedBeats, quint32(2000));
+    QVERIFY(queueHas(runner, ls.sf->id()) == true);
+
+    // 16 beats = 8000ms: the beat clock reaches the clip's end at 10000ms
+    for (int i = 0; i < 15; i++)
+        pulseBeat();
+    QCOMPARE(runner.m_elapsedBeats, quint32(9500));
+    QVERIFY(queueHas(runner, ls.sf->id()) == true);
+    pulseBeat();
+    QCOMPARE(runner.m_elapsedBeats, quint32(10000));
+    QVERIFY(queueHas(runner, ls.sf->id()) == false);
+    QVERIFY(queueHas(runner, ls.fillerSf->id()) == true);
 }
 
 // Guiless rather than appless: Chaser::createRunner() moves its runner to
