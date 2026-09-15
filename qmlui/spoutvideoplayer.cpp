@@ -452,14 +452,17 @@ void SpoutVideoPlayer::render()
 
 QSize SpoutVideoPlayer::canvasSize(const QSize &frameSize) const
 {
-    // 1. the size configured on the Video function
-    if (m_video->spoutSize().isEmpty() == false)
-        return m_video->spoutSize();
-
-    // 2. the size the (possibly shared, eagerly created) sender already
-    //    has: resizing it would make every receiver re-initialize
+    // 1. the size the (possibly shared, eagerly created) sender already
+    //    has. SpoutSender::sendImage() resizes the shared texture when a
+    //    frame of another size is sent and every receiver re-initializes,
+    //    so an existing sender's size always wins - even over this Video's
+    //    own SpoutSize, which only sizes a sender it creates itself
     if (m_sender != nullptr && m_sender->size().isValid() && m_sender->size().isEmpty() == false)
         return m_sender->size();
+
+    // 2. the size configured on the Video function
+    if (m_video->spoutSize().isEmpty() == false)
+        return m_video->spoutSize();
 
     // 3. native
     return frameSize;

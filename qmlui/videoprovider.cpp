@@ -24,6 +24,8 @@
 
 #include "videoprovider.h"
 #include "videoframeprobe.h"
+#include "track.h"
+#include "show.h"
 #include "doc.h"
 
 #if defined(Q_OS_WIN) && defined(QLC_SPOUT)
@@ -44,6 +46,8 @@ static void videoFadeTimes(const Video *video, int &fadeIn, int &fadeOut)
     fadeOut = int(out);
 }
 
+static VideoProvider *s_instance = nullptr;
+
 VideoProvider::VideoProvider(QQuickView *view, Doc *doc, QObject *parent)
     : QObject(parent)
     , m_view(view)
@@ -55,6 +59,10 @@ VideoProvider::VideoProvider(QQuickView *view, Doc *doc, QObject *parent)
     qmlRegisterUncreatableType<Video>("org.qlcplus.classes", 1, 0, "VideoFunction", "Can't create a Video!");
     qmlRegisterType<VideoFrameProbe>("org.qlcplus.classes", 1, 0, "VideoFrameProbe");
 
+    // registered before the contents are built: their eager sender
+    // creation is what the rest of the UI wants to observe
+    s_instance = this;
+
     for (Function *f : m_doc->functionsByType(Function::VideoType))
         slotFunctionAdded(f->id());
 
@@ -62,8 +70,16 @@ VideoProvider::VideoProvider(QQuickView *view, Doc *doc, QObject *parent)
     connect(m_doc, SIGNAL(functionRemoved(quint32)), this, SLOT(slotFunctionRemoved(quint32)));
 }
 
+VideoProvider *VideoProvider::instance()
+{
+    return s_instance;
+}
+
 VideoProvider::~VideoProvider()
 {
+    if (s_instance == this)
+        s_instance = nullptr;
+
     // Contents first (their Spout players blank the senders they own),
     // then the senders themselves: this is the only place senders are
     // released, i.e. on document clear/close
@@ -171,14 +187,25 @@ SpoutSender *VideoProvider::spoutSender(const QString &name, const QSize &size, 
     if (m_spoutSenders.contains(name))
         return m_spoutSenders.value(name);
 
-    if (size.isEmpty())
+    // a track with a fixed output size wins over whatever clip is asking
+    // (both creation paths - eager and first frame - go through here)
+    QSize createSize = size;
+    QString sizedByNote = sizedBy;
+    Track *track = trackForSpoutSender(name);
+    if (track != nullptr && track->spoutSize().isEmpty() == false)
+    {
+        createSize = track->spoutSize();
+        sizedByNote = QString("track '%1' fixed size").arg(track->name());
+    }
+
+    if (createSize.isEmpty())
         return nullptr;
 
     SpoutSender *sender = new SpoutSender();
-    if (sender->create(name, size.width(), size.height()) == false)
+    if (sender->create(name, createSize.width(), createSize.height()) == false)
     {
         qWarning().noquote() << "[Spout] could not create sender" << name
-                             << size.width() << "x" << size.height() << "- Spout output disabled for it";
+                             << createSize.width() << "x" << createSize.height() << "- Spout output disabled for it";
         delete sender;
         // remember the failure so it isn't retried on every frame
         m_spoutSenders.insert(name, nullptr);
@@ -187,9 +214,41 @@ SpoutSender *VideoProvider::spoutSender(const QString &name, const QSize &size, 
 
     m_spoutSenders.insert(name, sender);
     qDebug().noquote() << "[Spout] created sender" << sender->name()
-                       << "at" << size.width() << "x" << size.height()
-                       << "(requested name" << name << ", sized by" << sizedBy << ") - sent initial transparent frame";
+                       << "at" << createSize.width() << "x" << createSize.height()
+                       << "(requested name" << name << ", sized by" << sizedByNote << ") - sent initial transparent frame";
+    emit spoutSendersChanged();
     return sender;
+}
+
+void VideoProvider::resizeSpoutSender(const QString &name, const QSize &size, const QString &reason)
+{
+    SpoutSender *sender = m_spoutSenders.value(name, nullptr);
+    if (sender == nullptr || size.isEmpty() || sender->size() == size)
+        return;
+
+    QSize previous = sender->size();
+    sender->resize(size);
+    qDebug().noquote() << "[Spout] sender" << name << "resized from" << previous.width() << "x" << previous.height()
+                       << "to" << size.width() << "x" << size.height() << "-" << reason;
+    emit spoutSendersChanged();
+}
+
+Track *VideoProvider::trackForSpoutSender(const QString &name) const
+{
+    for (Function *f : m_doc->functionsByType(Function::ShowType))
+    {
+        // functionsByType() already filtered on the type: a static_cast is
+        // enough and, unlike qobject_cast, works across the engine DLL
+        Show *show = static_cast<Show *>(f);
+
+        for (Track *track : show->tracks())
+        {
+            if (Video::spoutSenderNameForTrack(track->name()) == name)
+                return track;
+        }
+    }
+
+    return nullptr;
 }
 
 void VideoProvider::claimSpoutSender(const QString &name, QObject *owner)
@@ -213,30 +272,34 @@ bool VideoProvider::isSpoutSenderIdle(const QString &name) const
     return m_spoutOwners.value(name, nullptr) == nullptr;
 }
 
-void VideoProvider::fitSpoutSender(const QString &name, const QSize &size, bool exact, const QString &forVideo)
+QSize VideoProvider::spoutSenderSize(const QString &name) const
 {
     SpoutSender *sender = m_spoutSenders.value(name, nullptr);
-    if (sender == nullptr || size.isEmpty())
-        return;
-
-    QSize target = exact ? size : sender->size().expandedTo(size);
-    if (target == sender->size())
-        return;
-
-    // a clip is rendering into it right now: it decides the size (see
-    // SpoutVideoPlayer::canvasSize), don't yank the receivers around
-    if (isSpoutSenderIdle(name) == false)
-    {
-        qDebug().noquote() << "[Spout] sender" << name << "is in use, not resized to"
-                           << target.width() << "x" << target.height() << "for" << forVideo;
-        return;
-    }
-
-    sender->resize(target);
-    qDebug().noquote() << "[Spout] sender" << name << "resized to" << target.width() << "x" << target.height()
-                       << "for" << forVideo << (exact ? "(its SpoutSize)" : "(largest native resolution)");
+    return sender == nullptr ? QSize() : sender->size();
 }
 #endif
+
+QSize VideoProvider::trackSpoutOutputSize(const Track *track) const
+{
+    if (track == nullptr)
+        return QSize();
+
+    if (track->spoutSize().isEmpty() == false)
+        return track->spoutSize();
+
+#if defined(Q_OS_WIN) && defined(QLC_SPOUT)
+    return spoutSenderSize(Video::spoutSenderNameForTrack(track->name()));
+#else
+    return QSize();
+#endif
+}
+
+void VideoProvider::refreshSpoutSender(quint32 videoId)
+{
+    VideoContent *vc = m_videoMap.value(videoId, nullptr);
+    if (vc != nullptr)
+        vc->ensureSpoutSender();
+}
 
 void VideoProvider::slotRequestPause(bool enable)
 {
@@ -491,21 +554,37 @@ void VideoContent::ensureSpoutSender()
     QSize size = m_video->spoutSize().isEmpty() ? m_video->resolution() : m_video->spoutSize();
     if (size.isEmpty())
     {
-        qDebug().noquote() << "[Spout] sender for" << m_video->name()
-                           << "deferred until its resolution is known";
-        return;
+        // a track with a fixed output size doesn't need the clip's
+        // resolution at all (the pool applies the track size anyway)
+        Track *track = m_video->spoutTrack();
+        if (track != nullptr && track->spoutSize().isEmpty() == false)
+        {
+            size = track->spoutSize();
+        }
+        else
+        {
+            qDebug().noquote() << "[Spout] sender for" << m_video->name()
+                               << "deferred until its resolution is known";
+            return;
+        }
     }
 
     // clips on the same Show track share one sender: whichever clip's
-    // resolution becomes known first creates it, later ones grow it to
-    // the largest native resolution (or force their SpoutSize)
+    // resolution becomes known first creates it and fixes its size, later
+    // ones are aspect-fit into it at playback - never resized (see the
+    // sender pool notes in videoprovider.h)
     QString name = m_video->defaultSpoutSenderName();
     SpoutSender *existing = m_provider->spoutSender(name, QSize());
     if (existing != nullptr)
     {
-        qDebug().noquote() << "[Spout]" << m_video->name() << "shares sender" << name
-                           << "at" << existing->size().width() << "x" << existing->size().height();
-        m_provider->fitSpoutSender(name, size, m_video->spoutSize().isEmpty() == false, m_video->name());
+        QSize current = existing->size();
+        if (current == size)
+            qDebug().noquote() << "[Spout]" << m_video->name() << "shares sender" << name
+                               << "at" << current.width() << "x" << current.height();
+        else
+            qDebug().noquote() << "[Spout]" << m_video->name() << "is" << size.width() << "x" << size.height()
+                               << "- sender" << name << "stays at" << current.width() << "x" << current.height()
+                               << "(clip is aspect-fit into it, not resized)";
         return;
     }
 

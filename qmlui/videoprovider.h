@@ -29,6 +29,7 @@
 #include "video.h"
 
 class Doc;
+class Track;
 class VideoContent;
 #if defined(Q_OS_WIN) && defined(QLC_SPOUT)
 class SpoutSender;
@@ -41,6 +42,13 @@ class VideoProvider final : public QObject
 public:
     VideoProvider(QQuickView *view, Doc *doc, QObject *parent = 0);
     ~VideoProvider();
+
+    /** The provider of the current document, null between documents.
+     *  App creates exactly one per document and deletes it on document
+     *  clear, so this is a lookup (never cached by callers) for the parts
+     *  of the UI that need the live sender pool: the Show Manager's
+     *  track output size and the Video editor's sender label. */
+    static VideoProvider *instance();
 
     /** Get the main QML view */
     QQuickView *view() const;
@@ -65,6 +73,14 @@ public:
      * video's resolution is known (immediately for pictures and when
      * SpoutSize is set, after the metadata probe for videos).
      *
+     * A sender's size is fixed once created: the first clip whose size
+     * becomes known sizes it (its SpoutSize override or native
+     * resolution) and every later clip on the same track is aspect-fit
+     * into that size at playback (SpoutVideoPlayer::canvasSize). Nothing
+     * here resizes an existing sender on its own: receivers such as OBS
+     * re-initialize their source on a size change, so a resize is only
+     * ever an explicit user choice (ShowManager::setTrackSpoutSize).
+     *
      * Only one player renders into a sender at a time: the latest one to
      * claim it. An earlier player still fading out on the same sender
      * (a fade tail overlapping the next clip on a track) goes silent.
@@ -87,11 +103,34 @@ public:
     /** true if nobody currently writes into sender $name */
     bool isSpoutSenderIdle(const QString &name) const;
 
-    /** Grow sender $name to at least $size (or exactly $size when $exact,
-     *  i.e. a Video's SpoutSize override), unless a clip is rendering into
-     *  it right now. $forVideo is only for the log. */
-    void fitSpoutSender(const QString &name, const QSize &size, bool exact, const QString &forVideo);
+    /** The current size of sender $name, empty if it doesn't exist */
+    QSize spoutSenderSize(const QString &name) const;
+
+    /** Explicitly change the size of sender $name (the user's choice in
+     *  the Show Manager). Receivers re-initialize. A clip rendering into
+     *  it follows on its next frame. No-op if the sender doesn't exist,
+     *  $size is empty or already the current size. $reason is for the log. */
+    void resizeSpoutSender(const QString &name, const QSize &size, const QString &reason);
+
+    /** The Show track whose sender name is $name (see
+     *  Video::spoutSenderNameForTrack()), null if there is none */
+    Track *trackForSpoutSender(const QString &name) const;
 #endif
+
+public:
+    /** The Spout output size of Show track $track as it stands right now:
+     *  its fixed Track::spoutSize() if set, else the size of its live
+     *  sender if one exists, else empty (nothing has fixed it yet). */
+    QSize trackSpoutOutputSize(const Track *track) const;
+
+    /** Re-run the eager sender creation for Video $videoId, e.g. after it
+     *  was placed on a Show track (its default sender name changed) */
+    void refreshSpoutSender(quint32 videoId);
+
+signals:
+    /** A sender was created or resized: anything showing sender sizes
+     *  (track headers, the Video editor) should re-read them */
+    void spoutSendersChanged();
 
 protected slots:
     void slotFunctionAdded(quint32 id);
@@ -150,8 +189,8 @@ public slots:
     void slotAttributeChanged(int attrIndex, qreal value);
 
     /** Create this content's Spout sender now if it is in Spout mode and
-     *  its size is known (see VideoProvider's sender pool). No-op on
-     *  platforms without Spout. */
+     *  its size is known (see VideoProvider's sender pool). An existing
+     *  sender is never resized. No-op on platforms without Spout. */
     void ensureSpoutSender();
 
 protected slots:
