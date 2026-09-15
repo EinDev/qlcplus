@@ -103,6 +103,13 @@ public:
     bool setSourceFileName(QString filename);
 
     /**
+     * Point this Audio at a copy of the same file somewhere else (e.g. after
+     * the project's asset store moved). Unlike setSourceFileName() this only
+     * swaps the stored path: no BPM reset, no decoder rebuild, no rename.
+     */
+    void relinkSource(const QString &filename);
+
+    /**
      * Retrieve the source file name used by this Audio object
      */
     QString getSourceFileName() const;

@@ -203,6 +203,17 @@ bool Audio::setSourceFileName(QString filename)
     return true;
 }
 
+void Audio::relinkSource(const QString &filename)
+{
+    if (m_sourceFileName == filename)
+        return;
+
+    m_sourceFileName = filename;
+
+    emit sourceFilenameChanged();
+    emit changed(id());
+}
+
 QString Audio::getSourceFileName() const
 {
     return m_sourceFileName;

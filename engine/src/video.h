@@ -170,6 +170,11 @@ public:
     QString sourceUrl() const;
     bool setSourceUrl(QString filename);
 
+    /** Point this Video at a copy of the same file somewhere else (e.g. after
+     *  the project's asset store moved). Unlike setSourceUrl() this only swaps
+     *  the stored path: no picture detection, no rename. */
+    void relinkSource(const QString &filename);
+
     /** Return if the loaded source is a picture */
     bool isPicture() const;
 

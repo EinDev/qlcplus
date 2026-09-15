@@ -301,6 +301,17 @@ bool Video::setSourceUrl(QString filename)
     return true;
 }
 
+void Video::relinkSource(const QString &filename)
+{
+    if (m_sourceUrl == filename)
+        return;
+
+    m_sourceUrl = filename;
+
+    emit sourceChanged(m_sourceUrl);
+    emit changed(id());
+}
+
 bool Video::isPicture() const
 {
     return m_isPicture;
