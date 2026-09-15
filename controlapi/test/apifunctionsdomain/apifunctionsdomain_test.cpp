@@ -24,6 +24,9 @@
 #include "apifunctionsdomain_test.h"
 #include "apiserver.h"
 #include "mastertimer.h"
+#include "mediaassets.h"
+#include "audio.h"
+#include "video.h"
 #include "fixture.h"
 #include "scene.h"
 #include "chaser.h"
@@ -43,7 +46,13 @@ static QString buildRequest(const QString &method, const QJsonObject &params, co
 
 void ApiFunctionsDomain_Test::init()
 {
+    m_tmp = new QTemporaryDir();
+    QVERIFY(m_tmp->isValid());
+
     m_doc = new Doc(nullptr);
+    // a titled project, so the media store is <tmp>/show.qxw.assets
+    m_doc->setWorkspacePath(m_tmp->path());
+    m_doc->assets()->setProjectFile(m_tmp->path() + "/show.qxw");
     // Unlike apiiodomain_test, this suite needs MasterTimer's own thread
     // actually running: Function::start()/stop() only queue the request
     // (MasterTimer::startFunction()/its stop counterpart) - the running/
@@ -80,6 +89,19 @@ void ApiFunctionsDomain_Test::cleanup()
     delete m_doc; // also deletes m_scene, which Doc owns after addFunction()
     m_doc = nullptr;
     m_scene = nullptr;
+    delete m_tmp;
+    m_tmp = nullptr;
+}
+
+QString ApiFunctionsDomain_Test::writeMediaFile(const QString &name, const QByteArray &content)
+{
+    QString path = m_tmp->path() + "/" + name;
+    QFile f(path);
+    if (f.open(QIODevice::WriteOnly) == false)
+        return QString();
+    f.write(content);
+    f.close();
+    return QDir::cleanPath(QFileInfo(path).absoluteFilePath());
 }
 
 QJsonObject ApiFunctionsDomain_Test::sendAndWaitForReply(const QString &method, const QJsonObject &params)
@@ -366,6 +388,155 @@ void ApiFunctionsDomain_Test::updateChangesGenericProperties()
     QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
     QCOMPARE(m_scene->runOrder(), Function::PingPong);
     QCOMPARE(m_scene->blendMode(), Universe::AdditiveBlend);
+}
+
+void ApiFunctionsDomain_Test::createAudioWithSourceImportsIntoStore()
+{
+    helloAndGetClientId();
+    QString wav = writeMediaFile("song.wav", "not really audio");
+
+    QJsonObject extra;
+    extra.insert(QStringLiteral("name"), QStringLiteral("Intro song"));
+    extra.insert(QStringLiteral("source"), wav);
+    QString fid = createFunctionViaApi(QStringLiteral("Audio"), extra);
+    QVERIFY(fid.isEmpty() == false);
+
+    Function *function = m_doc->function(fid.toUInt());
+    QVERIFY(function != nullptr);
+    QCOMPARE(function->type(), Function::AudioType);
+    Audio *audio = static_cast<Audio *>(function);
+    // the function points at the copy in the store, not at the picked file,
+    // and an explicit name survives the setter's rename-after-file
+    QVERIFY(m_doc->assets()->isManaged(audio->getSourceFileName()));
+    QVERIFY(QFile::exists(audio->getSourceFileName()));
+    QCOMPARE(QFileInfo(audio->getSourceFileName()).fileName(), QString("song.wav"));
+    QCOMPARE(audio->name(), QString("Intro song"));
+    QVERIFY(QFile::exists(wav));
+
+    // without a name the file name is used, like the editors do
+    QJsonObject extra2;
+    extra2.insert(QStringLiteral("source"), wav);
+    QString fid2 = createFunctionViaApi(QStringLiteral("Audio"), extra2);
+    QVERIFY(fid2.isEmpty() == false);
+    QCOMPARE(m_doc->function(fid2.toUInt())->name(), QString("song.wav"));
+    // same content: one stored copy for both
+    QCOMPARE(static_cast<Audio *>(m_doc->function(fid2.toUInt()))->getSourceFileName(), audio->getSourceFileName());
+}
+
+void ApiFunctionsDomain_Test::createVideoWithUrlSourceKeepsUrl()
+{
+    helloAndGetClientId();
+
+    QJsonObject extra;
+    extra.insert(QStringLiteral("source"), QStringLiteral("rtsp://camera.local/stream"));
+    QString fid = createFunctionViaApi(QStringLiteral("Video"), extra);
+    QVERIFY(fid.isEmpty() == false);
+    Video *video = static_cast<Video *>(m_doc->function(fid.toUInt()));
+    QCOMPARE(video->sourceUrl(), QString("rtsp://camera.local/stream"));
+    QCOMPARE(m_doc->assets()->isManaged(video->sourceUrl()), false);
+
+    QJsonObject params;
+    params.insert(QStringLiteral("functionId"), fid);
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("functions.get"), params);
+    QJsonObject typeDetail = reply.value(QStringLiteral("result")).toObject().value(QStringLiteral("typeDetail")).toObject();
+    QCOMPARE(typeDetail.value(QStringLiteral("source")).toString(), QString("rtsp://camera.local/stream"));
+    QCOMPARE(typeDetail.value(QStringLiteral("managed")).toBool(), false);
+}
+
+void ApiFunctionsDomain_Test::createWithMissingSourceIsInvalidParams()
+{
+    helloAndGetClientId();
+    int functionsBefore = m_doc->functions().count();
+
+    QJsonObject params;
+    params.insert(QStringLiteral("type"), QStringLiteral("Video"));
+    params.insert(QStringLiteral("source"), m_tmp->path() + "/nope.mp4");
+    params.insert(QStringLiteral("baseRevision"), int(m_doc->docRevision()));
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("functions.create"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(),
+             QStringLiteral("INVALID_PARAMS"));
+    // nothing was created
+    QCOMPARE(m_doc->functions().count(), functionsBefore);
+
+    // source on a type that takes none
+    params.insert(QStringLiteral("type"), QStringLiteral("Scene"));
+    params.insert(QStringLiteral("source"), writeMediaFile("a.wav", "x"));
+    reply = sendAndWaitForReply(QStringLiteral("functions.create"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(m_doc->functions().count(), functionsBefore);
+}
+
+void ApiFunctionsDomain_Test::updateSourceReplacesMediaFile()
+{
+    helloAndGetClientId();
+    QString first = writeMediaFile("first.mp4", "first clip");
+    QString second = writeMediaFile("second.mp4", "second clip");
+
+    QJsonObject extra;
+    extra.insert(QStringLiteral("source"), first);
+    QString fid = createFunctionViaApi(QStringLiteral("Video"), extra);
+    Video *video = static_cast<Video *>(m_doc->function(fid.toUInt()));
+    QString storedFirst = video->sourceUrl();
+    QVERIFY(m_doc->assets()->isManaged(storedFirst));
+
+    QJsonObject params;
+    params.insert(QStringLiteral("functionId"), fid);
+    params.insert(QStringLiteral("source"), second);
+    params.insert(QStringLiteral("baseRevision"), int(m_doc->docRevision()));
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("functions.update"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QVERIFY(m_doc->assets()->isManaged(video->sourceUrl()));
+    QCOMPARE(QFileInfo(video->sourceUrl()).fileName(), QString("second.mp4"));
+    QCOMPARE(video->name(), QString("second.mp4"));
+    // the previous copy is left in place (only "Remove unused media" deletes)
+    QVERIFY(QFile::exists(storedFirst));
+    QCOMPARE(m_doc->assets()->unreferenced(), QStringList() << storedFirst);
+
+    // a missing file is refused and changes nothing
+    params.insert(QStringLiteral("source"), m_tmp->path() + "/nope.mp4");
+    params.insert(QStringLiteral("baseRevision"), int(m_doc->docRevision()));
+    reply = sendAndWaitForReply(QStringLiteral("functions.update"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(QFileInfo(video->sourceUrl()).fileName(), QString("second.mp4"));
+}
+
+void ApiFunctionsDomain_Test::getReturnsAudioVideoSourceDetail()
+{
+    helloAndGetClientId();
+    QString wav = writeMediaFile("song.wav", "audio bytes");
+
+    QJsonObject extra;
+    extra.insert(QStringLiteral("source"), wav);
+    QString fid = createFunctionViaApi(QStringLiteral("Audio"), extra);
+    Audio *audio = static_cast<Audio *>(m_doc->function(fid.toUInt()));
+
+    QJsonObject params;
+    params.insert(QStringLiteral("functionId"), fid);
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("functions.get"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QJsonObject result = reply.value(QStringLiteral("result")).toObject();
+    QCOMPARE(result.value(QStringLiteral("type")).toString(), QStringLiteral("Audio"));
+
+    QJsonObject typeDetail = result.value(QStringLiteral("typeDetail")).toObject();
+    QCOMPARE(typeDetail.value(QStringLiteral("functionId")).toString(), fid);
+    QCOMPARE(typeDetail.value(QStringLiteral("managed")).toBool(), true);
+    QCOMPARE(typeDetail.value(QStringLiteral("importPending")).toBool(), false);
+    // the managed path is reported relative to the workspace, as saved
+    QCOMPARE(typeDetail.value(QStringLiteral("source")).toString(),
+             m_doc->normalizeComponentPath(audio->getSourceFileName()));
+    QVERIFY(typeDetail.value(QStringLiteral("source")).toString().startsWith("show.qxw.assets/"));
+    QVERIFY(typeDetail.contains(QStringLiteral("docRevision")));
+
+    // an external reference comes back as the raw absolute path
+    Audio *external = new Audio(m_doc);
+    external->setSourceFileName(wav);
+    QVERIFY(m_doc->addFunction(external));
+    params.insert(QStringLiteral("functionId"), QString::number(external->id()));
+    reply = sendAndWaitForReply(QStringLiteral("functions.get"), params);
+    typeDetail = reply.value(QStringLiteral("result")).toObject().value(QStringLiteral("typeDetail")).toObject();
+    QCOMPARE(typeDetail.value(QStringLiteral("managed")).toBool(), false);
+    QCOMPARE(typeDetail.value(QStringLiteral("source")).toString(), wav);
 }
 
 void ApiFunctionsDomain_Test::sceneSetValuesReplacesValueList()

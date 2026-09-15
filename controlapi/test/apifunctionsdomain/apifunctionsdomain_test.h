@@ -20,6 +20,7 @@
 
 #include <QObject>
 #include <QJsonObject>
+#include <QTemporaryDir>
 
 class Doc;
 class Scene;
@@ -59,6 +60,12 @@ private slots:
     void moveChangesPath();
     void updateChangesGenericProperties();
 
+    void createAudioWithSourceImportsIntoStore();
+    void createVideoWithUrlSourceKeepsUrl();
+    void createWithMissingSourceIsInvalidParams();
+    void updateSourceReplacesMediaFile();
+    void getReturnsAudioVideoSourceDetail();
+
     void sceneSetValuesReplacesValueList();
     void sceneSetValueAndUnsetValueEmitSinglePatchOps();
     void sceneSetMembersReplacesFixtureList();
@@ -74,10 +81,14 @@ private:
      *  empty string on failure. */
     QString createFunctionViaApi(const QString &type, const QJsonObject &extraParams = QJsonObject());
 
+    /** Write @content into <m_tmp>/<name>, returns its absolute path */
+    QString writeMediaFile(const QString &name, const QByteArray &content);
+
 private:
     Doc *m_doc;
     Scene *m_scene;
     ApiServer *m_apiServer;
+    QTemporaryDir *m_tmp;
     QWebSocket *m_client;
 };
 
