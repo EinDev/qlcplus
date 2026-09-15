@@ -63,7 +63,7 @@ void ApiFunctionsDomain_Test::init()
     QVERIFY(m_doc->addFunction(m_scene));
 
     m_apiServer = new ApiServer(nullptr, m_doc);
-    QVERIFY(m_apiServer->listen(0));
+    QVERIFY(m_apiServer->listen(0, QHostAddress::LocalHost));
 
     m_client = new QWebSocket();
     m_client->open(QUrl(QStringLiteral("ws://127.0.0.1:%1/qlcplusapi").arg(m_apiServer->serverPort())));

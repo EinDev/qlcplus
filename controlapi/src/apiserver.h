@@ -19,6 +19,7 @@
 #define APISERVER_H
 
 #include <QHash>
+#include <QHostAddress>
 #include <QObject>
 
 #include "apidispatcher.h"
@@ -67,11 +68,20 @@ public:
     explicit ApiServer(QObject *parent, Doc *doc);
     ~ApiServer();
 
-    /** Start listening on the given port (all interfaces), or an OS-assigned
-     *  ephemeral port if port is 0 (used by controlapi/test/apiiodomain).
+    /** Start listening on the given port, or an OS-assigned ephemeral port if
+     *  port is 0 (the controlapi/test suites do this and read serverPort()).
+     *  address defaults to all interfaces, which is what production
+     *  (qmlui/main.cpp) wants; the test suites pass QHostAddress::LocalHost
+     *  so a loopback-only listener never trips the Windows Firewall
+     *  "allow this app" prompt on every freshly built test binary.
+     *  Note the parameter order deliberately differs from
+     *  QWebSocketServer::listen(address, port): QHostAddress is implicitly
+     *  constructible from an integer, so a port-second signature would let
+     *  a bare listen(0) silently compile as "bind 0.0.0.0 on the default port".
      *  Returns false on failure (e.g. port already in use) - check
      *  errorString() for why. */
-    bool listen(quint16 port = API_SERVER_DEFAULT_PORT);
+    bool listen(quint16 port = API_SERVER_DEFAULT_PORT,
+                const QHostAddress &address = QHostAddress::Any);
 
     QString errorString() const;
     quint16 serverPort() const;

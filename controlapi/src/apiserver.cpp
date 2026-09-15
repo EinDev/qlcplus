@@ -60,9 +60,9 @@ ApiServer::~ApiServer()
     m_webSocketServer->close();
 }
 
-bool ApiServer::listen(quint16 port)
+bool ApiServer::listen(quint16 port, const QHostAddress &address)
 {
-    return m_webSocketServer->listen(QHostAddress::Any, port);
+    return m_webSocketServer->listen(address, port);
 }
 
 QString ApiServer::errorString() const
