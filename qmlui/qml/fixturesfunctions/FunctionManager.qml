@@ -323,17 +323,55 @@ Rectangle
 
           ScrollBar.vertical: CustomScrollBar { id: fMgrScrollBar }
 
-              // "deselection" mouse area
-              MouseArea
+              // Empty area below the last row: a click deselects everything, a
+              // drop moves the dragged functions/folders to the top level (the
+              // root path). It only exists while the list is shorter than the
+              // view - when the list fills it, use the right panel's "Move to
+              // top level" button instead.
+              Item
               {
+                  id: rootDropZone
                   y: functionsListView.contentHeight
-                  height: Math.max(parent.height - functionsListView.contentHeight, 0)
-                  width: parent.width
+                  height: Math.max(functionsListView.height - functionsListView.contentHeight, 0)
+                  width: functionsListView.width
 
-                  onClicked:
+                  // hover highlight, same look as a row's containsDrag state
+                  Rectangle
                   {
-                      functionManager.selectFunctionID(-1, 0)
-                      functionManager.selectFolder("", 0)
+                      anchors.fill: parent
+                      radius: 3
+                      color: UISettings.highlight
+                      visible: rootDropArea.containsDrag
+                  }
+
+                  // "deselection" mouse area
+                  MouseArea
+                  {
+                      anchors.fill: parent
+
+                      onClicked:
+                      {
+                          functionManager.selectFunctionID(-1, 0)
+                          functionManager.selectFolder("", 0)
+                      }
+                  }
+
+                  DropArea
+                  {
+                      id: rootDropArea
+                      anchors.fill: parent
+                      keys: [ "function" ]
+
+                      onDropped: (drop) =>
+                      {
+                          // only this list's own gesture: a "function" drag from
+                          // elsewhere must not move the current selection around
+                          if (drop.source !== fDragItem)
+                              return
+
+                          console.log("Items dropped on the root area")
+                          functionManager.moveFunctions("")
+                      }
                   }
               }
 

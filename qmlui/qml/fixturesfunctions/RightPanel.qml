@@ -448,6 +448,21 @@ SidePanel
             }
             IconButton
             {
+                id: moveToTopLevel
+                z: 2
+                width: iconSize
+                height: iconSize
+                faSource: FontAwesome.fa_turn_up
+                faColor: UISettings.fgMain
+                tooltip: qsTr("Move the selected items to the top level")
+                counter: selectedItemsCount && !functionManager.isEditing
+                // same path as dropping onto a row, with the root as the
+                // target: functions get an empty path, folders keep only
+                // their last segment (their contents follow)
+                onClicked: functionManager.moveFunctions("")
+            }
+            IconButton
+            {
                 id: cloneFunction
                 z: 2
                 width: iconSize

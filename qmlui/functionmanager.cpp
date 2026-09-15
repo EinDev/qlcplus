@@ -944,6 +944,11 @@ void FunctionManager::moveFunction(quint32 fID, QString newPath)
     newPathSlashed.replace(TreeModel::separator(), "/");
 
     QString fPath = f->path(true);
+    // already there (e.g. "move to top level" on a root function): nothing
+    // to rebuild and no no-op undo step to record
+    if (fPath == newPathSlashed)
+        return;
+
     if (fPath.isEmpty())
     {
         m_functionTree->removeItem(f->name());
