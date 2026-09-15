@@ -27,6 +27,7 @@
 #include "scene.h"
 #include "chaser.h"
 #include "chaserstep.h"
+#include "audio.h"
 #include "fixture.h"
 #include "doc.h"
 #include "inputoutputmap.h"
@@ -147,6 +148,18 @@ struct LiveShow
         timer()->requestBeat();
         runner.write(timer());
         timer()->m_beatRequested = false;
+    }
+
+    /** Frozen (scrub mode) runner: $n ticks of runner + MasterTimer. The
+     *  playhead does not move while frozen, so advanceTo() would never
+     *  return here. */
+    void frozenTicks(ShowRunner &runner, int n)
+    {
+        for (int i = 0; i < n; i++)
+        {
+            runner.write(timer());
+            timer()->timerTick();
+        }
     }
 };
 
@@ -965,6 +978,282 @@ void ShowRunner_Test::showTempoSwitchWhilePlaying()
     runner.write(ls.timer());
     QVERIFY(queueHas(runner, ls.sf->id()) == false);
     QVERIFY(queueHas(runner, ls.fillerSf->id()) == true);
+}
+
+/****************************************************************************
+ * Scrub preview: the runner frozen at the playhead, moved by seeks
+ ****************************************************************************/
+
+void ShowRunner_Test::scrubStartsAndFreezes()
+{
+    // Runner started frozen at 12s over a 0-20s Scene clip: the clip is
+    // started at its offset with no fade-in, held paused two ticks later,
+    // and the playhead never moves on its own.
+    LiveShow ls(this, 0, 20000, 60000);
+    ls.show->setScrubMode(true);
+    QVERIFY(ls.show->isScrubMode() == true);
+
+    ShowRunner runner(ls.doc, ls.show->id(), 12000);
+    QSignalSpy timeSpy(&runner, SIGNAL(timeChanged(quint32)));
+
+    runner.write(ls.timer());
+    QVERIFY(runner.m_frozen == true);
+    QVERIFY(queueHas(runner, ls.sf->id()) == true);
+    QVERIFY(queueHas(runner, ls.fillerSf->id()) == true);
+    QCOMPARE(ls.scene->elapsed(), quint32(12000));
+    QCOMPARE(ls.scene->overrideFadeInSpeed(), uint(0));
+    QCOMPARE(runner.m_elapsedTime, quint32(12000));
+    ls.timer()->timerTick();                // preRun + first write
+    QVERIFY(ls.scene->isRunning() == true);
+    QVERIFY(ls.scene->isPaused() == false);
+
+    // one more tick to let the faders land, then it is held
+    runner.write(ls.timer());
+    ls.timer()->timerTick();
+    QVERIFY(ls.scene->isPaused() == false);
+    runner.write(ls.timer());
+    ls.timer()->timerTick();
+    QVERIFY(ls.scene->isPaused() == true);
+    QVERIFY(ls.fillerScene->isPaused() == true);
+
+    ls.frozenTicks(runner, 10);
+    QVERIFY(ls.scene->isRunning() == true);
+    QVERIFY(ls.scene->isPaused() == true);
+    QCOMPARE(runner.m_elapsedTime, quint32(12000));
+    QCOMPARE(timeSpy.count(), 0);
+}
+
+void ShowRunner_Test::scrubSeekStopsAndStarts()
+{
+    // Clip A 0-10s, clip B 12-20s, filler 0-60s. Frozen at 5s then seeked
+    // to 15s: A stops, B starts at offset 3s (no fade-in) and is held, the
+    // filler spanning both positions keeps holding.
+    LiveShow ls(this, 0, 10000, 60000);
+    Scene *later = ls.makeScene("later");
+    ShowFunction *sfLater = ls.track->createShowFunction(later->id());
+    sfLater->setStartTime(12000);
+    sfLater->setDuration(8000);
+    ls.commitEdit();
+
+    ls.show->setScrubMode(true);
+    ShowRunner runner(ls.doc, ls.show->id(), 5000);
+    ls.frozenTicks(runner, 3);
+    QVERIFY(queueHas(runner, ls.sf->id()) == true);
+    QVERIFY(ls.scene->isPaused() == true);
+    QVERIFY(queueHas(runner, sfLater->id()) == false);
+
+    ls.show->requestSeek(15000);
+    runner.write(ls.timer());
+    QCOMPARE(runner.m_elapsedTime, quint32(15000));
+    QVERIFY(queueHas(runner, ls.sf->id()) == false);
+    QVERIFY(ls.scene->stopped() == true);
+    QVERIFY(queueHas(runner, sfLater->id()) == true);
+    QCOMPARE(later->elapsed(), quint32(3000));
+    QCOMPARE(later->overrideFadeInSpeed(), uint(0));
+    QVERIFY(queueHas(runner, ls.fillerSf->id()) == true);
+    QVERIFY(ls.fillerScene->isPaused() == true);
+    ls.timer()->timerTick();
+    QVERIFY(ls.scene->isRunning() == false);
+    QVERIFY(later->isRunning() == true);
+
+    // the request was consumed: nothing replays it, and B is held in turn
+    ls.frozenTicks(runner, 2);
+    QVERIFY(later->isPaused() == true);
+    QCOMPARE(runner.m_elapsedTime, quint32(15000));
+    QVERIFY(queueHas(runner, ls.sf->id()) == false);
+}
+
+void ShowRunner_Test::scrubSeekRestartsChaserAtOffset()
+{
+    // A Chaser plays from the offset it is started with, so a seek restarts
+    // it at the new one (still without fade-in) instead of holding it.
+    LiveShow ls(this, 0, 20000, 60000);
+    Scene *step = ls.makeScene("step");
+    Chaser *chaser = new Chaser(ls.doc);
+    chaser->setDuration(20000);
+    chaser->addStep(ChaserStep(step->id()));
+    ls.doc->addFunction(chaser);
+    ls.sf->setFunctionID(chaser->id());
+    ls.commitEdit();
+
+    ls.show->setScrubMode(true);
+    ShowRunner runner(ls.doc, ls.show->id(), 5000);
+    runner.write(ls.timer());
+    QVERIFY(queueHas(runner, ls.sf->id()) == true);
+    QCOMPARE(chaser->elapsed(), quint32(5000));
+    QCOMPARE(chaser->overrideFadeInSpeed(), uint(0));
+    ls.timer()->timerTick();
+    QVERIFY(chaser->isRunning() == true);
+    ls.frozenTicks(runner, 2);
+    QVERIFY(chaser->isPaused() == true);
+
+    ls.show->requestSeek(8000);
+    runner.write(ls.timer());
+    // stopped this tick; the restart waits for the MasterTimer to complete
+    // the stop (postRun would otherwise wipe the new offset)
+    QVERIFY(queueHas(runner, ls.sf->id()) == false);
+    QVERIFY(chaser->stopped() == true);
+    QVERIFY(runner.m_startPassPending == true);
+    ls.timer()->timerTick();
+    QVERIFY(chaser->isRunning() == false);
+
+    runner.write(ls.timer());
+    QVERIFY(queueHas(runner, ls.sf->id()) == true);
+    QCOMPARE(chaser->elapsed(), quint32(8000));
+    QCOMPARE(chaser->overrideFadeInSpeed(), uint(0));
+    QCOMPARE(runner.m_elapsedTime, quint32(8000));
+    ls.timer()->timerTick();
+    QVERIFY(chaser->isRunning() == true);
+    ls.frozenTicks(runner, 2);
+    QVERIFY(chaser->isPaused() == true);
+}
+
+void ShowRunner_Test::scrubSkipsAudioUntilUnfreeze()
+{
+    // Scrubbing is silent: an Audio clip under the playhead is neither
+    // started nor queued while frozen (a seek does not start it either),
+    // and unfreezing starts it at the playhead's offset with its own fade.
+    LiveShow ls(this, 0, 20000, 60000);
+    Audio *audio = new Audio(ls.doc);   // no source: preRun's decoder guard
+    audio->setName("audio");
+    ls.doc->addFunction(audio);
+    ls.sf->setFunctionID(audio->id());
+    ls.commitEdit();
+
+    ls.show->setScrubMode(true);
+    ShowRunner runner(ls.doc, ls.show->id(), 5000);
+    ls.frozenTicks(runner, 3);
+    QVERIFY(queueHas(runner, ls.sf->id()) == false);
+    QVERIFY(audio->isRunning() == false);
+    QVERIFY(queueHas(runner, ls.fillerSf->id()) == true);
+
+    ls.show->requestSeek(7000);
+    ls.frozenTicks(runner, 3);
+    QVERIFY(queueHas(runner, ls.sf->id()) == false);
+    QVERIFY(audio->isRunning() == false);
+
+    ls.show->setScrubMode(false);
+    runner.write(ls.timer());
+    QVERIFY(queueHas(runner, ls.sf->id()) == true);
+    QCOMPARE(audio->elapsed(), quint32(7000));
+    QCOMPARE(audio->overrideFadeInSpeed(), Function::defaultSpeed());
+    ls.timer()->timerTick();
+    QVERIFY(audio->isRunning() == true);
+    QVERIFY(audio->isPaused() == false);
+}
+
+void ShowRunner_Test::scrubPastEndNoShowFinished()
+{
+    // A cursor past the last clip shows "nothing": every clip stops, but
+    // the Show does not end - and a seek back under a clip starts it again.
+    LiveShow ls(this, 0, 10000);
+    ls.show->setScrubMode(true);
+    ShowRunner runner(ls.doc, ls.show->id(), 5000);
+    QSignalSpy finished(&runner, SIGNAL(showFinished()));
+    ls.frozenTicks(runner, 3);
+    QVERIFY(ls.scene->isPaused() == true);
+
+    ls.show->requestSeek(15000);
+    ls.frozenTicks(runner, 5);
+    QCOMPARE(runner.m_elapsedTime, quint32(15000));
+    QCOMPARE(runner.m_runningQueue.count(), 0);
+    QVERIFY(ls.scene->isRunning() == false);
+    QCOMPARE(finished.count(), 0);
+
+    ls.show->requestSeek(2000);
+    runner.write(ls.timer());
+    QVERIFY(queueHas(runner, ls.sf->id()) == true);
+    QCOMPARE(ls.scene->elapsed(), quint32(2000));
+    QCOMPARE(finished.count(), 0);
+    ls.timer()->timerTick();
+    QVERIFY(ls.scene->isRunning() == true);
+}
+
+void ShowRunner_Test::scrubHonoursMute()
+{
+    // Timeline edits still apply while frozen: muting the track stops its
+    // held clip at once, unmuting starts it again at the offset and holds it.
+    LiveShow ls(this, 0, 20000, 60000);
+    ls.show->setScrubMode(true);
+    ShowRunner runner(ls.doc, ls.show->id(), 5000);
+    ls.frozenTicks(runner, 3);
+    QVERIFY(ls.scene->isPaused() == true);
+
+    ls.track->setMute(true);
+    ls.commitEdit();
+    runner.write(ls.timer());
+    QVERIFY(queueHas(runner, ls.sf->id()) == false);
+    QVERIFY(ls.scene->stopped() == true);
+    ls.timer()->timerTick();
+    QVERIFY(ls.scene->isRunning() == false);
+    QVERIFY(queueHas(runner, ls.fillerSf->id()) == true);
+    QCOMPARE(runner.m_elapsedTime, quint32(5000));
+
+    ls.track->setMute(false);
+    ls.commitEdit();
+    runner.write(ls.timer());
+    QVERIFY(queueHas(runner, ls.sf->id()) == true);
+    QCOMPARE(ls.scene->elapsed(), quint32(5000));
+    QCOMPARE(ls.scene->overrideFadeInSpeed(), uint(0));
+    ls.timer()->timerTick();
+    QVERIFY(ls.scene->isRunning() == true);
+    ls.frozenTicks(runner, 2);
+    QVERIFY(ls.scene->isPaused() == true);
+}
+
+void ShowRunner_Test::unfreezeResumesAndResetsFadeIn()
+{
+    // Leaving scrub mode un-pauses the held clips, gives them back their
+    // own fade-in (a Chaser reads the override on every step) and moves
+    // the playhead on from where the scrub left it - seamlessly.
+    LiveShow ls(this, 0, 20000, 60000);
+    ls.show->setScrubMode(true);
+    ShowRunner runner(ls.doc, ls.show->id(), 5000);
+    QSignalSpy timeSpy(&runner, SIGNAL(timeChanged(quint32)));
+    ls.frozenTicks(runner, 3);
+    QVERIFY(ls.scene->isPaused() == true);
+    QCOMPARE(ls.scene->overrideFadeInSpeed(), uint(0));
+    QCOMPARE(timeSpy.count(), 0);
+
+    ls.show->setScrubMode(false);
+    runner.write(ls.timer());
+    QVERIFY(runner.m_frozen == false);
+    QVERIFY(ls.scene->isPaused() == false);
+    QVERIFY(ls.fillerScene->isPaused() == false);
+    QCOMPARE(ls.scene->overrideFadeInSpeed(), Function::defaultSpeed());
+    QCOMPARE(runner.m_elapsedTime, quint32(5000 + MasterTimer::tick()));
+    QCOMPARE(timeSpy.count(), 1);
+    ls.timer()->timerTick();
+    QVERIFY(ls.scene->isRunning() == true);
+
+    // and playback goes on: the clip still ends at its end
+    ls.advanceTo(runner, 20000);
+    QVERIFY(queueHas(runner, ls.sf->id()) == true);
+    runner.write(ls.timer());
+    QVERIFY(queueHas(runner, ls.sf->id()) == false);
+    QVERIFY(queueHas(runner, ls.fillerSf->id()) == true);
+}
+
+void ShowRunner_Test::showStopClearsScrubMode()
+{
+    // Scrub mode belongs to the run that asked for it: once the Show has
+    // stopped, a later start (from the Virtual Console, say) must play.
+    LiveShow ls(this, 0, 20000, 60000);
+    FunctionParent parent = FunctionParent::master(FunctionParent::ShowManagerPlayback);
+
+    ls.show->setScrubMode(true);
+    ls.show->requestSeek(3000);
+    ls.show->start(ls.timer(), parent, 5000);
+    ls.timer()->timerTick();                // preRun creates the runner
+    QVERIFY(ls.show->isRunning() == true);
+    QVERIFY(ls.show->isScrubMode() == true);
+
+    ls.show->stop(parent);
+    ls.timer()->timerTick();                // postRun
+    QVERIFY(ls.show->isRunning() == false);
+    QVERIFY(ls.show->isScrubMode() == false);
+    quint32 ms = 0;
+    QVERIFY(ls.show->takeSeekRequest(ms) == false);
 }
 
 // Guiless rather than appless: Chaser::createRunner() moves its runner to

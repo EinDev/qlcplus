@@ -62,6 +62,16 @@ private slots:
     void beatsShowStartedMidTimeline();
     void showTempoSwitchWhilePlaying();
 
+    /* Scrub preview: the runner frozen at the playhead, moved by seeks */
+    void scrubStartsAndFreezes();
+    void scrubSeekStopsAndStarts();
+    void scrubSeekRestartsChaserAtOffset();
+    void scrubSkipsAudioUntilUnfreeze();
+    void scrubPastEndNoShowFinished();
+    void scrubHonoursMute();
+    void unfreezeResumesAndResetsFadeIn();
+    void showStopClearsScrubMode();
+
 private:
     Doc *m_doc;
     Show *m_show;
