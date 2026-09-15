@@ -61,6 +61,7 @@ set(SRC_FILES
     scripteditor.cpp scripteditor.h
     shortcutmanager.cpp shortcutmanager.h
     showmanager.cpp showmanager.h
+    showmovehelper.cpp showmovehelper.h
     simpledesk.cpp simpledesk.h
     slowclickapplication.cpp slowclickapplication.h
     tardis/networkmanager.cpp tardis/networkmanager.h
