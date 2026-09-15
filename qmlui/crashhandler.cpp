@@ -135,7 +135,9 @@ DWORD WINAPI reportThreadProc(LPVOID param)
     Diagnostics::writeReportLine(hFile, QStringLiteral("Crash type:       %1").arg(job->kind));
     for (const QString &line : job->details)
         Diagnostics::writeReportLine(hFile, line);
-    Diagnostics::appendProcessSnapshot(hFile);
+    const QStringList snapshot = Diagnostics::processSnapshotLines();
+    for (const QString &line : snapshot)
+        Diagnostics::writeReportLine(hFile, line);
     Diagnostics::writeReportLine(hFile, QString());
     Diagnostics::appendGdbAllThreadsBacktrace(hFile);
     Diagnostics::closeReportFile(hFile);
@@ -164,6 +166,8 @@ DWORD WINAPI reportThreadProc(LPVOID param)
 
     QString content = QStringLiteral("Crash type: %1\n").arg(job->kind);
     for (const QString &line : job->details)
+        content += line + QLatin1Char('\n');
+    for (const QString &line : snapshot)
         content += line + QLatin1Char('\n');
     content += QStringLiteral("\nA full report (every thread) was saved to:\n%1\n\n"
                               "The process will exit when this dialog is closed.")

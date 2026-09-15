@@ -165,7 +165,9 @@ void FreezeWatchdog::onFreezeDetected(qint64 heartbeatAgeMs)
     Diagnostics::writeReportLine(hFile, QStringLiteral("Heartbeat gap:    %1 ms (threshold %2 ms)").arg(heartbeatAgeMs).arg(kFreezeThresholdMs));
     Diagnostics::writeReportLine(hFile, QStringLiteral("Open project:     %1").arg(Diagnostics::currentProjectPath()));
     Diagnostics::writeReportLine(hFile, QStringLiteral("PID:              %1").arg(QCoreApplication::applicationPid()));
-    Diagnostics::appendProcessSnapshot(hFile);
+    const QStringList snapshot = Diagnostics::processSnapshotLines();
+    for (const QString &line : snapshot)
+        Diagnostics::writeReportLine(hFile, line);
     Diagnostics::writeReportLine(hFile, QString());
     Diagnostics::appendGdbAllThreadsBacktrace(hFile);
     Diagnostics::closeReportFile(hFile);
@@ -202,6 +204,8 @@ void FreezeWatchdog::onFreezeDetected(qint64 heartbeatAgeMs)
         "A full diagnostic report (every thread) was saved to:\n%2")
         .arg(heartbeatAgeMs / 1000)
         .arg(filePath);
+    if (!snapshot.isEmpty())
+        content += QStringLiteral("\n\n") + snapshot.join(QLatin1Char('\n'));
     if (usedFullDumpFallback)
         content += QStringLiteral("\n\n(Could not isolate the frozen thread's own section below - showing the start of the full multi-thread dump instead.)");
 

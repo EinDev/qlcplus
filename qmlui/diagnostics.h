@@ -21,6 +21,7 @@
 #define DIAGNOSTICS_H
 
 #include <QString>
+#include <QStringList>
 #include <QtGlobal>
 
 /**
@@ -70,14 +71,15 @@ namespace Diagnostics
     /** Closes a handle from createReportFile(). */
     void closeReportFile(void *hFile);
 
-    /** Appends a few lines describing the process' resource state right now:
-     *  private bytes / working set (current and peak), handle and thread
+    /** A few "Key: value" lines describing the process' resource state right
+     *  now: private bytes / working set (current and peak), handle and thread
      *  counts, and the system-wide commit charge against its limit. Cheap
      *  Win32 queries only, safe from the crash reporter's helper thread.
-     *  A std::bad_alloc crash is only diagnosable with these: the 2026-09-15
+     *  Written into the report file header and shown in the dialog. A
+     *  std::bad_alloc crash is only diagnosable with these: the 2026-09-15
      *  Spout crash reports had no way of telling "this process ballooned"
      *  from "something else exhausted the machine". */
-    void appendProcessSnapshot(void *hFile);
+    QStringList processSnapshotLines();
 
     /** Runs `gdb -p <own pid> -batch -ex "info sharedlibrary" -ex "thread
      *  apply all bt"` with its stdout/stderr redirected into $hFile, waiting

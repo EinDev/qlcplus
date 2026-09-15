@@ -184,9 +184,9 @@ void Diagnostics::appendGdbAllThreadsBacktrace(void *hFileRaw)
     }
 }
 
-void Diagnostics::appendProcessSnapshot(void *hFileRaw)
+QStringList Diagnostics::processSnapshotLines()
 {
-    HANDLE hFile = static_cast<HANDLE>(hFileRaw);
+    QStringList lines;
     const auto mb = [](quint64 bytes) { return QString::number(bytes / (1024 * 1024)); };
 
     PROCESS_MEMORY_COUNTERS_EX pmc;
@@ -194,8 +194,8 @@ void Diagnostics::appendProcessSnapshot(void *hFileRaw)
     pmc.cb = sizeof(pmc);
     if (GetProcessMemoryInfo(GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS *>(&pmc), sizeof(pmc)))
     {
-        writeReportLine(hFile, QStringLiteral("Process memory:   private %1 MB, working set %2 MB (peak %3 MB)")
-                                   .arg(mb(pmc.PrivateUsage), mb(pmc.WorkingSetSize), mb(pmc.PeakWorkingSetSize)));
+        lines << QStringLiteral("Process memory:   private %1 MB, working set %2 MB (peak %3 MB)")
+                     .arg(mb(pmc.PrivateUsage), mb(pmc.WorkingSetSize), mb(pmc.PeakWorkingSetSize));
     }
 
     DWORD handles = 0;
@@ -220,7 +220,7 @@ void Diagnostics::appendProcessSnapshot(void *hFileRaw)
         }
         CloseHandle(snapshot);
     }
-    writeReportLine(hFile, QStringLiteral("Handles/threads:  %1 handles, %2 threads").arg(handles).arg(threads));
+    lines << QStringLiteral("Handles/threads:  %1 handles, %2 threads").arg(handles).arg(threads);
 
     // Commit charge is what a std::bad_alloc actually ran into: a 64-bit
     // process never exhausts its address space, only RAM + page file.
@@ -229,11 +229,13 @@ void Diagnostics::appendProcessSnapshot(void *hFileRaw)
     status.dwLength = sizeof(status);
     if (GlobalMemoryStatusEx(&status))
     {
-        writeReportLine(hFile, QStringLiteral("System memory:    commit %1 / %2 MB used, physical %3 / %4 MB free, load %5%")
-                                   .arg(mb(status.ullTotalPageFile - status.ullAvailPageFile), mb(status.ullTotalPageFile),
-                                        mb(status.ullAvailPhys), mb(status.ullTotalPhys))
-                                   .arg(status.dwMemoryLoad));
+        lines << QStringLiteral("System memory:    commit %1 / %2 MB used, physical %3 / %4 MB free, load %5%")
+                     .arg(mb(status.ullTotalPageFile - status.ullAvailPageFile), mb(status.ullTotalPageFile),
+                          mb(status.ullAvailPhys), mb(status.ullTotalPhys))
+                     .arg(status.dwMemoryLoad);
     }
+
+    return lines;
 }
 
 QString Diagnostics::extractThreadSection(const QString &fullText, qint64 pid, unsigned long tid)
