@@ -495,15 +495,28 @@ void ShowManager::deleteTrack(int trackId)
         Tardis::instance()->actionToByteArray(Tardis::ShowManagerDeleteTrack, m_currentShow->id(), track->id()),
         QVariant());
 
+    int clipboardCount = m_clipboard.count();
+
     QList <ShowFunction *> sfList = track->showFunctions();
     for (ShowFunction *sf : sfList)
     {
+        // the clipboard must not keep a pointer to an item that goes away
+        // with its track (same purge as deleteShowItems())
+        for (int i = m_clipboard.count() - 1; i >= 0; i--)
+        {
+            if (m_clipboard.at(i).m_showFunc == sf)
+                m_clipboard.removeAt(i);
+        }
+
         QQuickItem *item = m_itemsMap.take(sf->id());
         delete item;
     }
 
     m_currentShow->removeTrack(trackId);
     m_doc->setModified();
+
+    if (m_clipboard.count() != clipboardCount)
+        emit clipboardItemsCountChanged(m_clipboard.count());
 
     if (m_selectedTrackId == trackId)
     {

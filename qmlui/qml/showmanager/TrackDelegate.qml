@@ -175,7 +175,16 @@ Rectangle
         faSource: FontAwesome.fa_trash_can
         faColor: "crimson"
         tooltip: qsTr("Delete track")
-        onClicked: if (trackRef) showManager.requestTrackDeletion(trackRef.id)
+        onClicked:
+        {
+            if (!trackRef)
+                return
+            // this button sits above the header's MouseArea, so select the
+            // track here as a click on the header would
+            showManager.selectedTrackId = trackRef.id
+            trackRoot.trackSelected()
+            showManager.requestTrackDeletion(trackRef.id)
+        }
     }
 
     IconButton
