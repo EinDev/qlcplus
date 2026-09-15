@@ -248,13 +248,97 @@ Rectangle
                 player.stop()
             }
 
+            // A MediaPlayer paused before it has presented a frame shows
+            // nothing, and a seek while paused presents nothing either (the
+            // window stays black - verified with the Show Manager's scrub
+            // preview, which pauses a clip ~40ms after starting it). So a
+            // pause is deferred until a frame at the wanted position has
+            // really been presented: the player keeps playing and pauses on
+            // the first frame whose own timestamp (VideoFrameProbe below)
+            // is at the seek target. The player's position is no substitute:
+            // the ffmpeg backend reports the target at once while it keeps
+            // presenting the frames decoded before the seek for a while.
+            property bool holdRequested: false   // the engine wants it paused
+            property bool holdArmed: false       // waiting for a frame at holdTarget
+            property bool holdPending: false     // target frame seen: pause on the next one
+            property int holdTarget: -1          // position that frame must be at, or -1 for any
+            property int holdFrames: 0           // frames presented since armHold()
+
+            function armHold(target)
+            {
+                holdTarget = target
+                holdArmed = true
+                holdPending = false
+                holdFrames = 0
+                holdSettle.stop()
+                if (player.playbackState !== MediaPlayer.PlayingState)
+                    player.play()
+            }
+
+            function holdNow()
+            {
+                holdArmed = false
+                holdPending = false
+                holdSettle.stop()
+                player.pause()
+            }
+
+            function onFramePresented(frameMs)
+            {
+                if (!holdRequested)
+                    return
+                if (holdPending)
+                {
+                    holdNow()
+                    return
+                }
+                if (!holdArmed)
+                    return
+                holdFrames++
+                if (holdTarget >= 0)
+                {
+                    if (frameMs >= 0)
+                    {
+                        // a frame from before the seek, or one presented
+                        // while the seek target was still being reached
+                        if (frameMs < holdTarget - 100 || frameMs > holdTarget + 1000)
+                            return
+                    }
+                    else if (holdFrames < 2 || Math.abs(player.position - holdTarget) > 500)
+                    {
+                        // no timestamps: the best the position can tell
+                        return
+                    }
+                }
+                // Pausing inside this frame's own delivery makes the backend
+                // re-present the frame before it (the pre-seek one after a
+                // backward seek): pause on the next delivery instead, or
+                // after a moment if none comes (end of media, still image).
+                holdArmed = false
+                holdPending = true
+                holdSettle.restart()
+            }
+
+            Timer
+            {
+                id: holdSettle
+                interval: 250
+                repeat: false
+                onTriggered: if (mediaRect.holdPending) mediaRect.holdNow()
+            }
+
             function pausePlayback()
             {
-                player.pause()
+                holdRequested = true
+                armHold(-1)
             }
 
             function resumePlayback()
             {
+                holdRequested = false
+                holdArmed = false
+                holdPending = false
+                holdSettle.stop()
                 player.play()
             }
 
@@ -264,9 +348,24 @@ Rectangle
                 // onMediaStatusChanged, like the initial start time
                 if (player.mediaStatus === MediaPlayer.NoMedia ||
                     player.mediaStatus === MediaPlayer.LoadingMedia)
+                {
                     mediaRect.startTime = ms
-                else
-                    player.position = ms
+                    return
+                }
+
+                player.position = ms
+                if (holdRequested)
+                {
+                    // After a backward seek the VideoOutput keeps showing
+                    // the frame from before it even though the new frames
+                    // reach its sink (verified with VideoFrameProbe);
+                    // re-binding the output before playing on makes it
+                    // present them again - within a second or two, not at
+                    // once, on the ffmpeg backend of Qt 6.11.
+                    player.videoOutput = null
+                    player.videoOutput = pVideoOutput
+                    armHold(ms)
+                }
             }
 
             NumberAnimation on fadeMultiplier
@@ -345,6 +444,8 @@ Rectangle
                         (mediaStatus == MediaPlayer.LoadedMedia || mediaStatus == MediaPlayer.BufferedMedia))
                     {
                         player.position = mediaRect.startTime
+                        if (mediaRect.holdRequested)
+                            mediaRect.armHold(mediaRect.startTime)
                         mediaRect.startTime = 0
                     }
 
@@ -366,6 +467,12 @@ Rectangle
             {
                 id: pVideoOutput
                 anchors.fill: parent
+            }
+
+            VideoFrameProbe
+            {
+                sink: pVideoOutput.videoSink
+                onFramePresented: (startTimeMs) => mediaRect.onFramePresented(startTimeMs)
             }
         }
     }

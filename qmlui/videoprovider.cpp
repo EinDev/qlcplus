@@ -23,6 +23,7 @@
 #include <QScreen>
 
 #include "videoprovider.h"
+#include "videoframeprobe.h"
 #include "doc.h"
 
 #if defined(Q_OS_WIN) && defined(QLC_SPOUT)
@@ -52,6 +53,7 @@ VideoProvider::VideoProvider(QQuickView *view, Doc *doc, QObject *parent)
     Q_ASSERT(doc != nullptr);
 
     qmlRegisterUncreatableType<Video>("org.qlcplus.classes", 1, 0, "VideoFunction", "Can't create a Video!");
+    qmlRegisterType<VideoFrameProbe>("org.qlcplus.classes", 1, 0, "VideoFrameProbe");
 
     for (Function *f : m_doc->functionsByType(Function::VideoType))
         slotFunctionAdded(f->id());

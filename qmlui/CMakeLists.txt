@@ -72,6 +72,7 @@ set(SRC_FILES
     uimanager.cpp uimanager.h
     videoeditor.cpp videoeditor.h
     videoprovider.cpp videoprovider.h
+    videoframeprobe.cpp videoframeprobe.h
     waveformimageprovider.cpp waveformimageprovider.h
     virtualconsole/vcanimation.cpp virtualconsole/vcanimation.h
     virtualconsole/vcanimationpreset.cpp virtualconsole/vcanimationpreset.h

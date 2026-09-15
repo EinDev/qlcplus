@@ -30,6 +30,7 @@
 #include <QString>
 #include <QVariantAnimation>
 #include <QMediaPlayer>
+#include <QTimer>
 
 class QAudioOutput;
 class QVideoSink;
@@ -113,6 +114,10 @@ signals:
     void finished();
 
 private slots:
+    /** Pause now that a frame at the hold target has been delivered and
+     *  the one after it (or a moment) has passed - see armHold() */
+    void holdNow();
+
     void slotFrameChanged(const QVideoFrame &frame);
     void slotMediaStatusChanged(QMediaPlayer::MediaStatus status);
     void slotPlayerError(QMediaPlayer::Error error, const QString &errorString);
@@ -127,6 +132,10 @@ private:
     QSize canvasSize(const QSize &frameSize) const;
     qreal effectiveIntensity() const;
     void applyVolume();
+
+    /** Play until a frame near $target (any frame if < 0) is delivered,
+     *  then pause - see pause() */
+    void armHold(qint64 target);
     void finish(bool emitFinished);
 
     /** The Video function being played (lives on the GUI thread) */
@@ -160,6 +169,16 @@ private:
     qint64 m_startPosition;
     /** Frames sent in this run (the first one is logged) */
     quint64 m_framesSent;
+    /** Deferred pause, see pause(): the engine wants the player paused */
+    bool m_holdRequested;
+    /** Pause on the next frame delivered (near m_holdTarget if >= 0) */
+    bool m_holdArmed;
+    qint64 m_holdTarget;
+    /** Frames delivered since armHold() */
+    int m_holdFrames;
+    /** Target frame seen: pause on the next delivery (or when m_holdSettle fires) */
+    bool m_holdPending;
+    QTimer m_holdSettle;
     bool m_active;
     bool m_stopRequested;
     QVariantAnimation m_fadeAnim;

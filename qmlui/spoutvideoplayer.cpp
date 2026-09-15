@@ -50,6 +50,11 @@ SpoutVideoPlayer::SpoutVideoPlayer(Video *video, VideoProvider *provider, const 
     , m_fadeOutMs(0)
     , m_startPosition(0)
     , m_framesSent(0)
+    , m_holdRequested(false)
+    , m_holdArmed(false)
+    , m_holdTarget(-1)
+    , m_holdFrames(0)
+    , m_holdPending(false)
     , m_active(false)
     , m_stopRequested(false)
 {
@@ -65,6 +70,10 @@ SpoutVideoPlayer::SpoutVideoPlayer(Video *video, VideoProvider *provider, const 
             this, &SpoutVideoPlayer::slotMediaStatusChanged);
     connect(m_player, &QMediaPlayer::errorOccurred,
             this, &SpoutVideoPlayer::slotPlayerError);
+
+    m_holdSettle.setSingleShot(true);
+    m_holdSettle.setInterval(250);
+    connect(&m_holdSettle, &QTimer::timeout, this, &SpoutVideoPlayer::holdNow);
 
     // Intensity (incl. Show track overrides) and Volume, as combined by the
     // engine. Emitted from the MasterTimer thread, queued to us.
@@ -158,15 +167,49 @@ void SpoutVideoPlayer::start(int fadeInMs, int fadeOutMs, qint64 startPositionMs
     }
 }
 
+// A QMediaPlayer paused before it has delivered a frame delivers none,
+// and a seek while paused delivers none either (verified with the Show
+// Manager's scrub preview, which pauses a clip ~40ms after starting it).
+// So a pause is deferred until a frame at the wanted position has been
+// delivered: the player keeps playing for a frame or two and is paused
+// from slotFrameChanged() on the first one after the seek/start.
+void SpoutVideoPlayer::armHold(qint64 target)
+{
+    m_holdTarget = target;
+    m_holdArmed = true;
+    m_holdPending = false;
+    m_holdFrames = 0;
+    m_holdSettle.stop();
+    if (m_player->playbackState() != QMediaPlayer::PlayingState)
+        m_player->play();
+}
+
+void SpoutVideoPlayer::holdNow()
+{
+    m_holdArmed = false;
+    m_holdPending = false;
+    m_holdSettle.stop();
+    if (m_holdRequested)
+        m_player->pause();
+}
+
 void SpoutVideoPlayer::pause(bool enable)
 {
     if (m_active == false || m_video->isPicture())
         return;
 
+    m_holdRequested = enable;
     if (enable)
-        m_player->pause();
+    {
+        armHold(-1);
+    }
     else
+    {
+        m_holdArmed = false;
+        m_holdPending = false;
+        m_holdSettle.stop();
         m_player->play();
+    }
 }
 
 void SpoutVideoPlayer::seek(qint64 positionMs)
@@ -176,9 +219,14 @@ void SpoutVideoPlayer::seek(qint64 positionMs)
 
     QMediaPlayer::MediaStatus status = m_player->mediaStatus();
     if (status == QMediaPlayer::NoMedia || status == QMediaPlayer::LoadingMedia)
+    {
         m_startPosition = positionMs;   // slotMediaStatusChanged applies it
-    else
-        m_player->setPosition(positionMs);
+        return;
+    }
+
+    m_player->setPosition(positionMs);
+    if (m_holdRequested)
+        armHold(positionMs);
 }
 
 void SpoutVideoPlayer::stop()
@@ -226,6 +274,43 @@ void SpoutVideoPlayer::slotFrameChanged(const QVideoFrame &frame)
 
     m_lastFrame = frame.toImage();
     render();
+
+    if (m_holdRequested == false)
+        return;
+
+    if (m_holdPending)
+    {
+        holdNow();
+        return;
+    }
+
+    if (m_holdArmed)
+    {
+        // Judge the frame by its own timestamp: the player reports the seek
+        // target as its position at once, while the frames delivered can
+        // still be the ones decoded before the seek for a while (backward
+        // seeks especially). Without timestamps the position has to do.
+        m_holdFrames++;
+        qint64 frameMs = frame.startTime() < 0 ? -1 : frame.startTime() / 1000;
+        bool atTarget = true;
+        if (m_holdTarget >= 0)
+        {
+            if (frameMs >= 0)
+                atTarget = frameMs >= m_holdTarget - 100 && frameMs <= m_holdTarget + 1000;
+            else
+                atTarget = m_holdFrames >= 2 && qAbs(m_player->position() - m_holdTarget) <= 500;
+        }
+
+        // Pausing inside this frame's own delivery makes the backend
+        // re-present the frame before it (the pre-seek one after a backward
+        // seek): pause on the next delivery, or after a moment if none comes.
+        if (atTarget)
+        {
+            m_holdArmed = false;
+            m_holdPending = true;
+            m_holdSettle.start();
+        }
+    }
 }
 
 void SpoutVideoPlayer::slotMediaStatusChanged(QMediaPlayer::MediaStatus status)
@@ -239,6 +324,8 @@ void SpoutVideoPlayer::slotMediaStatusChanged(QMediaPlayer::MediaStatus status)
         (status == QMediaPlayer::LoadedMedia || status == QMediaPlayer::BufferedMedia))
     {
         m_player->setPosition(m_startPosition);
+        if (m_holdRequested)
+            armHold(m_startPosition);
         m_startPosition = 0;
     }
 
