@@ -655,11 +655,19 @@ void VideoContent::slotDetectResolution()
         m_mediaPlayer = new QMediaPlayer();
 
         // a failed probe (missing file, no multimedia backend) leaves the
-        // resolution unknown and a Spout sender deferred forever: say so
-        connect(m_mediaPlayer, &QMediaPlayer::errorOccurred, this,
-                [this](QMediaPlayer::Error, const QString &message)
+        // resolution unknown and a Spout sender deferred forever: say so,
+        // and drop the player so a later switch to Spout probes again
+        QMediaPlayer *player = m_mediaPlayer;
+        connect(player, &QMediaPlayer::errorOccurred, this,
+                [this, player](QMediaPlayer::Error, const QString &message)
         {
             qWarning().noquote() << "[Video] resolution probe of" << m_video->name() << "failed:" << message;
+            if (m_mediaPlayer == player)
+            {
+                player->disconnect(this);
+                player->deleteLater();
+                m_mediaPlayer = nullptr;
+            }
         });
         connect(m_mediaPlayer, SIGNAL(durationChanged(qint64)),
                 this, SLOT(slotDurationChanged(qint64)));
