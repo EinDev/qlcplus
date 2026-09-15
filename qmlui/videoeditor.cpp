@@ -21,6 +21,8 @@
 #include <QMediaMetaData>
 #include <QScreen>
 
+#include <QFileInfo>
+
 #include "videoeditor.h"
 #include "tardis.h"
 #include "video.h"
@@ -78,6 +80,9 @@ void VideoEditor::setFunctionID(quint32 ID)
     m_video = qobject_cast<Video *>(m_doc->function(ID));
     FunctionEditor::setFunctionID(ID);
 
+    if (m_video != nullptr)
+        connect(m_video, SIGNAL(sourceChanged(QString)), this, SLOT(slotSourceRelinked(QString)));
+
     detectMedia();
 
     emit outputModeChanged(outputMode());
@@ -118,6 +123,31 @@ void VideoEditor::setSourceFileName(QString sourceFileName)
     emit sourceFileNameChanged(sourceFileName);
     emit functionNameChanged(m_video->name());
     emit loopedChanged();
+}
+
+bool VideoEditor::sourceManaged() const
+{
+    if (m_video == nullptr)
+        return false;
+
+    return m_doc->assets()->isManaged(m_video->sourceUrl());
+}
+
+QString VideoEditor::sourceDisplayName() const
+{
+    if (m_video == nullptr)
+        return QString();
+
+    QString source = m_video->sourceUrl();
+    if (m_doc->assets()->isManaged(source))
+        return QFileInfo(source).fileName();
+
+    return source;
+}
+
+void VideoEditor::slotSourceRelinked(QString source)
+{
+    emit sourceFileNameChanged(source);
 }
 
 QStringList VideoEditor::videoExtensions() const

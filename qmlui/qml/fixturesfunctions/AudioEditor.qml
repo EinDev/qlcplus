@@ -107,12 +107,17 @@ Rectangle
                 fontSize: UISettings.textSizeDefault * 0.8
                 labelColor: UISettings.fgLight
                 wrapText: true
-                label: audioEditor.sourceFileName
+                // a managed copy shows its plain file name, an external
+                // reference its full path - the long .qxw.assets/<sha>/ path
+                // is nothing the user needs to read
+                label: audioEditor.sourceManaged ? qsTr("Managed: %1").arg(audioEditor.sourceDisplayName)
+                                                 : audioEditor.sourceDisplayName
             }
             IconButton
             {
                 id: selFileBtn
                 x: parent.width - width - 3
+                tooltip: qsTr("Replace file... (copies the new file into the project and repoints this function only)")
                 RobotoText { anchors.centerIn: parent; label: "..." }
 
                 onClicked:

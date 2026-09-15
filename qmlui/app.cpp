@@ -1097,6 +1097,81 @@ void App::slotDocAutosave()
     saveXML(autoSaveFileName(), true);
 }
 
+/*********************************************************************
+ * Media assets
+ *********************************************************************/
+
+QString App::mediaImportStatus() const
+{
+    return m_mediaImportStatus;
+}
+
+void App::setMediaImportStatus(const QString &status)
+{
+    if (m_mediaImportStatus == status)
+        return;
+
+    m_mediaImportStatus = status;
+    emit mediaImportStatusChanged();
+}
+
+int App::externalMediaCount() const
+{
+    return m_doc->assets()->externalSources().count();
+}
+
+QVariantMap App::collectMedia()
+{
+    MediaAssets::CollectResult result = m_doc->assets()->collectExternal();
+
+    QVariantMap map;
+    map.insert("copied", result.copied);
+    map.insert("queued", result.queued);
+    map.insert("failed", result.failed);
+    map.insert("error", result.firstError);
+    return map;
+}
+
+QStringList App::unusedMedia() const
+{
+    return m_doc->assets()->unreferenced();
+}
+
+bool App::removeUnusedMedia(const QStringList &files)
+{
+    QString error;
+    bool ok = m_doc->assets()->removeUnreferenced(files, &error);
+    if (ok == false)
+        qWarning() << Q_FUNC_INFO << "Not every file was removed:" << error;
+    return ok;
+}
+
+void App::slotMediaImportStarted(QString source, qint64 bytes)
+{
+    Q_UNUSED(bytes)
+    setMediaImportStatus(tr("Copying %1 into the project...").arg(QFileInfo(source).fileName()));
+}
+
+void App::slotMediaImportProgress(QString source, qint64 done, qint64 total)
+{
+    int percent = total > 0 ? int(done * 100 / total) : 0;
+    setMediaImportStatus(tr("Copying %1 into the project... %2%")
+                         .arg(QFileInfo(source).fileName()).arg(percent));
+}
+
+void App::slotMediaImportFinished(QString source, QString target, QString error)
+{
+    Q_UNUSED(source)
+    Q_UNUSED(target)
+
+    if (error.isEmpty() == false)
+        qWarning() << Q_FUNC_INFO << "Media copy failed, external reference kept:" << error;
+
+    // the next queued copy (if any) sets its own text via importStarted
+    setMediaImportStatus(m_doc->assets()->hasPendingImports() ?
+                         tr("Copying media into the project...") : QString());
+}
+
 void App::initDoc()
 {
     Q_ASSERT(m_doc == nullptr);
@@ -1104,6 +1179,13 @@ void App::initDoc()
 
     connect(m_doc, SIGNAL(modified(bool)), this, SIGNAL(docModifiedChanged()));
     connect(m_doc, SIGNAL(needAutosave()), this, SLOT(slotDocAutosave()));
+    // engine-DLL object: string-based connections only
+    connect(m_doc->assets(), SIGNAL(importStarted(QString,qint64)),
+            this, SLOT(slotMediaImportStarted(QString,qint64)));
+    connect(m_doc->assets(), SIGNAL(importProgress(QString,qint64,qint64)),
+            this, SLOT(slotMediaImportProgress(QString,qint64,qint64)));
+    connect(m_doc->assets(), SIGNAL(importFinished(QString,QString,QString)),
+            this, SLOT(slotMediaImportFinished(QString,QString,QString)));
     connect(m_doc->masterTimer(), SIGNAL(functionListChanged()),
             this, SIGNAL(runningFunctionsCountChanged()));
 
@@ -1727,6 +1809,17 @@ bool App::loadXML(QXmlStreamReader &doc, bool goToConsole, bool fromMemory)
             QMetaObject::invokeMethod(rootObject(), "showLegacyShowTimingWarning",
                                        Qt::QueuedConnection,
                                        Q_ARG(QVariant, QVariant(shows)));
+        }
+
+        // Audio/Video sources outside the project's media store: offer to
+        // collect them, never do it unasked (a non-blocking banner, see
+        // MainView.qml's showExternalMediaNotice)
+        int external = m_doc->assets()->externalSources().count();
+        if (external > 0 && rootObject() != nullptr)
+        {
+            QMetaObject::invokeMethod(rootObject(), "showExternalMediaNotice",
+                                       Qt::QueuedConnection,
+                                       Q_ARG(QVariant, QVariant(external)));
         }
     }
 

@@ -194,6 +194,51 @@ Rectangle
         legacyShowTimingDialog.open()
     }
 
+    // Called once per file-open by App::loadXML() when $count Audio/Video
+    // sources live outside the project's media store. A non-blocking banner
+    // (not a modal dialog): the user can keep working and collect later
+    // from the actions menu - nothing is ever collected unasked.
+    function showExternalMediaNotice(count)
+    {
+        externalMediaBanner.count = count
+        externalMediaBanner.visible = true
+    }
+
+    // "Collect media into project" (actions menu / the banner above):
+    // copies every external Audio/Video source into <project>.qxw.assets
+    // and repoints the functions, then reports what happened.
+    function collectMediaIntoProject()
+    {
+        externalMediaBanner.visible = false
+        var result = qlcplus.collectMedia()
+        var text = qsTr("%1 file(s) copied into the project.").arg(result.copied)
+        if (result.queued > 0)
+            text += "\n" + qsTr("%1 large file(s) are being copied in the background.").arg(result.queued)
+        if (result.failed > 0)
+            text += "\n" + qsTr("%1 file(s) could not be copied and keep their external path.").arg(result.failed)
+        if (result.error)
+            text += "\n" + result.error
+        mediaResultPopup.title = qsTr("Collect media into project")
+        mediaResultPopup.message = text
+        mediaResultPopup.open()
+    }
+
+    // "Remove unused media": lists the store files no function references
+    // anymore and deletes them only after an explicit Yes.
+    function removeUnusedMedia()
+    {
+        var files = qlcplus.unusedMedia()
+        if (files.length === 0)
+        {
+            mediaResultPopup.title = qsTr("Remove unused media")
+            mediaResultPopup.message = qsTr("Every file in the project's media folder is still in use.")
+            mediaResultPopup.open()
+            return
+        }
+        unusedMediaPopup.files = files
+        unusedMediaPopup.open()
+    }
+
     function saveBeforeExit()
     {
         //actionsMenu.open()
@@ -604,6 +649,20 @@ Rectangle
                 }
             }
 
+            // ################## MEDIA COPY PROGRESS ##################
+            // Non-modal status of a large media file being copied into the
+            // project's store on a worker thread (App::mediaImportStatus)
+            RobotoText
+            {
+                visible: qlcplus.mediaImportStatus !== ""
+                label: qlcplus.mediaImportStatus
+                labelColor: UISettings.fgLight
+                fontSize: UISettings.textSizeDefault * 0.85
+                Layout.alignment: Qt.AlignTop
+                implicitWidth: width
+                implicitHeight: parent.height
+            }
+
             // spacer
             Rectangle
             {
@@ -845,6 +904,127 @@ Rectangle
         {
             invertGroupSelectionPopup.groups = groups
             invertGroupSelectionPopup.open()
+        }
+    }
+
+    // Non-blocking notice shown by showExternalMediaNotice() after a project
+    // with external Audio/Video sources was opened. Sits just under the main
+    // toolbar, above the views, and goes away on Collect or Dismiss.
+    Rectangle
+    {
+        id: externalMediaBanner
+        visible: false
+        width: parent.width
+        height: UISettings.iconSizeDefault
+        y: mainToolbar.visible ? mainToolbar.height : 0
+        z: 98
+        color: UISettings.bgStrong
+        border.width: 1
+        border.color: UISettings.bgLight
+
+        property int count: 0
+
+        RowLayout
+        {
+            anchors.fill: parent
+            anchors.leftMargin: 8
+            anchors.rightMargin: 8
+            spacing: 8
+
+            RobotoText
+            {
+                Layout.fillWidth: true
+                height: parent.height
+                label: qsTr("%1 audio/video file(s) referenced by this project live outside its media folder. " +
+                            "Collect them into the project so it can be moved as a whole.").arg(externalMediaBanner.count)
+            }
+
+            GenericButton
+            {
+                height: parent.height - 6
+                width: contentWidth
+                label: qsTr("Collect into project")
+                onClicked: mainView.collectMediaIntoProject()
+            }
+
+            GenericButton
+            {
+                height: parent.height - 6
+                width: contentWidth
+                label: qsTr("Dismiss")
+                onClicked: externalMediaBanner.visible = false
+            }
+        }
+    }
+
+    // Result of a media action (collect, nothing to clean up, ...)
+    CustomPopupDialog
+    {
+        id: mediaResultPopup
+        standardButtons: Dialog.Ok
+    }
+
+    // "Remove unused media" confirmation: the files are deleted only when
+    // Yes is clicked; Escape, No or closing the dialog deletes nothing.
+    CustomPopupDialog
+    {
+        id: unusedMediaPopup
+        width: mainView.width / 2
+        title: qsTr("Remove unused media")
+        standardButtons: Dialog.Yes | Dialog.No
+
+        property var files: []
+
+        contentItem:
+            ColumnLayout
+            {
+                spacing: 8
+
+                Text
+                {
+                    Layout.fillWidth: true
+                    Layout.margins: 8
+                    wrapMode: Text.Wrap
+                    font.family: UISettings.robotoFontName
+                    font.pixelSize: UISettings.textSizeDefault
+                    color: UISettings.fgMain
+                    text: qsTr("The following %1 file(s) in the project's media folder are not used by any function anymore. " +
+                               "Delete them from disk? This cannot be undone.").arg(unusedMediaPopup.files.length)
+                }
+
+                ListView
+                {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 8
+                    Layout.rightMargin: 8
+                    implicitHeight: Math.min(count, 10) * UISettings.listItemHeight
+                    clip: true
+                    model: unusedMediaPopup.files
+                    boundsBehavior: Flickable.StopAtBounds
+                    ScrollBar.vertical: CustomScrollBar { }
+
+                    delegate:
+                        RobotoText
+                        {
+                            width: ListView.view.width
+                            height: UISettings.listItemHeight
+                            fontSize: UISettings.textSizeDefault * 0.8
+                            labelColor: UISettings.fgLight
+                            label: modelData
+                        }
+                }
+            }
+
+        onClicked: function(role)
+        {
+            if (role !== Dialog.Yes)
+                return
+
+            var ok = qlcplus.removeUnusedMedia(unusedMediaPopup.files)
+            mediaResultPopup.title = qsTr("Remove unused media")
+            mediaResultPopup.message = ok ? qsTr("%1 file(s) deleted.").arg(unusedMediaPopup.files.length)
+                                          : qsTr("Not every file could be deleted - see the log for details.")
+            mediaResultPopup.open()
         }
     }
 

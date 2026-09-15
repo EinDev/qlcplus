@@ -31,6 +31,8 @@ class VideoEditor final : public FunctionEditor
     Q_OBJECT
 
     Q_PROPERTY(QString sourceFileName READ sourceFileName WRITE setSourceFileName NOTIFY sourceFileNameChanged)
+    Q_PROPERTY(bool sourceManaged READ sourceManaged NOTIFY sourceFileNameChanged)
+    Q_PROPERTY(QString sourceDisplayName READ sourceDisplayName NOTIFY sourceFileNameChanged)
     Q_PROPERTY(QStringList videoExtensions READ videoExtensions CONSTANT)
     Q_PROPERTY(QStringList pictureExtensions READ pictureExtensions CONSTANT)
     Q_PROPERTY(QVariant mediaInfo READ mediaInfo NOTIFY mediaInfoChanged)
@@ -56,9 +58,18 @@ public:
     /** @reimp */
     void setFunctionID(quint32 ID) override;
 
-    /** Get/Set the source file name for this Video function */
+    /** Get/Set the source file name for this Video function. A local file
+     *  is copied into the project's media store and the function (and the
+     *  undo entry) point at the copy; a URL is kept as is */
     QString sourceFileName() const;
     void setSourceFileName(QString sourceFileName);
+
+    /** True when the source lives in the project's media store */
+    bool sourceManaged() const;
+
+    /** What the editor shows for the source: the file name alone for a
+     *  managed copy, the full path or URL otherwise */
+    QString sourceDisplayName() const;
 
     /** Get the supported video file types that can be decoded */
     QStringList videoExtensions() const;
@@ -126,6 +137,10 @@ private:
 protected slots:
     void slotDurationChanged(qint64 duration);
     void slotMetaDataChanged();
+
+    /** The engine repointed the source (background copy done, store
+     *  relocated on save): refresh the path shown, nothing else changed */
+    void slotSourceRelinked(QString source);
 
 signals:
     void sourceFileNameChanged(QString sourceFileName);

@@ -17,6 +17,8 @@
   limitations under the License.
 */
 
+#include <QFileInfo>
+
 #include "audioplugincache.h"
 #include "audioeditor.h"
 #include "tardis.h"
@@ -40,7 +42,34 @@ void AudioEditor::setFunctionID(quint32 ID)
         connect(m_audio, SIGNAL(totalDurationChanged()),
                 this, SIGNAL(mediaInfoChanged()));
         connect(m_audio, SIGNAL(bpmChanged()), this, SIGNAL(bpmChanged()));
+        connect(m_audio, SIGNAL(sourceFilenameChanged()), this, SLOT(slotSourceRelinked()));
     }
+}
+
+bool AudioEditor::sourceManaged() const
+{
+    if (m_audio == nullptr)
+        return false;
+
+    return m_doc->assets()->isManaged(m_audio->getSourceFileName());
+}
+
+QString AudioEditor::sourceDisplayName() const
+{
+    if (m_audio == nullptr)
+        return QString();
+
+    QString source = m_audio->getSourceFileName();
+    if (m_doc->assets()->isManaged(source))
+        return QFileInfo(source).fileName();
+
+    return source;
+}
+
+void AudioEditor::slotSourceRelinked()
+{
+    if (m_audio != nullptr)
+        emit sourceFileNameChanged(m_audio->getSourceFileName());
 }
 
 QString AudioEditor::sourceFileName() const

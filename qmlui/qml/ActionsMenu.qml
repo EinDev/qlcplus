@@ -356,6 +356,36 @@ Popup
             }
         }
 
+        ContextMenuEntry
+        {
+            id: mediaCollect
+            faSource: FontAwesome.fa_photo_film
+            faColor: UISettings.fgLight
+            entryText: qsTr("Collect media into project")
+            onEntered: submenuItem = null
+
+            onClicked:
+            {
+                menuRoot.close()
+                mainView.collectMediaIntoProject()
+            }
+        }
+
+        ContextMenuEntry
+        {
+            id: mediaCleanup
+            faSource: FontAwesome.fa_broom
+            faColor: UISettings.fgLight
+            entryText: qsTr("Remove unused media")
+            onEntered: submenuItem = null
+
+            onClicked:
+            {
+                menuRoot.close()
+                mainView.removeUnusedMedia()
+            }
+        }
+
         RowLayout
         {
             height: UISettings.iconSizeDefault

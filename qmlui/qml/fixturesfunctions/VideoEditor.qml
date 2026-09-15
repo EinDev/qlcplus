@@ -97,10 +97,14 @@ Rectangle
                 fontSize: UISettings.textSizeDefault * 0.8
                 labelColor: UISettings.fgLight
                 wrapText: true
-                label: videoEditor.sourceFileName
+                // a managed copy shows its plain file name, an external
+                // reference (or a URL) the full string
+                label: videoEditor.sourceManaged ? qsTr("Managed: %1").arg(videoEditor.sourceDisplayName)
+                                                 : videoEditor.sourceDisplayName
             }
             IconButton
             {
+                tooltip: qsTr("Replace file... (copies the new file into the project and repoints this function only)")
                 RobotoText { anchors.centerIn: parent; label: "..." }
 
                 onClicked:

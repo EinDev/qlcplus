@@ -30,6 +30,8 @@ class AudioEditor final : public FunctionEditor
     Q_OBJECT
 
     Q_PROPERTY(QString sourceFileName READ sourceFileName WRITE setSourceFileName NOTIFY sourceFileNameChanged)
+    Q_PROPERTY(bool sourceManaged READ sourceManaged NOTIFY sourceFileNameChanged)
+    Q_PROPERTY(QString sourceDisplayName READ sourceDisplayName NOTIFY sourceFileNameChanged)
     Q_PROPERTY(QStringList audioExtensions READ audioExtensions CONSTANT)
     Q_PROPERTY(QVariant mediaInfo READ mediaInfo NOTIFY mediaInfoChanged)
     Q_PROPERTY(bool looped READ isLooped WRITE setLooped NOTIFY loopedChanged)
@@ -46,9 +48,18 @@ public:
     /** Set the ID of the Audio being edited */
     void setFunctionID(quint32 ID) override;
 
-    /** Get/Set the source file name for this Audio function */
+    /** Get/Set the source file name for this Audio function. The setter
+     *  copies the picked file into the project's media store and points the
+     *  function (and the undo entry) at the copy */
     QString sourceFileName() const;
     void setSourceFileName(QString sourceFileName);
+
+    /** True when the source lives in the project's media store */
+    bool sourceManaged() const;
+
+    /** What the editor shows for the source: the file name alone for a
+     *  managed copy, the full path for an external reference */
+    QString sourceDisplayName() const;
 
     /** Get the supported file types that can be decoded */
     QStringList audioExtensions() const;
@@ -79,6 +90,11 @@ public:
 
     /** Manually (re-)trigger offline BPM detection */
     Q_INVOKABLE void detectBpm();
+
+protected slots:
+    /** The engine repointed the source (background copy done, store
+     *  relocated on save): refresh the path shown, nothing else changed */
+    void slotSourceRelinked();
 
 signals:
     void sourceFileNameChanged(QString sourceFileName);

@@ -65,6 +65,7 @@ class App final : public QQuickView, public ApiProjectHost, public ApiVcHost
     Q_PROPERTY(QString workingPath READ workingPath WRITE setWorkingPath NOTIFY workingPathChanged)
     Q_PROPERTY(int accessMask READ accessMask WRITE setAccessMask NOTIFY accessMaskChanged)
     Q_PROPERTY(int runningFunctionsCount READ runningFunctionsCount NOTIFY runningFunctionsCountChanged)
+    Q_PROPERTY(QString mediaImportStatus READ mediaImportStatus NOTIFY mediaImportStatusChanged)
 
     Q_PROPERTY(QString appName READ appName CONSTANT)
     Q_PROPERTY(QString appVersion READ appVersion CONSTANT)
@@ -307,17 +308,49 @@ public:
     /** Stop all the currently running Functions */
     Q_INVOKABLE void stopAllFunctions();
 
+    /*********************************************************************
+     * Media assets (Doc::assets())
+     *********************************************************************/
+
+    /** One-line progress text of the background media copy in flight
+     *  ("Copying big.mp4 into the project... 42%"), empty when idle */
+    QString mediaImportStatus() const;
+
+    /** Number of Audio/Video sources living outside the project's store */
+    Q_INVOKABLE int externalMediaCount() const;
+
+    /** Copy every external Audio/Video source into the project's media
+     *  store and repoint the functions. Returns
+     *  { copied, queued, failed, error } - queued files finish in the
+     *  background (see mediaImportStatus) */
+    Q_INVOKABLE QVariantMap collectMedia();
+
+    /** Files in the project's media store no function uses anymore */
+    Q_INVOKABLE QStringList unusedMedia() const;
+
+    /** Delete the given store files (only ones unusedMedia() would list);
+     *  returns false if any entry was refused or could not be deleted */
+    Q_INVOKABLE bool removeUnusedMedia(const QStringList &files);
+
+protected slots:
+    void slotMediaImportStarted(QString source, qint64 bytes);
+    void slotMediaImportProgress(QString source, qint64 done, qint64 total);
+    void slotMediaImportFinished(QString source, QString target, QString error);
+
 private:
     void initDoc();
+    void setMediaImportStatus(const QString &status);
 
 signals:
     void docLoadedChanged();
     void docModifiedChanged();
     void runningFunctionsCountChanged();
+    void mediaImportStatusChanged();
 
 private:
     Doc *m_doc;
     bool m_docLoaded;
+    QString m_mediaImportStatus;
 
     /*********************************************************************
      * Printer

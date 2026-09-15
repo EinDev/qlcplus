@@ -31,7 +31,10 @@
 #include "qlcfixturedef.h"
 #include "fixtureutils.h"
 #include "qlcpalette.h"
+#include "mediaassets.h"
 #include "collection.h"
+#include "audio.h"
+#include "video.h"
 #include "rgbmatrix.h"
 #include "sequence.h"
 #include "qlcfile.h"
@@ -587,6 +590,36 @@ void ImportManager::importFunctionID(quint32 funcID)
 
             if (m_fixtureGroupIDRemap.contains(rgbm->fixtureGroup()))
                 rgbm->setFixtureGroup(m_fixtureGroupIDRemap[rgbm->fixtureGroup()]);
+        }
+        break;
+        case Function::AudioType:
+        case Function::VideoType:
+        {
+            // createCopy() left the source as the absolute path resolved
+            // against the imported project (ImportManager::loadWorkspace set
+            // that workspace path). Copy it into THIS project's media store
+            // and repoint the copy without the full setters' side effects:
+            // Audio::copyFrom() already restored the BPM analysis, and
+            // relinkSource() keeps it, the name and the decoder as they are.
+            // Streams stay streams. A big file comes back as the source path
+            // and is relinked once the background copy lands.
+            QString source;
+            if (docFunction->type() == Function::AudioType)
+                source = static_cast<Audio *>(docFunction)->getSourceFileName();
+            else
+                source = static_cast<Video *>(docFunction)->sourceUrl();
+
+            if (source.isEmpty() == false && source.contains("://") == false)
+            {
+                QString stored = m_doc->assets()->importOrKeep(source);
+                if (stored != source)
+                {
+                    if (docFunction->type() == Function::AudioType)
+                        static_cast<Audio *>(docFunction)->relinkSource(stored);
+                    else
+                        static_cast<Video *>(docFunction)->relinkSource(stored);
+                }
+            }
         }
         break;
         default:
