@@ -54,6 +54,8 @@ class ShowManager final : public PreviewContext
     Q_PROPERTY(double snapGuideX READ snapGuideX WRITE setSnapGuideX NOTIFY snapGuideXChanged)
     Q_PROPERTY(bool isPlaying READ isPlaying NOTIFY isPlayingChanged)
     Q_PROPERTY(bool isPaused READ isPaused NOTIFY isPausedChanged)
+    Q_PROPERTY(bool previewEnabled READ previewEnabled WRITE setPreviewEnabled NOTIFY previewEnabledChanged)
+    Q_PROPERTY(bool isPreviewing READ isPreviewing NOTIFY isPreviewingChanged)
     Q_PROPERTY(int showDuration READ showDuration NOTIFY showDurationChanged)
 
     Q_PROPERTY(Show::TimeDivision timeDivision READ timeDivision WRITE setTimeDivision NOTIFY timeDivisionChanged)
@@ -130,6 +132,21 @@ public:
     /** Flag that indicates if the Show playback is currently paused */
     bool isPaused() const;
 
+    /**
+     * Get/Set whether moving the cursor while the Show is stopped previews
+     * the Show's state at the cursor: every clip under it renders on the
+     * real output (fixtures via DMX/2D/3D, a Video's frame at the in-clip
+     * offset), Audio stays silent. Implemented with Show::setScrubMode.
+     */
+    bool previewEnabled() const;
+    void setPreviewEnabled(bool enable);
+
+    /** True while the Show runs frozen at the cursor for the preview */
+    bool isPreviewing() const;
+
+    /** @reimp - leaving the Show Manager stops the preview */
+    void enableContext(bool enable) override;
+
 signals:
     void currentShowIDChanged(int currentShowID);
     void isEditingChanged();
@@ -139,10 +156,21 @@ signals:
     void snapGuideXChanged();
     void isPlayingChanged(bool playing);
     void isPausedChanged(bool paused);
+    void previewEnabledChanged(bool enabled);
+    void isPreviewingChanged(bool previewing);
     void showDurationChanged(int showDuration);
 
 private:
     void setPlaybackState(bool playing, bool paused);
+
+    /** Start the preview frozen at $time, or seek a running one to it.
+     *  Nothing happens while the Show plays or is paused. */
+    void previewAt(int time);
+
+    /** Stop the preview if one is running; the cursor stays put */
+    void stopPreview();
+
+    void setPreviewing(bool previewing);
 
     /** Track if cursor is interactively being moved during pause */
     bool m_cursorMovedDuringPause;
@@ -150,6 +178,10 @@ private:
     /** Cached playback state for immediate UI updates */
     bool m_isPlaying;
     bool m_isPaused;
+
+    /** See previewEnabled() / isPreviewing() */
+    bool m_previewEnabled;
+    bool m_isPreviewing;
 
     /** A reference to the Show Function being edited */
     Show *m_currentShow;

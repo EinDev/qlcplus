@@ -39,6 +39,8 @@ ShowManager::ShowManager(QQuickView *view, Doc *doc, QObject *parent)
     , m_cursorMovedDuringPause(false)
     , m_isPlaying(false)
     , m_isPaused(false)
+    , m_previewEnabled(true)
+    , m_isPreviewing(false)
     , m_currentShow(nullptr)
     , m_stretchFunctions(false)
     , m_gridEnabled(false)
@@ -100,6 +102,9 @@ void ShowManager::setCurrentShowID(int currentShowID)
     {
         if (m_currentShow->id() == (quint32)currentShowID)
             return;
+        // before the stopped() connection below goes: a frozen Show must
+        // not keep holding the output with nothing pointing at it
+        stopPreview();
         disconnect(m_currentShow, SIGNAL(timeChanged(quint32)), this, SLOT(slotTimeChanged(quint32)));
         disconnect(m_currentShow, SIGNAL(showFinished()), this, SLOT(slotShowFinished()));
         disconnect(m_currentShow, SIGNAL(stopped(quint32)), this, SLOT(slotShowStopped()));
@@ -386,6 +391,9 @@ void ShowManager::setCurrentTime(int currentTime)
 
     m_currentTime = currentTime;
     emit currentTimeChanged(currentTime);
+
+    if (m_previewEnabled)
+        previewAt(currentTime);
 }
 
 /*********************************************************************
@@ -1358,6 +1366,7 @@ bool ShowManager::cutTimeAtCursor(int length, int cursorTime)
 
 void ShowManager::resetContents()
 {
+    stopPreview();
     resetView();
     m_currentTime = 0;
     emit currentTimeChanged(m_currentTime);
@@ -1450,6 +1459,17 @@ void ShowManager::playShow()
     if (m_currentShow == nullptr)
         return;
 
+    if (m_isPreviewing)
+    {
+        // The frozen runner already sits at the cursor with its clips
+        // started: leaving scrub mode lets it play on from there (it is
+        // running and not paused, so the branches below do not apply).
+        m_currentShow->setScrubMode(false);
+        setPreviewing(false);
+        setPlaybackState(true, false);
+        return;
+    }
+
     if (m_currentShow->isRunning() == false)
     {
         m_cursorMovedDuringPause = false;
@@ -1486,6 +1506,14 @@ void ShowManager::playShow()
 
 void ShowManager::stopShow()
 {
+    if (m_isPreviewing)
+    {
+        // the cursor stays where it is; a second stop rewinds it below
+        stopPreview();
+        setPlaybackState(false, false);
+        return;
+    }
+
     if (m_currentShow != nullptr && m_currentShow->isRunning())
     {
         m_cursorMovedDuringPause = false;
@@ -1511,6 +1539,83 @@ bool ShowManager::isPlaying() const
 bool ShowManager::isPaused() const
 {
     return m_isPaused;
+}
+
+bool ShowManager::previewEnabled() const
+{
+    return m_previewEnabled;
+}
+
+void ShowManager::setPreviewEnabled(bool enable)
+{
+    if (m_previewEnabled == enable)
+        return;
+
+    m_previewEnabled = enable;
+    emit previewEnabledChanged(enable);
+
+    if (enable == false)
+        stopPreview();
+}
+
+bool ShowManager::isPreviewing() const
+{
+    return m_isPreviewing;
+}
+
+void ShowManager::enableContext(bool enable)
+{
+    PreviewContext::enableContext(enable);
+
+    if (enable == false)
+        stopPreview();
+}
+
+void ShowManager::previewAt(int time)
+{
+    if (m_currentShow == nullptr)
+        return;
+
+    quint32 position = quint32(qMax(0, time));
+
+    if (m_isPreviewing)
+    {
+        // the runner coalesces requests posted between two ticks
+        m_currentShow->requestSeek(position);
+        return;
+    }
+
+    // Only a stopped Show is previewed: a playing or paused one keeps
+    // its own cursor handling (see playShow). Note isRunning() stays true
+    // for one tick after a stop, so a click right after stopping the Show
+    // does not preview yet.
+    if (m_currentShow->isRunning())
+        return;
+
+    m_currentShow->rebuildSchedule();
+    m_currentShow->setScrubMode(true);
+    m_currentShow->start(m_doc->masterTimer(), FunctionParent::master(FunctionParent::ShowManagerPlayback), position);
+    setPreviewing(true);
+}
+
+void ShowManager::stopPreview()
+{
+    if (m_isPreviewing == false)
+        return;
+
+    if (m_currentShow != nullptr)
+        m_currentShow->stop(FunctionParent::master(FunctionParent::ShowManagerPlayback));
+
+    setPreviewing(false);
+}
+
+void ShowManager::setPreviewing(bool previewing)
+{
+    if (m_isPreviewing == previewing)
+        return;
+
+    m_isPreviewing = previewing;
+    emit isPreviewingChanged(previewing);
 }
 
 QColor ShowManager::itemsColor() const
@@ -1680,6 +1785,8 @@ void ShowManager::slotShowFinished()
 void ShowManager::slotShowStopped()
 {
     setPlaybackState(false, false);
+    // also a preview stopped from elsewhere (e.g. "stop all functions")
+    setPreviewing(false);
 }
 
 void ShowManager::slotScheduleChanged()

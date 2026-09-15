@@ -96,9 +96,15 @@ Rectangle
         if (currentContext === ctx)
             return
 
+        // let the context being left clean up after itself (the Show
+        // Manager stops its cursor preview, see ShowManager::enableContext)
+        if (currentContext !== "")
+            contextManager.enableContext(currentContext, false, null)
+
         if (enableContext(ctx, true) === true)
         {
             currentContext = ctx
+            contextManager.enableContext(ctx, true, null)
             // show toolbar only if not in kiosk mode
             if (qlcplus.accessMask !== App.AC_VCControl)
                 mainToolbar.visible = true

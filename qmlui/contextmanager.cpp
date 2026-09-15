@@ -210,7 +210,10 @@ void ContextManager::enableContext(QString name, bool enable, QQuickItem *item)
 
     PreviewContext *context = m_contextsMap[name];
 
-    context->setContextItem(item);
+    // A top-level context (the Show Manager, say) registers its own item
+    // and is left with none passed: that must not wipe the one it uses.
+    if (item != nullptr)
+        context->setContextItem(item);
     context->enableContext(enable);
 
     if (name == "DMX")
