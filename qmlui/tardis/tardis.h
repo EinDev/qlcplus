@@ -270,6 +270,7 @@ public:
         ShowManagerItemSetDuration,
         /** objID: ShowFunction id, values: old/new Track id */
         ShowManagerItemSetTrack,
+        ShowManagerTrackSetSpoutSize,
 
         /* Simple Desk actions */
         SimpleDeskSetChannel = 0xC000,

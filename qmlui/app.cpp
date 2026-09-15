@@ -219,6 +219,10 @@ void App::startup()
     m_virtualConsole = new VirtualConsole(this, m_doc, m_contextManager);
     m_showManager = new ShowManager(this, m_doc);
     connect(m_showManager, &ShowManager::itemClicked, m_contextManager, &ContextManager::setLastClickedType);
+    // track headers / the Video editor show live Spout sender sizes. The
+    // provider of the initial document already exists (initDoc() above);
+    // loadWorkspace() re-connects the one it creates for a loaded file.
+    connect(m_videoProvider, &VideoProvider::spoutSendersChanged, m_showManager, &ShowManager::trackSpoutInfoChanged);
 
     m_networkManager = new NetworkManager(this, m_doc, m_virtualConsole, m_simpleDesk);
     rootContext()->setContextProperty("networkManager", m_networkManager);
@@ -1523,6 +1527,8 @@ bool App::loadWorkspace(const QString &fileName)
         setDocLoaded(true);
         m_doc->resetModified();
         m_videoProvider = new VideoProvider(this, m_doc);
+        // track headers / the Video editor show live sender sizes
+        connect(m_videoProvider, &VideoProvider::spoutSendersChanged, m_showManager, &ShowManager::trackSpoutInfoChanged);
         m_contextManager->resetContexts();
 
         // autostart Function if set

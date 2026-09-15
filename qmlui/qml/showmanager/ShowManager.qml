@@ -567,9 +567,11 @@ Rectangle
                             width: tracksBox.width
                             height: trackHeight
                             trackRef: modelData
+                            trackIndex: index
                             isSelected: showMgrContainer.selectedTrackIndex === index ? true : false
 
                             onTrackSelected: showMgrContainer.selectedTrackIndex = index
+                            onSpoutSizeRequested: (idx) => trackSpoutSizePopup.openFor(idx, trackRef ? trackRef.name : "")
                         }
                 }
             }
@@ -867,5 +869,23 @@ Rectangle
         z: 10
         width: timelineHeader.width
         orientation: Qt.Horizontal
+    }
+
+    // A Spout-mode Video clip just landed (drop, move, paste, redo) on a
+    // track whose Spout output has another size: keep (default, the clip
+    // is aspect-fit) or switch the track output to the clip's size.
+    PopupSpoutSizeMismatch { id: spoutMismatchPopup }
+
+    // "Set Spout output size..." from a track header's right-click menu
+    PopupTrackSpoutSize { id: trackSpoutSizePopup }
+
+    Connections
+    {
+        target: showManager
+        ignoreUnknownSignals: true
+        function onSpoutSizeMismatch(trackIdx, trackName, trackWidth, trackHeight, clipName, clipWidth, clipHeight)
+        {
+            spoutMismatchPopup.ask(trackIdx, trackName, trackWidth, trackHeight, clipName, clipWidth, clipHeight)
+        }
     }
 }

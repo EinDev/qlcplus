@@ -23,12 +23,14 @@
 #include <algorithm>
 
 #include "waveformimageprovider.h"
+#include "videoprovider.h"
 #include "showmanager.h"
 #include "sequence.h"
 #include "tardis.h"
 #include "chaser.h"
 #include "scene.h"
 #include "audio.h"
+#include "video.h"
 #include "track.h"
 #include "show.h"
 #include "doc.h"
@@ -490,6 +492,170 @@ void ShowManager::deleteSelectedTrack()
 }
 
 /*********************************************************************
+ * Track Spout output size
+ ********************************************************************/
+
+/** The size Video $func would publish at if it created the sender: its
+ *  SpoutSize override, else its native resolution (empty if not probed
+ *  yet). Null for anything that is not a Video in Spout mode. */
+static Video *spoutVideo(Function *func)
+{
+    if (func == nullptr || func->type() != Function::VideoType)
+        return nullptr;
+
+    // the type was checked: a static_cast is enough and, unlike
+    // qobject_cast, works across the engine DLL boundary
+    Video *video = static_cast<Video *>(func);
+    return video->outputMode() == Video::Spout ? video : nullptr;
+}
+
+static QSize effectiveSpoutSize(const Video *video)
+{
+    return video->spoutSize().isEmpty() ? video->resolution() : video->spoutSize();
+}
+
+void ShowManager::setTrackSpoutSize(int trackIdx, int width, int height)
+{
+    if (m_currentShow == nullptr || trackIdx < 0 || trackIdx >= m_currentShow->tracks().count())
+        return;
+
+    Track *track = m_currentShow->tracks().at(trackIdx);
+    QSize size(width, height);
+    if (size.isValid() == false || size.isEmpty())
+        size = QSize(0, 0);
+
+    if (track->spoutSize() == size)
+    {
+        // already fixed at this size on the Track, but the live sender may
+        // still be elsewhere (e.g. "Keep" chosen earlier, then this picked
+        // from the header menu): apply anyway, nothing to undo
+        applyTrackSpoutSize(track->id(), size);
+        return;
+    }
+
+    Tardis::instance()->enqueueAction(Tardis::ShowManagerTrackSetSpoutSize, track->id(),
+                                      track->spoutSize(), size);
+    applyTrackSpoutSize(track->id(), size);
+    m_doc->setModified();
+}
+
+void ShowManager::applyTrackSpoutSize(quint32 trackId, QSize size)
+{
+    if (m_currentShow == nullptr)
+        return;
+
+    Track *track = m_currentShow->track(trackId);
+    if (track == nullptr)
+        return;
+
+    track->setSpoutSize(size);
+
+    if (size.isEmpty())
+    {
+        qDebug().noquote() << "[Spout] track" << track->name() << "output size unset - its sender keeps"
+                           << "its current size until the next document load";
+    }
+    else
+    {
+        qDebug().noquote() << "[Spout] track" << track->name() << "output size fixed to"
+                           << size.width() << "x" << size.height();
+#if defined(Q_OS_WIN) && defined(QLC_SPOUT)
+        VideoProvider *provider = VideoProvider::instance();
+        if (provider != nullptr)
+            provider->resizeSpoutSender(Video::spoutSenderNameForTrack(track->name()), size,
+                                        QString("user switched track '%1' output").arg(track->name()));
+#endif
+    }
+
+    emit trackSpoutInfoChanged();
+}
+
+QVariantMap ShowManager::trackSpoutInfo(int trackIdx) const
+{
+    QVariantMap info;
+    info.insert("hasSpout", false);
+    info.insert("width", 0);
+    info.insert("height", 0);
+    info.insert("fixed", false);
+    info.insert("clips", QVariantList());
+
+    if (m_currentShow == nullptr || trackIdx < 0 || trackIdx >= m_currentShow->tracks().count())
+        return info;
+
+    Track *track = m_currentShow->tracks().at(trackIdx);
+    QVariantList clips;
+    for (ShowFunction *sf : track->showFunctions())
+    {
+        Video *video = spoutVideo(m_doc->function(sf->functionID()));
+        if (video == nullptr)
+            continue;
+
+        info["hasSpout"] = true;
+        QSize size = effectiveSpoutSize(video);
+        if (size.isEmpty())
+            continue;
+
+        QVariantMap clip;
+        clip.insert("name", video->name());
+        clip.insert("width", size.width());
+        clip.insert("height", size.height());
+        clips.append(clip);
+    }
+    info["clips"] = clips;
+
+    QSize output = track->spoutSize();
+    info["fixed"] = output.isEmpty() == false;
+    VideoProvider *provider = VideoProvider::instance();
+    if (output.isEmpty() && provider != nullptr)
+        output = provider->trackSpoutOutputSize(track);
+    if (output.isEmpty() == false)
+    {
+        info["width"] = output.width();
+        info["height"] = output.height();
+    }
+
+    return info;
+}
+
+void ShowManager::checkSpoutSizeMismatch(Track *track, int trackIdx, Function *func)
+{
+    Video *video = spoutVideo(func);
+    if (video == nullptr || track == nullptr)
+        return;
+
+    VideoProvider *provider = VideoProvider::instance();
+    QSize clipSize = effectiveSpoutSize(video);
+    QSize trackSize = provider != nullptr ? provider->trackSpoutOutputSize(track) : track->spoutSize();
+
+    if (clipSize.isEmpty())
+    {
+        qDebug().noquote() << "[Spout]" << video->name() << "placed on track" << track->name()
+                           << "- its resolution is not known yet, no output size check";
+    }
+    else if (trackSize.isEmpty())
+    {
+        qDebug().noquote() << "[Spout]" << video->name() << "placed on track" << track->name()
+                           << "- nothing fixed the track's output size yet, it will be"
+                           << clipSize.width() << "x" << clipSize.height();
+    }
+    else if (trackSize != clipSize)
+    {
+        qDebug().noquote() << "[Spout] output size mismatch: track" << track->name() << "outputs"
+                           << trackSize.width() << "x" << trackSize.height() << "but" << video->name()
+                           << "is" << clipSize.width() << "x" << clipSize.height()
+                           << "- kept, asking the user whether to switch";
+        emit spoutSizeMismatch(trackIdx, track->name(), trackSize.width(), trackSize.height(),
+                               video->name(), clipSize.width(), clipSize.height());
+    }
+
+    // the clip is on the track now, so its default sender is the track's:
+    // create it if this is the first clip (never resizes an existing one)
+    if (provider != nullptr)
+        provider->refreshSpoutSender(video->id());
+    emit trackSpoutInfoChanged();
+}
+
+/*********************************************************************
   * Show Items
   ********************************************************************/
 
@@ -609,6 +775,8 @@ void ShowManager::addItems(QQuickItem *parent, int trackIdx, int startTime, QVar
 
         m_itemsMap[showFunc->id()] = newItem;
         startTime += showFunc->duration();
+
+        checkSpoutSizeMismatch(selectedTrack, trackIdx, func);
     }
 
     emit showDurationChanged(m_currentShow->totalDuration());
@@ -640,6 +808,9 @@ void ShowManager::addShowItem(ShowFunction *sf, quint32 trackId)
     newItem->setProperty("sfRef", QVariant::fromValue(sf));
     newItem->setProperty("funcRef", QVariant::fromValue(func));
     m_itemsMap[sf->id()] = newItem;
+
+    // a redo of a drop/paste lands the clip on the track again
+    checkSpoutSizeMismatch(m_currentShow->track(trackId), trackIndex, func);
 }
 
 void ShowManager::deleteShowItems(QVariantList data)
@@ -689,6 +860,9 @@ void ShowManager::deleteShowItems(QVariantList data)
 
     if (m_clipboard.count() != clipboardCount)
         emit clipboardItemsCountChanged(m_clipboard.count());
+
+    // a track header may have lost its last Spout clip
+    emit trackSpoutInfoChanged();
 }
 
 void ShowManager::refreshView()
@@ -1002,6 +1176,10 @@ void ShowManager::moveShowItemToTrack(ShowFunction *sf, quint32 trackId)
     dstTrack->addShowFunction(sf);
 
     int dstIdx = m_currentShow->tracks().indexOf(dstTrack);
+
+    // a Spout clip landing on another track (drag, group drag, undo/redo
+    // of either) may not match that track's fixed output size
+    checkSpoutSizeMismatch(dstTrack, dstIdx, m_doc->function(sf->functionID()));
 
     QQuickItem *item = m_itemsMap.value(sf->id(), nullptr);
     if (item != nullptr)

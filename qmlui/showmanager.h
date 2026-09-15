@@ -259,6 +259,50 @@ public:
     /** Delete the currently selected Show Track */
     Q_INVOKABLE void deleteSelectedTrack();
 
+    /*********************************************************************
+     * Track Spout output size
+     *
+     * Every Spout-mode Video on a track publishes into one shared sender
+     * named after the track, whose size is fixed once created (see the
+     * sender pool in videoprovider.h). Changing it is only ever the
+     * user's explicit choice, made here.
+     ********************************************************************/
+public:
+    /** Fix the Spout output size of track $trackIdx to $width x $height
+     *  (0x0 = unset: the first clip's size decides again from the next
+     *  document load on). Stored on the Track (saved in the workspace),
+     *  undoable, and applied to the live sender right away. */
+    Q_INVOKABLE void setTrackSpoutSize(int trackIdx, int width, int height);
+
+    /** Tardis entry point of setTrackSpoutSize(): apply $size to track
+     *  $trackId of the current Show without recording an undo action */
+    void applyTrackSpoutSize(quint32 trackId, QSize size);
+
+    /** What the track header shows: { hasSpout, width, height, fixed,
+     *  clips: [ { name, width, height } ] }. width/height are the
+     *  track's current output size (0 if nothing fixed it yet), fixed is
+     *  whether it comes from Track::spoutSize(), clips lists the effective
+     *  size of every Spout-mode Video on the track whose size is known. */
+    Q_INVOKABLE QVariantMap trackSpoutInfo(int trackIdx) const;
+
+signals:
+    /** A Spout-mode Video clip landed on track $trackIdx (drop, move,
+     *  paste, redo) and its own size differs from the track's current
+     *  output size. The clip is already on the track, aspect-fit into the
+     *  existing output; the UI asks whether to switch the track instead. */
+    void spoutSizeMismatch(int trackIdx, QString trackName, int trackWidth, int trackHeight,
+                           QString clipName, int clipWidth, int clipHeight);
+
+    /** trackSpoutInfo() would return something new for some track */
+    void trackSpoutInfoChanged();
+
+private:
+    /** Compare the effective size of Video $func (just placed on $track,
+     *  index $trackIdx) with the track's current output size and emit
+     *  spoutSizeMismatch() if they differ. Then makes sure the track's
+     *  sender exists (created by this clip if it is the first). */
+    void checkSpoutSizeMismatch(Track *track, int trackIdx, Function *func);
+
 signals:
     void tracksChanged();
     void selectedTrackIdChanged(int id);

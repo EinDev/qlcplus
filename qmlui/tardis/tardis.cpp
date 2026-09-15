@@ -1450,6 +1450,14 @@ int Tardis::processAction(TardisAction &action, bool undo)
         }
         break;
 
+        case ShowManagerTrackSetSpoutSize:
+        {
+            // objID is the Track id within the current Show; this also
+            // resizes the live sender, exactly like the user's own choice
+            m_showManager->applyTrackSpoutSize(action.m_objID, value->toSize());
+        }
+        break;
+
         /* ************************* Simple Desk actions ************************** */
 
         case SimpleDeskSetChannel:

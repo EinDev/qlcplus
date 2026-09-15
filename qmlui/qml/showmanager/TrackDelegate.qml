@@ -18,6 +18,7 @@
 */
 
 import QtQuick
+import QtQuick.Controls
 
 import org.qlcplus.classes 1.0
 import "."
@@ -33,8 +34,33 @@ Rectangle
 
     property Track trackRef: null
     property bool isSelected: false
+    /** Index of this track in the Show (what ShowManager's track methods take) */
+    property int trackIndex: -1
+
+    /** ShowManager::trackSpoutInfo() of this track: the shared Spout output
+     *  size of its Spout-mode Video clips, if it has any */
+    property var spoutInfo: ({ hasSpout: false, width: 0, height: 0, fixed: false, clips: [] })
 
     signal trackSelected()
+    /** The user asked to set this track's Spout output size */
+    signal spoutSizeRequested(int trackIndex)
+
+    function refreshSpoutInfo()
+    {
+        if (trackIndex >= 0)
+            spoutInfo = showManager.trackSpoutInfo(trackIndex)
+    }
+
+    Component.onCompleted: refreshSpoutInfo()
+    onTrackIndexChanged: refreshSpoutInfo()
+
+    Connections
+    {
+        target: showManager
+        ignoreUnknownSignals: true
+        function onTrackSpoutInfoChanged() { trackRoot.refreshSpoutInfo() }
+        function onTracksChanged() { trackRoot.refreshSpoutInfo() }
+    }
 
     CustomTextInput
     {
@@ -59,6 +85,68 @@ Rectangle
         height: 2
         y: parent.height - 2
         color: "#263039"
+    }
+
+    // Spout output size of the track's shared sender (read-only; change it
+    // via the right-click menu). Only shown when the track has Spout clips.
+    RobotoText
+    {
+        id: spoutLabel
+        x: 2
+        y: parent.height - height - 3
+        z: 2
+        width: parent.width - 4
+        height: UISettings.listItemHeight * 0.6
+        visible: trackRoot.spoutInfo.hasSpout === true
+        fontSize: UISettings.textSizeDefault * 0.7
+        labelColor: UISettings.fgLight
+        label: trackRoot.spoutInfo.width > 0 ?
+                   qsTr("Spout %1x%2%3").arg(trackRoot.spoutInfo.width).arg(trackRoot.spoutInfo.height)
+                                        .arg(trackRoot.spoutInfo.fixed ? " •" : "") :
+                   qsTr("Spout: size pending")
+
+        MouseArea
+        {
+            id: spoutLabelArea
+            anchors.fill: parent
+            hoverEnabled: true
+            acceptedButtons: Qt.NoButton
+        }
+        ToolTip
+        {
+            visible: spoutLabelArea.containsMouse
+            delay: 500
+            text: trackRoot.spoutInfo.fixed ?
+                      qsTr("Spout output size fixed on this track. Right-click to change.") :
+                      qsTr("Spout output size, set by the first clip. Right-click to change.")
+        }
+    }
+
+    Popup
+    {
+        id: trackMenu
+        padding: 0
+
+        background:
+            Rectangle
+            {
+                color: UISettings.bgStrong
+                border.color: UISettings.bgStronger
+            }
+
+        Column
+        {
+            ContextMenuEntry
+            {
+                imgSource: "qrc:/video.svg"
+                entryText: qsTr("Set Spout output size...")
+                onClicked:
+                {
+                    trackMenu.close()
+                    trackRoot.spoutSizeRequested(trackRoot.trackIndex)
+                }
+            }
+        }
     }
 
     IconButton
@@ -118,10 +206,19 @@ Rectangle
     {
         anchors.fill: parent
         propagateComposedEvents: true
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
         onClicked: (mouse) =>
         {
             showManager.selectedTrackId = trackRef.id
             trackRoot.trackSelected()
+
+            if (mouse.button === Qt.RightButton)
+            {
+                trackMenu.x = mouse.x
+                trackMenu.y = mouse.y
+                trackMenu.open()
+                return
+            }
             mouse.accepted = false
         }
     }

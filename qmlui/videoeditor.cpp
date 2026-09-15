@@ -23,9 +23,11 @@
 
 #include <QFileInfo>
 
+#include "videoprovider.h"
 #include "videoeditor.h"
 #include "tardis.h"
 #include "video.h"
+#include "track.h"
 #include "mediaassets.h"
 #include "doc.h"
 
@@ -38,6 +40,14 @@ VideoEditor::VideoEditor(QQuickView *view, Doc *doc, QObject *parent)
 
     // the default sender name follows the function name
     connect(this, &FunctionEditor::functionNameChanged, this, &VideoEditor::spoutSenderNameChanged);
+
+    // ... and its "@ WxH" suffix follows the track sender (created after
+    // a probe, or resized by the user in the Show Manager). The provider
+    // outlives every editor of its document, and a new document replaces
+    // the editors too, so a plain connection is safe here.
+    if (VideoProvider::instance() != nullptr)
+        connect(VideoProvider::instance(), &VideoProvider::spoutSendersChanged,
+                this, &VideoEditor::spoutSenderNameChanged);
 }
 
 VideoEditor::~VideoEditor()
@@ -322,7 +332,20 @@ QString VideoEditor::spoutSenderName() const
     if (m_video == nullptr)
         return QString();
 
-    return m_video->defaultSpoutSenderName();
+    QString name = m_video->defaultSpoutSenderName();
+
+    // on a Show track the sender's size is the track's fixed output size,
+    // not this Video's own: say so next to the name
+    Track *track = m_video->spoutTrack();
+    if (track != nullptr)
+    {
+        VideoProvider *provider = VideoProvider::instance();
+        QSize size = provider != nullptr ? provider->trackSpoutOutputSize(track) : track->spoutSize();
+        if (size.isEmpty() == false)
+            name += QString(" @ %1x%2").arg(size.width()).arg(size.height());
+    }
+
+    return name;
 }
 
 bool VideoEditor::isLooped() const

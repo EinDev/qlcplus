@@ -30,3 +30,5 @@ TimeEditTool 0.1 ../TimeEditTool.qml
 TreeNodeDelegate 0.1 ../TreeNodeDelegate.qml
 WindowLoader 0.1 ../WindowLoader.qml
 ZoomItem 0.1 ../ZoomItem.qml
+PopupSpoutSizeMismatch 0.1 ../popup/PopupSpoutSizeMismatch.qml
+PopupTrackSpoutSize 0.1 ../popup/PopupTrackSpoutSize.qml
