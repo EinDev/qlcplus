@@ -626,13 +626,9 @@ Item
         {
             if (dragActive)
                 return
-            var multi = ((mouse.modifiers & Qt.ControlModifier) || (mouse.modifiers & Qt.ShiftModifier))
-                    || (showManager && showManager.multipleSelection)
-            if (multi)
-                itemRoot.isSelected = !itemRoot.isSelected
-            else
-                itemRoot.isSelected = true
-            showManager.setItemSelection(trackIndex, sfRef, itemRoot, itemRoot.isSelected, mouse.modifiers)
+            // plain click: only this item. Ctrl: toggle it. Shift: the range
+            // from the last clicked item on the same track (see ShowManager)
+            showManager.selectItemByClick(trackIndex, sfRef, itemRoot, mouse.modifiers)
         }
 
         onDoubleClicked: functionManager.setEditorFunction(sfRef.functionID, true, false)

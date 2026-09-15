@@ -606,17 +606,89 @@ Rectangle
 
             onContentXChanged: xViewOffset = contentX
 
+            // Empty-area interaction: a click moves the cursor there and clears
+            // the selection (unless Ctrl is held); press-and-drag past a small
+            // threshold draws a rubber band selecting every item it touches
+            // (Ctrl adds them to the current selection instead)
             MouseArea
             {
+                id: bandArea
                 anchors.fill: parent
+                // the Flickables must not steal a rubber band drag for scrolling
+                preventStealing: true
+
+                property real pressX: 0
+                property real pressY: 0
+                property bool bandActive: false
+                // clicked() still fires after a release that ended a band drag
+                property bool bandJustEnded: false
+
+                onPressed: (mouse) =>
+                {
+                    pressX = mouse.x
+                    pressY = mouse.y
+                    bandActive = false
+                    bandJustEnded = false
+                }
+
+                onPositionChanged: (mouse) =>
+                {
+                    if (!pressed)
+                        return
+
+                    if (!bandActive)
+                    {
+                        if (Math.abs(mouse.x - pressX) < 8 && Math.abs(mouse.y - pressY) < 8)
+                            return
+                        bandActive = true
+                        showManager.enableFlicking(false)
+                    }
+
+                    rubberBand.x = Math.min(pressX, mouse.x)
+                    rubberBand.y = Math.min(pressY, mouse.y)
+                    rubberBand.width = Math.abs(mouse.x - pressX)
+                    rubberBand.height = Math.abs(mouse.y - pressY)
+                }
+
+                onReleased: (mouse) =>
+                {
+                    if (!bandActive)
+                        return
+
+                    bandActive = false
+                    bandJustEnded = true
+                    showManager.enableFlicking(true)
+                    showManager.selectItemsInRect(rubberBand.x, rubberBand.y, rubberBand.width, rubberBand.height,
+                                                  (mouse.modifiers & Qt.ControlModifier) ? true : false)
+                }
+
                 onClicked: (mouse) =>
                 {
+                    if (bandJustEnded)
+                    {
+                        bandJustEnded = false
+                        return
+                    }
+
                     if (showManager.timeDivision === Show.Time)
                         showManager.currentTime = TimeUtils.posToMs(mouse.x, timeScale, tickSize)
                     else if (showManager.timeDivisionBPM > 0)
                         showManager.currentTime = TimeUtils.posToBeatMs(mouse.x, tickSize, showManager.timeDivisionBPM, showManager.beatsDivision)
-                    showManager.resetItemsSelection()
+
+                    if (!(mouse.modifiers & Qt.ControlModifier))
+                        showManager.resetItemsSelection()
                 }
+            }
+
+            /* Rubber band selection rectangle */
+            Rectangle
+            {
+                id: rubberBand
+                z: 9
+                visible: bandArea.bandActive
+                color: Qt.rgba(UISettings.selection.r, UISettings.selection.g, UISettings.selection.b, 0.25)
+                border.width: 1
+                border.color: UISettings.selection
             }
 
             // track divider horizontal lines

@@ -25,6 +25,7 @@
 
 #include "previewcontext.h"
 #include "show.h"
+#include "showmovehelper.h"
 
 class Doc;
 class Track;
@@ -371,6 +372,21 @@ public:
     /** Add an item to the selection tracking list */
     Q_INVOKABLE void setItemSelection(int trackIdx, ShowFunction *sf, QQuickItem *item, bool selected, int keyModifiers);
 
+    /** Selection change for a click on a Show item, following the usual
+     *  desktop rules: a plain click selects only that item, Ctrl toggles it
+     *  in the selection, Shift selects every item between the last plain/
+     *  Ctrl-clicked item and this one when both are on the same track (else
+     *  it just adds this one). */
+    Q_INVOKABLE void selectItemByClick(int trackIdx, ShowFunction *sf, QQuickItem *item, int keyModifiers);
+
+    /** Select every item whose geometry (timeline content coordinates)
+     *  intersects the given rectangle. With $add false the previous
+     *  selection is replaced, otherwise extended. */
+    Q_INVOKABLE void selectItemsInRect(qreal x, qreal y, qreal width, qreal height, bool add);
+
+    /** Select every item of the current Show */
+    Q_INVOKABLE void selectAllItems();
+
     /** Deselect all the selected items at once */
     Q_INVOKABLE void resetItemsSelection();
 
@@ -466,6 +482,40 @@ signals:
     void multipleSelectionChanged();
 
 private:
+    /** Everything checkAndMoveItems()/previewItemsMove() need to agree on */
+    struct GroupMovePlan
+    {
+        bool ok = false;
+        int trackDelta = 0;
+        qint64 timeDelta = 0;
+        bool shifted = false;
+        QString blockingName;
+        /** the (unlocked) items taking part, with their current track index */
+        QList<ShowFunction *> items;
+        QList<int> trackIndices;
+    };
+
+    /** Shared by preview and drop: grid-snap and collision-resolve $grabbed's
+     *  requested spot, derive the group delta and validate the whole group */
+    GroupMovePlan planGroupMove(const QVariantList &sfRefs, ShowFunction *grabbed,
+                                int newTrackIdx, int newStartTime, bool itemSnapped) const;
+
+    /** Round $startTime to the grid, unless disabled or the item is already
+     *  snapped to another item's edge */
+    int snapStartTimeToGrid(int startTime, bool itemSnapped) const;
+
+    /** Every track's clips as plain spans, indexed like Show::tracks() */
+    QList<QList<ShowClipSpan>> trackSpans() const;
+
+    /** Milliseconds to timeline pixels, in the current time division */
+    double msToPx(double ms) const;
+
+    /** Selection bookkeeping without notifications; return true if changed */
+    bool addToSelection(int trackIdx, ShowFunction *sf, QQuickItem *item);
+    bool removeFromSelection(ShowFunction *sf);
+    bool clearSelection();
+    bool isSelected(ShowFunction *sf) const;
+
     /** The background color for Show Items */
     QColor m_itemsColor;
 
@@ -474,6 +524,11 @@ private:
 
     /** Holds the currently selected Show items */
     QList<SelectedShowItem> m_selectedItems;
+
+    /** ShowFunction id of the last plain/Ctrl-clicked item: the anchor of a
+     *  Shift-click range selection (an id, not a pointer, since the item may
+     *  have been deleted since) */
+    quint32 m_selectionAnchorId;
 
     /** Flag to enable multi selection in Show items */
     bool m_multipleSelection;

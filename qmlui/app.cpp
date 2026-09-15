@@ -644,6 +644,11 @@ void App::registerBuiltinShortcuts()
                                        tr("Stop/rewind the current Show"),
                                        [sm]() { sm->stopShow(); });
 
+    m_shortcutManager->registerAction("showmgr.selectAll", QKeySequence(Qt::CTRL | Qt::Key_A),
+                                       ShortcutManager::ShowManager,
+                                       tr("Select all the items of the current Show"),
+                                       [sm]() { sm->selectAllItems(); });
+
     m_shortcutManager->registerAction("showmgr.copy", QKeySequence(Qt::CTRL | Qt::Key_C),
                                        ShortcutManager::ShowManager,
                                        tr("Copy the selected Show items"),

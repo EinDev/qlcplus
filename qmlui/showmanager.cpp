@@ -49,6 +49,7 @@ ShowManager::ShowManager(QQuickView *view, Doc *doc, QObject *parent)
     , m_currentTime(0)
     , m_selectedTrackId(-1)
     , m_itemsColor(Qt::gray)
+    , m_selectionAnchorId(Function::invalidId())
     , m_multipleSelection(false)
 {
     view->rootContext()->setContextProperty("showManager", this);
@@ -1398,6 +1399,14 @@ void ShowManager::resetContents()
 
 void ShowManager::resetView()
 {
+    // the selection holds raw pointers to the items deleted below
+    // (refreshView() after an undo goes through here too)
+    if (m_selectedItems.isEmpty() == false)
+    {
+        m_selectedItems.clear();
+        emit selectedItemsCountChanged(0);
+    }
+
     QMapIterator<quint32, QQuickItem*> it(m_itemsMap);
     while (it.hasNext())
     {
@@ -1656,6 +1665,63 @@ void ShowManager::setMultipleSelection(bool multipleSelection)
     emit multipleSelectionChanged();
 }
 
+bool ShowManager::isSelected(ShowFunction *sf) const
+{
+    for (const SelectedShowItem &si : m_selectedItems)
+    {
+        if (si.m_showFunc == sf)
+            return true;
+    }
+    return false;
+}
+
+bool ShowManager::addToSelection(int trackIdx, ShowFunction *sf, QQuickItem *item)
+{
+    if (sf == nullptr || isSelected(sf))
+        return false;
+
+    SelectedShowItem selection;
+    selection.m_trackIndex = trackIdx;
+    selection.m_showFunc = sf;
+    selection.m_item = item;
+    m_selectedItems.append(selection);
+
+    if (item != nullptr)
+        item->setProperty("isSelected", true);
+
+    return true;
+}
+
+bool ShowManager::removeFromSelection(ShowFunction *sf)
+{
+    for (int i = 0; i < m_selectedItems.count(); i++)
+    {
+        SelectedShowItem si = m_selectedItems.at(i);
+        if (si.m_showFunc == sf)
+        {
+            if (si.m_item != nullptr)
+                si.m_item->setProperty("isSelected", false);
+            m_selectedItems.removeAt(i);
+            return true;
+        }
+    }
+    return false;
+}
+
+bool ShowManager::clearSelection()
+{
+    if (m_selectedItems.isEmpty())
+        return false;
+
+    foreach (SelectedShowItem ssi, m_selectedItems)
+    {
+        if (ssi.m_item != nullptr)
+            ssi.m_item->setProperty("isSelected", false);
+    }
+    m_selectedItems.clear();
+    return true;
+}
+
 void ShowManager::setItemSelection(int trackIdx, ShowFunction *sf, QQuickItem *item, bool selected, int keyModifiers)
 {
     bool allowMulti = m_multipleSelection
@@ -1669,49 +1735,134 @@ void ShowManager::setItemSelection(int trackIdx, ShowFunction *sf, QQuickItem *i
         {
             for (int i = m_selectedItems.count() - 1; i >= 0; --i)
             {
-                SelectedShowItem si = m_selectedItems.at(i);
-                if (si.m_showFunc == sf)
+                if (m_selectedItems.at(i).m_showFunc == sf)
                     continue;
-                if (si.m_item != nullptr)
-                    si.m_item->setProperty("isSelected", false);
-                m_selectedItems.removeAt(i);
-                changed = true;
+                changed |= removeFromSelection(m_selectedItems.at(i).m_showFunc);
             }
         }
 
-        bool alreadySelected = false;
-        foreach (SelectedShowItem si, m_selectedItems)
-        {
-            if (si.m_showFunc == sf)
-            {
-                alreadySelected = true;
-                break;
-            }
-        }
-
-        if (!alreadySelected)
-        {
-            SelectedShowItem selection;
-            selection.m_trackIndex = trackIdx;
-            selection.m_showFunc = sf;
-            selection.m_item = item;
-            m_selectedItems.append(selection);
-            changed = true;
-        }
+        changed |= addToSelection(trackIdx, sf, item);
     }
     else
     {
-        for (int i = 0; i < m_selectedItems.count(); i++)
+        changed |= removeFromSelection(sf);
+    }
+    if (changed)
+        emit selectedItemsCountChanged(m_selectedItems.count());
+    emit itemClicked(App::ShowDragItem);
+}
+
+void ShowManager::selectItemByClick(int trackIdx, ShowFunction *sf, QQuickItem *item, int keyModifiers)
+{
+    if (m_currentShow == nullptr || sf == nullptr)
+        return;
+
+    bool changed = false;
+    bool ctrl = (keyModifiers & Qt::ControlModifier) || m_multipleSelection;
+    bool shift = (keyModifiers & Qt::ShiftModifier);
+
+    if (shift)
+    {
+        ShowFunction *anchor = m_currentShow->showFunction(m_selectionAnchorId);
+        Track *track = m_currentShow->getTrackFromShowFunctionID(sf->id());
+        Track *anchorTrack = anchor ? m_currentShow->getTrackFromShowFunctionID(anchor->id()) : nullptr;
+
+        if (!ctrl)
+            changed |= clearSelection();
+
+        if (anchor != nullptr && track != nullptr && anchorTrack == track)
         {
-            SelectedShowItem si = m_selectedItems.at(i);
-            if (si.m_showFunc == sf)
+            // every item on the track between the anchor and this one, by time
+            quint32 from = qMin(anchor->startTime(), sf->startTime());
+            quint32 to = qMax(anchor->startTime(), sf->startTime());
+            for (ShowFunction *other : track->showFunctions())
             {
-                m_selectedItems.removeAt(i);
-                changed = true;
-                break;
+                if (other->startTime() < from || other->startTime() > to)
+                    continue;
+                changed |= addToSelection(trackIdx, other, m_itemsMap.value(other->id(), nullptr));
             }
         }
+        else
+        {
+            changed |= addToSelection(trackIdx, sf, item);
+        }
+        // the anchor stays where it is, so a further Shift-click re-spans
     }
+    else if (ctrl)
+    {
+        if (isSelected(sf))
+            changed |= removeFromSelection(sf);
+        else
+            changed |= addToSelection(trackIdx, sf, item);
+        m_selectionAnchorId = sf->id();
+    }
+    else
+    {
+        for (int i = m_selectedItems.count() - 1; i >= 0; --i)
+        {
+            if (m_selectedItems.at(i).m_showFunc == sf)
+                continue;
+            changed |= removeFromSelection(m_selectedItems.at(i).m_showFunc);
+        }
+        changed |= addToSelection(trackIdx, sf, item);
+        m_selectionAnchorId = sf->id();
+    }
+
+    if (changed)
+        emit selectedItemsCountChanged(m_selectedItems.count());
+    emit itemClicked(App::ShowDragItem);
+}
+
+void ShowManager::selectItemsInRect(qreal x, qreal y, qreal width, qreal height, bool add)
+{
+    if (m_currentShow == nullptr)
+        return;
+
+    QRectF band = QRectF(x, y, width, height).normalized();
+    bool changed = false;
+
+    if (!add)
+        changed |= clearSelection();
+
+    QMapIterator<quint32, QQuickItem *> it(m_itemsMap);
+    while (it.hasNext())
+    {
+        it.next();
+        QQuickItem *item = it.value();
+        QRectF geometry(item->x(), item->y(), item->width(), item->height());
+        if (!band.intersects(geometry))
+            continue;
+
+        ShowFunction *sf = m_currentShow->showFunction(it.key());
+        if (sf == nullptr)
+            continue;
+
+        changed |= addToSelection(item->property("trackIndex").toInt(), sf, item);
+    }
+
+    if (changed)
+        emit selectedItemsCountChanged(m_selectedItems.count());
+    // so that the Delete key (ContextManager::deleteSelectedItems) targets
+    // Show items, exactly as after a click on one
+    emit itemClicked(App::ShowDragItem);
+}
+
+void ShowManager::selectAllItems()
+{
+    if (m_currentShow == nullptr)
+        return;
+
+    bool changed = false;
+    QMapIterator<quint32, QQuickItem *> it(m_itemsMap);
+    while (it.hasNext())
+    {
+        it.next();
+        ShowFunction *sf = m_currentShow->showFunction(it.key());
+        if (sf == nullptr)
+            continue;
+        changed |= addToSelection(it.value()->property("trackIndex").toInt(), sf, it.value());
+    }
+
     if (changed)
         emit selectedItemsCountChanged(m_selectedItems.count());
     emit itemClicked(App::ShowDragItem);
@@ -1719,12 +1870,7 @@ void ShowManager::setItemSelection(int trackIdx, ShowFunction *sf, QQuickItem *i
 
 void ShowManager::resetItemsSelection()
 {
-    foreach (SelectedShowItem ssi, m_selectedItems)
-    {
-        if (ssi.m_item != nullptr)
-            ssi.m_item->setProperty("isSelected", false);
-    }
-    m_selectedItems.clear();
+    clearSelection();
     emit selectedItemsCountChanged(m_selectedItems.count());
 }
 
