@@ -153,6 +153,8 @@ private:
     qreal m_frozenIntensity;
     int m_fadeOutMs;
     qint64 m_startPosition;
+    /** Frames sent in this run (the first one is logged) */
+    quint64 m_framesSent;
     bool m_active;
     bool m_stopRequested;
     QVariantAnimation m_fadeAnim;

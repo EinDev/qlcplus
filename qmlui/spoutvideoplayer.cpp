@@ -49,6 +49,7 @@ SpoutVideoPlayer::SpoutVideoPlayer(Video *video, VideoProvider *provider, const 
     , m_frozenIntensity(-1.0)
     , m_fadeOutMs(0)
     , m_startPosition(0)
+    , m_framesSent(0)
     , m_active(false)
     , m_stopRequested(false)
 {
@@ -108,6 +109,7 @@ void SpoutVideoPlayer::start(int fadeInMs, int fadeOutMs, qint64 startPositionMs
     m_fadeState = 0;
     m_fadeMultiplier = 1.0;
     m_frozenIntensity = -1.0;
+    m_framesSent = 0;
     // Show tracks apply their intensity override before start(), so read
     // the combined value now instead of assuming 1.0
     m_intensity = m_video->intensity();
@@ -122,9 +124,13 @@ void SpoutVideoPlayer::start(int fadeInMs, int fadeOutMs, qint64 startPositionMs
     {
         m_fadeState = 1;
         m_fadeMultiplier = 0.0;
+        // the setters recompute and emit valueChanged() on their own, only
+        // start() should push a value
+        m_fadeAnim.blockSignals(true);
         m_fadeAnim.setStartValue(0.0);
         m_fadeAnim.setEndValue(1.0);
         m_fadeAnim.setDuration(fadeInMs);
+        m_fadeAnim.blockSignals(false);
         m_fadeAnim.start();
     }
 
@@ -176,11 +182,15 @@ void SpoutVideoPlayer::stop()
         // like VideoContext.qml does
         m_frozenIntensity = effectiveIntensity();
         m_fadeState = 2;
+        // fade out from wherever the fade-in got to; block the setters'
+        // own valueChanged() emissions (stale intermediate values)
         qreal from = m_fadeMultiplier;
+        m_fadeAnim.blockSignals(true);
         m_fadeAnim.stop();
         m_fadeAnim.setStartValue(from);
         m_fadeAnim.setEndValue(0.0);
         m_fadeAnim.setDuration(m_fadeOutMs);
+        m_fadeAnim.blockSignals(false);
         m_fadeAnim.start();
     }
     else
@@ -288,6 +298,11 @@ void SpoutVideoPlayer::render()
     if (m_provider->ownsSpoutSender(m_senderName, this) == false)
         return;
 
+    // nothing decoded yet (fade ticks before the first frame): the sender
+    // is already transparent from its creation or the previous finish()
+    if (m_lastFrame.isNull())
+        return;
+
     if (m_sender == nullptr)
     {
         QSize preferred = m_video->spoutSize().isEmpty() ? m_lastFrame.size() : m_video->spoutSize();
@@ -307,19 +322,21 @@ void SpoutVideoPlayer::render()
     // this as premultiplied alpha (see spoutsender.h)
     m_canvas.fill(Qt::transparent);
 
-    if (m_lastFrame.isNull() == false)
-    {
-        QSize fit = m_lastFrame.size().scaled(size, Qt::KeepAspectRatio);
-        QRect target(QPoint((size.width() - fit.width()) / 2, (size.height() - fit.height()) / 2), fit);
+    QSize fit = m_lastFrame.size().scaled(size, Qt::KeepAspectRatio);
+    QRect target(QPoint((size.width() - fit.width()) / 2, (size.height() - fit.height()) / 2), fit);
 
-        QPainter painter(&m_canvas);
-        painter.setRenderHint(QPainter::SmoothPixmapTransform, fit != m_lastFrame.size());
-        painter.setOpacity(qBound(0.0, effectiveIntensity() * m_fadeMultiplier, 1.0));
-        painter.drawImage(target, m_lastFrame);
-        painter.end();
-    }
+    QPainter painter(&m_canvas);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform, fit != m_lastFrame.size());
+    painter.setOpacity(qBound(0.0, effectiveIntensity() * m_fadeMultiplier, 1.0));
+    painter.drawImage(target, m_lastFrame);
+    painter.end();
 
     m_sender->sendImage(m_canvas);
+
+    if (++m_framesSent == 1)
+        qDebug().noquote() << "[Spout] first frame of" << m_video->name() << "sent on" << m_senderName
+                           << "canvas" << size.width() << "x" << size.height()
+                           << "source" << m_lastFrame.width() << "x" << m_lastFrame.height();
 }
 
 QSize SpoutVideoPlayer::canvasSize(const QSize &frameSize) const
@@ -370,7 +387,8 @@ void SpoutVideoPlayer::finish(bool emitFinished)
         if (m_sender != nullptr)
         {
             m_sender->sendTransparent();
-            qDebug().noquote() << "[Spout] stopped" << m_video->name() << "- sent transparent frame on" << m_senderName;
+            qDebug().noquote() << "[Spout] stopped" << m_video->name() << "after" << m_framesSent
+                               << "frames - sent transparent frame on" << m_senderName;
         }
         m_provider->releaseSpoutSender(m_senderName, this);
     }
