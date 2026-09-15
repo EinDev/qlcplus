@@ -46,6 +46,8 @@ class VideoEditor final : public FunctionEditor
     Q_PROPERTY(QRect customGeometry READ customGeometry WRITE setCustomGeometry NOTIFY customGeometryChanged)
     Q_PROPERTY(QVector3D rotation READ rotation WRITE setRotation NOTIFY rotationChanged)
     Q_PROPERTY(int layer READ layer WRITE setLayer NOTIFY layerChanged)
+    Q_PROPERTY(qreal volume READ volume WRITE setVolume NOTIFY volumeChanged)
+    Q_PROPERTY(bool muted READ muted WRITE setMuted NOTIFY mutedChanged)
 
 public:
     VideoEditor(QQuickView *view, Doc *doc, QObject *parent = nullptr);
@@ -110,6 +112,14 @@ public:
     int layer() const;
     void setLayer(int index);
 
+    /** Get/Set the Video function volume (0-100) */
+    qreal volume() const;
+    void setVolume(qreal volume);
+
+    /** Get/Set the Video function mute flag */
+    bool muted() const;
+    void setMuted(bool muted);
+
 private:
     void detectMedia();
 
@@ -129,6 +139,8 @@ signals:
     void customGeometryChanged(QRect customGeometry);
     void rotationChanged(QVector3D rotation);
     void layerChanged(int index);
+    void volumeChanged();
+    void mutedChanged();
 
 private:
     /** Reference of the Video currently being edited */

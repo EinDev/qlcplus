@@ -122,6 +122,7 @@ private slots:
     void slotMediaStatusChanged(QMediaPlayer::MediaStatus status);
     void slotPlayerError(QMediaPlayer::Error error, const QString &errorString);
     void slotAttributeChanged(int attrIndex, qreal value);
+    void slotMutedChanged(bool muted);
     void slotFadeValueChanged(const QVariant &value);
     void slotFadeFinished();
 
@@ -159,6 +160,8 @@ private:
     qreal m_intensity;
     /** Volume attribute (0..1) */
     qreal m_volume;
+    /** Mute flag: forces the audio output volume to 0 */
+    bool m_muted;
     /** Fade multiplier (0..1) */
     qreal m_fadeMultiplier;
     /** 0 idle, 1 fading in, 2 fading out */

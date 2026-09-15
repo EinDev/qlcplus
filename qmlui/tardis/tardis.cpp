@@ -1326,6 +1326,12 @@ int Tardis::processAction(TardisAction &action, bool undo)
             member(qobject_cast<Audio *>(m_doc->function(action.m_objID)), value->toDouble());
         }
         break;
+        case AudioSetMuted:
+        {
+            auto member = std::mem_fn(&Audio::setMuted);
+            member(qobject_cast<Audio *>(m_doc->function(action.m_objID)), value->toBool());
+        }
+        break;
 
         /* *********************** Video editing actions *********************** */
 
@@ -1377,6 +1383,18 @@ int Tardis::processAction(TardisAction &action, bool undo)
         {
             auto member = std::mem_fn(&Video::setZIndex);
             member(qobject_cast<Video *>(m_doc->function(action.m_objID)), value->toInt());
+        }
+        break;
+        case VideoSetVolume:
+        {
+            auto member = std::mem_fn(&Video::setVolume);
+            member(qobject_cast<Video *>(m_doc->function(action.m_objID)), value->toDouble());
+        }
+        break;
+        case VideoSetMuted:
+        {
+            auto member = std::mem_fn(&Video::setMuted);
+            member(qobject_cast<Video *>(m_doc->function(action.m_objID)), value->toBool());
         }
         break;
 

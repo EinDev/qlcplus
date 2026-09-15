@@ -188,7 +188,11 @@ Rectangle
             z: video ? video.zIndex : 1
 
             property VideoFunction video: null
-            property alias volume: player.audioOutput.volume
+            // Volume attribute (0..1) and mute flag of the Video function.
+            // Plain properties (not an alias) so that videoContent pushing a
+            // new volume doesn't break the AudioOutput binding below
+            property real volume: video ? video.volume / 100.0 : 1.0
+            property bool muted: video ? video.muted : false
             property vector3d rotation: video.rotation
             property rect geometry: video.customGeometry
             property int fadeIn: 0
@@ -430,7 +434,8 @@ Rectangle
                 autoPlay: true
                 audioOutput:
                     AudioOutput {
-                        volume: mediaRect.effectiveIntensity * mediaRect.fadeMultiplier
+                        volume: mediaRect.muted ? 0.0 :
+                                mediaRect.volume * mediaRect.effectiveIntensity * mediaRect.fadeMultiplier
                     }
 
                 videoOutput: pVideoOutput

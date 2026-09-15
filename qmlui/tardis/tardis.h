@@ -247,6 +247,7 @@ public:
         /* Audio editing actions */
         AudioSetSource = 0x1600,
         AudioSetVolume,
+        AudioSetMuted,
 
         /* Video editing actions */
         VideoSetSource = 0x1700,
@@ -257,6 +258,8 @@ public:
         VideoSetGeometry,
         VideoSetRotation,
         VideoSetLayer,
+        VideoSetVolume,
+        VideoSetMuted,
 
         /* Show Manager actions */
         ShowManagerAddTrack = 0xB000,

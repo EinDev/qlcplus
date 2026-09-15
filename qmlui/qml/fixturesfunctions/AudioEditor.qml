@@ -284,16 +284,34 @@ Rectangle
             label: qsTr("Volume")
             height: UISettings.listItemHeight
         }
-        CustomSpinBox
+        RowLayout
         {
             height: UISettings.listItemHeight
             Layout.fillWidth: true
-            from: 0
-            to: 100
-            value: audioEditor.volume
-            suffix: "%"
-            onValueChanged: audioEditor.volume = value
-       }
+
+            CustomSpinBox
+            {
+                height: UISettings.listItemHeight
+                Layout.fillWidth: true
+                from: 0
+                to: 100
+                value: audioEditor.volume
+                suffix: "%"
+                onValueChanged: audioEditor.volume = value
+            }
+            CustomCheckBox
+            {
+                implicitWidth: UISettings.iconSizeMedium
+                implicitHeight: implicitWidth
+                checked: audioEditor.muted
+                onClicked: audioEditor.muted = checked
+            }
+            RobotoText
+            {
+                height: UISettings.listItemHeight
+                label: qsTr("Mute")
+            }
+        }
 
         // row 9
         RobotoText

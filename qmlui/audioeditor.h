@@ -34,6 +34,7 @@ class AudioEditor final : public FunctionEditor
     Q_PROPERTY(QVariant mediaInfo READ mediaInfo NOTIFY mediaInfoChanged)
     Q_PROPERTY(bool looped READ isLooped WRITE setLooped NOTIFY loopedChanged)
     Q_PROPERTY(qreal volume READ volume WRITE setVolume NOTIFY volumeChanged)
+    Q_PROPERTY(bool muted READ muted WRITE setMuted NOTIFY mutedChanged)
     Q_PROPERTY(int cardLineIndex READ cardLineIndex WRITE setCardLineIndex NOTIFY cardLineIndexChanged)
     Q_PROPERTY(double bpm READ bpm NOTIFY bpmChanged)
     Q_PROPERTY(double bpmConfidence READ bpmConfidence NOTIFY bpmChanged)
@@ -63,6 +64,10 @@ public:
     qreal volume();
     void setVolume(qreal volume);
 
+    /** Get/Set the Audio function mute flag */
+    bool muted() const;
+    void setMuted(bool muted);
+
     /** Get/Set the audio card line used to play this Audio function */
     int cardLineIndex() const;
     void setCardLineIndex(int cardLineIndex);
@@ -80,6 +85,7 @@ signals:
     void mediaInfoChanged();
     void loopedChanged();
     void volumeChanged();
+    void mutedChanged();
     void cardLineIndexChanged(int cardLineIndex);
     void bpmChanged();
 

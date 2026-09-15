@@ -44,6 +44,7 @@ SpoutVideoPlayer::SpoutVideoPlayer(Video *video, VideoProvider *provider, const 
     , m_videoSink(new QVideoSink(this))
     , m_intensity(1.0)
     , m_volume(1.0)
+    , m_muted(false)
     , m_fadeMultiplier(1.0)
     , m_fadeState(0)
     , m_frozenIntensity(-1.0)
@@ -79,6 +80,8 @@ SpoutVideoPlayer::SpoutVideoPlayer(Video *video, VideoProvider *provider, const 
     // engine. Emitted from the MasterTimer thread, queued to us.
     connect(m_video, SIGNAL(attributeChanged(int,qreal)),
             this, SLOT(slotAttributeChanged(int,qreal)));
+    connect(m_video, SIGNAL(mutedChanged(bool)),
+            this, SLOT(slotMutedChanged(bool)));
 
     m_fadeAnim.setStartValue(0.0);
     m_fadeAnim.setEndValue(1.0);
@@ -123,6 +126,7 @@ void SpoutVideoPlayer::start(int fadeInMs, int fadeOutMs, qint64 startPositionMs
     // the combined value now instead of assuming 1.0
     m_intensity = m_video->intensity();
     m_volume = m_video->getAttributeValue(Video::Volume) / 100.0;
+    m_muted = m_video->muted();
     m_lastFrame = QImage();
 
     // Latest claimant wins: an earlier player still fading out on this
@@ -366,6 +370,14 @@ void SpoutVideoPlayer::slotAttributeChanged(int attrIndex, qreal value)
     render();
 }
 
+void SpoutVideoPlayer::slotMutedChanged(bool muted)
+{
+    m_muted = muted;
+
+    if (m_active)
+        applyVolume();
+}
+
 void SpoutVideoPlayer::slotFadeValueChanged(const QVariant &value)
 {
     m_fadeMultiplier = value.toReal();
@@ -463,7 +475,10 @@ qreal SpoutVideoPlayer::effectiveIntensity() const
 
 void SpoutVideoPlayer::applyVolume()
 {
-    m_audioOutput->setVolume(float(qBound(0.0, m_volume * effectiveIntensity() * m_fadeMultiplier, 1.0)));
+    if (m_muted)
+        m_audioOutput->setVolume(0.0f);
+    else
+        m_audioOutput->setVolume(float(qBound(0.0, m_volume * effectiveIntensity() * m_fadeMultiplier, 1.0)));
 }
 
 void SpoutVideoPlayer::finish(bool emitFinished)

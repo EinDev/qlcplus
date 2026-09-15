@@ -228,6 +228,37 @@ Rectangle
             }
         }
 
+        // row 6a
+        RobotoText { label: qsTr("Volume"); height: UISettings.listItemHeight }
+        RowLayout
+        {
+            height: UISettings.listItemHeight
+            Layout.fillWidth: true
+
+            CustomSpinBox
+            {
+                height: UISettings.listItemHeight
+                Layout.fillWidth: true
+                from: 0
+                to: 100
+                value: videoEditor.volume
+                suffix: "%"
+                onValueChanged: videoEditor.volume = value
+            }
+            CustomCheckBox
+            {
+                implicitWidth: UISettings.iconSizeMedium
+                implicitHeight: implicitWidth
+                checked: videoEditor.muted
+                onClicked: videoEditor.muted = checked
+            }
+            RobotoText
+            {
+                height: UISettings.listItemHeight
+                label: qsTr("Mute")
+            }
+        }
+
         // row 7
         RobotoText { label: qsTr("Output screen"); height: UISettings.listItemHeight }
         CustomComboBox

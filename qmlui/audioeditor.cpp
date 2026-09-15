@@ -139,6 +139,24 @@ void AudioEditor::setVolume(qreal volume)
     emit volumeChanged();
 }
 
+bool AudioEditor::muted() const
+{
+    if (m_audio != nullptr)
+        return m_audio->muted();
+
+    return false;
+}
+
+void AudioEditor::setMuted(bool muted)
+{
+    if (m_audio == nullptr || m_audio->muted() == muted)
+        return;
+
+    Tardis::instance()->enqueueAction(Tardis::AudioSetMuted, m_audio->id(), m_audio->muted(), muted);
+    m_audio->setMuted(muted);
+    emit mutedChanged();
+}
+
 int AudioEditor::cardLineIndex() const
 {
     if (m_audio == nullptr || m_audio->audioDevice().isEmpty())

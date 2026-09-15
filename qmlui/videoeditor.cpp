@@ -367,3 +367,39 @@ void VideoEditor::setLayer(int index)
     m_video->setZIndex(index);
     emit layerChanged(index);
 }
+
+qreal VideoEditor::volume() const
+{
+    if (m_video != nullptr)
+        return m_video->volume();
+
+    return 100;
+}
+
+void VideoEditor::setVolume(qreal volume)
+{
+    if (m_video == nullptr || m_video->volume() == volume)
+        return;
+
+    Tardis::instance()->enqueueAction(Tardis::VideoSetVolume, m_video->id(), m_video->volume(), volume);
+    m_video->setVolume(volume);
+    emit volumeChanged();
+}
+
+bool VideoEditor::muted() const
+{
+    if (m_video != nullptr)
+        return m_video->muted();
+
+    return false;
+}
+
+void VideoEditor::setMuted(bool muted)
+{
+    if (m_video == nullptr || m_video->muted() == muted)
+        return;
+
+    Tardis::instance()->enqueueAction(Tardis::VideoSetMuted, m_video->id(), m_video->muted(), muted);
+    m_video->setMuted(muted);
+    emit mutedChanged();
+}
