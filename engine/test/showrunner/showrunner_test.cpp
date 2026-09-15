@@ -323,8 +323,8 @@ void ShowRunner_Test::scheduleNotifications()
     QVERIFY(ls.show->isScheduleDirty() == true);
     ls.commitEdit();
 
-    // the snapshot resolves a clip's Function tempo and duration fallback,
-    // so a change to a referenced Function counts too - but not to others
+    // the snapshot resolves a zero clip duration to the Function's own, so
+    // a change to a referenced Function counts too - but not to others
     Scene *unrelated = ls.makeScene("unrelated");
     unrelated->setFadeInSpeed(100);
     QVERIFY(ls.show->isScheduleDirty() == false);
