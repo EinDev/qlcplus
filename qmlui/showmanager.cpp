@@ -712,6 +712,18 @@ void ShowManager::deleteShowItem(ShowFunction *sf)
     }
 }
 
+/** A ShowFunction reference coming back from QML. A JS-built array element
+ *  ([ sfRef ]) is stored as a plain QObject*, and QVariant::value<ShowFunction*>()
+ *  would resolve it through the same metaobject comparison as qobject_cast,
+ *  which fails across the engine DLL boundary - so go through inherits(). */
+static ShowFunction *showFunctionFromRef(const QVariant &ref)
+{
+    QObject *obj = ref.value<QObject *>();
+    if (obj != nullptr && obj->inherits("ShowFunction"))
+        return static_cast<ShowFunction *>(obj);
+    return nullptr;
+}
+
 int ShowManager::snapStartTimeToGrid(int startTime, bool itemSnapped) const
 {
     if (m_currentShow == nullptr || !m_gridEnabled || itemSnapped)
@@ -783,6 +795,10 @@ ShowManager::GroupMovePlan ShowManager::planGroupMove(const QVariantList &sfRefs
 
     QList<Track *> tracks = m_currentShow->tracks();
 
+    // a drop anywhere below the last track lands on the first new one, so the
+    // group creates at most as many tracks as it spans below the last one
+    newTrackIdx = qMin(newTrackIdx, tracks.count());
+
     // The source tracks are resolved from the ShowFunctions themselves rather
     // than trusted from the QML items' trackIndex: that index could go stale
     // (or point past the last track), and QList::at() on a bad index is
@@ -798,7 +814,7 @@ ShowManager::GroupMovePlan ShowManager::planGroupMove(const QVariantList &sfRefs
 
     for (const QVariant &ref : sfRefs)
     {
-        ShowFunction *sf = ref.value<ShowFunction *>();
+        ShowFunction *sf = showFunctionFromRef(ref);
         if (sf == nullptr || sf == grabbed || sf->isLocked() || plan.items.contains(sf))
             continue;
 
@@ -962,7 +978,7 @@ void ShowManager::clearItemsMovePreview(QVariantList sfRefs, ShowFunction *grabb
 {
     for (const QVariant &ref : sfRefs)
     {
-        ShowFunction *sf = ref.value<ShowFunction *>();
+        ShowFunction *sf = showFunctionFromRef(ref);
         if (sf == nullptr || sf == grabbed)
             continue;
 
