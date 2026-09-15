@@ -45,6 +45,13 @@ namespace Diagnostics
      *  "(none)" if empty. */
     QString currentProjectPath();
 
+    /** Set by CrashHandler the moment a crash report starts. The crashing
+     *  (usually GUI) thread then blocks until the dialog is dismissed, so
+     *  its heartbeat stops - FreezeWatchdog checks this to avoid stacking a
+     *  "Freeze detected" dialog on top of the crash dialog. */
+    void setCrashReportInProgress();
+    bool isCrashReportInProgress();
+
 #ifdef Q_OS_WIN
     /** %LOCALAPPDATA%\qlcplus (created on demand), where reports are written. */
     QString reportsDir();

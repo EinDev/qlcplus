@@ -116,7 +116,10 @@ void FreezeWatchdog::watchdogLoop()
 
         if (!m_fired.load())
         {
-            if (age > kFreezeThresholdMs && !IsDebuggerPresent())
+            // A crash report in progress parks the crashing (GUI) thread
+            // until its dialog is dismissed - that's not a freeze.
+            if (age > kFreezeThresholdMs && !IsDebuggerPresent()
+                && !Diagnostics::isCrashReportInProgress())
             {
                 m_fired = true;
                 m_freezeStartMs = now - age;

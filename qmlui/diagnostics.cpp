@@ -25,6 +25,8 @@
 #include <QMutex>
 #include <QMutexLocker>
 
+#include <atomic>
+
 #ifdef Q_OS_WIN
 #include <windows.h>
 #include <cstring>
@@ -37,6 +39,7 @@ namespace {
 
 QMutex g_projectPathMutex;
 QString g_projectPath;
+std::atomic<bool> g_crashReportInProgress { false };
 
 #ifdef Q_OS_WIN
 // Bound how long we wait for the gdb child so a misbehaving gdb can't wedge
@@ -56,6 +59,16 @@ QString Diagnostics::currentProjectPath()
 {
     QMutexLocker locker(&g_projectPathMutex);
     return g_projectPath.isEmpty() ? QStringLiteral("(none)") : g_projectPath;
+}
+
+void Diagnostics::setCrashReportInProgress()
+{
+    g_crashReportInProgress = true;
+}
+
+bool Diagnostics::isCrashReportInProgress()
+{
+    return g_crashReportInProgress.load();
 }
 
 #ifdef Q_OS_WIN

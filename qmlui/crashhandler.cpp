@@ -42,7 +42,8 @@ qint64 g_installedAtMs = 0;
 #ifdef Q_OS_WIN
 
 std::atomic<bool> g_reporting { false };
-std::atomic<unsigned long> g_reportingThreadId { 0 };
+std::atomic<unsigned long> g_reportingThreadId { 0 };  // the thread that crashed
+std::atomic<unsigned long> g_helperThreadId { 0 };     // the thread writing the report
 
 struct ReportJob
 {
@@ -55,6 +56,8 @@ struct ReportJob
 // happens here, never on the crashing thread itself.
 DWORD WINAPI reportThreadProc(LPVOID param)
 {
+    g_helperThreadId = GetCurrentThreadId();
+
     const ReportJob *job = static_cast<const ReportJob *>(param);
     const qint64 pid = QCoreApplication::applicationPid();
     const qint64 uptimeMs = QDateTime::currentMSecsSinceEpoch() - g_installedAtMs;
@@ -143,10 +146,14 @@ void produceReport(const QString &kind, const QStringList &details)
     bool expected = false;
     if (!g_reporting.compare_exchange_strong(expected, true))
     {
-        if (g_reportingThreadId.load() == tid)
+        if (g_reportingThreadId.load() == tid || g_helperThreadId.load() == tid)
         {
-            // We crashed again *inside* the reporter (or in a chained
-            // handler it called) - nothing more to be gained, stop here.
+            // We crashed again *inside* the reporter - on the crashing
+            // thread (a chained handler) or on the helper thread writing
+            // the report (e.g. heap corruption biting the report's own
+            // allocations). Parking here would leave the crashing thread
+            // waiting on the helper forever: a silent hang with no dialog
+            // and no WER dump. Nothing more to be gained, stop here.
             TerminateProcess(GetCurrentProcess(), 3);
         }
         // Some other thread is already reporting; the process is going
@@ -154,6 +161,7 @@ void produceReport(const QString &kind, const QStringList &details)
         Sleep(INFINITE);
     }
     g_reportingThreadId = tid;
+    Diagnostics::setCrashReportInProgress();
 
     ReportJob job;
     job.kind = kind;
