@@ -73,6 +73,44 @@ void Track_Test::mute()
     QCOMPARE(t.isMute(), false);
 }
 
+void Track_Test::spoutSize()
+{
+    Track t;
+    t.setId(42);
+    QSignalSpy sizeSpy(&t, SIGNAL(spoutSizeChanged(QSize)));
+    QSignalSpy changedSpy(&t, SIGNAL(changed(quint32)));
+
+    // not set by default
+    QCOMPARE(t.spoutSize(), QSize(0, 0));
+    QVERIFY(t.spoutSize().isEmpty());
+
+    t.setSpoutSize(QSize(1920, 1080));
+    QCOMPARE(t.spoutSize(), QSize(1920, 1080));
+    QCOMPARE(sizeSpy.count(), 1);
+    QCOMPARE(sizeSpy.at(0).at(0).toSize(), QSize(1920, 1080));
+    QCOMPARE(changedSpy.count(), 1);
+    QCOMPARE(changedSpy.at(0).at(0).toUInt(), 42u);
+
+    // same size again: no signals
+    t.setSpoutSize(QSize(1920, 1080));
+    QCOMPARE(sizeSpy.count(), 1);
+    QCOMPARE(changedSpy.count(), 1);
+
+    // anything unusable resets to "not set", stored uniformly as 0x0
+    t.setSpoutSize(QSize(640, 0));
+    QCOMPARE(t.spoutSize(), QSize(0, 0));
+    QCOMPARE(sizeSpy.count(), 2);
+
+    t.setSpoutSize(QSize(1280, 720));
+    t.setSpoutSize(QSize());
+    QCOMPARE(t.spoutSize(), QSize(0, 0));
+    QCOMPARE(sizeSpy.count(), 4);
+
+    // already unset: no signal
+    t.setSpoutSize(QSize(-1, 5));
+    QCOMPARE(sizeSpy.count(), 4);
+}
+
 void Track_Test::showFunctions()
 {
     Track t;
@@ -134,6 +172,44 @@ void Track_Test::load()
 
     QVERIFY(sf->functionID() == 789);
     QVERIFY(sf->duration() == 112233);
+
+    // no SpoutSize attribute: stays unset
+    QCOMPARE(t.spoutSize(), QSize(0, 0));
+}
+
+void Track_Test::loadSpoutSize()
+{
+    // a valid "w,h" attribute, plus the malformed variants that must be
+    // ignored (leaving the size unset) without failing the whole load
+    QStringList attrs;
+    attrs << "1280,720" << "1280" << "a,b" << "0,720" << "1280,-1" << "";
+    QList<QSize> expected;
+    expected << QSize(1280, 720) << QSize(0, 0) << QSize(0, 0) << QSize(0, 0) << QSize(0, 0) << QSize(0, 0);
+
+    for (int i = 0; i < attrs.count(); i++)
+    {
+        QBuffer buffer;
+        buffer.open(QIODevice::WriteOnly | QIODevice::Text);
+        QXmlStreamWriter xmlWriter(&buffer);
+
+        xmlWriter.writeStartElement("Track");
+        xmlWriter.writeAttribute("ID", "5");
+        xmlWriter.writeAttribute("Name", "Video");
+        xmlWriter.writeAttribute("isMute", "0");
+        xmlWriter.writeAttribute("SpoutSize", attrs.at(i));
+        xmlWriter.writeEndElement();
+        xmlWriter.writeEndDocument();
+        xmlWriter.setDevice(NULL);
+        buffer.close();
+
+        buffer.open(QIODevice::ReadOnly | QIODevice::Text);
+        QXmlStreamReader xmlReader(&buffer);
+        xmlReader.readNextStartElement();
+
+        Track t;
+        QVERIFY2(t.loadXML(xmlReader) == true, qPrintable(attrs.at(i)));
+        QCOMPARE(t.spoutSize(), expected.at(i));
+    }
 }
 
 void Track_Test::functions()
@@ -221,10 +297,40 @@ void Track_Test::save()
     QVERIFY(xmlReader.attributes().value("SceneID").toString() == "321");
     QVERIFY(xmlReader.attributes().value("Name").toString() == "Audio Cue");
     QVERIFY(xmlReader.attributes().value("isMute").toString() == "1");
+    // unset: the attribute is not written at all
+    QVERIFY(xmlReader.attributes().hasAttribute("SpoutSize") == false);
 
     xmlReader.readNextStartElement();
     QVERIFY(xmlReader.name().toString() == "ShowFunction");
     QVERIFY(xmlReader.attributes().value("ID").toString() == "987");
+}
+
+void Track_Test::saveSpoutSize()
+{
+    Track t;
+    t.setId(7);
+    t.setName("Video");
+    t.setSpoutSize(QSize(1920, 1080));
+
+    QBuffer buffer;
+    buffer.open(QIODevice::WriteOnly | QIODevice::Text);
+    QXmlStreamWriter xmlWriter(&buffer);
+    QVERIFY(t.saveXML(&xmlWriter) == true);
+    xmlWriter.setDevice(NULL);
+    buffer.close();
+
+    buffer.open(QIODevice::ReadOnly | QIODevice::Text);
+    QXmlStreamReader xmlReader(&buffer);
+    xmlReader.readNextStartElement();
+    QVERIFY(xmlReader.name().toString() == "Track");
+    QCOMPARE(xmlReader.attributes().value("SpoutSize").toString(), QString("1920,1080"));
+
+    // and it round-trips through loadXML
+    Track t2;
+    QVERIFY(t2.loadXML(xmlReader) == true);
+    QCOMPARE(t2.id(), 7u);
+    QCOMPARE(t2.name(), QString("Video"));
+    QCOMPARE(t2.spoutSize(), QSize(1920, 1080));
 }
 
 

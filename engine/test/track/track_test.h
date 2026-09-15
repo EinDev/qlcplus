@@ -34,10 +34,13 @@ private slots:
     void cleanupTestCase();
     void defaults();
     void mute();
+    void spoutSize();
     void showFunctions();
     void load();
+    void loadSpoutSize();
     void functions();
     void save();
+    void saveSpoutSize();
 
 private:
     Doc *m_doc;
