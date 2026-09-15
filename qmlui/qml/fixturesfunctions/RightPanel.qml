@@ -212,10 +212,15 @@ SidePanel
         }
     }
 
+    // Plain informational popup for refused operations: a name clash on
+    // create/rename, or a deletion blocked by a Show reference. OK only -
+    // there is nothing to cancel. Also reachable from the function list
+    // loaded into this panel, whose id lookups resolve through the Loader.
     CustomPopupDialog
     {
         id: fmGenericPopup
         visible: false
+        standardButtons: Dialog.Ok
         title: qsTr("Error")
         message: ""
         onAccepted: {}
@@ -248,16 +253,6 @@ SidePanel
         }
     }
 
-    // Plain informational popup (OK only) for refused operations: a name
-    // clash on create/rename, or a deletion blocked by a Show reference.
-    // Also reachable from the function list loaded into this panel, whose
-    // id lookups resolve through this Loader's context.
-    CustomPopupDialog
-    {
-        id: fmGenericPopup
-        standardButtons: Dialog.Ok
-        title: qsTr("Function Manager")
-    }
 
     Rectangle
     {
