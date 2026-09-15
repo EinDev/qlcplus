@@ -609,9 +609,9 @@ Rectangle
             onContentXChanged: xViewOffset = contentX
 
             // Empty-area interaction: a click moves the cursor there and clears
-            // the selection (unless Ctrl is held); press-and-drag past a small
-            // threshold draws a rubber band selecting every item it touches
-            // (Ctrl adds them to the current selection instead)
+            // the selection; press-and-drag past a small threshold draws a
+            // rubber band, which replaces the selection with every item it
+            // touches (the rubber band is the one way to select several items)
             MouseArea
             {
                 id: bandArea
@@ -652,7 +652,7 @@ Rectangle
                     rubberBand.height = Math.abs(mouse.y - pressY)
                 }
 
-                onReleased: (mouse) =>
+                onReleased:
                 {
                     if (!bandActive)
                         return
@@ -660,8 +660,7 @@ Rectangle
                     bandActive = false
                     bandJustEnded = true
                     showManager.enableFlicking(true)
-                    showManager.selectItemsInRect(rubberBand.x, rubberBand.y, rubberBand.width, rubberBand.height,
-                                                  (mouse.modifiers & Qt.ControlModifier) ? true : false)
+                    showManager.selectItemsInRect(rubberBand.x, rubberBand.y, rubberBand.width, rubberBand.height)
                 }
 
                 onClicked: (mouse) =>
@@ -677,8 +676,7 @@ Rectangle
                     else if (showManager.timeDivisionBPM > 0)
                         showManager.currentTime = TimeUtils.posToBeatMs(mouse.x, tickSize, showManager.timeDivisionBPM, showManager.beatsDivision)
 
-                    if (!(mouse.modifiers & Qt.ControlModifier))
-                        showManager.resetItemsSelection()
+                    showManager.resetItemsSelection()
                 }
             }
 

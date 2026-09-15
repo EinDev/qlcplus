@@ -51,7 +51,6 @@ ShowManager::ShowManager(QQuickView *view, Doc *doc, QObject *parent)
     , m_currentTime(0)
     , m_selectedTrackId(-1)
     , m_itemsColor(Qt::gray)
-    , m_selectionAnchorId(Function::invalidId())
     , m_multipleSelection(false)
 {
     view->rootContext()->setContextProperty("showManager", this);
@@ -2089,11 +2088,9 @@ bool ShowManager::clearSelection()
     return true;
 }
 
-void ShowManager::setItemSelection(int trackIdx, ShowFunction *sf, QQuickItem *item, bool selected, int keyModifiers)
+void ShowManager::setItemSelection(int trackIdx, ShowFunction *sf, QQuickItem *item, bool selected)
 {
-    bool allowMulti = m_multipleSelection
-            || (keyModifiers & Qt::ControlModifier)
-            || (keyModifiers & Qt::ShiftModifier);
+    bool allowMulti = m_multipleSelection;
     bool changed = false;
 
     if (selected == true)
@@ -2119,49 +2116,19 @@ void ShowManager::setItemSelection(int trackIdx, ShowFunction *sf, QQuickItem *i
     emit itemClicked(App::ShowDragItem);
 }
 
-void ShowManager::selectItemByClick(int trackIdx, ShowFunction *sf, QQuickItem *item, int keyModifiers)
+void ShowManager::selectItemByClick(int trackIdx, ShowFunction *sf, QQuickItem *item)
 {
     if (m_currentShow == nullptr || sf == nullptr)
         return;
 
     bool changed = false;
-    bool ctrl = (keyModifiers & Qt::ControlModifier) || m_multipleSelection;
-    bool shift = (keyModifiers & Qt::ShiftModifier);
 
-    if (shift)
-    {
-        ShowFunction *anchor = m_currentShow->showFunction(m_selectionAnchorId);
-        Track *track = m_currentShow->getTrackFromShowFunctionID(sf->id());
-        Track *anchorTrack = anchor ? m_currentShow->getTrackFromShowFunctionID(anchor->id()) : nullptr;
-
-        if (!ctrl)
-            changed |= clearSelection();
-
-        if (anchor != nullptr && track != nullptr && anchorTrack == track)
-        {
-            // every item on the track between the anchor and this one, by time
-            quint32 from = qMin(anchor->startTime(), sf->startTime());
-            quint32 to = qMax(anchor->startTime(), sf->startTime());
-            for (ShowFunction *other : track->showFunctions())
-            {
-                if (other->startTime() < from || other->startTime() > to)
-                    continue;
-                changed |= addToSelection(trackIdx, other, m_itemsMap.value(other->id(), nullptr));
-            }
-        }
-        else
-        {
-            changed |= addToSelection(trackIdx, sf, item);
-        }
-        // the anchor stays where it is, so a further Shift-click re-spans
-    }
-    else if (ctrl)
+    if (m_multipleSelection)
     {
         if (isSelected(sf))
             changed |= removeFromSelection(sf);
         else
             changed |= addToSelection(trackIdx, sf, item);
-        m_selectionAnchorId = sf->id();
     }
     else
     {
@@ -2172,7 +2139,6 @@ void ShowManager::selectItemByClick(int trackIdx, ShowFunction *sf, QQuickItem *
             changed |= removeFromSelection(m_selectedItems.at(i).m_showFunc);
         }
         changed |= addToSelection(trackIdx, sf, item);
-        m_selectionAnchorId = sf->id();
     }
 
     if (changed)
@@ -2180,16 +2146,13 @@ void ShowManager::selectItemByClick(int trackIdx, ShowFunction *sf, QQuickItem *
     emit itemClicked(App::ShowDragItem);
 }
 
-void ShowManager::selectItemsInRect(qreal x, qreal y, qreal width, qreal height, bool add)
+void ShowManager::selectItemsInRect(qreal x, qreal y, qreal width, qreal height)
 {
     if (m_currentShow == nullptr)
         return;
 
     QRectF band = QRectF(x, y, width, height).normalized();
-    bool changed = false;
-
-    if (!add)
-        changed |= clearSelection();
+    bool changed = clearSelection();
 
     QMapIterator<quint32, QQuickItem *> it(m_itemsMap);
     while (it.hasNext())

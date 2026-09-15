@@ -438,19 +438,17 @@ public:
     void setMultipleSelection(bool multipleSelection);
 
     /** Add an item to the selection tracking list */
-    Q_INVOKABLE void setItemSelection(int trackIdx, ShowFunction *sf, QQuickItem *item, bool selected, int keyModifiers);
+    Q_INVOKABLE void setItemSelection(int trackIdx, ShowFunction *sf, QQuickItem *item, bool selected);
 
-    /** Selection change for a click on a Show item, following the usual
-     *  desktop rules: a plain click selects only that item, Ctrl toggles it
-     *  in the selection, Shift selects every item between the last plain/
-     *  Ctrl-clicked item and this one when both are on the same track (else
-     *  it just adds this one). */
-    Q_INVOKABLE void selectItemByClick(int trackIdx, ShowFunction *sf, QQuickItem *item, int keyModifiers);
+    /** Selection change for a click on a Show item: it becomes the only
+     *  selected item (in multiple selection mode it is toggled instead).
+     *  Selecting several items is the rubber band's job, see
+     *  selectItemsInRect() - there are no keyboard modifiers. */
+    Q_INVOKABLE void selectItemByClick(int trackIdx, ShowFunction *sf, QQuickItem *item);
 
-    /** Select every item whose geometry (timeline content coordinates)
-     *  intersects the given rectangle. With $add false the previous
-     *  selection is replaced, otherwise extended. */
-    Q_INVOKABLE void selectItemsInRect(qreal x, qreal y, qreal width, qreal height, bool add);
+    /** Replace the selection with every item whose geometry (timeline
+     *  content coordinates) intersects the given rectangle */
+    Q_INVOKABLE void selectItemsInRect(qreal x, qreal y, qreal width, qreal height);
 
     /** Select every item of the current Show */
     Q_INVOKABLE void selectAllItems();
@@ -592,11 +590,6 @@ private:
 
     /** Holds the currently selected Show items */
     QList<SelectedShowItem> m_selectedItems;
-
-    /** ShowFunction id of the last plain/Ctrl-clicked item: the anchor of a
-     *  Shift-click range selection (an id, not a pointer, since the item may
-     *  have been deleted since) */
-    quint32 m_selectionAnchorId;
 
     /** Flag to enable multi selection in Show items */
     bool m_multipleSelection;

@@ -512,7 +512,7 @@ Item
                 // dragging an unselected item selects only that item; dragging
                 // one of a multi-selection moves the whole selection with it
                 if (!isSelected)
-                    showManager.selectItemByClick(trackIndex, sfRef, itemRoot, 0)
+                    showManager.selectItemByClick(trackIndex, sfRef, itemRoot)
                 dragGroupRefs = showManager.selectedItemsCount > 1 ? showManager.selectedItemRefs() : [ sfRef ]
             }
 
@@ -619,13 +619,13 @@ Item
             updateGeometry()
         }
 
-        onClicked: (mouse) =>
+        onClicked:
         {
             if (dragActive)
                 return
-            // plain click: only this item. Ctrl: toggle it. Shift: the range
-            // from the last clicked item on the same track (see ShowManager)
-            showManager.selectItemByClick(trackIndex, sfRef, itemRoot, mouse.modifiers)
+            // a click selects only this item; several items are selected
+            // with the rubber band on the empty area (see ShowManager.qml)
+            showManager.selectItemByClick(trackIndex, sfRef, itemRoot)
         }
 
         onDoubleClicked: functionManager.setEditorFunction(sfRef.functionID, true, false)
