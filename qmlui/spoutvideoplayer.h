@@ -32,6 +32,8 @@
 #include <QMediaPlayer>
 #include <QTimer>
 
+#include "spoutframegate.h"
+
 class QAudioOutput;
 class QVideoSink;
 class QVideoFrame;
@@ -172,6 +174,10 @@ private:
     qint64 m_startPosition;
     /** Frames sent in this run (the first one is logged) */
     quint64 m_framesSent;
+    /** Drops queued-up deliveries the sink has already superseded */
+    SpoutFrameGate m_frameGate;
+    /** Frames whose conversion threw (std::bad_alloc) in this run */
+    quint64 m_conversionFailures;
     /** Deferred pause, see pause(): the engine wants the player paused */
     bool m_holdRequested;
     /** Pause on the next frame delivered (near m_holdTarget if >= 0) */

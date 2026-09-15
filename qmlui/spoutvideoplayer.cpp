@@ -32,6 +32,8 @@
 #include "spoutsender.h"
 #include "video.h"
 
+#include <exception>
+
 SpoutVideoPlayer::SpoutVideoPlayer(Video *video, VideoProvider *provider, const QString &senderName,
                                    QObject *parent)
     : QObject(parent)
@@ -51,6 +53,7 @@ SpoutVideoPlayer::SpoutVideoPlayer(Video *video, VideoProvider *provider, const 
     , m_fadeOutMs(0)
     , m_startPosition(0)
     , m_framesSent(0)
+    , m_conversionFailures(0)
     , m_holdRequested(false)
     , m_holdArmed(false)
     , m_holdTarget(-1)
@@ -122,6 +125,8 @@ void SpoutVideoPlayer::start(int fadeInMs, int fadeOutMs, qint64 startPositionMs
     m_fadeMultiplier = 1.0;
     m_frozenIntensity = -1.0;
     m_framesSent = 0;
+    m_frameGate.reset();
+    m_conversionFailures = 0;
     // Show tracks apply their intensity override before start(), so read
     // the combined value now instead of assuming 1.0
     m_intensity = m_video->intensity();
@@ -276,8 +281,41 @@ void SpoutVideoPlayer::slotFrameChanged(const QVideoFrame &frame)
     if (m_active == false || frame.isValid() == false)
         return;
 
-    m_lastFrame = frame.toImage();
-    render();
+    // The sink emits from the decoder's renderer thread, so every frame
+    // reaches this GUI-thread slot as its own queued event, each pinning a
+    // decoded QVideoFrame. Once conversion + painting + sending takes longer
+    // than the clip's frame interval (a 1080p60 clip does) that queue grows
+    // without bound - measured 7 GB within 40 s - until QVideoFrame::toImage()
+    // throws std::bad_alloc. Only the frame the sink currently holds is
+    // worth converting; older deliveries are dropped unread, which keeps
+    // the queue drained at the delivery rate.
+    if (m_frameGate.accept(frame.startTime(), m_videoSink->videoFrame().startTime()) == false)
+        return;
+
+    // Qt's converter throws std::bad_alloc (QByteArray::resize in the RHI
+    // readback) when memory is exhausted; a lost frame is acceptable, an
+    // uncaught exception in an event handler is not - it aborts the app
+    try
+    {
+        m_lastFrame = frame.toImage();
+        render();
+    }
+    catch (const std::exception &e)
+    {
+        m_lastFrame = QImage();
+        if (m_conversionFailures++ == 0)
+            qWarning().noquote() << "[Spout] frame conversion failed:" << e.what()
+                                 << "- dropping the frame, playback of" << m_video->name() << "continues";
+        return;
+    }
+    catch (...)
+    {
+        m_lastFrame = QImage();
+        if (m_conversionFailures++ == 0)
+            qWarning().noquote() << "[Spout] frame conversion failed: unknown exception"
+                                 << "- dropping the frame, playback of" << m_video->name() << "continues";
+        return;
+    }
 
     if (m_holdRequested == false)
         return;
@@ -505,7 +543,13 @@ void SpoutVideoPlayer::finish(bool emitFinished)
         {
             m_sender->sendTransparent();
             qDebug().noquote() << "[Spout] stopped" << m_video->name() << "after" << m_framesSent
-                               << "frames - sent transparent frame on" << m_senderName;
+                               << "frames - sent transparent frame on" << m_senderName
+                               << (m_frameGate.droppedCount() > 0
+                                       ? QString("(%1 queued frames dropped)").arg(m_frameGate.droppedCount())
+                                       : QString())
+                               << (m_conversionFailures > 0
+                                       ? QString("(%1 frames failed to convert)").arg(m_conversionFailures)
+                                       : QString());
         }
         m_provider->releaseSpoutSender(m_senderName, this);
     }

@@ -138,6 +138,7 @@ add_subdirectory(spout)
 if(WIN32)
     target_sources(${module_name} PRIVATE
         spoutsender.cpp spoutsender.h
+        spoutframegate.cpp spoutframegate.h
         spoutvideoplayer.cpp spoutvideoplayer.h
     )
     target_compile_definitions(${module_name} PRIVATE QLC_SPOUT)
