@@ -458,10 +458,31 @@ void ShowManager::moveTrack(int index, int direction)
 
 void ShowManager::deleteSelectedTrack()
 {
+    deleteTrack(selectedTrackId());
+}
+
+void ShowManager::requestTrackDeletion(int trackId)
+{
     if (m_currentShow == nullptr)
         return;
 
-    Track *track = m_currentShow->track(selectedTrackId());
+    Track *track = m_currentShow->track(trackId);
+    if (track == nullptr)
+        return;
+
+    int clipCount = track->showFunctions().count();
+    if (clipCount == 0)
+        deleteTrack(trackId);
+    else
+        emit trackDeletionConfirmationRequested(trackId, track->name(), clipCount);
+}
+
+void ShowManager::deleteTrack(int trackId)
+{
+    if (m_currentShow == nullptr)
+        return;
+
+    Track *track = m_currentShow->track(trackId);
     if (track == nullptr)
         return;
 
@@ -481,9 +502,18 @@ void ShowManager::deleteSelectedTrack()
         delete item;
     }
 
-    m_currentShow->removeTrack(selectedTrackId());
+    m_currentShow->removeTrack(trackId);
     m_doc->setModified();
 
+    if (m_selectedTrackId == trackId)
+    {
+        m_selectedTrackId = -1;
+        emit selectedTrackIdChanged(-1);
+    }
+
+    // rebuild the view (resetView() also drops the selection, which may
+    // have held the deleted items); fine with no tracks left, the timeline
+    // then only offers the "create a new track" drop zone
     QQuickItem *itemsArea = qobject_cast<QQuickItem*>(m_view->rootObject()->findChild<QObject *>("showItemsArea"));
     renderView(itemsArea);
 

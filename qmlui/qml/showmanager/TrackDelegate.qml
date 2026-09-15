@@ -146,7 +146,36 @@ Rectangle
                     trackRoot.spoutSizeRequested(trackRoot.trackIndex)
                 }
             }
+            ContextMenuEntry
+            {
+                faSource: FontAwesome.fa_trash_can
+                faColor: "crimson"
+                entryText: qsTr("Delete track")
+                onClicked:
+                {
+                    trackMenu.close()
+                    if (trackRef)
+                        showManager.requestTrackDeletion(trackRef.id)
+                }
+            }
         }
+    }
+
+    // Delete this track (an empty one right away, one with items after a
+    // confirmation, see ShowManager::requestTrackDeletion)
+    IconButton
+    {
+        id: deleteButton
+        x: parent.width - width - 2
+        y: muteButton.y + muteButton.height + 2
+        z: 2
+        width: parent.width / 6
+        height: parent.height * 0.3
+        bgColor: "#8191A0"
+        faSource: FontAwesome.fa_trash_can
+        faColor: "crimson"
+        tooltip: qsTr("Delete track")
+        onClicked: if (trackRef) showManager.requestTrackDeletion(trackRef.id)
     }
 
     IconButton

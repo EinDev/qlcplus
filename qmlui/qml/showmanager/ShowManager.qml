@@ -243,10 +243,18 @@ Rectangle
                 height: width
                 faSource: FontAwesome.fa_minus
                 faColor: "crimson"
-                tooltip: qsTr("Remove the selected items")
+                tooltip: qsTr("Remove the selected items, or the selected track when no item is selected")
                 counter: showManager.selectedItemsCount
                 onClicked:
                 {
+                    if (showManager.selectedItemsCount === 0)
+                    {
+                        // nothing selected on the timeline: the selected track, if any
+                        if (showManager.selectedTrackId >= 0)
+                            showManager.requestTrackDeletion(showManager.selectedTrackId)
+                        return
+                    }
+
                     var selNames = showManager.selectedItemNames()
                     //console.log(selNames)
                     deleteItemsPopup.message = qsTr("Are you sure you want to remove the following items?\n" +
@@ -885,6 +893,15 @@ Rectangle
         standardButtons: Dialog.Ok
     }
 
+    // deleting a track that still has Show items on it
+    CustomPopupDialog
+    {
+        id: deleteTrackPopup
+        property int trackId: -1
+        title: qsTr("Delete track")
+        onAccepted: showManager.deleteTrack(trackId)
+    }
+
     Connections
     {
         target: showManager
@@ -898,6 +915,19 @@ Rectangle
             pasteRefusedPopup.message = qsTr("The copied items do not fit at the cursor position as a group:\n" +
                                              "'%1' is in the way. Move the cursor to a free area and paste again.").arg(blockingName)
             pasteRefusedPopup.open()
+        }
+        function onTrackDeletionConfirmationRequested(trackId, trackName, clipCount)
+        {
+            deleteTrackPopup.trackId = trackId
+            deleteTrackPopup.message = qsTr("Delete track '%1' and its %n clip(s)?\n" +
+                                            "(Note that the original functions will not be deleted)", "", clipCount).arg(trackName)
+            deleteTrackPopup.open()
+        }
+        function onSelectedTrackIdChanged(id)
+        {
+            // the selected track is gone (deleted): no header stays highlighted
+            if (id < 0)
+                showMgrContainer.selectedTrackIndex = -1
         }
     }
 }

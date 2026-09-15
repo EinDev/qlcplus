@@ -711,7 +711,7 @@ void ContextManager::deleteSelectedItems()
             {
                 ShowManager *showMgr = qobject_cast<ShowManager *>(ctx);
                 if (showMgr != nullptr)
-                    showMgr->deleteSelectedTrack();
+                    showMgr->requestTrackDeletion(showMgr->selectedTrackId());
             }
         }
         break;

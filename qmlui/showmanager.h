@@ -257,7 +257,16 @@ public:
     Q_INVOKABLE void moveTrack(int index, int direction);
 
     /** Delete the currently selected Show Track */
+    /** Delete the track with the given id and its Show items (undoable) */
+    Q_INVOKABLE void deleteTrack(int trackId);
+
+    /** Delete the currently selected track, see deleteTrack() */
     Q_INVOKABLE void deleteSelectedTrack();
+
+    /** The user asked to delete a track: an empty track goes right away,
+     *  one with Show items is first confirmed through
+     *  trackDeletionConfirmationRequested() (the UI then calls deleteTrack()) */
+    Q_INVOKABLE void requestTrackDeletion(int trackId);
 
     /*********************************************************************
      * Track Spout output size
@@ -306,6 +315,8 @@ private:
 signals:
     void tracksChanged();
     void selectedTrackIdChanged(int id);
+    /** requestTrackDeletion() on a track with $clipCount Show items */
+    void trackDeletionConfirmationRequested(int trackId, QString trackName, int clipCount);
 
 private:
     /** The index of the currently selected track */
