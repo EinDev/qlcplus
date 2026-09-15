@@ -263,8 +263,12 @@ QJsonObject sequenceDetailToJson(Sequence *sequence)
  * raw path/URL otherwise; `managed` says whether it lives in the project's
  * media store; `importPending` is true while a background copy of it is
  * still running (the function is relinked to the copy once that ends).
+ * `origin` is the absolute path a managed copy was imported from (null
+ * when unknown or external), `originAvailable` whether that file still
+ * exists, `originChanged` whether it differs from the copy - the
+ * functions.media.reload trigger.
  */
-void mediaSourceToJson(Doc *doc, const QString &source, QJsonObject &obj)
+void mediaSourceToJson(Doc *doc, Function *function, const QString &source, QJsonObject &obj)
 {
     MediaAssets *assets = doc->assets();
     bool managed = assets->isManaged(source);
@@ -274,13 +278,18 @@ void mediaSourceToJson(Doc *doc, const QString &source, QJsonObject &obj)
     obj.insert(QStringLiteral("source"), relative ? doc->normalizeComponentPath(source) : source);
     obj.insert(QStringLiteral("managed"), managed);
     obj.insert(QStringLiteral("importPending"), assets->pendingImports().contains(source));
+
+    MediaOrigin origin = assets->originOf(function);
+    obj.insert(QStringLiteral("origin"), origin.isValid() ? QJsonValue(origin.path) : QJsonValue());
+    obj.insert(QStringLiteral("originAvailable"), assets->originAvailable(function));
+    obj.insert(QStringLiteral("originChanged"), assets->originChanged(function));
 }
 
 QJsonObject audioDetailToJson(Doc *doc, Audio *audio)
 {
     QJsonObject obj;
     obj.insert(QStringLiteral("functionId"), QString::number(audio->id()));
-    mediaSourceToJson(doc, audio->getSourceFileName(), obj);
+    mediaSourceToJson(doc, audio, audio->getSourceFileName(), obj);
     obj.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
     return obj;
 }
@@ -289,9 +298,23 @@ QJsonObject videoDetailToJson(Doc *doc, Video *video)
 {
     QJsonObject obj;
     obj.insert(QStringLiteral("functionId"), QString::number(video->id()));
-    mediaSourceToJson(doc, video->sourceUrl(), obj);
+    mediaSourceToJson(doc, video, video->sourceUrl(), obj);
     obj.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
     return obj;
+}
+
+QString reloadStatusToString(MediaAssets::ReloadStatus status)
+{
+    switch (status)
+    {
+    case MediaAssets::Reloaded:   return QStringLiteral("reloaded");
+    case MediaAssets::Unchanged:  return QStringLiteral("unchanged");
+    case MediaAssets::Queued:     return QStringLiteral("queued");
+    case MediaAssets::Missing:    return QStringLiteral("missing");
+    case MediaAssets::NotManaged: return QStringLiteral("notManaged");
+    case MediaAssets::Failed:     return QStringLiteral("failed");
+    }
+    return QStringLiteral("failed");
 }
 
 /**
@@ -470,7 +493,26 @@ ApiFunctionsDomain::ApiFunctionsDomain(Doc *doc, ApiServer *server, QObject *par
     Q_ASSERT(m_doc != nullptr);
     Q_ASSERT(m_server != nullptr);
 
+    // engine-DLL object: string-based connection
+    connect(m_doc->assets(), SIGNAL(originReloaded(quint32,QString,QString,quint32)),
+            this, SLOT(slotMediaOriginReloaded(quint32,QString,QString,quint32)));
+
     registerMethods();
+}
+
+void ApiFunctionsDomain::slotMediaOriginReloaded(quint32 functionId, QString oldPath, QString newPath, quint32 oldDuration)
+{
+    Q_UNUSED(oldPath)
+    Q_UNUSED(newPath)
+    Q_UNUSED(oldDuration)
+
+    Function *function = m_doc->function(functionId);
+    if (function == nullptr)
+        return;
+
+    QJsonObject data = typeDetailToJson(function);
+    data.insert(QStringLiteral("status"), reloadStatusToString(MediaAssets::Reloaded));
+    m_server->broadcast(QStringLiteral("functions.media.reloaded"), data, QString(), false);
 }
 
 void ApiFunctionsDomain::registerMethods()
@@ -897,6 +939,95 @@ void ApiFunctionsDomain::registerMethods()
         data.insert(QStringLiteral("blendMode"), Universe::blendModeToString(function->blendMode()));
         data.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
         m_server->broadcast(QStringLiteral("functions.updated"), data, session->clientId(), false);
+    });
+
+    /*********************************************************************
+     * Audio/Video media (functions-advanced.yaml)
+     *********************************************************************/
+
+    // Re-import a managed copy from the file it was imported from (the
+    // editors' Reload button). The previous copy stays on disk; a large
+    // origin is copied in the background and applied when it lands
+    // (status "queued", functions.media.reloaded follows). An external
+    // (unmanaged) source is re-probed in place via the full setter.
+    dispatcher->registerMethod(QStringLiteral("functions.media.reload"), [doc, this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        Function *function = findFunction(doc, params);
+        if (function == nullptr)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrNotFound,
+                                                            QStringLiteral("No such function")));
+            return;
+        }
+        if (function->type() != Function::AudioType && function->type() != Function::VideoType)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams,
+                                                            QStringLiteral("Only Audio and Video functions have a media source")));
+            return;
+        }
+
+        quint32 baseRevision = quint32(params.value(QStringLiteral("baseRevision")).toInt());
+        if (baseRevision != doc->docRevision())
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrConflict,
+                                                            QStringLiteral("baseRevision is stale"), conflictDetails(doc)));
+            return;
+        }
+
+        MediaAssets *assets = doc->assets();
+        MediaAssets::ReloadStatus status;
+        QString error;
+        QString source = assets->sourceOf(function);
+
+        if (source.isEmpty() == false && assets->isManaged(source) == false)
+        {
+            // external file: same path through the full setter re-reads
+            // duration/decoder (a Video is probed by App on originReloaded)
+            if (QFileInfo(source).isFile() == false)
+            {
+                status = MediaAssets::Missing;
+                error = QStringLiteral("Media file not found: ") + source;
+            }
+            else
+            {
+                QString name = function->name();
+                if (function->type() == Function::AudioType)
+                {
+                    Audio *audio = static_cast<Audio *>(function);
+                    audio->setSourceFileName(source);
+                    audio->requestBpmDetection(false);
+                }
+                else
+                {
+                    static_cast<Video *>(function)->setSourceUrl(source);
+                }
+                function->setName(name);
+                status = MediaAssets::Unchanged;
+            }
+        }
+        else
+        {
+            QString stored = assets->importOrigin(function, &status, &error);
+            if (status == MediaAssets::Reloaded)
+                assets->applyReload(function, stored);
+        }
+
+        if (status == MediaAssets::Failed)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInternal, error));
+            return;
+        }
+
+        if (status == MediaAssets::Reloaded)
+            doc->setModified();
+
+        // functions.media.reloaded is broadcast from slotMediaOriginReloaded
+        // (fired by applyReload above, or later by a queued background copy)
+        QJsonObject result = typeDetailToJson(function);
+        result.insert(QStringLiteral("status"), reloadStatusToString(status));
+        if (error.isEmpty() == false)
+            result.insert(QStringLiteral("error"), error);
+        session->send(ApiEnvelope::buildOkResponse(id, result));
     });
 
     /*********************************************************************

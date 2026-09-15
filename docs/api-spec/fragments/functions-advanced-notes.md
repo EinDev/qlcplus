@@ -62,3 +62,27 @@ config and sub-resources.
   picker without it) worth a decision - either add a
   `functions.audio.listDevices` method or note it's covered by a generic
   `io.*` host-capabilities method if one exists (check `io-notes.md`).
+
+## Media provenance and `functions.media.reload` (implemented)
+
+- `FunctionsAudioDetail`/`FunctionsVideoDetail` carry `origin`,
+  `originAvailable`, `originChanged` next to `source`/`managed`/
+  `importPending`. The values come from the media store's `manifest.json`
+  (`MediaAssets::originOf/originAvailable/originChanged`), keyed by the
+  stored copy - not from the `.qxw`, whose `<Source>` element is unchanged.
+- `originChanged` is cheap unless the origin has the same size and a
+  different mtime (then hashed once, verdict cached per size/mtime), so
+  `functions.get` on a large re-saved file can cost one full read the
+  first time.
+- `functions.media.reload` is a structural edit (`baseRevision`, bumps
+  `docRevision` only when something was actually re-pointed). One method
+  covers both cases: a managed copy is re-imported from its origin, an
+  external file is re-probed in place (status `unchanged`). Bulk reload is
+  a UI action (Actions menu "Reload changed media"); a client wanting that
+  iterates `functions.list` + `functions.get` and calls reload per
+  function - deliberately no `functions.media.reloadAll`, matching the
+  "fewer general methods" guidance without adding a second mutation shape.
+- `functions.media.reloaded` is broadcast from the engine's
+  `originReloaded` signal, so it also fires when a queued background copy
+  lands later and when the reload was triggered from the QML editors or
+  the Actions menu rather than through the API (originClientId null then).

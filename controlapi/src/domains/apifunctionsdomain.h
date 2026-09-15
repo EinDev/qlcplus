@@ -50,6 +50,13 @@ public:
 private:
     void registerMethods();
 
+private slots:
+    /** MediaAssets re-pointed an Audio/Video at a fresh copy of its origin
+     *  (functions.media.reload, the editors' Reload button, the bulk
+     *  "Reload changed media" action, or a background copy that landed):
+     *  broadcast functions.media.reloaded with the new typeDetail */
+    void slotMediaOriginReloaded(quint32 functionId, QString oldPath, QString newPath, quint32 oldDuration);
+
 private:
     Doc *m_doc;
     ApiServer *m_server;

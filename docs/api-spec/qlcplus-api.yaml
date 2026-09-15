@@ -890,6 +890,14 @@ channels:
         $ref: '#/components/messages/FunctionsVideoScreenTargetChangedEvent'
       functionsVideoPlaybackEvent:
         $ref: '#/components/messages/FunctionsVideoPlaybackEvent'
+      functionsMediaReloadRequest:
+        $ref: '#/components/messages/FunctionsMediaReloadRequest'
+      functionsMediaReloadResponse:
+        $ref: '#/components/messages/FunctionsMediaReloadResponse'
+      functionsMediaReloadOkResponse:
+        $ref: '#/components/messages/FunctionsMediaReloadOkResponse'
+      functionsMediaReloadedEvent:
+        $ref: '#/components/messages/FunctionsMediaReloadedEvent'
       ioUniverseListRequest:
         $ref: '#/components/messages/IoUniverseListRequest'
       ioUniverseListResponse:
@@ -3578,6 +3586,24 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/functionsVideoPlaybackEvent'
+  sendFunctionsMediaReload:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsMediaReloadRequest'
+  receiveFunctionsMediaReloadResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsMediaReloadResponse'
+  receiveFunctionsMediaReloaded:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsMediaReloadedEvent'
   sendIoUniverseList:
     action: send
     channel:
@@ -15291,6 +15317,72 @@ components:
                 - playing
                 - paused
                 - stopped
+    FunctionsMediaReloadRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: functions.media.reload
+          params:
+            type: object
+            required:
+            - functionId
+            - baseRevision
+            properties:
+              functionId:
+                type: string
+                description: An Audio or Video function (ErrInvalidParams otherwise)
+              baseRevision:
+                type: integer
+    FunctionsMediaReloadResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/FunctionsMediaReloadOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    FunctionsMediaReloadOkResponse:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - ok
+        - result
+        properties:
+          type:
+            const: response
+          id:
+            type: string
+          ok:
+            const: true
+          result:
+            $ref: '#/components/schemas/FunctionsMediaReloadResult'
+    FunctionsMediaReloadedEvent:
+      payload:
+        type: object
+        required:
+        - type
+        - topic
+        - data
+        properties:
+          type:
+            const: event
+          topic:
+            const: functions.media.reloaded
+          originClientId:
+            type:
+            - string
+            - 'null'
+          data:
+            $ref: '#/components/schemas/FunctionsMediaReloadResult'
     IoUniverseListRequest:
       payload:
         type: object
@@ -23372,6 +23464,12 @@ components:
           $ref: '#/components/schemas/FunctionsMediaManaged'
         importPending:
           $ref: '#/components/schemas/FunctionsMediaImportPending'
+        origin:
+          $ref: '#/components/schemas/FunctionsMediaOrigin'
+        originAvailable:
+          $ref: '#/components/schemas/FunctionsMediaOriginAvailable'
+        originChanged:
+          $ref: '#/components/schemas/FunctionsMediaOriginChanged'
         config:
           $ref: '#/components/schemas/FunctionsAudioConfig'
         docRevision:
@@ -23392,6 +23490,12 @@ components:
           $ref: '#/components/schemas/FunctionsMediaManaged'
         importPending:
           $ref: '#/components/schemas/FunctionsMediaImportPending'
+        origin:
+          $ref: '#/components/schemas/FunctionsMediaOrigin'
+        originAvailable:
+          $ref: '#/components/schemas/FunctionsMediaOriginAvailable'
+        originChanged:
+          $ref: '#/components/schemas/FunctionsMediaOriginChanged'
         config:
           $ref: '#/components/schemas/FunctionsVideoConfig'
         docRevision:
@@ -23410,6 +23514,69 @@ components:
       type: boolean
       description: True while a background copy of this source into the media store is still running (large
         files); the function is relinked to the copy, and managed becomes true, once it lands.
+    FunctionsMediaOrigin:
+      type:
+      - string
+      - 'null'
+      description: Absolute path the managed copy was imported from, as recorded in the media store's
+        manifest.json (kept per stored copy, so undoing a Replace/Reload restores that copy's own origin).
+        Always absolute - it lives outside the workspace by nature. null for an external reference, a
+        stream URL, or a copy imported before provenance was recorded.
+    FunctionsMediaOriginAvailable:
+      type: boolean
+      description: True when origin is known and that file still exists on disk (the precondition for
+        functions.media.reload on a managed copy).
+    FunctionsMediaOriginChanged:
+      type: boolean
+      description: True when the origin file differs from the managed copy (size or mtime differ, an equal-size
+        file confirmed by content hash). A missing origin reports false - unavailable is not changed.
+        Never acted on automatically; see functions.media.reload.
+    FunctionsMediaReloadStatus:
+      type: string
+      enum:
+      - reloaded
+      - unchanged
+      - queued
+      - missing
+      - notManaged
+      description: 'reloaded: a fresh copy was stored and the function re-pointed at it (the previous
+        copy stays on disk; functions.media.reloaded follows). unchanged: origin content identical, or
+        an external file re-probed in place. queued: origin above the background-copy threshold, the function
+        is re-pointed when the copy lands (functions.media.reloaded then). missing: no origin recorded
+        or the origin file is gone (error says which). notManaged: nothing to reload.'
+    FunctionsMediaReloadResult:
+      type: object
+      description: The function's refreshed FunctionsAudioDetail/FunctionsVideoDetail plus the reload
+        outcome. A duration change does not touch Show clips (ShowFunction keeps its own duration); the
+        engine logs a "[Media]" line with the old/new values instead.
+      required:
+      - functionId
+      - source
+      - managed
+      - status
+      - docRevision
+      properties:
+        functionId:
+          type: string
+        source:
+          $ref: '#/components/schemas/FunctionsMediaSource'
+        managed:
+          $ref: '#/components/schemas/FunctionsMediaManaged'
+        importPending:
+          $ref: '#/components/schemas/FunctionsMediaImportPending'
+        origin:
+          $ref: '#/components/schemas/FunctionsMediaOrigin'
+        originAvailable:
+          $ref: '#/components/schemas/FunctionsMediaOriginAvailable'
+        originChanged:
+          $ref: '#/components/schemas/FunctionsMediaOriginChanged'
+        status:
+          $ref: '#/components/schemas/FunctionsMediaReloadStatus'
+        error:
+          type: string
+          description: Present for status missing - the path that could not be found
+        docRevision:
+          type: integer
     IoUniverseSummary:
       type: object
       required:
