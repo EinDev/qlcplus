@@ -77,6 +77,14 @@ public:
      */
     QString importFile(const QString &sourcePath, QString *error = nullptr);
 
+    /**
+     * importFile() for UI entry points: never fails the caller. When the
+     * copy is impossible (unreadable source, full disk) the warning is
+     * logged and @sourcePath itself is returned, so the user's pick is kept
+     * as an external reference instead of being lost.
+     */
+    QString importOrKeep(const QString &sourcePath);
+
     /** True if @path lies in this store's <sha12>/ layout */
     bool isManaged(const QString &path) const;
 

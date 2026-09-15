@@ -43,6 +43,7 @@
 #include "scene.h"
 #include "audio.h"
 #include "video.h"
+#include "mediaassets.h"
 #include "show.h"
 #include "efx.h"
 #include "app.h"
@@ -415,7 +416,9 @@ quint32 FunctionManager::createAudioVideoFunction(int type, QStringList fileList
                     if (lastFuncID != Function::invalidId())
                     {
                         Audio *audio = qobject_cast<Audio *>(f);
-                        audio->setSourceFileName(filePath);
+                        // the function points at the copy in the project's
+                        // media store, never at the file the user picked
+                        audio->setSourceFileName(m_doc->assets()->importOrKeep(filePath));
                         audio->requestBpmDetection(false);
                         m_audioCount++;
                     }
@@ -448,7 +451,7 @@ quint32 FunctionManager::createAudioVideoFunction(int type, QStringList fileList
                     if (lastFuncID != Function::invalidId())
                     {
                         Video *video = qobject_cast<Video *>(f);
-                        video->setSourceUrl(filePath);
+                        video->setSourceUrl(m_doc->assets()->importOrKeep(filePath));
                         m_videoCount++;
                     }
                 }

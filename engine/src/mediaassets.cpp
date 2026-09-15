@@ -154,6 +154,18 @@ QString MediaAssets::importFile(const QString &sourcePath, QString *error)
     return copyIntoStore(absSource, storeDir, error);
 }
 
+QString MediaAssets::importOrKeep(const QString &sourcePath)
+{
+    QString error;
+    QString stored = importFile(sourcePath, &error);
+    if (stored.isEmpty())
+    {
+        qWarning() << "MediaAssets: keeping external reference to" << sourcePath << "-" << error;
+        return sourcePath;
+    }
+    return stored;
+}
+
 QString MediaAssets::copyIntoStore(const QString &sourcePath, const QString &storeDir, QString *error)
 {
     if (QDir().mkpath(storeDir) == false)

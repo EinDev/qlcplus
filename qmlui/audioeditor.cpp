@@ -21,6 +21,7 @@
 #include "audioeditor.h"
 #include "tardis.h"
 #include "audio.h"
+#include "mediaassets.h"
 #include "doc.h"
 
 AudioEditor::AudioEditor(QQuickView *view, Doc *doc, QObject *parent)
@@ -55,7 +56,15 @@ void AudioEditor::setSourceFileName(QString sourceFileName)
     if (sourceFileName.startsWith("file:"))
         sourceFileName = QUrl(sourceFileName).toLocalFile();
 
-    if (m_audio == nullptr || m_audio->getSourceFileName() == sourceFileName)
+    if (m_audio == nullptr)
+        return;
+
+    // Copy the picked file into the project's media store first: the
+    // function and the undo history both point at the managed copy, so a
+    // redo repoints at the copy even if the original has been moved away
+    sourceFileName = m_doc->assets()->importOrKeep(sourceFileName);
+
+    if (m_audio->getSourceFileName() == sourceFileName)
         return;
 
     Tardis::instance()->enqueueAction(Tardis::AudioSetSource, m_audio->id(), m_audio->getSourceFileName(), sourceFileName);

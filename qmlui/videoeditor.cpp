@@ -24,6 +24,7 @@
 #include "videoeditor.h"
 #include "tardis.h"
 #include "video.h"
+#include "mediaassets.h"
 #include "doc.h"
 
 VideoEditor::VideoEditor(QQuickView *view, Doc *doc, QObject *parent)
@@ -97,7 +98,16 @@ void VideoEditor::setSourceFileName(QString sourceFileName)
     if (sourceFileName.startsWith("file:"))
         sourceFileName = QUrl(sourceFileName).toLocalFile();
 
-    if (m_video == nullptr || m_video->sourceUrl() == sourceFileName)
+    if (m_video == nullptr)
+        return;
+
+    // Local files are copied into the project's media store (function and
+    // undo history both point at the managed copy); a URL typed into the
+    // text box is a stream and bypasses the store
+    if (sourceFileName.contains("://") == false)
+        sourceFileName = m_doc->assets()->importOrKeep(sourceFileName);
+
+    if (m_video->sourceUrl() == sourceFileName)
         return;
 
     Tardis::instance()->enqueueAction(Tardis::VideoSetSource, m_video->id(), m_video->sourceUrl(), sourceFileName);
