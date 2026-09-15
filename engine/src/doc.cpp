@@ -228,7 +228,15 @@ QString Doc::normalizeComponentPath(const QString& filePath) const
 
     QFileInfo f(filePath);
 
-    if (f.absolutePath().startsWith(workspacePath()))
+#ifdef Q_OS_WIN
+    // Windows paths are case-insensitive and the same folder can come back
+    // as "d:/..." or "D:/..." depending on who produced it
+    const Qt::CaseSensitivity cs = Qt::CaseInsensitive;
+#else
+    const Qt::CaseSensitivity cs = Qt::CaseSensitive;
+#endif
+
+    if (f.absolutePath().startsWith(workspacePath(), cs))
     {
         return QDir(workspacePath()).relativeFilePath(f.absoluteFilePath());
     }
