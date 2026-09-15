@@ -41,6 +41,7 @@
 #include <unistd.h>
 
 #include "app.h"
+#include "mediaassets.h"
 #include "uimanager.h"
 #include "simpledesk.h"
 #include "showmanager.h"
@@ -1168,6 +1169,8 @@ void App::clearDocument()
     m_tardis->resetHistory();
     m_doc->inputOutputMap()->resetUniverses();
     setFileName(QString());
+    /* untitled again: new imports are staged in a temporary directory */
+    m_doc->assets()->setProjectFile(QString());
     m_doc->resetModified();
     m_doc->inputOutputMap()->startUniverses();
     m_doc->masterTimer()->start();
@@ -1528,6 +1531,12 @@ void App::slotClearDocFromNetwork()
 void App::slotSaveAutostart(QString fileName)
 {
     m_doc->setWorkspacePath(QFileInfo(fileName).absolutePath());
+
+    /* Same as saveWorkspace(): the media store follows the .qxw */
+    QString assetsError;
+    if (m_doc->assets()->relocateTo(fileName, &assetsError) == false)
+        qWarning() << Q_FUNC_INFO << "Media assets not fully relocated:" << assetsError;
+
     QFile::FileError error = saveXML(fileName);
     if (error != QFile::NoError)
         qWarning() << Q_FUNC_INFO << "Unable to save autostart project" << fileName << error;
@@ -1548,6 +1557,14 @@ bool App::saveWorkspace(const QString &fileName)
     /* Set the workspace path before saving the new XML. In this way local files
        can be loaded even if the workspace file will be moved */
     m_doc->setWorkspacePath(QFileInfo(localFilename).absolutePath());
+
+    /* Bring the project's media store along: copies the managed Audio/Video
+       files next to the new .qxw and relinks the functions, so saveXML below
+       writes relative paths into it. Saving in place is a no-op. A failure is
+       logged but never blocks the save - the functions keep valid paths */
+    QString assetsError;
+    if (m_doc->assets()->relocateTo(localFilename, &assetsError) == false)
+        qWarning() << Q_FUNC_INFO << "Media assets not fully relocated:" << assetsError;
 
     if (saveXML(localFilename) == QFile::NoError)
     {
@@ -1592,6 +1609,7 @@ QFileDevice::FileError App::loadXML(const QString &fileName)
     /* Set the workspace path before loading the new XML. In this way local files
        can be loaded even if the workspace file has been moved */
     m_doc->setWorkspacePath(QFileInfo(fileName).absolutePath());
+    m_doc->assets()->setProjectFile(fileName);
 
     if (doc->dtdName() == KXMLQLCWorkspace)
     {
