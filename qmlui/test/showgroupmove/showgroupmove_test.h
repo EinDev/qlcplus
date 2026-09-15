@@ -41,6 +41,12 @@ private slots:
     void groupMoveClampsDeltas();
     void groupMoveNewTracks();
     void groupMoveEmpty();
+    void pasteFreeKeepsOffsets();
+    void pasteAnchorsEarliestByTime();
+    void pasteSourcesBlockTheirCopies();
+    void pasteResolvesEarliestCollision();
+    void pasteBlockedRefusesWholeGroup();
+    void pasteEmpty();
 };
 
 #endif

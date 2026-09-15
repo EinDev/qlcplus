@@ -730,55 +730,63 @@ void ShowManager::addItems(QQuickItem *parent, int trackIdx, int startTime, QVar
         if (func == nullptr)
             continue;
 
-        ShowFunction *showFunc = selectedTrack->createShowFunction(functionID);
-
-        // tempoType (real-time vs beat-clock playback scheduling) is no longer forced
-        // to match the Show's display mode here: Function already defaults to Time,
-        // Chaser/Scene/RGBMatrix expose their own user-settable tempoType in their own
-        // editors, and Audio/Video must never run on a beat clock regardless of how
-        // the Show's ruler happens to be displayed.
-        //
-        // The old Beats-mode branch also called func->setTotalDuration(func->duration())
-        // for Audio/Video here. That is dropped rather than made unconditional: Audio
-        // already keeps duration()/totalDuration() in sync from its own decoder at file
-        // load, making the call a no-op there, but Video's generic duration() is never
-        // populated from its real probed length (only its own totalDuration is, via the
-        // media player) - it defaults to 0, so applying this unconditionally would
-        // overwrite an already-correct Video totalDuration with 0 on every add. This was
-        // only safe before because it only ran in Beats mode, in front of a tempoType
-        // force-set whose own Function::setTempoType() conversion this call was likely
-        // compensating for - that conversion no longer runs, so this line no longer has
-        // a clear purpose here.
-        showFunc->setDuration(func->totalDuration() ? func->totalDuration() : 5000);
-        showFunc->setStartTime(startTime);
-        showFunc->setColor(ShowFunction::defaultColor(func->type()));
-
-        // when pasting, inherit the customized properties of the source item
-        if (sourceFunc != nullptr)
-        {
-            showFunc->setDuration(sourceFunc->duration());
-            showFunc->setColor(sourceFunc->color());
-            showFunc->setLocked(sourceFunc->isLocked());
-        }
-
-        Tardis::instance()->enqueueAction(
-            Tardis::ShowManagerAddFunction, m_currentShow->id(), QVariant(),
-            Tardis::instance()->actionToByteArray(Tardis::ShowManagerAddFunction, m_currentShow->id(), showFunc->id()));
-
-        QQuickItem *newItem = qobject_cast<QQuickItem*>(siComponent->create());
-
-        newItem->setParentItem(parent);
-        newItem->setProperty("trackIndex", trackIdx);
-        newItem->setProperty("sfRef", QVariant::fromValue(showFunc));
-        newItem->setProperty("funcRef", QVariant::fromValue(func));
-
-        m_itemsMap[showFunc->id()] = newItem;
+        ShowFunction *showFunc = createShowItem(parent, selectedTrack, trackIdx, func, startTime, sourceFunc);
         startTime += showFunc->duration();
-
-        checkSpoutSizeMismatch(selectedTrack, trackIdx, func);
     }
 
     emit showDurationChanged(m_currentShow->totalDuration());
+}
+
+ShowFunction *ShowManager::createShowItem(QQuickItem *parent, Track *track, int trackIdx, Function *func,
+                                      int startTime, ShowFunction *sourceFunc)
+{
+    ShowFunction *showFunc = track->createShowFunction(func->id());
+
+    // tempoType (real-time vs beat-clock playback scheduling) is no longer forced
+    // to match the Show's display mode here: Function already defaults to Time,
+    // Chaser/Scene/RGBMatrix expose their own user-settable tempoType in their own
+    // editors, and Audio/Video must never run on a beat clock regardless of how
+    // the Show's ruler happens to be displayed.
+    //
+    // The old Beats-mode branch also called func->setTotalDuration(func->duration())
+    // for Audio/Video here. That is dropped rather than made unconditional: Audio
+    // already keeps duration()/totalDuration() in sync from its own decoder at file
+    // load, making the call a no-op there, but Video's generic duration() is never
+    // populated from its real probed length (only its own totalDuration is, via the
+    // media player) - it defaults to 0, so applying this unconditionally would
+    // overwrite an already-correct Video totalDuration with 0 on every add. This was
+    // only safe before because it only ran in Beats mode, in front of a tempoType
+    // force-set whose own Function::setTempoType() conversion this call was likely
+    // compensating for - that conversion no longer runs, so this line no longer has
+    // a clear purpose here.
+    showFunc->setDuration(func->totalDuration() ? func->totalDuration() : 5000);
+    showFunc->setStartTime(startTime);
+    showFunc->setColor(ShowFunction::defaultColor(func->type()));
+
+    // when pasting, inherit the customized properties of the source item
+    if (sourceFunc != nullptr)
+    {
+        showFunc->setDuration(sourceFunc->duration());
+        showFunc->setColor(sourceFunc->color());
+        showFunc->setLocked(sourceFunc->isLocked());
+    }
+
+    Tardis::instance()->enqueueAction(
+        Tardis::ShowManagerAddFunction, m_currentShow->id(), QVariant(),
+        Tardis::instance()->actionToByteArray(Tardis::ShowManagerAddFunction, m_currentShow->id(), showFunc->id()));
+
+    QQuickItem *newItem = qobject_cast<QQuickItem*>(siComponent->create());
+
+    newItem->setParentItem(parent);
+    newItem->setProperty("trackIndex", trackIdx);
+    newItem->setProperty("sfRef", QVariant::fromValue(showFunc));
+    newItem->setProperty("funcRef", QVariant::fromValue(func));
+
+    m_itemsMap[showFunc->id()] = newItem;
+
+    checkSpoutSizeMismatch(track, trackIdx, func);
+
+    return showFunc;
 }
 
 void ShowManager::addShowItem(ShowFunction *sf, quint32 trackId)
@@ -2425,42 +2433,84 @@ void ShowManager::copyToClipboard()
 
 void ShowManager::pasteFromClipboard()
 {
-    quint32 lowerTime = UINT_MAX;
+    if (m_currentShow == nullptr || m_clipboard.isEmpty())
+        return;
 
-    // pre-parse copied items to find the one with lowest start time
-    for (SelectedShowItem item : m_clipboard)
+    QList<Track *> tracks = m_currentShow->tracks();
+
+    // The copies to make. Each source's track is resolved from the
+    // ShowFunction itself: the index stored at selection time may have gone
+    // stale since (tracks moved or deleted), see planGroupMove().
+    struct PasteSource
     {
-        if (item.m_showFunc->startTime() < lowerTime)
-            lowerTime = item.m_showFunc->startTime();
-    }
+        ShowFunction *sf;
+        Function *func;
+        int trackIdx;
+    };
+    QList<PasteSource> sources;
+    QList<ShowMoveItem> items;
 
-    // now add the ShowFunctions on the proper tracks
-    // while keeping the delta time of the original items
-    for (SelectedShowItem item : m_clipboard)
+    for (const SelectedShowItem &ssi : m_clipboard)
     {
-        Track *track = m_currentShow->tracks().at(item.m_trackIndex);
-
-        if (checkOverlapping(track, item.m_showFunc, m_currentTime, item.m_showFunc->duration()))
+        ShowFunction *sf = ssi.m_showFunc;
+        if (sf == nullptr)
             continue;
 
-        Function *func = m_doc->function(item.m_showFunc->functionID());
-        if (func == nullptr)
+        int trackIdx = tracks.indexOf(m_currentShow->getTrackFromShowFunctionID(sf->id()));
+        Function *func = m_doc->function(sf->functionID());
+        if (trackIdx < 0 || func == nullptr)
             continue;
 
+        // a Sequence whose bound Scene is gone cannot run, so skip it
         if (func->type() == Function::SequenceType)
         {
             Sequence *sequence = qobject_cast<Sequence*>(func);
-            Scene *scene = qobject_cast<Scene*>(m_doc->function(sequence->boundSceneID()));
-            if (scene == nullptr)
+            if (m_doc->function(sequence->boundSceneID()) == nullptr)
                 continue;
-
-            sequence->setBoundSceneID(scene->id());
         }
 
-        addItems(contextItem(), item.m_trackIndex,
-                 m_currentTime + item.m_showFunc->startTime() - lowerTime,
-                 QVariantList() << func->id(), item.m_showFunc);
+        sources.append({ sf, func, trackIdx });
+
+        ShowMoveItem item;
+        item.id = sf->id();
+        item.trackIndex = trackIdx;
+        item.startTime = sf->startTime();
+        item.duration = sf->duration();
+        items.append(item);
     }
+
+    if (sources.isEmpty())
+        return;
+
+    // the earliest copy goes to the cursor, the others keep their relative
+    // time offsets and stay on their sources' tracks; collisions are
+    // resolved like a drop, and a group that still does not fit is refused
+    // as a whole (a per-item scatter would break its layout)
+    ShowGroupMoveResult plan = ShowMoveHelper::planPaste(trackSpans(), items, m_currentTime);
+    if (!plan.ok)
+    {
+        ShowFunction *blocker = m_currentShow->showFunction(plan.blockingId);
+        Function *blockingFunc = blocker ? m_doc->function(blocker->functionID()) : nullptr;
+        emit pasteRefused(blockingFunc ? blockingFunc->name() : tr("another item"));
+        return;
+    }
+
+    // All the copies are created back-to-back so Tardis batches their
+    // ShowManagerAddFunction actions into one undo step. The pasted clips
+    // become the selection, as they are what the user works on next.
+    clearSelection();
+    QQuickItem *parent = contextItem();
+
+    for (const PasteSource &src : sources)
+    {
+        ShowFunction *copy = createShowItem(parent, tracks.at(src.trackIdx), src.trackIdx, src.func,
+                                            int(src.sf->startTime() + plan.timeDelta), src.sf);
+        addToSelection(src.trackIdx, copy, m_itemsMap.value(copy->id(), nullptr));
+    }
+
+    emit showDurationChanged(m_currentShow->totalDuration());
+    emit selectedItemsCountChanged(m_selectedItems.count());
+    emit itemClicked(App::ShowDragItem);
 }
 
 double ShowManager::legacyBeatPseudoUnitToMs(int bpmNumber)

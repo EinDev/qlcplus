@@ -877,6 +877,14 @@ Rectangle
     // "Set Spout output size..." from a track header's right-click menu
     PopupTrackSpoutSize { id: trackSpoutSizePopup }
 
+    // the clipboard items do not fit at the cursor as a group
+    CustomPopupDialog
+    {
+        id: pasteRefusedPopup
+        title: qsTr("Cannot paste here")
+        standardButtons: Dialog.Ok
+    }
+
     Connections
     {
         target: showManager
@@ -884,6 +892,12 @@ Rectangle
         function onSpoutSizeMismatch(trackIdx, trackName, trackWidth, trackHeight, clipName, clipWidth, clipHeight)
         {
             spoutMismatchPopup.ask(trackIdx, trackName, trackWidth, trackHeight, clipName, clipWidth, clipHeight)
+        }
+        function onPasteRefused(blockingName)
+        {
+            pasteRefusedPopup.message = qsTr("The copied items do not fit at the cursor position as a group:\n" +
+                                             "'%1' is in the way. Move the cursor to a free area and paste again.").arg(blockingName)
+            pasteRefusedPopup.open()
         }
     }
 }

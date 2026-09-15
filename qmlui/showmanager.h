@@ -547,6 +547,10 @@ signals:
     void clipboardItemsCountChanged(int count);
     void multipleSelectionChanged();
 
+    /** pasteFromClipboard() found no room for the whole group of copies at
+     *  the cursor: $blockingName is the Function name of the clip in the way */
+    void pasteRefused(QString blockingName);
+
 private:
     /** Everything checkAndMoveItems()/previewItemsMove() need to agree on */
     struct GroupMovePlan
@@ -560,6 +564,13 @@ private:
         QList<ShowFunction *> items;
         QList<int> trackIndices;
     };
+
+    /** Create the ShowFunction of $func on $track at $startTime and its QML
+     *  item under $parent (registered in m_itemsMap), inheriting the
+     *  customized properties of $sourceFunc when this is a paste. Shared by
+     *  addItems() and pasteFromClipboard(). */
+    ShowFunction *createShowItem(QQuickItem *parent, Track *track, int trackIdx, Function *func,
+                                 int startTime, ShowFunction *sourceFunc);
 
     /** Shared by preview and drop: grid-snap and collision-resolve $grabbed's
      *  requested spot, derive the group delta and validate the whole group */

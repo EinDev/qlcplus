@@ -16,6 +16,7 @@
 */
 
 #include <algorithm>
+#include <limits>
 
 #include "showmovehelper.h"
 
@@ -151,4 +152,36 @@ ShowGroupMoveResult ShowMoveHelper::validateGroupMove(const QList<QList<ShowClip
 
     result.ok = true;
     return result;
+}
+
+ShowGroupMoveResult ShowMoveHelper::planPaste(const QList<QList<ShowClipSpan>> &tracks,
+                                              const QList<ShowMoveItem> &items, qint64 anchorTime)
+{
+    ShowGroupMoveResult result;
+
+    if (items.isEmpty())
+        return result;
+
+    // the earliest item is the one anchored at the cursor (first one on a tie)
+    const ShowMoveItem *earliest = &items.first();
+    for (const ShowMoveItem &item : items)
+    {
+        if (item.startTime < earliest->startTime)
+            earliest = &item;
+    }
+
+    // no clip is exempt from blocking the copies, not even their sources:
+    // validateGroupMove() exempts the ids of the items it moves, so give
+    // the copies an id no real clip has
+    QList<ShowMoveItem> copies = items;
+    for (ShowMoveItem &copy : copies)
+        copy.id = std::numeric_limits<quint32>::max();
+
+    qint64 requested = qMax<qint64>(0, anchorTime);
+    qint64 resolved = requested;
+    if (earliest->trackIndex >= 0 && earliest->trackIndex < tracks.count())
+        resolved = resolveCollision(tracks.at(earliest->trackIndex), requested, earliest->duration,
+                                    QSet<quint32>());
+
+    return validateGroupMove(tracks, copies, 0, resolved - earliest->startTime);
 }

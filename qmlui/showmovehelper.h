@@ -103,6 +103,23 @@ public:
     static ShowGroupMoveResult validateGroupMove(const QList<QList<ShowClipSpan>> &tracks,
                                                  const QList<ShowMoveItem> &items,
                                                  int trackDelta, qint64 timeDelta);
+
+    /**
+     * Where copies of $items (the clipboard, with their current positions)
+     * land when pasted so that the earliest one starts at $anchorTime (the
+     * cursor), every copy staying on its source's track at the same
+     * relative time offset. Like a drop, the earliest copy's spot is first
+     * collision-resolved on its track and the resulting delta applied to
+     * the whole group, which must then be free of any blocker (ok == false
+     * otherwise, with the first blocker's id).
+     *
+     * The copies do not exist yet, so nothing is exempt from blocking - in
+     * particular the sources themselves: a copy pasted right onto its
+     * source is shifted next to it, not laid over it. The ids in $items
+     * are ignored for that reason. trackDelta is always 0.
+     */
+    static ShowGroupMoveResult planPaste(const QList<QList<ShowClipSpan>> &tracks,
+                                         const QList<ShowMoveItem> &items, qint64 anchorTime);
 };
 
 #endif // SHOWMOVEHELPER_H

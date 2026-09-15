@@ -271,4 +271,94 @@ void ShowGroupMove_Test::groupMoveEmpty()
     QVERIFY(!r.ok);
 }
 
+void ShowGroupMove_Test::pasteFreeKeepsOffsets()
+{
+    // sources: clip 1 on track 0 at [0, 1000), clip 2 on track 1 at [500, 1500)
+    QList<QList<ShowClipSpan>> tracks;
+    tracks << (QList<ShowClipSpan>() << clip(1, 0, 1000))
+           << (QList<ShowClipSpan>() << clip(2, 500, 1000));
+
+    QList<ShowMoveItem> items;
+    items << item(1, 0, 0, 1000) << item(2, 1, 500, 1000);
+
+    // pasting at 5000: clip 1's copy at 5000, clip 2's at 5500, same tracks
+    ShowGroupMoveResult r = ShowMoveHelper::planPaste(tracks, items, 5000);
+    QVERIFY(r.ok);
+    QCOMPARE(r.trackDelta, 0);
+    QCOMPARE(r.timeDelta, qint64(5000));
+}
+
+void ShowGroupMove_Test::pasteAnchorsEarliestByTime()
+{
+    QList<QList<ShowClipSpan>> tracks;
+    tracks << (QList<ShowClipSpan>() << clip(1, 2000, 1000) << clip(2, 500, 1000));
+
+    // the clipboard lists the later clip first: the earlier one (by start
+    // time, not list order) is still the one landing at the cursor
+    QList<ShowMoveItem> items;
+    items << item(1, 0, 2000, 1000) << item(2, 0, 500, 1000);
+
+    ShowGroupMoveResult r = ShowMoveHelper::planPaste(tracks, items, 8000);
+    QVERIFY(r.ok);
+    QCOMPARE(r.timeDelta, qint64(7500)); // clip 2 -> 8000, clip 1 -> 9500
+}
+
+void ShowGroupMove_Test::pasteSourcesBlockTheirCopies()
+{
+    QList<QList<ShowClipSpan>> tracks;
+    tracks << (QList<ShowClipSpan>() << clip(1, 0, 1000))
+           << (QList<ShowClipSpan>() << clip(2, 500, 1000));
+
+    QList<ShowMoveItem> items;
+    items << item(1, 0, 0, 1000) << item(2, 1, 500, 1000);
+
+    // cursor exactly on the sources: the copies must not be laid over them.
+    // Clip 1's copy is shifted right of its source (the left gap is empty),
+    // clip 2's copy then lands at [1500, 2500), just after its own source
+    ShowGroupMoveResult r = ShowMoveHelper::planPaste(tracks, items, 0);
+    QVERIFY(r.ok);
+    QCOMPARE(r.timeDelta, qint64(1000));
+}
+
+void ShowGroupMove_Test::pasteResolvesEarliestCollision()
+{
+    QList<QList<ShowClipSpan>> tracks;
+    tracks << (QList<ShowClipSpan>() << clip(1, 0, 1000) << clip(9, 4800, 1000))
+           << (QList<ShowClipSpan>() << clip(2, 500, 1000));
+
+    QList<ShowMoveItem> items;
+    items << item(1, 0, 0, 1000) << item(2, 1, 500, 1000);
+
+    // 5000 hits clip 9 [4800, 5800): right (5800, shift 800) beats left
+    // (3800, shift 1200); the group follows with the same delta
+    ShowGroupMoveResult r = ShowMoveHelper::planPaste(tracks, items, 5000);
+    QVERIFY(r.ok);
+    QCOMPARE(r.timeDelta, qint64(5800));
+}
+
+void ShowGroupMove_Test::pasteBlockedRefusesWholeGroup()
+{
+    QList<QList<ShowClipSpan>> tracks;
+    tracks << (QList<ShowClipSpan>() << clip(1, 0, 1000))
+           << (QList<ShowClipSpan>() << clip(2, 500, 1000) << clip(7, 5500, 1000));
+
+    QList<ShowMoveItem> items;
+    items << item(1, 0, 0, 1000) << item(2, 1, 500, 1000);
+
+    // clip 1's copy is free at 5000, but clip 2's copy at 5500 hits clip 7:
+    // the paste is refused as a whole, naming the blocker
+    ShowGroupMoveResult r = ShowMoveHelper::planPaste(tracks, items, 5000);
+    QVERIFY(!r.ok);
+    QCOMPARE(r.blockingId, 7u);
+}
+
+void ShowGroupMove_Test::pasteEmpty()
+{
+    QList<QList<ShowClipSpan>> tracks;
+    tracks << QList<ShowClipSpan>();
+
+    ShowGroupMoveResult r = ShowMoveHelper::planPaste(tracks, QList<ShowMoveItem>(), 1000);
+    QVERIFY(!r.ok);
+}
+
 QTEST_APPLESS_MAIN(ShowGroupMove_Test)
