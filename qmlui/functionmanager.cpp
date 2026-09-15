@@ -221,18 +221,33 @@ quint32 FunctionManager::addFunctiontoDoc(Function *func, QString name, bool sel
 
     func->setName(QString("%1 %2").arg(name).arg(m_doc->nextFunctionID()));
 
+    // create the new function inside the folder the user is looking at:
+    // the selected folder, or the folder of the selected function. The path
+    // must be set BEFORE addFunction(), so that the FunctionCreate undo
+    // snapshot taken below already carries it and a redo restores it.
+    const QString treePath = selectionBasePath();
+    if (!treePath.isEmpty())
+        func->setPath(FunctionPathUtils::toFunctionPath(treePath, TreeModel::separator()));
+
+    // an empty folder is a real folder from now on (the tree node itself is
+    // kept: TreeModelItem::addChild() turns the empty leaf into a parent)
+    forgetEmptyFolders(treePath);
+
     if (m_doc->addFunction(func) == true)
     {
         if (select)
-            m_functionTree->setItemRoleData(func->name(), 1, TreeModel::IsSelectedRole);
-
-        QQmlEngine::setObjectOwnership(func, QQmlEngine::CppOwnership);
-
-        if (select)
         {
+            // the new function replaces the folder selection it was created in
+            m_selectedFolderList.clear();
+            emit selectedFolderCountChanged(0);
+
+            m_functionTree->setItemRoleData(FunctionPathUtils::join(treePath, func->name(), TreeModel::separator()),
+                                            1, TreeModel::IsSelectedRole);
             m_selectedIDList.append(QVariant(func->id()));
             emit selectedFunctionCountChanged(m_selectedIDList.count());
         }
+
+        QQmlEngine::setObjectOwnership(func, QQmlEngine::CppOwnership);
 
         Tardis::instance()->enqueueAction(Tardis::FunctionCreate, func->id(), QVariant(),
                                           Tardis::instance()->actionToByteArray(Tardis::FunctionCreate, func->id()));
