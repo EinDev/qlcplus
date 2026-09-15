@@ -147,11 +147,29 @@ public:
 signals:
     void roleChanged(TreeModelItem *item, int role, const QVariant &value);
 
-    /** Emitted whenever this tree's own rows are inserted/removed/cleared.
-     *  Bubbles from every descendant tree up to the root (wired in addItem(),
-     *  mirroring how roleChanged already bubbles) so a structural change
-     *  anywhere in the tree - not just at the root level - can be observed
-     *  from the root alone. */
+    /** Emitted by removeItem()/clear() right BEFORE this tree deletes any of its
+     *  TreeModelItems (and, with them, their nested child TreeModels). Bubbles
+     *  from every descendant tree up to the root exactly like structureChanged,
+     *  so a consumer holding raw TreeModelItem / TreeModel pointers into the
+     *  tree (TreeFlatModel) can observe the root alone and still drop them,
+     *  synchronously, before ANY object at ANY depth is freed - the standard
+     *  QAbstractItemModel::rowsAboutToBeRemoved only ever fires on the exact
+     *  TreeModel instance that owns the removed row, which for a nested removal
+     *  is a child model nobody but its parent item knows about.
+     *
+     *  Contract, together with structureChanged: every deletion is bracketed as
+     *  structureAboutToChange() -> delete(s) -> structureChanged(), with nothing
+     *  emitted in between (a subtree being torn down is silenced, see
+     *  TreeModelItem::~TreeModelItem()). So whenever structureChanged arrives,
+     *  the mutation that caused it is already complete and the tree is in a
+     *  consistent state that is safe to re-walk. */
+    void structureAboutToChange();
+
+    /** Emitted whenever this tree's own rows are inserted/removed/cleared,
+     *  AFTER the change is complete. Bubbles from every descendant tree up to
+     *  the root (wired in addItem(), mirroring how roleChanged already bubbles)
+     *  so a structural change anywhere in the tree - not just at the root
+     *  level - can be observed from the root alone. */
     void structureChanged();
 
 protected slots:
@@ -161,6 +179,10 @@ protected:
     QHash<int, QByteArray> roleNames() const override;
     int getItemInsertIndex(const QString& label, int flags = 0) const;
     int getNodeInsertIndex(const QString& label) const;
+
+    /** Wire a freshly created child tree's bubbling signals (roleChanged,
+     *  structureAboutToChange, structureChanged) up to this tree. */
+    void connectChildTree(TreeModel *child);
 
 protected:
     QStringList m_roles;

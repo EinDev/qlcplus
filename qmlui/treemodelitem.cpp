@@ -37,7 +37,15 @@ TreeModelItem::~TreeModelItem()
     //qDebug() << "!!! WARNING TreeModelItem destroyed WARNING !!!";
     if (hasChildren())
     {
-        m_children->clear();
+        // A subtree being torn down must not announce its own teardown: the tree
+        // that owns this item already emitted structureAboutToChange() before
+        // deleting it (see TreeModel::clear()/removeItem()), and a bubbled
+        // structureChanged from in here would reach that owner's listeners while
+        // the owner is still mid-deletion - letting them re-walk a half-deleted
+        // tree and cache pointers to items/child trees freed a moment later.
+        // ~QObject unblocks signals again for destroyed(), so QPointer-style
+        // consumers are unaffected. ~TreeModel() clears the items itself.
+        m_children->blockSignals(true);
         delete m_children;
         m_children = nullptr;
     }

@@ -117,13 +117,16 @@ protected:
 private slots:
     void slotSourceRoleChanged(TreeModelItem *item, int role, const QVariant &value);
 
-    /** The source model is about to delete some/all of its TreeModelItems (a structural
-     *  change: TreeModel::clear()/removeItem(), or a future modelReset-style change).
-     *  Drop every row referencing that model immediately and synchronously, before any
-     *  deletion can happen, so data()/setData() can never dereference a just-freed
-     *  TreeModelItem in the window before rebuild() gets called again (via
-     *  slotSourceStructureChanged() below, or a screen's own higher-level "tree changed"
-     *  signal such as groupsTreeModelChanged/functionsListChanged). */
+    /** The source tree is about to delete some/all of its TreeModelItems somewhere -
+     *  at ANY depth, since TreeModel::structureAboutToChange bubbles from every nested
+     *  child tree up to the root (a structural change: TreeModel::clear()/removeItem(),
+     *  or a future modelReset-style change). Drop every row immediately and
+     *  synchronously, before any deletion can happen, so data()/setData() can never
+     *  dereference a just-freed TreeModelItem or - for a row under an expanded folder -
+     *  its just-freed child TreeModel `owner`, in the window before rebuild() gets
+     *  called again (via slotSourceStructureChanged() below, or a screen's own
+     *  higher-level "tree changed" signal such as groupsTreeModelChanged/
+     *  functionsListChanged). */
     void slotSourceInvalidated();
 
     /** The source model's own row count just changed (TreeModel::addItem()/removeItem()
@@ -162,8 +165,9 @@ private:
      *  hundreds of functions in one synchronous call - collapses into a single
      *  rebuild() instead of one full re-flatten per signal. Does not affect
      *  slotSourceInvalidated(), which still runs synchronously and immediately on
-     *  rowsAboutToBeRemoved/modelAboutToBeReset, so rows referencing about-to-be-freed
-     *  TreeModelItems are always dropped before the deletion actually happens - the
+     *  structureAboutToChange (and the root's own rowsAboutToBeRemoved/
+     *  modelAboutToBeReset), so rows referencing about-to-be-freed TreeModelItems/
+     *  child TreeModels are always dropped before the deletion actually happens - the
      *  coalescing only defers the (comparatively expensive) rebuild, never the cheap,
      *  safety-critical invalidation. */
     bool m_rebuildScheduled = false;

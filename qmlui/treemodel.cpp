@@ -55,19 +55,30 @@ void TreeModel::clear()
     if (itemsCount == 0)
         return;
 
+    // Announce BEFORE anything is freed, then tear everything down silently,
+    // then announce completion. Deleting an item deletes its whole subtree
+    // (TreeModelItem::~TreeModelItem() silences and deletes its child tree), so
+    // no descendant gets to bubble a structureChanged of its own out of the
+    // middle of this loop - which is what used to let a listener (TreeFlatModel)
+    // re-walk this tree while it was half-deleted and cache pointers to items
+    // and child trees this very loop freed a moment later.
+    emit structureAboutToChange();
     beginRemoveRows(QModelIndex(), 0, itemsCount - 1);
     for (int i = 0; i < itemsCount; i++)
-    {
-        TreeModelItem *item = m_items.takeLast();
-        if (item->hasChildren())
-            item->children()->clear();
-
-        delete item;
-    }
+        delete m_items.takeLast();
     endRemoveRows();
     m_items.clear();
     m_itemsPathMap.clear();
     emit structureChanged();
+}
+
+void TreeModel::connectChildTree(TreeModel *child)
+{
+    connect(child, SIGNAL(roleChanged(TreeModelItem*,int,const QVariant&)),
+            this, SLOT(slotRoleChanged(TreeModelItem*,int,const QVariant&)));
+    connect(child, &TreeModel::structureAboutToChange, this, &TreeModel::structureAboutToChange);
+    connect(child, &TreeModel::structureChanged, this, &TreeModel::structureChanged);
+    qDebug() << "Tree" << this << "connected to tree" << child;
 }
 
 void TreeModel::setColumnNames(QStringList names)
@@ -150,13 +161,7 @@ TreeModelItem *TreeModel::addItem(QString label, QVariantList data, QString path
             item->setFlags(flags);
             QQmlEngine::setObjectOwnership(item, QQmlEngine::CppOwnership);
             if (item->setChildrenColumns(m_roles) == true)
-            {
-                connect(item->children(), SIGNAL(roleChanged(TreeModelItem*,int,const QVariant)),
-                        this, SLOT(slotRoleChanged(TreeModelItem*,int,const QVariant&)));
-                connect(item->children(), &TreeModel::structureChanged,
-                        this, &TreeModel::structureChanged);
-                qDebug() << "Tree" << this << "connected to tree" << item->children();
-            }
+                connectChildTree(item->children());
 
             int addIndex = getNodeInsertIndex(pathList.at(0));
             beginInsertRows(QModelIndex(), addIndex, addIndex);
@@ -169,25 +174,13 @@ TreeModelItem *TreeModel::addItem(QString label, QVariantList data, QString path
         if (pathList.count() == 1)
         {
             if (item->addChild(label, data, m_roles, m_sorting, "", flags) == true)
-            {
-                connect(item->children(), SIGNAL(roleChanged(TreeModelItem*,int,const QVariant&)),
-                        this, SLOT(slotRoleChanged(TreeModelItem*,int,const QVariant&)));
-                connect(item->children(), &TreeModel::structureChanged,
-                        this, &TreeModel::structureChanged);
-                qDebug() << "Tree" << this << "connected to tree" << item->children();
-            }
+                connectChildTree(item->children());
         }
         else
         {
             QString newPath = path.mid(path.indexOf(TreeModel::separator()) + 1);
             if (item->addChild(label, data, m_roles, m_sorting, newPath, flags) == true)
-            {
-                connect(item->children(), SIGNAL(roleChanged(TreeModelItem*,int,const QVariant&)),
-                        this, SLOT(slotRoleChanged(TreeModelItem*,int,const QVariant&)));
-                connect(item->children(), &TreeModel::structureChanged,
-                        this, &TreeModel::structureChanged);
-                qDebug() << "Tree" << this << "connected to tree" << item->children();
-            }
+                connectChildTree(item->children());
         }
     }
 
@@ -243,6 +236,8 @@ bool TreeModel::removeItem(const QString& path)
         if (index == m_items.count())
             return false;
 
+        // same bracketing as clear(): announce, delete silently, announce done
+        emit structureAboutToChange();
         beginRemoveRows(QModelIndex(), index, index);
         m_itemsPathMap.remove(path);
         delete m_items.at(index);

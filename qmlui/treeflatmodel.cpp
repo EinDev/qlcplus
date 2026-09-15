@@ -52,6 +52,7 @@ void TreeFlatModel::setSourceModel(QObject *model)
         disconnect(m_sourceModel, &TreeModel::roleChanged, this, &TreeFlatModel::slotSourceRoleChanged);
         disconnect(m_sourceModel, &QAbstractItemModel::modelAboutToBeReset, this, &TreeFlatModel::slotSourceInvalidated);
         disconnect(m_sourceModel, &QAbstractItemModel::rowsAboutToBeRemoved, this, &TreeFlatModel::slotSourceInvalidated);
+        disconnect(m_sourceModel, &TreeModel::structureAboutToChange, this, &TreeFlatModel::slotSourceInvalidated);
         disconnect(m_sourceModel, &TreeModel::structureChanged, this, &TreeFlatModel::slotSourceStructureChanged);
     }
 
@@ -62,6 +63,13 @@ void TreeFlatModel::setSourceModel(QObject *model)
         connect(m_sourceModel, &TreeModel::roleChanged, this, &TreeFlatModel::slotSourceRoleChanged);
         connect(m_sourceModel, &QAbstractItemModel::modelAboutToBeReset, this, &TreeFlatModel::slotSourceInvalidated);
         connect(m_sourceModel, &QAbstractItemModel::rowsAboutToBeRemoved, this, &TreeFlatModel::slotSourceInvalidated);
+        // The two standard signals above only ever fire on the ROOT tree for the root's
+        // own rows. m_rows also holds pointers into nested child TreeModels (every
+        // visible row under an expanded folder has that folder's child tree as its
+        // `owner`), and a removal inside one of those - or of a folder that owns one -
+        // is only ever visible from the root through TreeModel's own bubbled
+        // structureAboutToChange, emitted before anything at any depth is freed.
+        connect(m_sourceModel, &TreeModel::structureAboutToChange, this, &TreeFlatModel::slotSourceInvalidated);
         // TreeModel::addItem()/removeItem() (e.g. FunctionManager adding/deleting a single
         // function) mutate the tree directly with no accompanying "list changed" signal at
         // all - without this, an incremental add or remove would never be reflected here
@@ -98,20 +106,22 @@ void TreeFlatModel::slotSourceStructureChanged()
     // so far per signal, which for a project with hundreds of functions turned
     // one filter keystroke/checkbox click into hundreds of full re-flattens.
     //
-    // rowsAboutToBeRemoved/modelAboutToBeReset (slotSourceInvalidated() below)
-    // only ever fire on the ROOT tree, not on a nested child TreeModel removing
-    // one of its own items - structureChanged is what bubbles a removal at any
-    // depth up to the root (see TreeModel::addItem()'s wiring). Removing a
-    // nested FOLDER deletes that folder's own child TreeModel object outright
-    // (TreeModelItem::~TreeModelItem() deletes m_children), so any FlatRow
-    // still referencing that folder's now-freed TreeModel as its `owner` would
-    // be a dangling-pointer read in data()/setData() until the next rebuild().
-    // A purely deferred rebuild leaves that dangling exactly that long - so the
-    // FIRST signal of each burst still rebuilds synchronously, right here,
-    // closing the gap the moment it can open, same as every signal did before
-    // this coalescing existed. Only the rest of the burst (all the signals a
-    // bulk clear()+repopulate fires after that first one) gets absorbed into
-    // one deferred rebuild instead of one each.
+    // Safety does NOT depend on this rebuild's timing: every TreeModel deletion,
+    // at any depth, is preceded by a bubbled structureAboutToChange (wired to
+    // slotSourceInvalidated() above), which drops every cached row before the
+    // object it points at is freed, and TreeModel guarantees structureChanged
+    // only arrives once the mutation is complete (see the signal's doc comment
+    // in treemodel.h). So whether a given signal rebuilds right here or is
+    // absorbed into the deferred rebuild only decides how long the list stays
+    // empty, never whether a row can dangle.
+    //
+    // The FIRST signal of each burst still rebuilds synchronously so the common
+    // single-change case (one addItem()/removeItem(), e.g. one function created
+    // or deleted) is reflected immediately with no event-loop round trip; only
+    // the rest of the burst (all the signals a bulk clear()+repopulate fires
+    // after that first one) gets absorbed into one deferred rebuild instead of
+    // one each. A bulk clear()+repopulate's first signal is clear()'s own
+    // structureChanged on a now-empty tree - a cheap rebuild-to-empty.
     if (m_rebuildScheduled)
         return;
 
