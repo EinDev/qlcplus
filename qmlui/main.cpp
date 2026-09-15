@@ -34,6 +34,13 @@
 #include "qlcfile.h"
 #include "slowclickapplication.h"
 
+#if defined(Q_OS_WIN) && defined(QLC_SPOUT)
+#include <QColor>
+#include <QImage>
+#include <memory>
+#include "spoutsender.h"
+#endif
+
 QFile logFile;
 
 // qInstallMessageHandler only accepts a plain (captureless) function pointer,
@@ -330,6 +337,61 @@ int main(int argc, char *argv[])
         const QString mode = qEnvironmentVariable("QLCPLUS_DEBUG_CRASH");
         QTimer::singleShot(3000, &app, [mode]() { CrashHandler::debugTriggerCrash(mode); });
     }
+
+#if defined(QLC_SPOUT)
+    // Dev-only: prove the vendored Spout SDK end-to-end (docs/agent-reports/
+    // 2026-09-15-spout-video-output-design.md, milestone 1). 3 s after
+    // startup, register a Spout sender "QLC+ test" at 1280x720, publish a
+    // transparent frame, then alternate every 2 s between a solid opaque
+    // red frame and a transparent one until the app quits. With OBS's Spout2
+    // source set to "Premultiplied Alpha" this shows nothing, then red,
+    // then nothing again. Same gating rationale as the two hooks above;
+    // never wired to any UI/flag.
+    if (qEnvironmentVariableIsSet("QLCPLUS_DEBUG_SPOUT"))
+    {
+        QTimer::singleShot(3000, &app, [&app]() {
+            auto sender = std::make_shared<SpoutSender>();
+            const QSize size(1280, 720);
+
+            if (sender->create("QLC+ test", size.width(), size.height()) == false)
+            {
+                qWarning() << "[Spout] test hook: failed to create sender";
+                return;
+            }
+
+            qDebug().noquote() << "[Spout] created sender" << sender->name()
+                               << "at" << sender->size().width() << "x" << sender->size().height()
+                               << "- sent initial transparent frame";
+            qDebug().noquote() << "[Spout] active senders:" << sender->activeSenders().join(", ");
+
+            QImage red(size, QImage::Format_ARGB32_Premultiplied);
+            red.fill(QColor(255, 0, 0, 255));
+
+            QTimer *timer = new QTimer(&app);
+            timer->setInterval(2000);
+            QObject::connect(timer, &QTimer::timeout, &app, [sender, red, showRed = true]() mutable {
+                if (showRed)
+                {
+                    sender->sendImage(red);
+                    qDebug().noquote() << "[Spout] sent solid red frame (alpha 255) on" << sender->name();
+                }
+                else
+                {
+                    sender->sendTransparent();
+                    qDebug().noquote() << "[Spout] sent transparent frame on" << sender->name();
+                }
+                showRed = !showRed;
+            });
+            timer->start();
+
+            QObject::connect(&app, &QCoreApplication::aboutToQuit, &app, [sender, timer]() {
+                timer->stop();
+                sender->release();
+                qDebug().noquote() << "[Spout] test hook: sender released";
+            });
+        });
+    }
+#endif
 #endif
 
     int result = app.exec();
