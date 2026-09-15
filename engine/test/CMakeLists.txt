@@ -1,5 +1,6 @@
 project(test)
 
+add_subdirectory(audio)
 add_subdirectory(beattracker)
 add_subdirectory(beattrackerbench)
 add_subdirectory(bus)
@@ -81,6 +82,7 @@ add_subdirectory(iopluginstub)
 # fixture/profile/script resources via paths relative to its own binary dir
 # (see common/resource_paths.h), hence WORKING_DIRECTORY per test.
 set(QLCPLUS_ENGINE_TESTS
+    audio_test
     beattracker_test
     bus_test
     channelmodifier_test

@@ -244,6 +244,49 @@ void Video_Test::saveLoad()
     QCOMPARE(v2.spoutSize(), QSize(0, 0));
 }
 
+void Video_Test::saveLoadVolumeMuted()
+{
+    // defaults: neither attribute is written, so older projects stay untouched
+    Video def(m_doc);
+    QCOMPARE(def.volume(), 100.0);
+    QCOMPARE(def.muted(), false);
+    QString defXml = saveToXml(def);
+    QVERIFY(defXml.contains("Volume=") == false);
+    QVERIFY(defXml.contains("Muted=") == false);
+
+    Video v(m_doc);
+    v.setSourceUrl("http://example.com/movie.mp4");
+    QSignalSpy volumeSpy(&v, SIGNAL(volumeChanged()));
+    QSignalSpy mutedSpy(&v, SIGNAL(mutedChanged(bool)));
+    v.setVolume(42);
+    v.setMuted(true);
+    QCOMPARE(v.volume(), 42.0);
+    QCOMPARE(v.getAttributeValue(Video::Volume), 42.0);
+    QCOMPARE(v.muted(), true);
+    QCOMPARE(volumeSpy.count(), 1);
+    QCOMPARE(mutedSpy.count(), 1);
+    // unchanged values don't re-emit
+    v.setVolume(42);
+    v.setMuted(true);
+    QCOMPARE(volumeSpy.count(), 1);
+    QCOMPARE(mutedSpy.count(), 1);
+
+    QString xml = saveToXml(v);
+    QVERIFY(xml.contains("Volume=\"42\""));
+    QVERIFY(xml.contains("Muted=\"1\""));
+
+    Video v2(m_doc);
+    QVERIFY(loadFromXml(v2, xml));
+    QCOMPARE(v2.volume(), 42.0);
+    QCOMPARE(v2.muted(), true);
+
+    // copies carry both over (Function::copyFrom() doesn't copy attributes)
+    Video v3(m_doc);
+    QVERIFY(v3.copyFrom(&v));
+    QCOMPARE(v3.volume(), 42.0);
+    QCOMPARE(v3.muted(), true);
+}
+
 void Video_Test::saveLoadSpout()
 {
     Video v(m_doc);

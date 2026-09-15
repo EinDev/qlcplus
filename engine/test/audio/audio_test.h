@@ -1,8 +1,6 @@
 /*
   Q Light Controller Plus - Unit test
-  video_test.h
-
-  Copyright (c) Massimo Callegari
+  audio_test.h
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -17,14 +15,14 @@
   limitations under the License.
 */
 
-#ifndef VIDEO_TEST_H
-#define VIDEO_TEST_H
+#ifndef AUDIO_TEST_H
+#define AUDIO_TEST_H
 
 #include <QObject>
 
 class Doc;
 
-class Video_Test final : public QObject
+class Audio_Test final : public QObject
 {
     Q_OBJECT
 
@@ -34,16 +32,11 @@ private slots:
     void cleanup();
 
     void basic();
-    void properties();
-    void outputMode();
-    void spoutSenderName();
-    void saveLoad();
-    void saveLoadSpout();
+    void volumeMuted();
     void saveLoadVolumeMuted();
-    void loadLegacyFullscreen();
 
 private:
     Doc* m_doc;
 };
 
-#endif // VIDEO_TEST_H
+#endif
