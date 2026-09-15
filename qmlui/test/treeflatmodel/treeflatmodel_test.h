@@ -38,6 +38,8 @@ private slots:
     void deletingLastFunctionOfExpandedFolderMirrorsFunctionManager();
     void createFolderThenDeleteInOneBurstNeverDanglesOwner();
     void clearWithExpandedFoldersDropsEveryRowBeforeAnyDeletion();
+    void fullPathDistinguishesSameNamedFoldersAtDifferentDepths();
+    void fullPathFollowsFolderRename();
 };
 
 #endif

@@ -148,6 +148,34 @@ void TreeFlatModel::appendSubtree(TreeModel *tree, int depth, QVector<FlatRow> &
     }
 }
 
+QString TreeFlatModel::fullPathOfRow(int row) const
+{
+    if (row < 0 || row >= m_rows.count())
+        return QString();
+
+    // an item's own segment is its path() for nodes/empty folders and its
+    // label() for plain leaves (TreeModel::addItem only sets path on nodes)
+    auto segmentOf = [](const TreeModelItem *item) {
+        return item->path().isEmpty() ? item->label() : item->path();
+    };
+
+    QString result = segmentOf(m_rows.at(row).item);
+    int depth = m_rows.at(row).depth;
+
+    // rows are depth-first, so the nearest preceding row with a smaller depth
+    // is this row's parent, and so on up to depth 0
+    for (int i = row - 1; i >= 0 && depth > 0; i--)
+    {
+        if (m_rows.at(i).depth < depth)
+        {
+            depth = m_rows.at(i).depth;
+            result = segmentOf(m_rows.at(i).item) + TreeModel::separator() + result;
+        }
+    }
+
+    return result;
+}
+
 void TreeFlatModel::reindexFrom(int from)
 {
     for (int i = from; i < m_rows.count(); i++)
@@ -209,6 +237,8 @@ QVariant TreeFlatModel::data(const QModelIndex &index, int role) const
     QVariant result;
     if (role == DepthRole)
         result = row.depth;
+    else if (role == FullPathRole)
+        result = fullPathOfRow(index.row());
     else if (role >= TreeModel::LabelRole && role < TreeModel::FixedRolesEnd)
     {
         int ownerRow = row.owner->items().indexOf(row.item);
@@ -272,6 +302,7 @@ QHash<int, QByteArray> TreeFlatModel::roleNames() const
     roles[PrecedenceRole] = "precedence";
     roles[ModifierRole] = "modifier";
     roles[DepthRole] = "depth";
+    roles[FullPathRole] = "fullPath";
 
     return roles;
 }
@@ -304,10 +335,22 @@ void TreeFlatModel::slotSourceRoleChanged(TreeModelItem *item, int role, const Q
 
     emit dataChanged(index(row), index(row));
 
+    const int depth = m_rows.at(row).depth;
+
+    if (role == TreeModel::LabelRole || role == TreeModel::PathRole)
+    {
+        // a renamed folder changes the FullPathRole of every visible descendant
+        int end = row + 1;
+        while (end < m_rows.count() && m_rows.at(end).depth > depth)
+            end++;
+        if (end > row + 1)
+            emit dataChanged(index(row + 1), index(end - 1), QVector<int>(1, FullPathRole));
+        return;
+    }
+
     if (role != TreeModel::IsExpandedRole)
         return;
 
-    const int depth = m_rows.at(row).depth;
     const bool expanded = value.toBool();
 
     if (expanded && item->hasChildren())

@@ -84,7 +84,17 @@ public:
         PrecedenceRole,
         ModifierRole,
 
-        DepthRole
+        DepthRole,
+
+        /** The row's full tree path from the root, segments joined with
+         *  TreeModel::separator() - what a recursive delegate reconstructs as
+         *  "parent.nodePath + separator + path". TreeModel's own PathRole is
+         *  only the item's OWN segment (see TreeModel::addItem), so two folders
+         *  named "X" at different depths are indistinguishable through it; use
+         *  this role wherever a folder must be identified unambiguously. It is
+         *  computed on demand from the visible rows, so a rename (LabelRole/
+         *  PathRole change without a rebuild) is reflected immediately. */
+        FullPathRole
     };
     Q_ENUM(FlatRoles)
 
@@ -149,6 +159,10 @@ private:
     /** Recursively append $tree's items (and, for each already-expanded one, its
      *  visible descendants) to $out at the given $depth. */
     static void appendSubtree(TreeModel *tree, int depth, QVector<FlatRow> &out);
+
+    /** Full tree path of row $row (see FullPathRole): walks back through the
+     *  depth-first row list collecting the nearest ancestor at every lower depth. */
+    QString fullPathOfRow(int row) const;
 
     /** Rebuild m_indexOfItem for every row starting at $from. */
     void reindexFrom(int from);

@@ -440,6 +440,81 @@ void TreeFlatModel_Test::clearWithExpandedFoldersDropsEveryRowBeforeAnyDeletion(
     QCOMPARE(flat.data(flat.index(1), TreeFlatModel::DepthRole).toInt(), 1);
 }
 
+void TreeFlatModel_Test::fullPathDistinguishesSameNamedFoldersAtDifferentDepths()
+{
+    // the Function Manager's "A/X" vs "X" case: two folders share the name "X",
+    // one at the root and one nested under "A"
+    TreeModel tree;
+    tree.setColumnNames(QStringList() << "id");
+    tree.enableSorting(false);
+    tree.addItem("nested func", QVariantList() << 1, QString("A`X"));
+    tree.addItem("root func", QVariantList() << 2, "X");
+    tree.addItem("Empty", QVariantList() << 3, "A", TreeModel::EmptyNode);
+    tree.setItemRoleData("A", true, TreeModel::IsExpandedRole);
+    tree.setItemRoleData("A`X", true, TreeModel::IsExpandedRole);
+    tree.setItemRoleData("X", true, TreeModel::IsExpandedRole);
+
+    TreeFlatModel flat;
+    flat.setSourceModel(&tree);
+
+    QStringList labels, paths, fullPaths;
+    for (int i = 0; i < flat.rowCount(); i++)
+    {
+        labels << flat.data(flat.index(i), TreeFlatModel::LabelRole).toString();
+        paths << flat.data(flat.index(i), TreeFlatModel::PathRole).toString();
+        fullPaths << flat.data(flat.index(i), TreeFlatModel::FullPathRole).toString();
+    }
+
+    QCOMPARE(labels, QStringList() << "A" << "X" << "nested func" << "Empty" << "X" << "root func");
+    // TreeModel's own path role is only the item's own segment: ambiguous
+    QCOMPARE(paths.at(1), QString("X"));
+    QCOMPARE(paths.at(4), QString("X"));
+    // the flat model's full path is not
+    QCOMPARE(fullPaths, QStringList() << "A" << "A`X" << "A`X`nested func" << "A`Empty" << "X" << "X`root func");
+    // the role must be reachable from QML as "fullPath"
+    const QAbstractItemModel *model = &flat;
+    QCOMPARE(model->roleNames().value(TreeFlatModel::FullPathRole), QByteArray("fullPath"));
+}
+
+void TreeFlatModel_Test::fullPathFollowsFolderRename()
+{
+    TreeModel tree;
+    tree.setColumnNames(QStringList() << "id");
+    tree.enableSorting(false);
+    tree.addItem("f", QVariantList() << 1, QString("A`X"));
+    tree.setItemRoleData("A", true, TreeModel::IsExpandedRole);
+    tree.setItemRoleData("A`X", true, TreeModel::IsExpandedRole);
+
+    TreeFlatModel flat;
+    flat.setSourceModel(&tree);
+    QCOMPARE(flat.rowCount(), 3);
+    QCOMPARE(flat.data(flat.index(2), TreeFlatModel::FullPathRole).toString(), QString("A`X`f"));
+
+    QSignalSpy spy(&flat, &TreeFlatModel::dataChanged);
+
+    // rename "A" to "B" the way FunctionManager::setFolderPath(isRelative) does:
+    // label first, then the path role through the new tree path
+    tree.setItemRoleData("A", "B", TreeModel::LabelRole);
+    tree.setItemRoleData("B", "B", TreeModel::PathRole);
+
+    QCOMPARE(flat.rowCount(), 3);
+    QCOMPARE(flat.data(flat.index(0), TreeFlatModel::FullPathRole).toString(), QString("B"));
+    QCOMPARE(flat.data(flat.index(1), TreeFlatModel::FullPathRole).toString(), QString("B`X"));
+    QCOMPARE(flat.data(flat.index(2), TreeFlatModel::FullPathRole).toString(), QString("B`X`f"));
+
+    // and the descendants were told their full path changed
+    bool descendantsNotified = false;
+    for (int i = 0; i < spy.count(); i++)
+    {
+        QModelIndex top = spy.at(i).at(0).toModelIndex();
+        QModelIndex bottom = spy.at(i).at(1).toModelIndex();
+        QVector<int> roles = spy.at(i).at(2).value<QVector<int>>();
+        if (top.row() == 1 && bottom.row() == 2 && roles.contains(TreeFlatModel::FullPathRole))
+            descendantsNotified = true;
+    }
+    QVERIFY(descendantsNotified);
+}
+
 // The coalesced rebuild is a queued QMetaObject::invokeMethod(): without a
 // QCoreApplication instance, posted events are never delivered, so the tests
 // above that flush it need a guiless app (no window/display, just the event
