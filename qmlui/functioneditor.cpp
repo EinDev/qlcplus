@@ -48,7 +48,7 @@ void FunctionEditor::setFunctionID(quint32 ID)
         m_function->stop(FunctionParent::master(FunctionParent::FunctionEditorPreview));
     }
     if (m_function != nullptr)
-        disconnect(m_function, qOverload<quint32>(&Function::stopped), this, &FunctionEditor::slotFunctionStopped);
+        disconnect(m_function, SIGNAL(stopped(quint32)), this, SLOT(slotFunctionStopped(quint32)));
 
     m_functionID = ID;
     m_function = m_doc->function(ID);
@@ -59,7 +59,7 @@ void FunctionEditor::setFunctionID(quint32 ID)
     {
         m_function->start(m_doc->masterTimer(), FunctionParent::master(FunctionParent::FunctionEditorPreview));
         if (m_previewEnabled)
-            connect(m_function, qOverload<quint32>(&Function::stopped), this, &FunctionEditor::slotFunctionStopped, Qt::UniqueConnection);
+            connect(m_function, SIGNAL(stopped(quint32)), this, SLOT(slotFunctionStopped(quint32)), Qt::UniqueConnection);
     }
 }
 
@@ -96,11 +96,11 @@ void FunctionEditor::setPreviewEnabled(bool enable)
         // can force-stop this Function regardless of our own preview source.
         // Notice it so previewEnabled doesn't keep reporting a stale "on"
         // state once that happens.
-        connect(m_function, qOverload<quint32>(&Function::stopped), this, &FunctionEditor::slotFunctionStopped, Qt::UniqueConnection);
+        connect(m_function, SIGNAL(stopped(quint32)), this, SLOT(slotFunctionStopped(quint32)), Qt::UniqueConnection);
     }
     else
     {
-        disconnect(m_function, qOverload<quint32>(&Function::stopped), this, &FunctionEditor::slotFunctionStopped);
+        disconnect(m_function, SIGNAL(stopped(quint32)), this, SLOT(slotFunctionStopped(quint32)));
         if (m_function->isRunning())
             m_function->stop(FunctionParent::master(FunctionParent::FunctionEditorPreview));
     }
@@ -112,7 +112,7 @@ void FunctionEditor::slotFunctionStopped(quint32 id)
     if (m_function == nullptr || id != m_function->id())
         return;
 
-    disconnect(m_function, qOverload<quint32>(&Function::stopped), this, &FunctionEditor::slotFunctionStopped);
+    disconnect(m_function, SIGNAL(stopped(quint32)), this, SLOT(slotFunctionStopped(quint32)));
 
     if (m_previewEnabled == false)
         return;

@@ -50,8 +50,12 @@ PaletteManager::PaletteManager(QQuickView *view, Doc *doc,
 
     // Refresh the list when palettes are added/removed outside this manager
     // (e.g. by the Stage Wizard).
-    connect(m_doc, &Doc::paletteAdded,   this, [this]() { updatePaletteList(); });
-    connect(m_doc, &Doc::paletteRemoved, this, [this]() { updatePaletteList(); });
+    // String-based on purpose: Doc lives in the engine DLL and this MinGW
+    // build has no dllimport declarations, so a pointer-to-member taken here
+    // is the import thunk, not the address moc registered inside the DLL -
+    // the &Doc::signal form fails at runtime with "signal not found".
+    connect(m_doc, SIGNAL(paletteAdded(quint32)), this, SLOT(updatePaletteList()));
+    connect(m_doc, SIGNAL(paletteRemoved(quint32)), this, SLOT(updatePaletteList()));
 }
 
 PaletteManager::~PaletteManager()

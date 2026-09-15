@@ -108,7 +108,7 @@ void ShowManager::setCurrentShowID(int currentShowID)
         disconnect(m_currentShow, SIGNAL(timeChanged(quint32)), this, SLOT(slotTimeChanged(quint32)));
         disconnect(m_currentShow, SIGNAL(showFinished()), this, SLOT(slotShowFinished()));
         disconnect(m_currentShow, SIGNAL(stopped(quint32)), this, SLOT(slotShowStopped()));
-        disconnect(m_currentShow, &Show::scheduleChanged, this, &ShowManager::slotScheduleChanged);
+        disconnect(m_currentShow, SIGNAL(scheduleChanged()), this, SLOT(slotScheduleChanged()));
     }
 
     m_currentShow = qobject_cast<Show*>(m_doc->function(currentShowID));
@@ -121,7 +121,7 @@ void ShowManager::setCurrentShowID(int currentShowID)
         connect(m_currentShow, SIGNAL(timeChanged(quint32)), this, SLOT(slotTimeChanged(quint32)));
         connect(m_currentShow, SIGNAL(showFinished()), this, SLOT(slotShowFinished()));
         connect(m_currentShow, SIGNAL(stopped(quint32)), this, SLOT(slotShowStopped()));
-        connect(m_currentShow, &Show::scheduleChanged, this, &ShowManager::slotScheduleChanged);
+        connect(m_currentShow, SIGNAL(scheduleChanged()), this, SLOT(slotScheduleChanged()));
         emit showDurationChanged(m_currentShow->totalDuration());
         emit showNameChanged(m_currentShow->name());
         emit timeDivisionChanged(timeDivision());

@@ -99,7 +99,11 @@ StageWizard::StageWizard(Doc *doc,
     // fires *before* FixtureManager sets the fixture name, so we only record the
     // IDs here and assign them to the target box once patching is fully done
     // (fixturesCountChanged is emitted at the end of addFixture()).
-    connect(m_doc, &Doc::fixtureAdded, this, &StageWizard::slotFixtureAdded);
+    // String-based on purpose: Doc lives in the engine DLL and this MinGW
+    // build has no dllimport declarations, so a pointer-to-member taken here
+    // is the import thunk, not the address moc registered inside the DLL -
+    // the &Doc::signal form fails at runtime with "signal not found".
+    connect(m_doc, SIGNAL(fixtureAdded(quint32)), this, SLOT(slotFixtureAdded(quint32)));
     connect(m_fixtureManager, &FixtureManager::fixturesCountChanged, this, [this]()
     {
         if (m_droppedFixtureIDs.isEmpty())

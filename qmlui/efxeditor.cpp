@@ -56,7 +56,7 @@ void EFXEditor::setFunctionID(quint32 id)
 {
     if (id == Function::invalidId())
     {
-        disconnect(m_efx, &EFX::attributeChanged, this, &EFXEditor::slotAttributeChanged);
+        disconnect(m_efx, SIGNAL(attributeChanged(int,qreal)), this, SLOT(slotAttributeChanged(int,qreal)));
         m_efx = nullptr;
         return;
     }
@@ -64,7 +64,11 @@ void EFXEditor::setFunctionID(quint32 id)
     m_efx = qobject_cast<EFX *>(m_doc->function(id));
     if (m_efx != nullptr)
     {
-        connect(m_efx, &EFX::attributeChanged, this, &EFXEditor::slotAttributeChanged);
+        // String-based on purpose: EFX lives in the engine DLL and this MinGW
+        // build has no dllimport declarations, so a pointer-to-member taken here
+        // is the import thunk, not the address moc registered inside the DLL -
+        // the &EFX::signal form fails at runtime with "signal not found".
+        connect(m_efx, SIGNAL(attributeChanged(int,qreal)), this, SLOT(slotAttributeChanged(int,qreal)));
         updateAlgorithmData();
         emit algorithmIndexChanged();
     }
