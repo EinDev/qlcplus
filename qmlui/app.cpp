@@ -132,6 +132,20 @@ App::~App()
 {
     QSettings settings;
 
+    // The control API server is a *client* of m_doc: its domains hold
+    // registrations inside the engine (ApiIoDomain is a DMXSource registered
+    // with m_doc->masterTimer()) that they undo in their destructors. Both
+    // m_doc (initDoc()) and m_apiServer (startup()) are QObject children of
+    // this App, and QObject deletes its children in creation order - i.e.
+    // Doc first, which deletes the MasterTimer and only then reaches the
+    // ApiServer, whose ApiIoDomain then dereferences the dead Doc's null
+    // MasterTimer (crash on every normal exit with --api). Tear the server
+    // down explicitly here, while m_doc is still fully alive, so the API
+    // always dies before the engine it talks to - the same server-before-Doc
+    // order every controlapi/test suite's cleanup() already uses.
+    delete m_apiServer;
+    m_apiServer = nullptr;
+
     stopAllFunctions();
 
     // exit fullscreen before saving the geometry, otherwise the full screen

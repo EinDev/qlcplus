@@ -53,6 +53,15 @@ class Doc;
  * dependency on qmlui, Tardis, or QQuickView - this module must build and
  * run standalone.
  *
+ * Lifetime contract: the owner must destroy this server BEFORE the Doc it
+ * was given. The domains register themselves inside the engine (e.g.
+ * ApiIoDomain is a DMXSource on Doc::masterTimer()) and unregister in their
+ * destructors, so they need the Doc fully alive at that point. Relying on
+ * QObject parent/child cleanup alone is NOT enough when the Doc is a sibling
+ * child created earlier (QObject deletes children in creation order) -
+ * qmlui/app.cpp's App::~App() deletes m_apiServer explicitly for exactly
+ * this reason, and every controlapi/test cleanup() does server-then-Doc.
+ *
  * Runs entirely on the thread it's constructed on (no moveToThread) - see
  * docs/api-spec/00-conventions.md and this feature's plan doc for why that's
  * safe even though some engine signals (Universe::universeWritten, MasterTimer
