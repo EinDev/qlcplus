@@ -131,6 +131,7 @@ bool Show::copyFrom(const Function* function)
         quint32 sceneID = track->getSceneID();
         Track* newTrack = new Track(sceneID, this);
         newTrack->setName(track->name());
+        newTrack->setSpoutSize(track->spoutSize());
         addTrack(newTrack);
 
         // create a copy of each sequence/audio in a track

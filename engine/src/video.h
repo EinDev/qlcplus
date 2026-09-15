@@ -28,6 +28,7 @@
 #include "function.h"
 
 class QXmlStreamReader;
+class Track;
 
 /** @addtogroup engine_functions Functions
  * @{
@@ -232,6 +233,11 @@ public:
      *   - "QLC+ <Video name>" if no Show track contains it.
      */
     QString defaultSpoutSenderName() const;
+
+    /** The Show track defaultSpoutSenderName() is named after: the first
+     *  Show track (Shows and tracks in ID order) containing this Video,
+     *  null if none does. Its Track::spoutSize() fixes the sender size. */
+    Track *spoutTrack() const;
 
     /** The sender name used for a Video played from a Show track */
     static QString spoutSenderNameForTrack(const QString &trackName);

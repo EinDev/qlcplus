@@ -403,6 +403,15 @@ QString Video::spoutSenderName() const
 
 QString Video::defaultSpoutSenderName() const
 {
+    Track *track = spoutTrack();
+    if (track != nullptr)
+        return spoutSenderNameForTrack(track->name());
+
+    return KSpoutSenderPrefix + name();
+}
+
+Track *Video::spoutTrack() const
+{
     // First Show track (Shows, then tracks, in ID order) containing this
     // Video: the Show runner names the sender after the track it plays
     // from, and this rule picks the same name for the track a user is
@@ -419,12 +428,12 @@ QString Video::defaultSpoutSenderName() const
             for (ShowFunction *sf : track->showFunctions())
             {
                 if (sf->functionID() == id())
-                    return spoutSenderNameForTrack(track->name());
+                    return track;
             }
         }
     }
 
-    return KSpoutSenderPrefix + name();
+    return nullptr;
 }
 
 QString Video::spoutSenderNameForTrack(const QString &trackName)

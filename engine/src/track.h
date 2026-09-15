@@ -22,6 +22,7 @@
 
 #include <QObject>
 #include <QHash>
+#include <QSize>
 
 #include "showfunction.h"
 #include "scene.h"
@@ -42,6 +43,7 @@ class Track : public QObject
     Q_PROPERTY(quint32 id READ id CONSTANT)
     Q_PROPERTY(QString name READ name WRITE setName NOTIFY nameChanged)
     Q_PROPERTY(bool mute READ isMute WRITE setMute NOTIFY muteChanged)
+    Q_PROPERTY(QSize spoutSize READ spoutSize WRITE setSpoutSize NOTIFY spoutSizeChanged)
 
     /************************************************************************
      * Initialization
@@ -127,6 +129,32 @@ signals:
 private:
     /** Flag to mute/unmute this track */
     bool m_isMute;
+
+    /*********************************************************************
+     * Spout output size
+     *********************************************************************/
+public:
+    /**
+     * Get/Set the fixed Spout output size of this track. Every Video in
+     * Spout mode played from this track publishes into one shared sender
+     * named after the track (see Video::spoutSenderNameForTrack()); when
+     * this size is set, that sender is created at exactly this size, and
+     * clips of any other resolution are aspect-fit into it. An empty size
+     * (the default) means "not set": the sender takes the size of the
+     * first clip whose resolution becomes known.
+     *
+     * This is only ever set by an explicit user choice (Show Manager),
+     * never by the sender pool itself, and is saved in the workspace.
+     */
+    QSize spoutSize() const;
+    void setSpoutSize(QSize size);
+
+signals:
+    void spoutSizeChanged(QSize size);
+
+private:
+    /** Fixed Spout sender size, 0x0 = not set */
+    QSize m_spoutSize;
 
     /*********************************************************************
      * Functions

@@ -30,6 +30,7 @@
 #define KXMLQLCTrackName      QStringLiteral("Name")
 #define KXMLQLCTrackSceneID   QStringLiteral("SceneID")
 #define KXMLQLCTrackIsMute    QStringLiteral("isMute")
+#define KXMLQLCTrackSpoutSize QStringLiteral("SpoutSize")
 
 #define KXMLQLCTrackFunctions QStringLiteral("Functions")
 
@@ -39,6 +40,7 @@ Track::Track(quint32 sceneID, QObject *parent)
     , m_showId(Function::invalidId())
     , m_sceneID(sceneID)
     , m_isMute(false)
+    , m_spoutSize(QSize(0, 0))
 {
     setName(tr("New Track"));
 }
@@ -125,6 +127,29 @@ bool Track::isMute() const
 }
 
 /*********************************************************************
+ * Spout output size
+ *********************************************************************/
+QSize Track::spoutSize() const
+{
+    return m_spoutSize;
+}
+
+void Track::setSpoutSize(QSize size)
+{
+    // anything that isn't a usable frame size (invalid, or a zero side)
+    // means "not set", stored uniformly as 0x0
+    if (size.isValid() == false || size.isEmpty())
+        size = QSize(0, 0);
+
+    if (m_spoutSize == size)
+        return;
+
+    m_spoutSize = size;
+    emit spoutSizeChanged(m_spoutSize);
+    emit changed(id());
+}
+
+/*********************************************************************
  * Sequences
  *********************************************************************/
 
@@ -208,6 +233,11 @@ bool Track::saveXML(QXmlStreamWriter *doc) const
     if (m_sceneID != Scene::invalidId())
         doc->writeAttribute(KXMLQLCTrackSceneID, QString::number(m_sceneID));
     doc->writeAttribute(KXMLQLCTrackIsMute, QString::number(m_isMute));
+    // same "w,h" encoding as a Video's SpoutSize; only written when set, so
+    // workspaces without a fixed track size are byte-identical to before
+    if (m_spoutSize.isEmpty() == false)
+        doc->writeAttribute(KXMLQLCTrackSpoutSize,
+                            QString("%1,%2").arg(m_spoutSize.width()).arg(m_spoutSize.height()));
 
     /* Save the list of Functions if any is present */
     if (m_functions.isEmpty() == false)
@@ -263,6 +293,18 @@ bool Track::loadXML(QXmlStreamReader &root)
         return false;
     }
     m_isMute = mute;
+
+    if (attrs.hasAttribute(KXMLQLCTrackSpoutSize))
+    {
+        QStringList slist = attrs.value(KXMLQLCTrackSpoutSize).toString().split(",");
+        bool wOk = false, hOk = false;
+        int w = slist.count() == 2 ? slist.at(0).toInt(&wOk) : 0;
+        int h = slist.count() == 2 ? slist.at(1).toInt(&hOk) : 0;
+        if (wOk && hOk && w > 0 && h > 0)
+            m_spoutSize = QSize(w, h);
+        else
+            qWarning() << "Invalid Track SpoutSize:" << attrs.value(KXMLQLCTrackSpoutSize).toString();
+    }
 
     /* look for show functions */
     while (root.readNextStartElement())
