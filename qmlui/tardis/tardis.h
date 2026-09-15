@@ -268,6 +268,8 @@ public:
         ShowManagerDeleteFunction,
         ShowManagerItemSetStartTime,
         ShowManagerItemSetDuration,
+        /** objID: ShowFunction id, values: old/new Track id */
+        ShowManagerItemSetTrack,
 
         /* Simple Desk actions */
         SimpleDeskSetChannel = 0xC000,

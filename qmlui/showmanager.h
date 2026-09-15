@@ -317,24 +317,48 @@ public:
     void refreshView();
 
     /** Method invoked when moving an existing Show Item on the timeline.
-     *  The new position is checked for overlapping against existing items on the
-     *  provided $newTrackIdx. On overlapping, -1 is returned and the UI
-     *  will bring back the Item to its original position.
-     *  If there is enough space, then the item is (in case) removed from its
-     *  current track and moved into $newTrackIdx. A $newTrackIdx past the last
-     *  track creates exactly one new track and lands the item there.
+     *  Equivalent to checkAndMoveItems() with $sf as the only moving item:
+     *  the requested spot is grid-snapped (unless $itemSnapped) and, when it
+     *  overlaps another clip, shifted to the nearest free spot on that track
+     *  (see ShowMoveHelper::resolveCollision). A $newTrackIdx past the last
+     *  track creates a new track and lands the item there.
      *  Returns the index of the track the item actually ended up on, which the
-     *  UI must adopt as its row (it can differ from $newTrackIdx).
+     *  UI must adopt as its row (it can differ from $newTrackIdx), or -1 if
+     *  the move was refused.
      */
     Q_INVOKABLE int checkAndMoveItem(ShowFunction *sf, int newTrackIdx,
                                      int newStartTime, bool itemSnapped = false);
 
-    /** Live drag feedback: returns the name of the first item on track
-     *  $trackIdx that $sf would overlap if dropped at $startTime, or an
-     *  empty string when the spot is free (or the index is past the last
-     *  track, which would create a fresh, empty one). Uses the same
-     *  overlap rule that makes checkAndMoveItem() reject the drop. */
-    Q_INVOKABLE QString overlappingItemName(ShowFunction *sf, int trackIdx, int startTime) const;
+    /** Move every ShowFunction in $sfRefs as a group. $grabbed is the item
+     *  the user is dragging: its requested landing spot ($newTrackIdx,
+     *  $newStartTime) is grid-snapped (unless $itemSnapped) and collision-
+     *  resolved on the target track, and the resulting track/time delta is
+     *  applied to every item of the group. Locked items are left out of the
+     *  group (and keep acting as blockers). All-or-nothing: if any item of
+     *  the group would then still overlap a clip outside the group, nothing
+     *  moves and -1 is returned. Otherwise the tracks the group needs below
+     *  the last one are created, every item is moved (one Tardis undo step
+     *  for the whole group) and $grabbed's new track index is returned. */
+    Q_INVOKABLE int checkAndMoveItems(QVariantList sfRefs, ShowFunction *grabbed, int newTrackIdx,
+                                      int newStartTime, bool itemSnapped = false);
+
+    /** Live drag feedback for checkAndMoveItems(): computes the very same
+     *  move the drop would perform, shows a landing preview on every other
+     *  item of the group and returns a map with:
+     *   - "ok": whether the drop would be accepted
+     *   - "trackDelta" / "timeDelta": the effective deltas (ms) for the group
+     *   - "shifted": true when collision resolution moved $grabbed away from
+     *     the requested spot
+     *   - "blockingItem": name of the clip refusing the drop ("" if ok) */
+    Q_INVOKABLE QVariantMap previewItemsMove(QVariantList sfRefs, ShowFunction *grabbed, int newTrackIdx,
+                                             int newStartTime, bool itemSnapped = false);
+
+    /** Hide the landing previews previewItemsMove() put on the group */
+    Q_INVOKABLE void clearItemsMovePreview(QVariantList sfRefs, ShowFunction *grabbed);
+
+    /** Move $sf to the Track with id $trackId, keeping the QML item and the
+     *  selection in sync. Used by Tardis to undo/redo cross-track moves. */
+    void moveShowItemToTrack(ShowFunction *sf, quint32 trackId);
 
     /** Set the start time of a ShowFunction item (if not overlapping) */
     Q_INVOKABLE bool setShowItemStartTime(ShowFunction *sf, int startTime);

@@ -1438,6 +1438,18 @@ int Tardis::processAction(TardisAction &action, bool undo)
         }
         break;
 
+        case ShowManagerItemSetTrack:
+        {
+            Show *show = m_showManager->currentShow();
+            if (show != nullptr)
+            {
+                ShowFunction *sf = show->showFunction(action.m_objID);
+                if (sf != nullptr)
+                    m_showManager->moveShowItemToTrack(sf, undo ? action.m_oldValue.toUInt() : action.m_newValue.toUInt());
+            }
+        }
+        break;
+
         /* ************************* Simple Desk actions ************************** */
 
         case SimpleDeskSetChannel:

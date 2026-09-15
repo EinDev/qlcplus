@@ -201,6 +201,24 @@ void ShowManager::setSnapGuideX(double snapGuideX)
     emit snapGuideXChanged();
 }
 
+double ShowManager::msToPx(double ms) const
+{
+    // ms -> pixel-X conversion shared by snap edges and drag previews.
+    // ShowFunction startTime/duration (and beat-marker ms values derived from
+    // them) are always real milliseconds, so in Beats mode this must convert
+    // ms -> pixels-on-a-beat-ruler (mirrors TimeUtils.timeToBeatSize), not
+    // reinterpret the ms value as a beat-pseudo count.
+    if (timeDivision() == Show::Time)
+        return (ms * m_tickSize) / (m_timeScale * 1000.0);
+
+    if (m_currentShow == nullptr)
+        return 0.0;
+
+    int bpmNumber = m_currentShow->timeDivisionBPM();
+    double barDuration = bpmNumber > 0 ? (60000.0 / bpmNumber) * m_currentShow->beatsDivision() : 0.0;
+    return barDuration > 0.0 ? (m_tickSize * ms) / barDuration : 0.0;
+}
+
 QVariantList ShowManager::getSnapEdges(quint32 excludeFuncId,
                                        double viewportLeft, double viewportRight) const
 {
@@ -209,23 +227,7 @@ QVariantList ShowManager::getSnapEdges(quint32 excludeFuncId,
     if (m_currentShow == nullptr)
         return edges;
 
-    int beatsDivision = m_currentShow->beatsDivision();
     bool cull = (viewportLeft >= 0 && viewportRight >= 0);
-
-    // ms -> pixel-X conversion, shared by item-edge and beat-marker emission below.
-    // sf->startTime()/duration() (and beat-marker ms values derived from them) are
-    // always real milliseconds now, so in Beats mode this must convert ms -> pixels-
-    // on-a-beat-ruler (mirrors TimeUtils.timeToBeatSize), not reinterpret the ms
-    // value as a beat-pseudo count.
-    auto msToPx = [&](double ms) -> double
-    {
-        if (timeDivision() == Show::Time)
-            return (ms * m_tickSize) / (m_timeScale * 1000.0);
-
-        int bpmNumber = m_currentShow->timeDivisionBPM();
-        double barDuration = bpmNumber > 0 ? (60000.0 / bpmNumber) * beatsDivision : 0.0;
-        return barDuration > 0.0 ? (m_tickSize * ms) / barDuration : 0.0;
-    };
 
     for (Track *track : m_currentShow->tracks())
     {
@@ -651,9 +653,6 @@ void ShowManager::deleteShowItems(QVariantList data)
 
     foreach (SelectedShowItem ssi, m_selectedItems)
     {
-        quint32 trackIndex = ssi.m_trackIndex;
-        qDebug() << "Selected item has track index:" << trackIndex;
-
         // drop any clipboard reference to the item being deleted to
         // avoid dangling pointers when pasting later
         for (int i = m_clipboard.count() - 1; i >= 0; i--)
@@ -662,7 +661,12 @@ void ShowManager::deleteShowItems(QVariantList data)
                 m_clipboard.removeAt(i);
         }
 
-        Track *track = m_currentShow->tracks().at(trackIndex);
+        // resolved from the ShowFunction rather than the cached
+        // m_trackIndex, which goes stale when tracks are reordered
+        Track *track = m_currentShow->getTrackFromShowFunctionID(ssi.m_showFunc->id());
+        if (track == nullptr)
+            continue;
+
         quint32 sfId = ssi.m_showFunc->id();
 
         // serialize the item before removing it, as the undo action
@@ -708,121 +712,290 @@ void ShowManager::deleteShowItem(ShowFunction *sf)
     }
 }
 
+int ShowManager::snapStartTimeToGrid(int startTime, bool itemSnapped) const
+{
+    if (m_currentShow == nullptr || !m_gridEnabled || itemSnapped)
+        return startTime;
+
+    if (timeDivision() == Show::Time)
+    {
+        // calculate the X position from time and time scale
+        // timescale * 1000 : tickSize = time : x
+        float xPos = ((float)startTime * m_tickSize) / (m_timeScale * 1000.0);
+        // round to the nearest snap position
+        xPos = qRound(xPos / m_tickSize) * m_tickSize;
+        // recalculate the time from pixels
+        // xPos : time = tickSize : timescale * 1000
+        return xPos * (1000 * m_timeScale) / m_tickSize;
+    }
+
+    // startTime is real ms here too; in Beats mode tickSize means pixels
+    // per bar, not pixels-per-timeScale-second, so snap to the nearest whole
+    // bar (in ms, via BPM/beatsDivision) instead of reusing the Time-mode
+    // pixel round-trip above.
+    int bpmNumber = m_currentShow->timeDivisionBPM();
+    int beatsDivision = m_currentShow->beatsDivision();
+    if (bpmNumber > 0 && beatsDivision > 0)
+    {
+        double barDuration = (60000.0 / bpmNumber) * beatsDivision;
+        return qRound(startTime / barDuration) * barDuration;
+    }
+
+    return startTime;
+}
+
+QList<QList<ShowClipSpan>> ShowManager::trackSpans() const
+{
+    QList<QList<ShowClipSpan>> spans;
+
+    if (m_currentShow == nullptr)
+        return spans;
+
+    for (Track *track : m_currentShow->tracks())
+    {
+        QList<ShowClipSpan> clips;
+        for (ShowFunction *sf : track->showFunctions())
+        {
+            // same rule as checkOverlapping(): an item whose Function is
+            // gone does not block anything
+            if (m_doc->function(sf->functionID()) == nullptr)
+                continue;
+
+            ShowClipSpan clip;
+            clip.id = sf->id();
+            clip.startTime = sf->startTime();
+            clip.duration = sf->duration();
+            clips.append(clip);
+        }
+        spans.append(clips);
+    }
+
+    return spans;
+}
+
+ShowManager::GroupMovePlan ShowManager::planGroupMove(const QVariantList &sfRefs, ShowFunction *grabbed,
+                                                      int newTrackIdx, int newStartTime, bool itemSnapped) const
+{
+    GroupMovePlan plan;
+
+    if (m_currentShow == nullptr || grabbed == nullptr || grabbed->isLocked() || newTrackIdx < 0)
+        return plan;
+
+    QList<Track *> tracks = m_currentShow->tracks();
+
+    // The source tracks are resolved from the ShowFunctions themselves rather
+    // than trusted from the QML items' trackIndex: that index could go stale
+    // (or point past the last track), and QList::at() on a bad index is
+    // undefined behavior in a release build.
+    int grabbedTrackIdx = tracks.indexOf(m_currentShow->getTrackFromShowFunctionID(grabbed->id()));
+    if (grabbedTrackIdx < 0)
+        return plan;
+
+    // the moving group: the grabbed item plus every other unlocked item of
+    // the selection that still belongs to this Show
+    plan.items.append(grabbed);
+    plan.trackIndices.append(grabbedTrackIdx);
+
+    for (const QVariant &ref : sfRefs)
+    {
+        ShowFunction *sf = ref.value<ShowFunction *>();
+        if (sf == nullptr || sf == grabbed || sf->isLocked() || plan.items.contains(sf))
+            continue;
+
+        int trackIdx = tracks.indexOf(m_currentShow->getTrackFromShowFunctionID(sf->id()));
+        if (trackIdx < 0)
+            continue;
+
+        plan.items.append(sf);
+        plan.trackIndices.append(trackIdx);
+    }
+
+    QSet<quint32> movingIds;
+    QList<ShowMoveItem> moveItems;
+    for (int i = 0; i < plan.items.count(); i++)
+    {
+        ShowMoveItem item;
+        item.id = plan.items.at(i)->id();
+        item.trackIndex = plan.trackIndices.at(i);
+        item.startTime = plan.items.at(i)->startTime();
+        item.duration = plan.items.at(i)->duration();
+        moveItems.append(item);
+        movingIds.insert(item.id);
+    }
+
+    QList<QList<ShowClipSpan>> spans = trackSpans();
+
+    // 1. grid-snap the grabbed item's requested spot, then
+    // 2. resolve a collision on the target track to the nearest free spot
+    //    (a track index past the end is a new, empty track: nothing to hit)
+    qint64 requested = snapStartTimeToGrid(qMax(0, newStartTime), itemSnapped);
+    qint64 resolved = requested;
+    if (newTrackIdx < spans.count())
+        resolved = ShowMoveHelper::resolveCollision(spans.at(newTrackIdx), requested, grabbed->duration(), movingIds);
+    plan.shifted = (resolved != requested);
+
+    // 3. the same delta applies to the whole group; every item must land on
+    //    a spot free of clips outside the group. A per-item scatter would
+    //    break the group's relative layout, so no second resolution pass:
+    //    a remaining collision refuses the drop as a whole.
+    ShowGroupMoveResult result = ShowMoveHelper::validateGroupMove(spans, moveItems,
+                                                                   newTrackIdx - grabbedTrackIdx,
+                                                                   resolved - qint64(grabbed->startTime()));
+    plan.ok = result.ok;
+    plan.trackDelta = result.trackDelta;
+    plan.timeDelta = result.timeDelta;
+
+    if (!result.ok)
+    {
+        ShowFunction *blocker = m_currentShow->showFunction(result.blockingId);
+        Function *func = blocker ? m_doc->function(blocker->functionID()) : nullptr;
+        plan.blockingName = func ? func->name() : tr("another item");
+    }
+
+    return plan;
+}
+
 int ShowManager::checkAndMoveItem(ShowFunction *sf, int newTrackIdx, int newStartTime, bool itemSnapped)
 {
-    if (m_currentShow == nullptr || sf == nullptr)
+    return checkAndMoveItems(QVariantList() << QVariant::fromValue(sf), sf, newTrackIdx, newStartTime, itemSnapped);
+}
+
+int ShowManager::checkAndMoveItems(QVariantList sfRefs, ShowFunction *grabbed, int newTrackIdx,
+                                   int newStartTime, bool itemSnapped)
+{
+    GroupMovePlan plan = planGroupMove(sfRefs, grabbed, newTrackIdx, newStartTime, itemSnapped);
+    if (!plan.ok)
         return -1;
 
-    // The source track is resolved from the ShowFunction itself rather than
-    // trusted from the QML item's trackIndex: that index could go stale (or
-    // point past the last track), and QList::at() on a bad index is undefined
-    // behavior in a release build.
-    Track *srcTrack = m_currentShow->getTrackFromShowFunctionID(sf->id());
-    if (srcTrack == nullptr)
-        return -1;
+    // create the tracks the group needs below the last one (at most as many
+    // as the group spans past it), each one undoable like addItems()' track
+    int maxDstIdx = -1;
+    for (int trackIdx : plan.trackIndices)
+        maxDstIdx = qMax(maxDstIdx, trackIdx + plan.trackDelta);
 
-    //qDebug() << Q_FUNC_INFO << "newIdx:" << newTrackIdx << "time:" << newStartTime;
-
-    Track *dstTrack = nullptr;
-
-    // check if it's moving on a new track or an existing one
-    if (newTrackIdx >= m_currentShow->tracks().count())
+    bool tracksAdded = false;
+    while (m_currentShow->tracks().count() <= maxDstIdx)
     {
-        // create a new track here. Only one track is ever created, so the
-        // item's real destination index is the new last index, no matter how
-        // far below the last track it was dropped.
-        dstTrack = new Track(Function::invalidId(), m_currentShow);
-        dstTrack->setName(tr("Track %1").arg(m_currentShow->tracks().count() + 1));
-        m_currentShow->addTrack(dstTrack);
-        newTrackIdx = m_currentShow->tracks().count() - 1;
+        Track *newTrack = new Track(Function::invalidId(), m_currentShow);
+        newTrack->setName(tr("Track %1").arg(m_currentShow->tracks().count() + 1));
+        m_currentShow->addTrack(newTrack);
+
+        // enqueued before the item moves below, so that an undo (which walks
+        // this batch backwards) empties the track before removing it
+        Tardis::instance()->enqueueAction(
+            Tardis::ShowManagerAddTrack, m_currentShow->id(), QVariant(),
+            Tardis::instance()->actionToByteArray(Tardis::ShowManagerAddTrack, m_currentShow->id(), newTrack->id()));
+        tracksAdded = true;
+    }
+
+    if (tracksAdded)
         emit tracksChanged();
-    }
-    else
+
+    QList<Track *> tracks = m_currentShow->tracks();
+
+    // All the actions below are enqueued back-to-back, so Tardis batches them
+    // into a single undo/redo step (see TARDIS_ACTION_INTERTIME). Every
+    // ShowFunction change marks the Show's schedule dirty, which Show
+    // coalesces into one rebuild per event-loop turn.
+    for (int i = 0; i < plan.items.count(); i++)
     {
-        dstTrack = m_currentShow->tracks().at(newTrackIdx);
+        ShowFunction *sf = plan.items.at(i);
+        int srcIdx = plan.trackIndices.at(i);
+        int dstIdx = srcIdx + plan.trackDelta;
+        quint32 newTime = quint32(qint64(sf->startTime()) + plan.timeDelta);
 
-        bool overlapping = checkOverlapping(dstTrack, sf, newStartTime, sf->duration());
-        if (overlapping == true)
-            return -1;
-    }
-
-    int newTime = newStartTime;
-
-    if (m_gridEnabled && !itemSnapped)
-    {
-        if (timeDivision() == Show::Time)
+        if (newTime != sf->startTime())
         {
-            // calculate the X position from time and time scale
-            // timescale * 1000 : tickSize = time : x
-            float xPos = ((float)newStartTime * m_tickSize) / (m_timeScale * 1000.0);
-            // round to the nearest snap position
-            xPos = qRound(xPos / m_tickSize) * m_tickSize;
-            // recalculate the time from pixels
-            // xPos : time = tickSize : timescale * 1000
-            newTime = xPos * (1000 * m_timeScale) / m_tickSize;
+            Tardis::instance()->enqueueAction(Tardis::ShowManagerItemSetStartTime, sf->id(), sf->startTime(), newTime);
+            sf->setStartTime(newTime);
         }
-        else
+
+        if (dstIdx != srcIdx)
         {
-            // newStartTime is real ms here too; in Beats mode tickSize means pixels
-            // per bar, not pixels-per-timeScale-second, so snap to the nearest whole
-            // bar (in ms, via BPM/beatsDivision) instead of reusing the Time-mode
-            // pixel round-trip above.
-            int bpmNumber = m_currentShow->timeDivisionBPM();
-            int beatsDivision = m_currentShow->beatsDivision();
-            if (bpmNumber > 0 && beatsDivision > 0)
-            {
-                double barDuration = (60000.0 / bpmNumber) * beatsDivision;
-                newTime = qRound(newStartTime / barDuration) * barDuration;
-            }
+            Track *srcTrack = tracks.at(srcIdx);
+            Track *dstTrack = tracks.at(dstIdx);
+            Tardis::instance()->enqueueAction(Tardis::ShowManagerItemSetTrack, sf->id(), srcTrack->id(), dstTrack->id());
+            moveShowItemToTrack(sf, dstTrack->id());
         }
-    }
-
-    Tardis::instance()->enqueueAction(Tardis::ShowManagerItemSetStartTime, sf->id(), sf->startTime(), newTime);
-    sf->setStartTime(newTime);
-
-    // check if we need to move the ShowFunction to a different Track
-    if (dstTrack != srcTrack)
-    {
-        srcTrack->removeShowFunction(sf, false);
-        dstTrack->addShowFunction(sf);
     }
 
     m_doc->setModified();
 
-    return newTrackIdx;
+    return plan.trackIndices.first() + plan.trackDelta;
 }
 
-QString ShowManager::overlappingItemName(ShowFunction *sf, int trackIdx, int startTime) const
+QVariantMap ShowManager::previewItemsMove(QVariantList sfRefs, ShowFunction *grabbed, int newTrackIdx,
+                                          int newStartTime, bool itemSnapped)
 {
-    if (m_currentShow == nullptr || sf == nullptr)
-        return QString();
+    GroupMovePlan plan = planGroupMove(sfRefs, grabbed, newTrackIdx, newStartTime, itemSnapped);
 
-    if (trackIdx < 0 || trackIdx >= m_currentShow->tracks().count())
-        return QString();
+    QVariantMap map;
+    map.insert("ok", plan.ok);
+    map.insert("trackDelta", plan.trackDelta);
+    map.insert("timeDelta", double(plan.timeDelta));
+    map.insert("shifted", plan.shifted);
+    map.insert("blockingItem", plan.blockingName);
 
-    Track *track = m_currentShow->tracks().at(trackIdx);
-    if (startTime < 0)
-        startTime = 0;
-
-    // same interval test as checkOverlapping(), but reporting who blocks
-    for (ShowFunction *other : track->showFunctions())
+    // followers: the grabbed item draws its own preview from the returned
+    // deltas; every other item of the group gets its landing spot pushed
+    // here, in its own coordinate space
+    for (ShowFunction *sf : plan.items)
     {
-        if (other == sf)
+        if (sf == grabbed)
             continue;
 
-        Function *func = m_doc->function(other->functionID());
-        if (func == nullptr)
+        QQuickItem *item = m_itemsMap.value(sf->id(), nullptr);
+        if (item == nullptr)
             continue;
 
-        quint32 fst = other->startTime();
-        quint32 st = quint32(startTime);
-        if (st < fst + other->duration() && fst < st + sf->duration())
-        {
-            return func->name();
-        }
+        double offsetX = msToPx(double(sf->startTime()) + double(plan.timeDelta)) - msToPx(double(sf->startTime()));
+        double offsetY = plan.trackDelta * item->height();
+        QMetaObject::invokeMethod(item, "setFollowPreview",
+                                  Q_ARG(QVariant, offsetX), Q_ARG(QVariant, offsetY),
+                                  Q_ARG(QVariant, !plan.ok), Q_ARG(QVariant, plan.shifted));
     }
 
-    return QString();
+    return map;
+}
+
+void ShowManager::clearItemsMovePreview(QVariantList sfRefs, ShowFunction *grabbed)
+{
+    for (const QVariant &ref : sfRefs)
+    {
+        ShowFunction *sf = ref.value<ShowFunction *>();
+        if (sf == nullptr || sf == grabbed)
+            continue;
+
+        QQuickItem *item = m_itemsMap.value(sf->id(), nullptr);
+        if (item != nullptr)
+            QMetaObject::invokeMethod(item, "clearFollowPreview");
+    }
+}
+
+void ShowManager::moveShowItemToTrack(ShowFunction *sf, quint32 trackId)
+{
+    if (m_currentShow == nullptr || sf == nullptr)
+        return;
+
+    Track *srcTrack = m_currentShow->getTrackFromShowFunctionID(sf->id());
+    Track *dstTrack = m_currentShow->track(trackId);
+    if (srcTrack == nullptr || dstTrack == nullptr || srcTrack == dstTrack)
+        return;
+
+    srcTrack->removeShowFunction(sf, false);
+    dstTrack->addShowFunction(sf);
+
+    int dstIdx = m_currentShow->tracks().indexOf(dstTrack);
+
+    QQuickItem *item = m_itemsMap.value(sf->id(), nullptr);
+    if (item != nullptr)
+        item->setProperty("trackIndex", dstIdx);
+
+    for (int i = 0; i < m_selectedItems.count(); i++)
+    {
+        if (m_selectedItems.at(i).m_showFunc == sf)
+            m_selectedItems[i].m_trackIndex = dstIdx;
+    }
 }
 
 bool ShowManager::setShowItemStartTime(ShowFunction *sf, int startTime)

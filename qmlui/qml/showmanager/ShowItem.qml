@@ -63,10 +63,60 @@ Item
     property real previewOffsetY: 0
     property real previewWidthDelta: 0
     property bool showLandingPreview: false
-    // Name of the item the current landing spot would overlap ("" = free).
-    // Set live while dragging so the user sees *why* a drop will be refused
-    // instead of the item silently snapping back.
+    // Name of the item refusing the current drop ("" = the drop is accepted).
+    // A single item never gets refused any more (its landing spot is shifted
+    // to the nearest free one instead, see dropShifted); a group drag is
+    // refused as a whole when one of its items would still overlap.
     property string blockingItem: ""
+    // True when the drop would be refused (red landing preview); set on every
+    // item of a refused group, while blockingItem is only shown on the grabbed one
+    property bool dropRefused: false
+    // True when collision resolution moved the landing spot away from where
+    // the pointer is - shown with the same green border as an edge snap
+    property bool dropShifted: false
+    // The ShowFunctions moving together with this item while it is dragged:
+    // the whole selection when this item is part of it, else just itself
+    property var dragGroupRefs: []
+
+    function msToX(ms)
+    {
+        if (timeDivision === Show.Time)
+            return TimeUtils.timeToSize(ms, timeScale, tickSize)
+        // ms is always real milliseconds - beatsToSize would treat it as a
+        // beat-pseudo count, so this must go through timeToBeatSize
+        return TimeUtils.timeToBeatSize(ms, bpmNumber, beatsDivision, tickSize)
+    }
+
+    function xToMs(px)
+    {
+        if (timeDivision === Show.Time)
+            return TimeUtils.posToMs(px, timeScale, tickSize)
+        if (bpmNumber > 0)
+            return TimeUtils.posToBeatMs(px, tickSize, bpmNumber, beatsDivision)
+        return startTime
+    }
+
+    // Called by ShowManager::previewItemsMove on every *other* item of a
+    // dragged group: show where this item would land if the grabbed one
+    // were dropped now, in this item's own coordinate space
+    function setFollowPreview(offsetX, offsetY, blocked, shifted)
+    {
+        previewOffsetX = offsetX
+        previewOffsetY = offsetY
+        previewWidthDelta = 0
+        dropRefused = blocked
+        dropShifted = shifted
+        showLandingPreview = true
+    }
+
+    function clearFollowPreview()
+    {
+        showLandingPreview = false
+        dropRefused = false
+        dropShifted = false
+        previewOffsetX = 0
+        previewOffsetY = 0
+    }
 
     function getVisibleSnapEdges()
     {
@@ -108,18 +158,8 @@ Item
         if (isDragging || funcRef == null)
             return
 
-        if (timeDivision === Show.Time)
-        {
-            x = TimeUtils.timeToSize(startTime, timeScale, tickSize)
-            width = TimeUtils.timeToSize(duration, timeScale, tickSize)
-        }
-        else
-        {
-            // startTime/duration are always real ms now - beatsToSize would treat
-            // them as a beat-pseudo count, so this must go through timeToBeatSize
-            x = TimeUtils.timeToBeatSize(startTime, bpmNumber, beatsDivision, tickSize)
-            width = TimeUtils.timeToBeatSize(duration, bpmNumber, beatsDivision, tickSize)
-        }
+        x = msToX(startTime)
+        width = msToX(duration)
     }
 
     function updateTooltipText()
@@ -142,46 +182,6 @@ Item
         tooltip += qsTr("Position: ") + pos
         tooltip += "\n" + qsTr("Duration: ") + dur
         toolTipText = tooltip
-    }
-
-    // Mirrors ShowManager::checkAndMoveItem's grid-snap round-trip (showmanager.cpp)
-    // exactly: the Time-mode branch reproduces its m_timeScale/m_tickSize pixel
-    // round-trip, the Beats-mode branch reproduces its BPM/beatsDivision-driven
-    // whole-bar snap - both operating on newStartTime as real milliseconds, since
-    // ShowFunction startTime/duration are always real ms now.
-    function gridSnappedPreviewOffsetX(rawDx)
-    {
-        var pxX = itemRoot.x + rawDx
-
-        if (timeDivision === Show.Time)
-        {
-            var newStartTime = TimeUtils.posToMs(pxX, timeScale, tickSize)
-
-            // onReleased clamps a negative landing time to 0 before calling
-            // checkAndMoveItem - mirror that here too
-            if (newStartTime < 0)
-                newStartTime = 0
-
-            var xPos = (newStartTime * tickSize) / (timeScale * 1000.0)
-            xPos = Math.round(xPos / tickSize) * tickSize
-            var newTime = xPos * (1000 * timeScale) / tickSize
-
-            return TimeUtils.timeToSize(newTime, timeScale, tickSize) - itemRoot.x
-        }
-        else
-        {
-            if (bpmNumber <= 0)
-                return rawDx
-
-            var newStartTimeMs = TimeUtils.posToBeatMs(pxX, tickSize, bpmNumber, beatsDivision)
-            if (newStartTimeMs < 0)
-                newStartTimeMs = 0
-
-            var barDuration = (60000.0 / bpmNumber) * beatsDivision
-            var snappedTime = Math.round(newStartTimeMs / barDuration) * barDuration
-
-            return TimeUtils.timeToBeatSize(snappedTime, bpmNumber, beatsDivision, tickSize) - itemRoot.x
-        }
     }
 
     /* Locker image */
@@ -409,9 +409,9 @@ Item
         width: itemRoot.width + previewWidthDelta
         height: itemRoot.height
         radius: 2
-        color: blockingItem ? "#60FF0000" : Qt.rgba(globalColor.r, globalColor.g, globalColor.b, 0.3)
+        color: dropRefused ? "#60FF0000" : Qt.rgba(globalColor.r, globalColor.g, globalColor.b, 0.3)
         border.width: 2
-        border.color: blockingItem ? "#FF0000" : (itemSnapped ? "#00FF00" : "#80FFFFFF")
+        border.color: dropRefused ? "#FF0000" : ((itemSnapped || dropShifted) ? "#00FF00" : "#80FFFFFF")
         visible: showLandingPreview
     }
 
@@ -508,6 +508,12 @@ Item
                 infoTextBox.textHAlign = Text.AlignLeft
                 showOldPosGhost = true
                 showLandingPreview = true
+
+                // dragging an unselected item selects only that item; dragging
+                // one of a multi-selection moves the whole selection with it
+                if (!isSelected)
+                    showManager.selectItemByClick(trackIndex, sfRef, itemRoot, 0)
+                dragGroupRefs = showManager.selectedItemsCount > 1 ? showManager.selectedItemRefs() : [ sfRef ]
             }
 
             // snap-to-item: check start edge if clicked on first half,
@@ -542,21 +548,18 @@ Item
             showItemBody.x = dx
             showItemBody.y = dy
 
-            previewOffsetX = (showManager.gridEnabled && !itemSnapped) ? gridSnappedPreviewOffsetX(dx) : dx
-            previewOffsetY = (Math.round((itemRoot.y + dy) / itemRoot.height) * itemRoot.height) - itemRoot.y
-            previewWidthDelta = 0
+            // The landing spot is computed by the very same code the drop will
+            // use (grid snap, collision resolution, group validation), so what
+            // the preview shows is exactly where the item(s) will end up.
+            var landTrack = Math.max(0, Math.round((itemRoot.y + dy) / itemRoot.height))
+            var res = showManager.previewItemsMove(dragGroupRefs, sfRef, landTrack, xToMs(itemRoot.x + dx), itemSnapped)
 
-            // would a drop on the previewed spot be refused for overlapping?
-            var landTrack = Math.round((itemRoot.y + previewOffsetY) / itemRoot.height)
-            var landX = itemRoot.x + previewOffsetX
-            var landTime
-            if (timeDivision === Show.Time)
-                landTime = TimeUtils.posToMs(landX, timeScale, tickSize)
-            else if (bpmNumber > 0)
-                landTime = TimeUtils.posToBeatMs(landX, tickSize, bpmNumber, beatsDivision)
-            else
-                landTime = startTime
-            blockingItem = showManager.overlappingItemName(sfRef, landTrack, landTime)
+            previewOffsetX = msToX(startTime + res.timeDelta) - itemRoot.x
+            previewOffsetY = res.trackDelta * itemRoot.height
+            previewWidthDelta = 0
+            dropShifted = res.shifted
+            dropRefused = !res.ok
+            blockingItem = res.ok ? "" : res.blockingItem
 
             var txt
             if (timeDivision === Show.Time)
@@ -580,31 +583,23 @@ Item
             {
                 infoText = ""
 
-                var newTime
-                if (timeDivision === Show.Time)
-                    newTime = TimeUtils.posToMs(itemRoot.x + showItemBody.x, timeScale, tickSize)
-                else if (bpmNumber > 0)
-                    // posToBeat stored a beat-pseudo count, not real ms - startTime is
-                    // always real ms now, so this must go through posToBeatMs instead
-                    newTime = TimeUtils.posToBeatMs(itemRoot.x + showItemBody.x, tickSize, bpmNumber, beatsDivision)
-                else
-                    newTime = startTime
-
-                var newTrackIdx = Math.round((itemRoot.y + showItemBody.y) / itemRoot.height)
+                var newTime = xToMs(itemRoot.x + showItemBody.x)
+                var newTrackIdx = Math.max(0, Math.round((itemRoot.y + showItemBody.y) / itemRoot.height))
                 if (newTime < 0)
                     newTime = 0
 
-                if (newTrackIdx >= 0)
-                {
-                    // the returned index is where the item really landed, which
-                    // can differ from newTrackIdx (only one new track is ever created)
-                    var res = showManager.checkAndMoveItem(sfRef, newTrackIdx, newTime, itemSnapped)
+                // the returned index is where this item really landed, which
+                // can differ from newTrackIdx (collision resolution, group
+                // clamping); every other item of the group is updated by C++
+                var res = showManager.checkAndMoveItems(dragGroupRefs, sfRef, newTrackIdx, newTime, itemSnapped)
 
-                    if (res >= 0)
-                        trackIndex = res
+                if (res >= 0)
+                    trackIndex = res
 
-                    prCanvas.requestPaint()
-                }
+                showManager.clearItemsMovePreview(dragGroupRefs, sfRef)
+                dragGroupRefs = []
+
+                prCanvas.requestPaint()
 
                 showItemBody.x = 0
                 showItemBody.y = 0
@@ -619,6 +614,8 @@ Item
             showOldPosGhost = false
             showLandingPreview = false
             blockingItem = ""
+            dropRefused = false
+            dropShifted = false
             updateGeometry()
         }
 
