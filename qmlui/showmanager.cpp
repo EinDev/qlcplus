@@ -103,6 +103,7 @@ void ShowManager::setCurrentShowID(int currentShowID)
         disconnect(m_currentShow, SIGNAL(timeChanged(quint32)), this, SLOT(slotTimeChanged(quint32)));
         disconnect(m_currentShow, SIGNAL(showFinished()), this, SLOT(slotShowFinished()));
         disconnect(m_currentShow, SIGNAL(stopped(quint32)), this, SLOT(slotShowStopped()));
+        disconnect(m_currentShow, &Show::scheduleChanged, this, &ShowManager::slotScheduleChanged);
     }
 
     m_currentShow = qobject_cast<Show*>(m_doc->function(currentShowID));
@@ -115,6 +116,7 @@ void ShowManager::setCurrentShowID(int currentShowID)
         connect(m_currentShow, SIGNAL(timeChanged(quint32)), this, SLOT(slotTimeChanged(quint32)));
         connect(m_currentShow, SIGNAL(showFinished()), this, SLOT(slotShowFinished()));
         connect(m_currentShow, SIGNAL(stopped(quint32)), this, SLOT(slotShowStopped()));
+        connect(m_currentShow, &Show::scheduleChanged, this, &ShowManager::slotScheduleChanged);
         emit showDurationChanged(m_currentShow->totalDuration());
         emit showNameChanged(m_currentShow->name());
         emit timeDivisionChanged(timeDivision());
@@ -1451,6 +1453,9 @@ void ShowManager::playShow()
     if (m_currentShow->isRunning() == false)
     {
         m_cursorMovedDuringPause = false;
+        // Edits queue their schedule rebuild on the event loop; make sure the
+        // runner's very first tick already plays the timeline as it is now.
+        m_currentShow->rebuildSchedule();
         m_currentShow->start(m_doc->masterTimer(), FunctionParent::master(FunctionParent::ShowManagerPlayback), m_currentTime);
         setPlaybackState(true, false);
         return;
@@ -1463,6 +1468,7 @@ void ShowManager::playShow()
             m_currentShow->stop(FunctionParent::master(FunctionParent::ShowManagerPlayback));
             m_currentShow->stopAndWait(FunctionParent::master(FunctionParent::ShowManagerPlayback));
             m_cursorMovedDuringPause = false;
+            m_currentShow->rebuildSchedule();
             m_currentShow->start(m_doc->masterTimer(), FunctionParent::master(FunctionParent::ShowManagerPlayback), m_currentTime);
         }
         else
@@ -1674,6 +1680,12 @@ void ShowManager::slotShowFinished()
 void ShowManager::slotShowStopped()
 {
     setPlaybackState(false, false);
+}
+
+void ShowManager::slotScheduleChanged()
+{
+    if (m_currentShow != nullptr)
+        emit showDurationChanged(m_currentShow->totalDuration());
 }
 
 void ShowManager::setPlaybackState(bool playing, bool paused)

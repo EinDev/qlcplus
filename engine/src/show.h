@@ -20,10 +20,12 @@
 #ifndef SHOW_H
 #define SHOW_H
 
+#include <QSharedPointer>
 #include <QMutex>
 #include <QList>
 #include <QSet>
 
+#include "showschedule.h"
 #include "function.h"
 #include "track.h"
 
@@ -177,6 +179,60 @@ public:
 
     /** @reimp */
     QList<quint32> components() const override;
+
+    /*********************************************************************
+     * Schedule
+     *********************************************************************/
+public:
+    /**
+     * Rebuild the immutable timeline snapshot (ShowSchedule) synchronously.
+     *
+     * Must be called on the thread owning this Show (the GUI thread): it walks
+     * the live tracks and clips. Timeline edits (Track::changed) normally queue
+     * one rebuild per event-loop turn; call this directly when a fresh snapshot
+     * is needed right now, e.g. before starting playback or from tests.
+     * Emits scheduleChanged().
+     */
+    void rebuildSchedule();
+
+    /**
+     * The most recently built snapshot, building one first if none exists
+     * (or if the timeline is dirty and this is the owner thread). Consumed by
+     * ShowRunner when it is created; also clears any pending snapshot.
+     */
+    QSharedPointer<const ShowSchedule> currentSchedule();
+
+    /**
+     * Hand out a snapshot rebuilt since the runner last looked, or null.
+     * Called by ShowRunner on the MasterTimer thread once per tick.
+     */
+    QSharedPointer<const ShowSchedule> takePendingSchedule();
+
+    /** True when the timeline changed since the last rebuildSchedule() */
+    bool isScheduleDirty() const;
+
+signals:
+    /** Emitted after every rebuildSchedule() */
+    void scheduleChanged();
+
+private slots:
+    void slotTrackChanged(quint32 trackId);
+    void slotFunctionChanged(quint32 fid);
+    void slotRebuildScheduleIfDirty();
+
+private:
+    /** Flag the schedule as stale and queue one rebuild on the event loop */
+    void markScheduleDirty();
+
+    /** Walk the live tracks/clips into a new snapshot (owner thread only) */
+    QSharedPointer<const ShowSchedule> buildSchedule() const;
+
+    /** Guards the four members below; shared by the GUI and MasterTimer threads */
+    mutable QMutex m_scheduleMutex;
+    QSharedPointer<const ShowSchedule> m_currentSchedule;
+    QSharedPointer<const ShowSchedule> m_pendingSchedule;
+    bool m_scheduleDirty;
+    bool m_rebuildQueued;
 
     /*********************************************************************
      * Running

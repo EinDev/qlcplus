@@ -39,6 +39,21 @@ private slots:
     void stopRunner();
     void beatTempoUsesRealMilliseconds();
 
+    /* Live rescheduling: edits made while the Show plays */
+    void scheduleNotifications();
+    void queuedRebuildCoalesces();
+    void extendEndPastPlayhead();
+    void shrinkEndBeforePlayhead();
+    void moveStartEarlierUnderPlayhead();
+    void moveStartRestartsOffsetSensitiveFunction();
+    void deleteRunningClipAndUndo();
+    void muteTrackStopsUnmuteResumes();
+    void trackIntensityFollowsSchedule();
+    void addClipAtPlayhead();
+    void totalRunTimeShrinkEndsShow();
+    void pausedAppliesStopsDefersStarts();
+    void beatClipReschedule();
+
 private:
     Doc *m_doc;
     Show *m_show;

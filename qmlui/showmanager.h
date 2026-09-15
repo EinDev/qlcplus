@@ -399,6 +399,8 @@ protected slots:
     void slotTimeChanged(quint32 msec_time);
     void slotShowFinished();
     void slotShowStopped();
+    /** The Show rebuilt its timeline snapshot: its total duration may have changed */
+    void slotScheduleChanged();
 
 private:
     // Timeline mapping helpers

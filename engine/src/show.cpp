@@ -20,9 +20,12 @@
 #include <QXmlStreamReader>
 #include <QXmlStreamWriter>
 #include <QString>
+#include <QThread>
 #include <QDebug>
 #include <QFile>
 #include <QList>
+
+#include <algorithm>
 
 #include "showrunner.h"
 #include "function.h"
@@ -42,6 +45,8 @@ Show::Show(Doc* doc) : Function(doc, Function::ShowType)
     , m_timeDivisionBPM(120)
     , m_latestTrackId(0)
     , m_latestShowFunctionID(0)
+    , m_scheduleDirty(true)
+    , m_rebuildQueued(false)
     , m_runner(NULL)
 {
     setName(tr("New Show"));
@@ -49,6 +54,12 @@ Show::Show(Doc* doc) : Function(doc, Function::ShowType)
     // Clear attributes here. I want attributes to be mapped
     // exactly like the Show tracks
     unregisterAttribute(tr("Intensity"));
+
+    // The schedule splits clips by their Function's tempo type and resolves a
+    // zero duration to the Function's own; both can change outside this Show.
+    connect(this, &Function::tempoTypeChanged, this, &Show::markScheduleDirty);
+    if (doc != NULL)
+        connect(doc, &Doc::functionChanged, this, &Show::slotFunctionChanged);
 }
 
 Show::~Show()
@@ -232,6 +243,9 @@ bool Show::addTrack(Track *track, quint32 id)
 
      registerAttribute(QString("%1-%2").arg(track->name()).arg(track->id()));
 
+     connect(track, &Track::changed, this, &Show::slotTrackChanged, Qt::UniqueConnection);
+     markScheduleDirty();
+
      return true;
 }
 
@@ -246,6 +260,7 @@ bool Show::removeTrack(quint32 id)
 
         //emit trackRemoved(id);
         delete track;
+        markScheduleDirty();
 
         return true;
     }
@@ -317,6 +332,7 @@ void Show::moveTrack(Track *track, int direction)
     m_tracks[trkID] = swapTrack;
     track->setId(swapID);
     swapTrack->setId(trkID);
+    markScheduleDirty();
 }
 
 QList <Track*> Show::tracks() const
@@ -431,6 +447,11 @@ void Show::postLoad()
         if (track->postLoad(doc()))
             doc()->setModified();
     }
+
+    // A loaded Show can be started from anywhere (Virtual Console, autostart,
+    // Function Manager) without going through ShowManager, so make sure a
+    // snapshot exists before the MasterTimer thread ever needs one.
+    rebuildSchedule();
 }
 
 bool Show::contains(quint32 functionId) const
@@ -461,6 +482,160 @@ QList<quint32> Show::components() const
 }
 
 /*****************************************************************************
+ * Schedule
+ *****************************************************************************/
+
+void Show::rebuildSchedule()
+{
+    QSharedPointer<const ShowSchedule> schedule = buildSchedule();
+
+    {
+        QMutexLocker locker(&m_scheduleMutex);
+        m_currentSchedule = schedule;
+        m_pendingSchedule = schedule;
+        m_scheduleDirty = false;
+    }
+
+    emit scheduleChanged();
+}
+
+QSharedPointer<const ShowSchedule> Show::currentSchedule()
+{
+    bool rebuild = false;
+    {
+        QMutexLocker locker(&m_scheduleMutex);
+        // Never built: build now even off the owner thread, as the runner
+        // cannot work without one (same live walk the old runner did).
+        // Stale: only the owner thread may walk the live tracks; the queued
+        // rebuild will deliver a pending snapshot to the runner shortly.
+        rebuild = m_currentSchedule.isNull() ||
+                  (m_scheduleDirty && QThread::currentThread() == thread());
+    }
+
+    if (rebuild)
+        rebuildSchedule();
+
+    QMutexLocker locker(&m_scheduleMutex);
+    m_pendingSchedule.clear();
+    return m_currentSchedule;
+}
+
+QSharedPointer<const ShowSchedule> Show::takePendingSchedule()
+{
+    QMutexLocker locker(&m_scheduleMutex);
+    QSharedPointer<const ShowSchedule> schedule = m_pendingSchedule;
+    m_pendingSchedule.clear();
+    return schedule;
+}
+
+bool Show::isScheduleDirty() const
+{
+    QMutexLocker locker(&m_scheduleMutex);
+    return m_scheduleDirty;
+}
+
+void Show::markScheduleDirty()
+{
+    {
+        QMutexLocker locker(&m_scheduleMutex);
+        m_scheduleDirty = true;
+        if (m_rebuildQueued)
+            return;
+        m_rebuildQueued = true;
+    }
+
+    // Coalesce bursts (undo walking many steps, a drag emitting per frame)
+    // into a single rebuild per event-loop turn.
+    QMetaObject::invokeMethod(this, &Show::slotRebuildScheduleIfDirty, Qt::QueuedConnection);
+}
+
+void Show::slotRebuildScheduleIfDirty()
+{
+    bool dirty = false;
+    {
+        QMutexLocker locker(&m_scheduleMutex);
+        m_rebuildQueued = false;
+        dirty = m_scheduleDirty;
+    }
+
+    if (dirty)
+        rebuildSchedule();
+}
+
+void Show::slotTrackChanged(quint32 trackId)
+{
+    Q_UNUSED(trackId);
+    markScheduleDirty();
+}
+
+void Show::slotFunctionChanged(quint32 fid)
+{
+    QSharedPointer<const ShowSchedule> schedule;
+    {
+        QMutexLocker locker(&m_scheduleMutex);
+        if (m_scheduleDirty)
+            return;
+        schedule = m_currentSchedule;
+    }
+
+    if (schedule.isNull() || schedule->functionIds.contains(fid))
+        markScheduleDirty();
+}
+
+QSharedPointer<const ShowSchedule> Show::buildSchedule() const
+{
+    QSharedPointer<ShowSchedule> schedule(new ShowSchedule);
+    schedule->showTempo = tempoType();
+
+    // Attributes are registered one per track, in track order (see addTrack)
+    int attributeIndex = 0;
+    foreach (Track *track, m_tracks)
+    {
+        qreal intensity = getAttributeValue(attributeIndex++);
+
+        if (track == NULL || track->id() == Track::invalidId())
+            continue;
+
+        schedule->intensity[track->id()] = intensity;
+
+        if (track->isMute())
+            continue;
+
+        foreach (ShowFunction *sf, track->showFunctions())
+        {
+            Function *f = doc()->function(sf->functionID());
+            if (f == NULL)
+                continue;
+
+            ScheduledClip clip;
+            clip.sfId = sf->id();
+            clip.functionId = f->id();
+            clip.trackId = track->id();
+            clip.start = sf->startTime();
+            clip.end = sf->startTime() + sf->duration(doc());
+            clip.tempo = f->tempoType();
+            clip.type = f->type();
+
+            if (clip.tempo == Function::Time)
+                schedule->timeClips.append(clip);
+            else
+                schedule->beatClips.append(clip);
+
+            schedule->functionIds.insert(f->id());
+
+            if (clip.end > schedule->totalRunTime)
+                schedule->totalRunTime = clip.end;
+        }
+    }
+
+    auto byStart = [](const ScheduledClip &a, const ScheduledClip &b) { return a.start < b.start; };
+    std::stable_sort(schedule->timeClips.begin(), schedule->timeClips.end(), byStart);
+    std::stable_sort(schedule->beatClips.begin(), schedule->beatClips.end(), byStart);
+
+    return schedule;
+}
+
+/*****************************************************************************
  * Running
  *****************************************************************************/
 
@@ -474,10 +649,9 @@ void Show::preRun(MasterTimer* timer)
         delete m_runner;
     }
 
+    // The runner seeds its clip lists and per-track intensity from the
+    // schedule snapshot, so nothing here walks m_tracks on the timer thread.
     m_runner = new ShowRunner(doc(), this->id(), elapsed());
-    int i = 0;
-    foreach (Track *track, m_tracks)
-        m_runner->adjustIntensity(getAttributeValue(i++), track);
 
     connect(m_runner, SIGNAL(timeChanged(quint32)), this, SIGNAL(timeChanged(quint32)));
     connect(m_runner, SIGNAL(showFinished()), this, SIGNAL(showFinished()));
@@ -496,7 +670,13 @@ void Show::write(MasterTimer* timer, QList<Universe *> universes)
     Q_UNUSED(universes);
 
     if (isPaused())
+    {
+        // Timeline edits still apply while paused so that a clip removed or
+        // shortened under the playhead releases its faders; the runner defers
+        // any resulting starts to the first unpaused tick.
+        m_runner->applyPendingSchedule();
         return;
+    }
 
     m_runner->write(timer);
 }
@@ -536,6 +716,12 @@ int Show::adjustAttribute(qreal fraction, int attributeId)
                 m_runner->adjustIntensity(getAttributeValue(attrIndex), track);
         }
     }
+
+    // The schedule snapshot carries the per-track intensity too: keep it
+    // current so a runner created later (e.g. a start from the Virtual
+    // Console) seeds from the live values, as preRun used to.
+    if (attrIndex >= 0)
+        markScheduleDirty();
 
     return attrIndex;
 }
