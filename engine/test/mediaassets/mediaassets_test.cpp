@@ -64,6 +64,38 @@ QString MediaAssets_Test::hashDirFor(const QByteArray &content)
     return QString::fromLatin1(QCryptographicHash::hash(content, QCryptographicHash::Sha1).toHex().left(12));
 }
 
+QString MediaAssets_Test::hashDirForFile(const QString &path)
+{
+    QFile f(path);
+    if (f.open(QIODevice::ReadOnly) == false)
+        return QString();
+    QCryptographicHash hash(QCryptographicHash::Sha1);
+    hash.addData(&f);
+    return QString::fromLatin1(hash.result().toHex().left(12));
+}
+
+QString MediaAssets_Test::writeLargeFile(const QString &relativePath, int megabytes)
+{
+    QString path = m_tmp->path() + "/" + relativePath;
+    QDir().mkpath(QFileInfo(path).absolutePath());
+    QFile f(path);
+    if (f.open(QIODevice::WriteOnly) == false)
+        return QString();
+
+    // one megabyte of varying bytes, written @megabytes times with a
+    // different first byte each round so the file is not a plain repeat
+    QByteArray chunk(1024 * 1024, Qt::Uninitialized);
+    for (int i = 0; i < chunk.size(); i++)
+        chunk[i] = char((i * 31 + 7) & 0xff);
+    for (int i = 0; i < megabytes; i++)
+    {
+        chunk[0] = char(i);
+        f.write(chunk);
+    }
+    f.close();
+    return QDir::cleanPath(QFileInfo(path).absoluteFilePath());
+}
+
 void MediaAssets_Test::importCreatesHashDir()
 {
     const QString project = m_tmp->path() + "/proj/show.qxw";
@@ -470,6 +502,322 @@ void MediaAssets_Test::normalizeCaseInsensitive()
 #else
     QSKIP("Case-insensitive workspace paths are a Windows concern");
 #endif
+}
+
+/*****************************************************************************
+ * Increment 2: background copies
+ *****************************************************************************/
+
+void MediaAssets_Test::smallFileStaysSynchronous()
+{
+    m_doc->setWorkspacePath(m_tmp->path());
+    m_doc->assets()->setProjectFile(m_tmp->path() + "/show.qxw");
+    QCOMPARE(m_doc->assets()->backgroundThreshold(), MediaAssets::DefaultBackgroundThreshold);
+
+    QSignalSpy startedSpy(m_doc->assets(), SIGNAL(importStarted(QString,qint64)));
+    QString source = writeFile("src/a.wav", "hello");
+    QString stored = m_doc->assets()->importOrKeep(source);
+    QCOMPARE(stored, m_doc->assets()->assetsDir() + "/" + hashDirFor("hello") + "/a.wav");
+    QVERIFY(QFile::exists(stored));
+    QCOMPARE(m_doc->assets()->hasPendingImports(), false);
+    QCOMPARE(m_doc->assets()->pendingImports(), QStringList());
+    QCOMPARE(startedSpy.count(), 0);
+}
+
+void MediaAssets_Test::backgroundImportRelinksLargeFile()
+{
+    m_doc->setWorkspacePath(m_tmp->path());
+    m_doc->assets()->setProjectFile(m_tmp->path() + "/show.qxw");
+
+    // 60 MB: above the default 50 MB threshold, still quick to write and hash
+    const int megabytes = 60;
+    QString source = writeLargeFile("src/big.wav", megabytes);
+    QVERIFY(source.isEmpty() == false);
+    QCOMPARE(QFileInfo(source).size(), qint64(megabytes) * 1024 * 1024);
+
+    Audio *audio = new Audio(m_doc);
+    audio->setSourceFileName(source);
+    QVERIFY(m_doc->addFunction(audio));
+    QCOMPARE(m_doc->assets()->externalSources(), QStringList() << source);
+
+    QSignalSpy startedSpy(m_doc->assets(), SIGNAL(importStarted(QString,qint64)));
+    QSignalSpy progressSpy(m_doc->assets(), SIGNAL(importProgress(QString,qint64,qint64)));
+    QSignalSpy finishedSpy(m_doc->assets(), SIGNAL(importFinished(QString,QString,QString)));
+    QSignalSpy pendingSpy(m_doc->assets(), SIGNAL(pendingImportsChanged()));
+    QSignalSpy sourceSpy(audio, SIGNAL(sourceFilenameChanged()));
+
+    // returns right away with the source itself, the copy runs on a thread
+    QString returned = m_doc->assets()->importOrKeep(source);
+    QCOMPARE(returned, source);
+    QVERIFY(m_doc->assets()->hasPendingImports());
+    QCOMPARE(m_doc->assets()->pendingImports(), QStringList() << source);
+    QCOMPARE(startedSpy.count(), 1);
+    QCOMPARE(startedSpy.first().at(0).toString(), source);
+    QCOMPARE(startedSpy.first().at(1).toLongLong(), qint64(megabytes) * 1024 * 1024);
+    QCOMPARE(audio->getSourceFileName(), source);   // nothing relinked yet
+    QCOMPARE(finishedSpy.count(), 0);
+
+    QTRY_COMPARE_WITH_TIMEOUT(finishedSpy.count(), 1, 60000);
+
+    const QString expected = m_doc->assets()->assetsDir() + "/" + hashDirForFile(source) + "/big.wav";
+    QCOMPARE(finishedSpy.first().at(0).toString(), source);
+    QCOMPARE(finishedSpy.first().at(1).toString(), expected);
+    QCOMPARE(finishedSpy.first().at(2).toString(), QString());
+    QVERIFY(QFile::exists(expected));
+    QCOMPARE(QFileInfo(expected).size(), QFileInfo(source).size());
+    QVERIFY(m_doc->assets()->isManaged(expected));
+
+    // the function followed the copy, without the full setter's side effects
+    QCOMPARE(audio->getSourceFileName(), expected);
+    QCOMPARE(sourceSpy.count(), 1);
+    QCOMPARE(m_doc->assets()->externalSources(), QStringList());
+    QCOMPARE(m_doc->assets()->referenced(), QStringList() << expected);
+    QVERIFY(m_doc->isModified());
+
+    QCOMPARE(m_doc->assets()->hasPendingImports(), false);
+    QVERIFY(pendingSpy.count() >= 2);
+    QVERIFY(progressSpy.count() > 0);
+    QCOMPARE(progressSpy.last().at(1).toLongLong(), qint64(megabytes) * 1024 * 1024);
+    QCOMPARE(progressSpy.last().at(2).toLongLong(), qint64(megabytes) * 1024 * 1024);
+
+    // no .partial leftovers
+    QDir store(m_doc->assets()->assetsDir());
+    QCOMPARE(store.entryList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot),
+             QStringList() << hashDirForFile(source));
+}
+
+void MediaAssets_Test::backgroundImportDedupesAndRelinksVideo()
+{
+    m_doc->setWorkspacePath(m_tmp->path());
+    m_doc->assets()->setProjectFile(m_tmp->path() + "/show.qxw");
+    m_doc->assets()->setBackgroundThreshold(16);   // everything goes through the thread
+
+    QString clip = writeFile("src/clip.mp4", "a video, not really but long enough");
+    QString song = writeFile("src/song.wav", "an audio file, again long enough");
+
+    Video *video = new Video(m_doc);
+    video->setSourceUrl(clip);
+    video->setName("Intro");
+    QVERIFY(m_doc->addFunction(video));
+    Video *stream = new Video(m_doc);
+    stream->setSourceUrl("http://example.org/live.m3u8");
+    QVERIFY(m_doc->addFunction(stream));
+    Audio *audio = new Audio(m_doc);
+    audio->setSourceFileName(song);
+    QVERIFY(m_doc->addFunction(audio));
+
+    QSignalSpy finishedSpy(m_doc->assets(), SIGNAL(importFinished(QString,QString,QString)));
+
+    QCOMPARE(m_doc->assets()->importOrKeep(clip), clip);
+    QCOMPARE(m_doc->assets()->importOrKeep(clip), clip);   // same source twice: one job
+    QCOMPARE(m_doc->assets()->importOrKeep(song), song);
+    QCOMPARE(m_doc->assets()->pendingImports(), QStringList() << clip << song);
+
+    QTRY_COMPARE_WITH_TIMEOUT(finishedSpy.count(), 2, 10000);
+    QCOMPARE(m_doc->assets()->hasPendingImports(), false);
+
+    QString storedClip = m_doc->assets()->assetsDir() + "/" + hashDirFor("a video, not really but long enough") + "/clip.mp4";
+    QString storedSong = m_doc->assets()->assetsDir() + "/" + hashDirFor("an audio file, again long enough") + "/song.wav";
+    QCOMPARE(video->sourceUrl(), storedClip);
+    QCOMPARE(video->name(), QString("Intro"));
+    QCOMPARE(audio->getSourceFileName(), storedSong);
+    QCOMPARE(stream->sourceUrl(), QString("http://example.org/live.m3u8"));
+
+    // a source that is already stored is not queued again
+    QCOMPARE(m_doc->assets()->importOrKeep(storedClip), storedClip);
+    QCOMPARE(m_doc->assets()->hasPendingImports(), false);
+}
+
+void MediaAssets_Test::backgroundImportFollowsRelocate()
+{
+    // untitled project: the copy lands in the staging directory, the first
+    // save moves the store while the job is still in flight
+    m_doc->assets()->setBackgroundThreshold(16);
+    QVERIFY(m_doc->assets()->isStaging());
+
+    QString clip = writeFile("src/clip.mp4", "a video, not really but long enough");
+    Video *video = new Video(m_doc);
+    video->setSourceUrl(clip);
+    QVERIFY(m_doc->addFunction(video));
+
+    QSignalSpy finishedSpy(m_doc->assets(), SIGNAL(importFinished(QString,QString,QString)));
+    QCOMPARE(m_doc->assets()->importOrKeep(clip), clip);
+    QVERIFY(m_doc->assets()->hasPendingImports());
+    const QString staging = m_doc->assets()->assetsDir();
+
+    // save before the (queued) completion is processed
+    const QString project = m_tmp->path() + "/saved/show.qxw";
+    QDir().mkpath(m_tmp->path() + "/saved");
+    m_doc->setWorkspacePath(m_tmp->path() + "/saved");
+    QVERIFY(m_doc->assets()->relocateTo(project));
+    QCOMPARE(video->sourceUrl(), clip);   // still external at save time
+
+    const QString hashDir = hashDirFor("a video, not really but long enough");
+    // first completion relinks to the staging copy, which is then chained
+    // into the real store by a second job
+    QTRY_COMPARE_WITH_TIMEOUT(finishedSpy.count(), 2, 10000);
+    QCOMPARE(finishedSpy.at(0).at(1).toString(), staging + "/" + hashDir + "/clip.mp4");
+    QCOMPARE(finishedSpy.at(1).at(1).toString(), m_doc->assets()->assetsDir() + "/" + hashDir + "/clip.mp4");
+    QCOMPARE(video->sourceUrl(), m_doc->assets()->assetsDir() + "/" + hashDir + "/clip.mp4");
+    QVERIFY(m_doc->assets()->isManaged(video->sourceUrl()));
+    QCOMPARE(m_doc->assets()->externalSources(), QStringList());
+    QCOMPARE(m_doc->assets()->hasPendingImports(), false);
+}
+
+void MediaAssets_Test::closingProjectCancelsBackgroundImport()
+{
+    m_doc->assets()->setBackgroundThreshold(16);
+    QString big = writeLargeFile("src/big.wav", 8);
+    Audio *audio = new Audio(m_doc);
+    audio->setSourceFileName(big);
+    QVERIFY(m_doc->addFunction(audio));
+
+    QSignalSpy finishedSpy(m_doc->assets(), SIGNAL(importFinished(QString,QString,QString)));
+    QCOMPARE(m_doc->assets()->importOrKeep(big), big);
+    QVERIFY(m_doc->assets()->hasPendingImports());
+
+    // what App::clearDocument() does: no crash, no late relink, no leftovers
+    m_doc->assets()->setProjectFile(QString());
+    QCOMPARE(m_doc->assets()->hasPendingImports(), false);
+    QTest::qWait(50);
+    QCOMPARE(finishedSpy.count(), 0);
+    QCOMPARE(audio->getSourceFileName(), big);
+    QCOMPARE(m_doc->assets()->assetsDir(), QString());
+}
+
+/*****************************************************************************
+ * Increment 3: collect and cleanup
+ *****************************************************************************/
+
+void MediaAssets_Test::collectExternalImportsAndRelinks()
+{
+    m_doc->setWorkspacePath(m_tmp->path());
+    m_doc->assets()->setProjectFile(m_tmp->path() + "/show.qxw");
+
+    QString song = writeFile("ext/song.wav", "song");
+    QString clip = writeFile("ext/clip.mp4", "clip");
+    QString managed = m_doc->assets()->importFile(writeFile("ext/done.wav", "done"));
+    QString missing = QDir::cleanPath(m_tmp->path() + "/ext/gone.wav");
+
+    Audio *audio = new Audio(m_doc);
+    audio->setSourceFileName(song);
+    audio->setName("Song");
+    QVERIFY(m_doc->addFunction(audio));
+    Audio *audio2 = new Audio(m_doc);
+    audio2->setSourceFileName(song);   // two functions on the same file
+    QVERIFY(m_doc->addFunction(audio2));
+    Video *video = new Video(m_doc);
+    video->setSourceUrl(clip);
+    video->setName("Clip");
+    QVERIFY(m_doc->addFunction(video));
+    Video *stream = new Video(m_doc);
+    stream->setSourceUrl("rtsp://cam/1");
+    QVERIFY(m_doc->addFunction(stream));
+    Audio *already = new Audio(m_doc);
+    already->setSourceFileName(managed);
+    QVERIFY(m_doc->addFunction(already));
+    Audio *lost = new Audio(m_doc);
+    lost->setSourceFileName(missing);
+    QVERIFY(m_doc->addFunction(lost));
+
+    QCOMPARE(m_doc->assets()->externalSources().count(), 3);
+
+    MediaAssets::CollectResult result = m_doc->assets()->collectExternal();
+    QCOMPARE(result.copied, 2);
+    QCOMPARE(result.queued, 0);
+    QCOMPARE(result.failed, 1);
+    QVERIFY(result.firstError.contains("gone.wav"));
+
+    QString storedSong = m_doc->assets()->assetsDir() + "/" + hashDirFor("song") + "/song.wav";
+    QString storedClip = m_doc->assets()->assetsDir() + "/" + hashDirFor("clip") + "/clip.mp4";
+    QCOMPARE(audio->getSourceFileName(), storedSong);
+    QCOMPARE(audio2->getSourceFileName(), storedSong);
+    QCOMPARE(audio->name(), QString("Song"));
+    QCOMPARE(video->sourceUrl(), storedClip);
+    QCOMPARE(video->name(), QString("Clip"));
+    QCOMPARE(stream->sourceUrl(), QString("rtsp://cam/1"));
+    QCOMPARE(already->getSourceFileName(), managed);
+    QCOMPARE(lost->getSourceFileName(), missing);
+    QCOMPARE(m_doc->assets()->externalSources(), QStringList() << missing);
+    QVERIFY(QFile::exists(song));   // originals are never touched
+    QVERIFY(QFile::exists(clip));
+
+    // nothing left to do the second time round, apart from the missing one
+    result = m_doc->assets()->collectExternal();
+    QCOMPARE(result.copied, 0);
+    QCOMPARE(result.failed, 1);
+}
+
+void MediaAssets_Test::collectExternalQueuesLargeFiles()
+{
+    m_doc->setWorkspacePath(m_tmp->path());
+    m_doc->assets()->setProjectFile(m_tmp->path() + "/show.qxw");
+    m_doc->assets()->setBackgroundThreshold(16);
+
+    QString big = writeFile("ext/big.wav", "this one is above the tiny threshold");
+    QString small = writeFile("ext/small.wav", "small");
+    Audio *audio = new Audio(m_doc);
+    audio->setSourceFileName(big);
+    QVERIFY(m_doc->addFunction(audio));
+    Audio *audio2 = new Audio(m_doc);
+    audio2->setSourceFileName(small);
+    QVERIFY(m_doc->addFunction(audio2));
+
+    QSignalSpy finishedSpy(m_doc->assets(), SIGNAL(importFinished(QString,QString,QString)));
+    MediaAssets::CollectResult result = m_doc->assets()->collectExternal();
+    QCOMPARE(result.copied, 1);
+    QCOMPARE(result.queued, 1);
+    QCOMPARE(result.failed, 0);
+    QVERIFY(m_doc->assets()->isManaged(audio2->getSourceFileName()));
+    QCOMPARE(audio->getSourceFileName(), big);
+    QVERIFY(m_doc->assets()->hasPendingImports());
+
+    QTRY_COMPARE_WITH_TIMEOUT(finishedSpy.count(), 1, 10000);
+    QVERIFY(m_doc->assets()->isManaged(audio->getSourceFileName()));
+    QCOMPARE(m_doc->assets()->externalSources(), QStringList());
+}
+
+void MediaAssets_Test::removeUnreferencedDeletesOnlyStoreFiles()
+{
+    m_doc->setWorkspacePath(m_tmp->path());
+    m_doc->assets()->setProjectFile(m_tmp->path() + "/show.qxw");
+
+    QString used = m_doc->assets()->importFile(writeFile("src/used.wav", "used"));
+    QString unused = m_doc->assets()->importFile(writeFile("src/unused.wav", "unused"));
+    QString external = writeFile("src/external.wav", "external");
+    // a stray file directly in the store root is not "managed" and never touched
+    QString stray = writeFile("show.qxw.assets/stray.wav", "stray");
+
+    Audio *audio = new Audio(m_doc);
+    audio->setSourceFileName(used);
+    QVERIFY(m_doc->addFunction(audio));
+
+    QCOMPARE(m_doc->assets()->unreferenced(), QStringList() << unused);
+
+    QString error;
+    // everything but @unused is refused, @unused itself is deleted
+    QCOMPARE(m_doc->assets()->removeUnreferenced(QStringList() << unused << used << external << stray, &error), false);
+    QVERIFY(error.isEmpty() == false);
+    QVERIFY(QFile::exists(unused) == false);
+    QVERIFY(QDir(QFileInfo(unused).absolutePath()).exists() == false);   // emptied hash dir went too
+    QVERIFY(QFile::exists(used));
+    QVERIFY(QFile::exists(external));
+    QVERIFY(QFile::exists(stray));
+    QCOMPARE(audio->getSourceFileName(), used);
+    QCOMPARE(m_doc->assets()->unreferenced(), QStringList());
+
+    // a clean list succeeds; an already-gone file is not an error
+    error.clear();
+    QCOMPARE(m_doc->assets()->removeUnreferenced(QStringList() << unused, &error), true);
+    QVERIFY(error.isEmpty());
+
+    // a file that became unreferenced after the list was made is deleted,
+    // one that became referenced meanwhile is refused
+    QString later = m_doc->assets()->importFile(writeFile("src/later.wav", "later"));
+    QVERIFY(m_doc->deleteFunction(audio->id()));
+    QCOMPARE(m_doc->assets()->removeUnreferenced(QStringList() << used << later), true);
+    QVERIFY(QFile::exists(used) == false);
+    QVERIFY(QFile::exists(later) == false);
 }
 
 QTEST_GUILESS_MAIN(MediaAssets_Test)

@@ -47,11 +47,25 @@ private slots:
     void unreferencedAfterDelete();
     void normalizeCaseInsensitive();
 
+    // increment 2/3: background copies, collect, cleanup
+    void smallFileStaysSynchronous();
+    void backgroundImportRelinksLargeFile();
+    void backgroundImportDedupesAndRelinksVideo();
+    void backgroundImportFollowsRelocate();
+    void closingProjectCancelsBackgroundImport();
+    void collectExternalImportsAndRelinks();
+    void collectExternalQueuesLargeFiles();
+    void removeUnreferencedDeletesOnlyStoreFiles();
+
 private:
     /** Write @content into <m_tmp>/<relativePath>, returns its absolute path */
     QString writeFile(const QString &relativePath, const QByteArray &content);
     /** First 12 hex characters of the SHA1 of @content */
     static QString hashDirFor(const QByteArray &content);
+    /** Same, for a file on disk */
+    static QString hashDirForFile(const QString &path);
+    /** Write @megabytes MB of non-trivial content into <m_tmp>/<relativePath> */
+    QString writeLargeFile(const QString &relativePath, int megabytes);
 
 private:
     Doc *m_doc;
