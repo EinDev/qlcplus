@@ -748,6 +748,28 @@ Rectangle
                 z: 2
 
                 keys: [ "function" ]
+
+                // Diagnostics, visible with -d: a function drop on an existing
+                // track can only miss this area if it has no geometry at that
+                // moment or if it never receives the drag at all, so both are
+                // logged (Qt only hands a drag to a DropArea that contains the
+                // point, is visible and has not refused an earlier enter)
+                function logGeometry(reason)
+                {
+                    if (height <= 0 || width <= 0)
+                        console.log("[ShowManager] drop area geometry (" + reason + "): x=" + x + " y=" + y +
+                                    " w=" + width + " h=" + height + " tracks=" + tracksBox.count)
+                }
+                Component.onCompleted: logGeometry("completed")
+                onHeightChanged: logGeometry("height changed")
+                onWidthChanged: logGeometry("width changed")
+                onEntered: (drag) =>
+                {
+                    console.log("[ShowManager] function drag entered the track area at " + drag.x + "," + drag.y +
+                                " (w=" + width + " h=" + height + " tracks=" + tracksBox.count + ")")
+                }
+                onExited: console.log("[ShowManager] function drag left the track area")
+
                 onDropped:
                 {
                     console.log("Function items dropped here. x: " + drag.x + " y: " + drag.y)
