@@ -341,9 +341,12 @@ void TreeModel_Test::structuralChangeDuringBatchSelectionStaysConsistent()
     QCOMPARE(tree.data(tree.index(0), TreeModel::IsSelectedRole).toBool(), true);
     QCOMPARE(tree.data(tree.index(1), TreeModel::IsSelectedRole).toBool(), true);
 
-    // the flat list rebuilds unconditionally on any structural change (see
-    // TreeFlatModel::slotSourceStructureChanged()), independent of the batch
-    // flag's state at the time - it must reflect the same final shape.
+    // The flat list rebuilds on any structural change independent of the batch
+    // flag's state at the time - but TreeFlatModel::slotSourceStructureChanged()
+    // coalesces a burst of changes in one call stack (the addItem() above, then
+    // the removeItem()) into a single queued rebuild(), so the final shape is
+    // only guaranteed once that posted event has been delivered.
+    QCoreApplication::sendPostedEvents();
     QCOMPARE(flat.rowCount(), 2);
     QCOMPARE(flat.data(flat.index(0), TreeFlatModel::LabelRole).toString(), QString("Fixture A"));
     QCOMPARE(flat.data(flat.index(1), TreeFlatModel::LabelRole).toString(), QString("Fixture C"));
@@ -436,6 +439,63 @@ void TreeModel_Test::removingNonExistentTopLevelItemLeavesTreeUnchanged()
     QCOMPARE(rowsRemovedSpy.count(), 0);
     QCOMPARE(tree.data(tree.index(0), TreeModel::LabelRole).toString(), QString("Fixture A"));
     QCOMPARE(tree.data(tree.index(1), TreeModel::LabelRole).toString(), QString("Fixture B"));
+}
+
+// The ownership/signal-order contract TreeFlatModel relies on (see the
+// structureAboutToChange doc comment in treemodel.h): every deletion, at ANY
+// depth, is bracketed as exactly one bubbled structureAboutToChange - emitted
+// while everything is still alive - followed by exactly one structureChanged
+// once the mutation is complete, with nothing bubbling out of the middle. The
+// "nothing in the middle" half is what a subtree's own teardown used to break:
+// deleting a folder cleared its child TreeModel, whose structureChanged bubbled
+// up to the root while the root was still deleting the rest of its items.
+void TreeModel_Test::structureAboutToChangeBracketsEveryDeletion()
+{
+    TreeModel tree;
+    tree.setColumnNames(QStringList() << "id");
+    tree.enableSorting(false);
+    const QChar sep = TreeModel::separator();
+    const QString leafPath = QString("A") + sep + "B" + sep + "leaf";
+    tree.addItem("leaf", QVariantList() << 1, QString("A") + sep + "B");
+    tree.addItem("other", QVariantList() << 2, "A");
+    tree.addItem("top", QVariantList() << 3);
+
+    QStringList sequence;
+    connect(&tree, &TreeModel::structureAboutToChange, &tree, [&]() {
+        // still fully intact at this point, at every depth
+        sequence << (tree.itemAtPath(leafPath) != nullptr ? "about(alive)" : "about(dead)");
+    });
+    connect(&tree, &TreeModel::structureChanged, &tree, [&]() {
+        sequence << "changed";
+    });
+
+    // nested LEAF removal, two levels down: only the innermost child TreeModel
+    // owns that row, so this can only reach the root by bubbling
+    QVERIFY(tree.removeItem(leafPath));
+    QCOMPARE(sequence, QStringList() << "about(alive)" << "changed");
+    QVERIFY(tree.itemAtPath(leafPath) == nullptr);
+
+    // nested FOLDER removal (deletes B's child TreeModel with it): its teardown
+    // must not bubble anything of its own
+    sequence.clear();
+    tree.addItem("leaf", QVariantList() << 1, QString("A") + sep + "B");
+    sequence.clear();
+    QVERIFY(tree.removeItem(QString("A") + sep + "B"));
+    QCOMPARE(sequence, QStringList() << "about(alive)" << "changed");
+
+    // clear() of a tree with folders that still have children: one bracket for
+    // the whole thing, not one per folder torn down inside the loop
+    tree.addItem("leaf", QVariantList() << 1, QString("A") + sep + "B");
+    tree.addItem("z1", QVariantList() << 4, "Z");
+    sequence.clear();
+    tree.clear();
+    QCOMPARE(sequence, QStringList() << "about(alive)" << "changed");
+    QCOMPARE(tree.rowCount(), 0);
+
+    // a removal that matches nothing must not announce anything either
+    sequence.clear();
+    QCOMPARE(tree.removeItem("nope"), false);
+    QVERIFY(sequence.isEmpty());
 }
 
 // QTEST_APPLESS_MAIN (no QCoreApplication at all) was enough for every test

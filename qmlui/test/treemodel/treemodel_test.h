@@ -37,6 +37,7 @@ private slots:
     void structuralChangeDuringBatchSelectionStaysConsistent();
     void staleItemRoleChangeIsIgnoredSafely();
     void removingNonExistentTopLevelItemLeavesTreeUnchanged();
+    void structureAboutToChangeBracketsEveryDeletion();
 };
 
 #endif

@@ -35,6 +35,9 @@ private slots:
     void rebuildAfterClearReflectsNewData();
     void incrementalAddItemIsReflectedWithoutExplicitRebuild();
     void incrementalRemoveItemIsReflectedWithoutExplicitRebuild();
+    void deletingLastFunctionOfExpandedFolderMirrorsFunctionManager();
+    void createFolderThenDeleteInOneBurstNeverDanglesOwner();
+    void clearWithExpandedFoldersDropsEveryRowBeforeAnyDeletion();
 };
 
 #endif

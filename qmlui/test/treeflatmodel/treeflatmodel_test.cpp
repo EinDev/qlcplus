@@ -18,6 +18,7 @@
 */
 
 #include <QtTest>
+#include <QCoreApplication>
 
 #include "treeflatmodel_test.h"
 #include "treeflatmodel.h"
@@ -38,6 +39,88 @@ namespace
         tree.addItem("Leaf A", QVariantList() << 1);
         tree.addItem("Child 1", QVariantList() << 10, "Folder");
         tree.addItem("Child 2", QVariantList() << 11, "Folder");
+    }
+
+    /** Flush the coalesced, queued rebuild() that TreeFlatModel::
+     *  slotSourceStructureChanged() posts for every signal of a burst after the
+     *  first (see commit 087954395). Needs a live QCoreApplication - hence
+     *  QTEST_GUILESS_MAIN below - since posted events are never delivered
+     *  without one. */
+    void flushDeferredRebuild()
+    {
+        QCoreApplication::sendPostedEvents();
+    }
+
+    struct VisibleRow
+    {
+        QString label;
+        int depth;
+        bool hasChildren;
+    };
+
+    /** The rows a flattened view of $tree must show, computed independently of
+     *  TreeFlatModel by walking the tree: every item, plus - for expanded ones -
+     *  their visible descendants. */
+    void collectVisibleRows(const TreeModel *tree, int depth, QList<VisibleRow> &out)
+    {
+        for (TreeModelItem *item : tree->items())
+        {
+            out.append({ item->label(), depth,
+                         item->hasChildren() || (item->flags() & TreeModel::EmptyNode) });
+            if ((item->flags() & TreeModel::Expanded) && item->hasChildren())
+                collectVisibleRows(item->children(), depth + 1, out);
+        }
+    }
+
+    /** Read EVERY role of EVERY row through data(), the way a ListView delegate
+     *  does, so any FlatRow still pointing at a freed TreeModelItem or a freed
+     *  TreeModel `owner` gets dereferenced right here, in the test, rather than
+     *  later in the real UI. */
+    void readEveryRoleOfEveryRow(const TreeFlatModel &flat)
+    {
+        const QMetaEnum roles = QMetaEnum::fromType<TreeFlatModel::FlatRoles>();
+        for (int row = 0; row < flat.rowCount(); row++)
+            for (int i = 0; i < roles.keyCount(); i++)
+                (void)flat.data(flat.index(row), roles.value(i));
+    }
+
+    /** Every row still shown must be a live one: a row whose item its owner no
+     *  longer knows about reads back as an empty label. */
+    void verifyEveryRowIsLive(const TreeFlatModel &flat)
+    {
+        readEveryRoleOfEveryRow(flat);
+        for (int row = 0; row < flat.rowCount(); row++)
+            QVERIFY2(!flat.data(flat.index(row), TreeFlatModel::LabelRole).toString().isEmpty(),
+                     qPrintable(QString("row %1 references an item its owner no longer holds").arg(row)));
+    }
+
+    /** Assert the flat model shows exactly what the tree currently contains. */
+    void verifyFlatMatchesTree(const TreeFlatModel &flat, const TreeModel &tree)
+    {
+        QList<VisibleRow> expected;
+        collectVisibleRows(&tree, 0, expected);
+
+        QCOMPARE(flat.rowCount(), expected.count());
+        for (int i = 0; i < expected.count(); i++)
+        {
+            QCOMPARE(flat.data(flat.index(i), TreeFlatModel::LabelRole).toString(), expected.at(i).label);
+            QCOMPARE(flat.data(flat.index(i), TreeFlatModel::DepthRole).toInt(), expected.at(i).depth);
+            QCOMPARE(flat.data(flat.index(i), TreeFlatModel::HasChildrenRole).toBool(), expected.at(i).hasChildren);
+        }
+        readEveryRoleOfEveryRow(flat);
+    }
+
+    /** A tree shaped like FunctionManager::m_functionTree: "classRef"/"type"
+     *  columns, alphabetic sorting on (folders sort before leaves). */
+    void setupFunctionLikeTree(TreeModel &tree)
+    {
+        tree.setColumnNames(QStringList() << "classRef" << "type");
+        tree.enableSorting(true);
+    }
+
+    QVariantList functionParams(int id)
+    {
+        return QVariantList() << id << 1;
     }
 }
 
@@ -202,4 +285,163 @@ void TreeFlatModel_Test::incrementalRemoveItemIsReflectedWithoutExplicitRebuild(
     QCOMPARE(flat.data(flat.index(0), TreeFlatModel::LabelRole).toString(), QString("Folder"));
 }
 
-QTEST_APPLESS_MAIN(TreeFlatModel_Test)
+// Mirrors, call for call, what FunctionManager does when the only function inside
+// a folder is deleted and the folder then goes away: FunctionManager::
+// deleteFunction() -> TreeModel::removeItem("Snapshots`x") (a NESTED removal: the
+// root tree only forwards it to the folder's child TreeModel, so the root's own
+// rowsAboutToBeRemoved never fires), then FunctionManager::deleteFolder() ->
+// TreeModel::removeItem("Snapshots") on the root. The folder is expanded, so
+// before the delete the flat model holds a row for "x" whose `owner` is the
+// folder's child TreeModel.
+void TreeFlatModel_Test::deletingLastFunctionOfExpandedFolderMirrorsFunctionManager()
+{
+    TreeModel tree;
+    setupFunctionLikeTree(tree);
+    tree.addItem("Scene 1", functionParams(1));
+    tree.addItem("x", functionParams(2), "Snapshots");
+
+    TreeFlatModel flat;
+    flat.setSourceModel(&tree);
+    verifyFlatMatchesTree(flat, tree);
+    QCOMPARE(flat.rowCount(), 2); // Snapshots, Scene 1
+
+    // user expands the folder (what a click on the folder row does)
+    QVERIFY(flat.setData(flat.index(0), true, TreeFlatModel::IsExpandedRole));
+    verifyFlatMatchesTree(flat, tree);
+    QCOMPARE(flat.rowCount(), 3); // Snapshots, x, Scene 1
+
+    // deleteFunction(): the folder stays behind, empty
+    QVERIFY(tree.removeItem(QString("Snapshots") + TreeModel::separator() + "x"));
+    // a lone removal is a burst of one: reflected synchronously, no event loop needed
+    verifyFlatMatchesTree(flat, tree);
+    QCOMPARE(flat.rowCount(), 2); // Snapshots (now empty), Scene 1
+    QCOMPARE(flat.data(flat.index(0), TreeFlatModel::LabelRole).toString(), QString("Snapshots"));
+
+    // deleteFolder(): a separate user action, i.e. after the event loop has run
+    // in between - now the folder itself, and its child TreeModel, go away
+    flushDeferredRebuild();
+    QVERIFY(tree.removeItem("Snapshots"));
+    verifyFlatMatchesTree(flat, tree);
+    QCOMPARE(flat.rowCount(), 1);
+    QCOMPARE(flat.data(flat.index(0), TreeFlatModel::LabelRole).toString(), QString("Scene 1"));
+
+    flushDeferredRebuild();
+    verifyFlatMatchesTree(flat, tree);
+}
+
+// The create-folder-then-delete sequence arriving in ONE synchronous call stack
+// (e.g. a pipelined control API batch), so a coalesced rebuild is already pending
+// when the removal happens and slotSourceStructureChanged() takes its deferred
+// path. This is the case commit 96b0cb80a only half-fixed: it made the FIRST
+// signal of a burst rebuild synchronously, but a removal arriving later in the
+// same burst still left the flat model holding rows into the subtree that removal
+// freed - including, for an expanded nested folder, that folder's child TreeModel
+// as a row's `owner` - until the deferred rebuild ran. TreeModel::
+// structureAboutToChange now bubbles from any depth BEFORE the deletion and the
+// flat model drops every row on it, regardless of what the coalescing decides to
+// do with the structureChanged that follows.
+void TreeFlatModel_Test::createFolderThenDeleteInOneBurstNeverDanglesOwner()
+{
+    TreeModel tree;
+    setupFunctionLikeTree(tree);
+    tree.addItem("Scene 1", functionParams(1));
+
+    TreeFlatModel flat;
+    flat.setSourceModel(&tree);
+    flushDeferredRebuild();
+    QCOMPARE(flat.rowCount(), 1);
+
+    // create into a brand-new nested folder: the first signal of the burst
+    // rebuilds synchronously and schedules the deferred one
+    const QString subPath = QString("Snapshots") + TreeModel::separator() + "Sub";
+    tree.addItem("x", functionParams(2), subPath);
+    tree.setItemRoleData("Snapshots", true, TreeModel::IsExpandedRole);
+    tree.setItemRoleData(subPath, true, TreeModel::IsExpandedRole);
+    verifyFlatMatchesTree(flat, tree);
+    QCOMPARE(flat.rowCount(), 4); // Snapshots, Sub, x, Scene 1
+
+    // ... then, still in the same burst, delete the nested folder: that frees
+    // its child TreeModel, which row "x" referenced as its owner
+    QVERIFY(tree.removeItem(subPath));
+
+    // whatever the coalescing decided (rows dropped and waiting for the deferred
+    // rebuild, or already rebuilt), no row may reference freed memory
+    verifyEveryRowIsLive(flat);
+
+    flushDeferredRebuild();
+    verifyFlatMatchesTree(flat, tree);
+    QCOMPARE(flat.rowCount(), 2); // Snapshots (empty), Scene 1
+
+    // same for a nested LEAF removal in one burst - the plain deleteFunction() shape
+    tree.addItem("y", functionParams(3), "Snapshots");
+    QVERIFY(tree.removeItem(QString("Snapshots") + TreeModel::separator() + "y"));
+    verifyEveryRowIsLive(flat);
+    flushDeferredRebuild();
+    verifyFlatMatchesTree(flat, tree);
+    QCOMPARE(flat.rowCount(), 2);
+}
+
+// The exact shape of the 2026-09-15 crash: FunctionManager::updateFunctionsTree()
+// (any filter/search change, or a project (re)load) does TreeModel::clear() and
+// then repopulates and re-expands the same tree, with the Function Manager's flat
+// list attached the whole time. clear() deletes items last-to-first, and each
+// folder's destructor tears down that folder's child TreeModel. Before the fix,
+// the FIRST folder's teardown bubbled a structureChanged out of the middle of
+// clear()'s loop - the flat model's synchronous first-of-burst rebuild()
+// (96b0cb80a) then re-walked the half-cleared tree and cached the not-yet-deleted
+// items and, for every still-expanded folder among them, that folder's child
+// TreeModel as the `owner` of its visible rows. The very same loop freed all of
+// them a moment later, and every later structureChanged of the burst (including
+// clear()'s own, after the deletions) was swallowed by the coalescing.
+// restoreExpandedPaths()' roleChanged then made the QML ListView re-read
+// model.hasChildren on such a row: TreeModel::items() on a freed TreeModel - the
+// access violation in the crash report.
+void TreeFlatModel_Test::clearWithExpandedFoldersDropsEveryRowBeforeAnyDeletion()
+{
+    TreeModel tree;
+    setupFunctionLikeTree(tree);
+    // sorted: folders "A" and "Z" first, then the leaf. clear() walks from the
+    // END, so "Z"'s teardown is the first bubbled signal, while "A" (expanded,
+    // with a child TreeModel the flat model references) is still alive to be
+    // snapshotted.
+    tree.addItem("a1", functionParams(1), "A");
+    tree.addItem("z1", functionParams(2), "Z");
+    tree.addItem("Scene 1", functionParams(3));
+    tree.setItemRoleData("A", true, TreeModel::IsExpandedRole);
+
+    TreeFlatModel flat;
+    flat.setSourceModel(&tree);
+    flushDeferredRebuild();
+    verifyFlatMatchesTree(flat, tree);
+    QCOMPARE(flat.rowCount(), 4); // A, a1, Z, Scene 1
+
+    // --- updateFunctionsTree(), step by step ---
+    tree.clear();
+    // Nothing exists any more, so nothing may be shown: the only valid row count
+    // right here is 0. Before the fix this read 2 (A and a1, both already freed).
+    QCOMPARE(flat.rowCount(), 0);
+
+    // repopulate (addFunctionTreeItem() per function, same burst) ...
+    tree.addItem("a1", functionParams(1), "A");
+    tree.addItem("z1", functionParams(2), "Z");
+    tree.addItem("Scene 1", functionParams(3));
+    // ... and restoreExpandedPaths(): the roleChanged this emits is what made
+    // the real UI re-read data() on the stale rows
+    tree.setItemRoleData("A", true, TreeModel::IsExpandedRole);
+
+    // must be safe to read at any point of the burst ...
+    verifyEveryRowIsLive(flat);
+
+    // ... and correct once the coalesced rebuild has run
+    flushDeferredRebuild();
+    verifyFlatMatchesTree(flat, tree);
+    QCOMPARE(flat.rowCount(), 4);
+    QCOMPARE(flat.data(flat.index(1), TreeFlatModel::LabelRole).toString(), QString("a1"));
+    QCOMPARE(flat.data(flat.index(1), TreeFlatModel::DepthRole).toInt(), 1);
+}
+
+// The coalesced rebuild is a queued QMetaObject::invokeMethod(): without a
+// QCoreApplication instance, posted events are never delivered, so the tests
+// above that flush it need a guiless app (no window/display, just the event
+// queue) instead of QTEST_APPLESS_MAIN.
+QTEST_GUILESS_MAIN(TreeFlatModel_Test)
