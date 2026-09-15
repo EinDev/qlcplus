@@ -19,9 +19,12 @@
 
 #include <QCryptographicHash>
 #include <QRegularExpression>
+#include <QJsonDocument>
 #include <QTemporaryDir>
 #include <QTemporaryFile>
+#include <QJsonObject>
 #include <QFileInfo>
+#include <QSaveFile>
 #include <QDebug>
 #include <QDir>
 
@@ -34,6 +37,8 @@
 
 #define KAssetsSuffix QStringLiteral(".assets")
 #define KWorkspaceSuffix QStringLiteral(".qxw")
+#define KManifestName QStringLiteral("manifest.json")
+#define KManifestVersion 1
 #define KHashDirLength 12
 #define KCopyChunkSize (1024 * 1024)
 
@@ -60,12 +65,14 @@ static bool isHashDirName(const QString &name)
 
 /**
  * Hash @sourcePath while copying it into @storeDir/<sha12>/<basename>.
- * Returns the stored absolute path, or empty with @error set. @progress is
- * called after every chunk, @cancelled is polled before every chunk; a
- * cancelled copy returns empty with @error set and leaves nothing behind.
+ * Returns the stored absolute path, or empty with @error set; the full
+ * content hash lands in @sha1. @progress is called after every chunk,
+ * @cancelled is polled before every chunk; a cancelled copy returns empty
+ * with @error set and leaves nothing behind.
  * Pure file work: safe to run on any thread.
  */
 static QString copyFileIntoStore(const QString &sourcePath, const QString &storeDir, QString *error,
+                                 QString *sha1,
                                  const std::function<void(qint64, qint64)> &progress,
                                  const std::function<bool()> &cancelled)
 {
@@ -135,7 +142,10 @@ static QString copyFileIntoStore(const QString &sourcePath, const QString &store
     }
     partial.close();
 
-    const QString hashDir = storeDir + "/" + QString::fromLatin1(hash.result().toHex().left(KHashDirLength));
+    const QString hex = QString::fromLatin1(hash.result().toHex());
+    if (sha1)
+        *sha1 = hex;
+    const QString hashDir = storeDir + "/" + hex.left(KHashDirLength);
     const QString target = hashDir + "/" + baseName;
 
     if (QFile::exists(target))
@@ -190,14 +200,26 @@ qint64 MediaCopyJob::size() const
     return m_size;
 }
 
+QList<quint32> MediaCopyJob::reloadFunctions() const
+{
+    return m_reloadFunctions;
+}
+
+void MediaCopyJob::addReloadFunction(quint32 functionId)
+{
+    if (m_reloadFunctions.contains(functionId) == false)
+        m_reloadFunctions.append(functionId);
+}
+
 void MediaCopyJob::run()
 {
     QString error;
-    QString target = copyFileIntoStore(m_source, m_storeDir, &error,
+    QString sha1;
+    QString target = copyFileIntoStore(m_source, m_storeDir, &error, &sha1,
         [this](qint64 done, qint64 total) { emit progress(done, total); },
         [this]() { return isInterruptionRequested(); });
 
-    emit copyFinished(target, error);
+    emit copyFinished(target, error, sha1);
 }
 
 /*****************************************************************************
@@ -231,6 +253,9 @@ void MediaAssets::setProjectFile(const QString &qxwPath)
         // A background copy still writing into it is stopped first.
         cancelPendingImports();
         m_stagingDir.reset();
+        m_manifestDir.clear();
+        m_manifest.clear();
+        m_changeCache.clear();
     }
     else
     {
@@ -307,7 +332,11 @@ QString MediaAssets::importFile(const QString &sourcePath, QString *error)
     if (isInStore(absSource, storeDir))
         return absSource;
 
-    return copyIntoStore(absSource, storeDir, error);
+    QString sha1;
+    QString stored = copyIntoStore(absSource, storeDir, error, &sha1);
+    if (stored.isEmpty() == false)
+        recordOrigin(stored, absSource, sha1);
+    return stored;
 }
 
 QString MediaAssets::importOrKeep(const QString &sourcePath)
@@ -348,9 +377,9 @@ void MediaAssets::setBackgroundThreshold(qint64 bytes)
     m_backgroundThreshold = bytes;
 }
 
-QString MediaAssets::copyIntoStore(const QString &sourcePath, const QString &storeDir, QString *error)
+QString MediaAssets::copyIntoStore(const QString &sourcePath, const QString &storeDir, QString *error, QString *sha1)
 {
-    return copyFileIntoStore(sourcePath, storeDir, error, nullptr, nullptr);
+    return copyFileIntoStore(sourcePath, storeDir, error, sha1, nullptr, nullptr);
 }
 
 /*****************************************************************************
@@ -370,21 +399,22 @@ QStringList MediaAssets::pendingImports() const
     return list;
 }
 
-void MediaAssets::enqueueJob(const QString &absSource, const QString &storeDir, qint64 size)
+MediaCopyJob *MediaAssets::enqueueJob(const QString &absSource, const QString &storeDir, qint64 size)
 {
     for (MediaCopyJob *job : m_jobs)
     {
         if (samePath(job->source(), absSource))
-            return;   // already on its way
+            return job;   // already on its way
     }
 
     MediaCopyJob *job = new MediaCopyJob(absSource, storeDir, size, this);
     connect(job, SIGNAL(progress(qint64,qint64)), this, SLOT(slotJobProgress(qint64,qint64)));
-    connect(job, SIGNAL(copyFinished(QString,QString)), this, SLOT(slotJobFinished(QString,QString)));
+    connect(job, SIGNAL(copyFinished(QString,QString,QString)), this, SLOT(slotJobFinished(QString,QString,QString)));
     m_jobs.append(job);
     emit pendingImportsChanged();
 
     startNextJob();
+    return job;
 }
 
 void MediaAssets::startNextJob()
@@ -409,13 +439,14 @@ void MediaAssets::slotJobProgress(qint64 done, qint64 total)
     emit importProgress(job->source(), done, total);
 }
 
-void MediaAssets::slotJobFinished(const QString &target, const QString &error)
+void MediaAssets::slotJobFinished(const QString &target, const QString &error, const QString &sha1)
 {
     MediaCopyJob *job = qobject_cast<MediaCopyJob *>(sender());
     if (job == nullptr)
         return;
 
     const QString source = job->source();
+    const QList<quint32> reloads = job->reloadFunctions();
     m_jobs.removeOne(job);
     job->wait();
     job->deleteLater();
@@ -427,7 +458,36 @@ void MediaAssets::slotJobFinished(const QString &target, const QString &error)
     }
     else
     {
+        // The copy may have landed in a store that is no longer current (see
+        // below); its provenance goes into that store's manifest either way
+        if (isManaged(target))
+        {
+            recordOrigin(target, source, sha1);
+        }
+        else
+        {
+            const QString landedIn = QFileInfo(QFileInfo(target).absolutePath()).absolutePath();
+            QHash<QString, MediaOrigin> entries = readManifest(landedIn);
+            MediaOrigin origin;
+            origin.path = source;
+            origin.sha1 = sha1;
+            QFileInfo info(source);
+            if (info.exists())
+            {
+                origin.size = info.size();
+                origin.mtime = info.lastModified();
+            }
+            entries.insert(manifestKey(target, landedIn), origin);
+            writeManifest(landedIn, entries);
+        }
+
         relinkSource(source, target);
+        for (quint32 functionId : reloads)
+        {
+            Function *function = m_doc->function(functionId);
+            if (function != nullptr)
+                applyReload(function, target);
+        }
         emit importFinished(source, target, QString());
 
         // The store moved while the copy ran (first save / Save As of an
@@ -635,6 +695,12 @@ bool MediaAssets::removeUnreferenced(const QStringList &files, QString *error)
         QDir hashDir(QFileInfo(abs).absolutePath());
         if (hashDir.entryList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot | QDir::Hidden).isEmpty())
             hashDir.removeRecursively();
+
+        ensureManifest();
+        const QString key = manifestKey(abs, storeDir);
+        if (m_manifest.remove(key) > 0)
+            saveManifest();
+        m_changeCache.remove(key);
     }
 
     return ok;
@@ -657,6 +723,13 @@ bool MediaAssets::relocateTo(const QString &newQxwPath, QString *error)
     bool ok = true;
     QString firstError;
 
+    // Provenance travels with the copies: the new store's manifest starts
+    // from whatever is already there and gains the entries of the files
+    // copied below (same relative keys)
+    ensureManifest();
+    QHash<QString, MediaOrigin> newManifest = readManifest(newStore);
+    bool manifestChanged = false;
+
     for (const QString &source : referenced())
     {
         if (isInStore(source, oldStore) == false)
@@ -664,6 +737,13 @@ bool MediaAssets::relocateTo(const QString &newQxwPath, QString *error)
 
         const QString relative = QDir::cleanPath(source).mid(QDir::cleanPath(oldStore).length() + 1);
         const QString target = newStore + "/" + relative;
+
+        const QString key = manifestKey(source, oldStore);
+        if (m_manifest.contains(key))
+        {
+            newManifest.insert(key, m_manifest.value(key));
+            manifestChanged = true;
+        }
 
         if (QFile::exists(target) == false)
         {
@@ -687,6 +767,11 @@ bool MediaAssets::relocateTo(const QString &newQxwPath, QString *error)
     // The staging directory (if any) is intentionally kept until the project
     // is closed: a decoder may still hold the old file open on Windows
     m_projectFile = newProject;
+    m_manifest = newManifest;
+    m_manifestDir = QDir::cleanPath(newStore);
+    m_changeCache.clear();
+    if (manifestChanged)
+        saveManifest();
     emit assetsDirChanged();
 
     if (ok == false && error)
@@ -712,4 +797,448 @@ void MediaAssets::relinkSource(const QString &source, const QString &target)
         if (samePath(cleanAbsolute(video->sourceUrl()), source))
             video->relinkSource(target);
     }
+}
+
+/*****************************************************************************
+ * Provenance (manifest.json)
+ *****************************************************************************/
+
+QString MediaAssets::manifestFileName()
+{
+    return KManifestName;
+}
+
+QString MediaAssets::manifestKey(const QString &storedPath, const QString &storeDir)
+{
+    if (isInStore(storedPath, storeDir) == false)
+        return QString();
+
+    return QDir::cleanPath(storedPath).mid(QDir::cleanPath(storeDir).length() + 1);
+}
+
+QHash<QString, MediaOrigin> MediaAssets::readManifest(const QString &storeDir)
+{
+    QHash<QString, MediaOrigin> entries;
+    if (storeDir.isEmpty())
+        return entries;
+
+    QFile file(storeDir + "/" + KManifestName);
+    if (file.open(QIODevice::ReadOnly) == false)
+        return entries;
+
+    QJsonParseError parseError;
+    QJsonDocument json = QJsonDocument::fromJson(file.readAll(), &parseError);
+    if (json.isObject() == false)
+    {
+        qWarning() << "MediaAssets: ignoring unreadable" << file.fileName() << "-" << parseError.errorString();
+        return entries;
+    }
+
+    QJsonObject files = json.object().value(QStringLiteral("files")).toObject();
+    for (auto it = files.constBegin(); it != files.constEnd(); ++it)
+    {
+        QJsonObject entry = it.value().toObject();
+        MediaOrigin origin;
+        origin.path = entry.value(QStringLiteral("origin")).toString();
+        origin.size = qint64(entry.value(QStringLiteral("size")).toDouble(-1));
+        origin.mtime = QDateTime::fromString(entry.value(QStringLiteral("mtime")).toString(), Qt::ISODateWithMs);
+        origin.sha1 = entry.value(QStringLiteral("sha1")).toString();
+        if (origin.isValid())
+            entries.insert(it.key(), origin);
+    }
+
+    return entries;
+}
+
+bool MediaAssets::writeManifest(const QString &storeDir, const QHash<QString, MediaOrigin> &entries)
+{
+    if (storeDir.isEmpty() || QDir().mkpath(storeDir) == false)
+        return false;
+
+    QJsonObject files;
+    for (auto it = entries.constBegin(); it != entries.constEnd(); ++it)
+    {
+        const MediaOrigin &origin = it.value();
+        QJsonObject entry;
+        entry.insert(QStringLiteral("origin"), origin.path);
+        entry.insert(QStringLiteral("size"), double(origin.size));
+        entry.insert(QStringLiteral("mtime"), origin.mtime.isValid()
+                     ? origin.mtime.toUTC().toString(Qt::ISODateWithMs) : QString());
+        entry.insert(QStringLiteral("sha1"), origin.sha1);
+        files.insert(it.key(), entry);
+    }
+
+    QJsonObject root;
+    root.insert(QStringLiteral("version"), KManifestVersion);
+    root.insert(QStringLiteral("files"), files);
+
+    QSaveFile file(storeDir + "/" + KManifestName);
+    if (file.open(QIODevice::WriteOnly | QIODevice::Truncate) == false)
+    {
+        qWarning() << "MediaAssets: cannot write" << file.fileName() << "-" << file.errorString();
+        return false;
+    }
+    file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+    if (file.commit() == false)
+    {
+        qWarning() << "MediaAssets: cannot write" << file.fileName() << "-" << file.errorString();
+        return false;
+    }
+    return true;
+}
+
+void MediaAssets::ensureManifest() const
+{
+    const QString storeDir = QDir::cleanPath(assetsDir());
+    if (storeDir == m_manifestDir)
+        return;
+
+    m_manifestDir = storeDir;
+    m_manifest = readManifest(storeDir);
+}
+
+void MediaAssets::saveManifest()
+{
+    ensureManifest();
+    if (m_manifestDir.isEmpty())
+        return;
+
+    writeManifest(m_manifestDir, m_manifest);
+}
+
+void MediaAssets::recordOrigin(const QString &storedPath, const QString &sourcePath, const QString &sha1)
+{
+    const QString storeDir = assetsDir();
+    const QString key = manifestKey(storedPath, storeDir);
+    if (key.isEmpty())
+        return;
+
+    ensureManifest();
+
+    MediaOrigin origin;
+
+    // Importing a copy that already has provenance (the staging store's copy
+    // being brought into the real store): keep where it originally came from
+    if (m_stagingDir.isNull() == false && isInStore(sourcePath, QDir::cleanPath(m_stagingDir->path())))
+    {
+        const QString stagingDir = QDir::cleanPath(m_stagingDir->path());
+        origin = readManifest(stagingDir).value(manifestKey(sourcePath, stagingDir));
+    }
+
+    if (origin.isValid() == false)
+    {
+        origin.path = cleanAbsolute(sourcePath);
+        QFileInfo info(origin.path);
+        if (info.exists())
+        {
+            origin.size = info.size();
+            origin.mtime = info.lastModified();
+        }
+    }
+    origin.sha1 = sha1;
+
+    m_manifest.insert(key, origin);
+    m_changeCache.remove(key);
+    saveManifest();
+}
+
+MediaOrigin MediaAssets::origin(const QString &storedPath) const
+{
+    const QString key = manifestKey(storedPath, assetsDir());
+    if (key.isEmpty())
+        return MediaOrigin();
+
+    ensureManifest();
+    return m_manifest.value(key);
+}
+
+QString MediaAssets::sourceOf(Function *function)
+{
+    if (function == nullptr)
+        return QString();
+
+    QString source;
+    if (function->type() == Function::AudioType)
+        source = static_cast<Audio *>(function)->getSourceFileName();
+    else if (function->type() == Function::VideoType)
+        source = static_cast<Video *>(function)->sourceUrl();
+
+    if (source.isEmpty() || source.contains("://"))
+        return QString();
+
+    return cleanAbsolute(source);
+}
+
+MediaOrigin MediaAssets::originOf(Function *function) const
+{
+    const QString source = sourceOf(function);
+    if (source.isEmpty())
+        return MediaOrigin();
+
+    return origin(source);
+}
+
+bool MediaAssets::originAvailable(Function *function) const
+{
+    MediaOrigin origin = originOf(function);
+    return origin.isValid() && QFileInfo(origin.path).isFile();
+}
+
+QString MediaAssets::hashFile(const QString &path)
+{
+    QFile file(path);
+    if (file.open(QIODevice::ReadOnly) == false)
+        return QString();
+
+    QCryptographicHash hash(QCryptographicHash::Sha1);
+    if (hash.addData(&file) == false)
+        return QString();
+
+    return QString::fromLatin1(hash.result().toHex());
+}
+
+bool MediaAssets::originChanged(Function *function)
+{
+    const QString source = sourceOf(function);
+    const QString key = manifestKey(source, assetsDir());
+    if (key.isEmpty())
+        return false;
+
+    ensureManifest();
+    if (m_manifest.contains(key) == false)
+        return false;
+
+    MediaOrigin origin = m_manifest.value(key);
+    QFileInfo info(origin.path);
+    if (info.isFile() == false)
+        return false;   // unavailable, not changed
+
+    const qint64 size = info.size();
+    const QDateTime mtime = info.lastModified();
+
+    // Cheap path: nothing about the file changed since the copy was taken
+    if (size == origin.size && origin.mtime.isValid() &&
+        mtime.toMSecsSinceEpoch() == origin.mtime.toMSecsSinceEpoch())
+        return false;
+
+    ChangeVerdict verdict = m_changeCache.value(key);
+    if (verdict.size == size && verdict.mtime == mtime)
+        return verdict.changed;
+
+    verdict.size = size;
+    verdict.mtime = mtime;
+
+    if (size != origin.size)
+    {
+        verdict.changed = true;   // a different length cannot be the same content
+    }
+    else
+    {
+        // same size, different mtime: only the content can tell
+        const QString sha1 = hashFile(origin.path);
+        verdict.changed = sha1.isEmpty() ? false : (sha1 != origin.sha1);
+        if (verdict.changed == false && sha1.isEmpty() == false)
+        {
+            // touched but identical: remember the new mtime so the next
+            // check is cheap again
+            origin.mtime = mtime;
+            m_manifest.insert(key, origin);
+            saveManifest();
+        }
+    }
+
+    m_changeCache.insert(key, verdict);
+    return verdict.changed;
+}
+
+QList<Function *> MediaAssets::changedOrigins()
+{
+    QList<Function *> list;
+
+    for (Function *f : m_doc->functionsByType(Function::AudioType))
+    {
+        if (originChanged(f))
+            list << f;
+    }
+    for (Function *f : m_doc->functionsByType(Function::VideoType))
+    {
+        if (originChanged(f))
+            list << f;
+    }
+
+    return list;
+}
+
+/*****************************************************************************
+ * Reload from origin
+ *****************************************************************************/
+
+QString MediaAssets::importOrigin(Function *function, ReloadStatus *status, QString *error)
+{
+    Q_ASSERT(status != nullptr);
+
+    const QString current = sourceOf(function);
+    if (current.isEmpty() || isManaged(current) == false)
+    {
+        *status = NotManaged;
+        return current;
+    }
+
+    MediaOrigin origin = originOf(function);
+    QFileInfo info(origin.isValid() ? origin.path : QString());
+    if (origin.isValid() == false || info.isFile() == false)
+    {
+        *status = Missing;
+        if (error)
+            *error = origin.isValid() ? tr("Media file %1 not found").arg(origin.path)
+                                      : tr("No origin recorded for %1").arg(current);
+        return current;
+    }
+
+    // Nothing to copy when the origin is unchanged; a touched-but-identical
+    // file gets its recorded mtime refreshed by originChanged() itself
+    if (originChanged(function) == false)
+    {
+        *status = Unchanged;
+        return current;
+    }
+
+    const QString storeDir = assetsDir();
+    if (info.size() >= m_backgroundThreshold)
+    {
+        MediaCopyJob *job = enqueueJob(cleanAbsolute(origin.path), storeDir, info.size());
+        job->addReloadFunction(function->id());
+        *status = Queued;
+        return current;
+    }
+
+    QString copyError;
+    QString sha1;
+    QString stored = copyIntoStore(cleanAbsolute(origin.path), storeDir, &copyError, &sha1);
+    if (stored.isEmpty())
+    {
+        *status = Failed;
+        if (error)
+            *error = copyError;
+        return current;
+    }
+
+    // Records the origin's current size/mtime against the new (or, when the
+    // hash directory already existed, the deduplicated) copy
+    recordOrigin(stored, origin.path, sha1);
+
+    *status = samePath(stored, current) ? Unchanged : Reloaded;
+    return stored;
+}
+
+void MediaAssets::applyReload(Function *function, const QString &storedPath)
+{
+    const QString current = sourceOf(function);
+    if (function == nullptr || storedPath.isEmpty() || samePath(current, storedPath))
+        return;
+
+    // The full setters rename the function after the file; a user-chosen
+    // name is put back afterwards
+    const QString name = function->name();
+    const bool customName = name != QFileInfo(current).fileName();
+    const quint32 oldDuration = function->totalDuration();
+
+    if (function->type() == Function::AudioType)
+    {
+        Audio *audio = static_cast<Audio *>(function);
+        audio->setSourceFileName(storedPath);
+        audio->requestBpmDetection(false);
+    }
+    else if (function->type() == Function::VideoType)
+    {
+        static_cast<Video *>(function)->setSourceUrl(storedPath);
+    }
+    else
+    {
+        return;
+    }
+
+    if (customName)
+        function->setName(name);
+
+    // Show clips keep their own duration (ShowFunction is independent of the
+    // function's), so a changed length is only reported here
+    if (function->type() == Function::AudioType)
+    {
+        qDebug().noquote() << QStringLiteral("[Media] Reloaded \"%1\" from %2: duration %3 ms -> %4 ms "
+                                             "(Show clips keep their own duration)")
+                              .arg(function->name(), originOf(function).path)
+                              .arg(oldDuration).arg(function->totalDuration());
+    }
+    else
+    {
+        qDebug().noquote() << QStringLiteral("[Media] Reloaded \"%1\" from %2 (previous duration %3 ms; "
+                                             "the new one is known once the file has been probed)")
+                              .arg(function->name(), originOf(function).path).arg(oldDuration);
+    }
+
+    emit originReloaded(function->id(), current, storedPath, oldDuration);
+}
+
+MediaAssets::ReloadResult MediaAssets::reloadChanged()
+{
+    ReloadResult result;
+
+    QList<Function *> candidates = m_doc->functionsByType(Function::AudioType);
+    candidates << m_doc->functionsByType(Function::VideoType);
+
+    for (Function *function : candidates)
+    {
+        MediaOrigin origin = originOf(function);
+        if (origin.isValid() == false)
+            continue;   // nothing known about this copy (or not a copy at all)
+
+        if (QFileInfo(origin.path).isFile() == false)
+        {
+            result.missing++;
+            continue;
+        }
+
+        if (originChanged(function) == false)
+        {
+            result.unchanged++;
+            continue;
+        }
+
+        if (function->isRunning())
+        {
+            // swapping the decoder under a running playback is not worth it
+            result.busy++;
+            continue;
+        }
+
+        ReloadStatus status;
+        QString error;
+        QString stored = importOrigin(function, &status, &error);
+        switch (status)
+        {
+        case Reloaded:
+            applyReload(function, stored);
+            result.reloaded++;
+            break;
+        case Unchanged:
+            result.unchanged++;
+            break;
+        case Queued:
+            result.queued++;
+            break;
+        case Missing:
+            result.missing++;
+            break;
+        case NotManaged:
+            break;
+        case Failed:
+            result.failed++;
+            if (result.firstError.isEmpty())
+                result.firstError = error;
+            break;
+        }
+    }
+
+    return result;
 }
