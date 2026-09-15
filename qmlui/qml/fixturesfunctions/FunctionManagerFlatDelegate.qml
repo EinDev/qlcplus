@@ -56,7 +56,11 @@ Item
 
             if (model.hasChildren)
             {
-                item.nodePath = Qt.binding(function() { return model.path })
+                // model.path is only the folder's OWN name (TreeModel::PathRole):
+                // "A/X" and "X" both report "X" through it. Every folder operation
+                // (select, rename, delete, drop) identifies the folder by nodePath,
+                // so it must be the full path from the root.
+                item.nodePath = Qt.binding(function() { return model.fullPath })
                 item.dropKeys = "function"
             }
             else
