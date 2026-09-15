@@ -38,6 +38,8 @@
 #define KXMLQLCVideoOutput      QStringLiteral("Output")
 #define KXMLQLCVideoOutputSpout QStringLiteral("spout")
 #define KXMLQLCVideoSpoutSize   QStringLiteral("SpoutSize")
+#define KXMLQLCVideoVolume      QStringLiteral("Volume")
+#define KXMLQLCVideoMuted       QStringLiteral("Muted")
 
 #define KSpoutSenderPrefix      QStringLiteral("QLC+ ")
 
@@ -63,6 +65,7 @@ Video::Video(Doc* doc)
   , m_screen(0)
   , m_outputMode(Windowed)
   , m_spoutSize(QSize(0, 0))
+  , m_muted(false)
 {
     setName(tr("New Video"));
     setRunOrder(Video::SingleShot);
@@ -123,6 +126,9 @@ bool Video::copyFrom(const Function* function)
     m_videoDuration = vid->m_videoDuration;
     m_outputMode = vid->m_outputMode;
     m_spoutSize = vid->m_spoutSize;
+    // Function::copyFrom() doesn't copy attribute values
+    setVolume(vid->volume());
+    setMuted(vid->m_muted);
 
     return Function::copyFrom(function);
 }
@@ -425,6 +431,32 @@ bool Video::fullscreen() const
     return m_outputMode == Fullscreen;
 }
 
+qreal Video::volume() const
+{
+    return getAttributeValue(Volume);
+}
+
+void Video::setVolume(qreal volume)
+{
+    // adjustAttribute() clamps, emits attributeChanged() (which the players
+    // listen to) and volumeChanged(), and is a no-op when unchanged
+    adjustAttribute(volume, Volume);
+}
+
+bool Video::muted() const
+{
+    return m_muted;
+}
+
+void Video::setMuted(bool muted)
+{
+    if (m_muted == muted)
+        return;
+
+    m_muted = muted;
+    emit mutedChanged(muted);
+}
+
 int Video::adjustAttribute(qreal fraction, int attributeId)
 {
     int attrIndex = Function::adjustAttribute(fraction, attributeId);
@@ -436,6 +468,9 @@ int Video::adjustAttribute(qreal fraction, int attributeId)
             emit requestBrightnessVolumeAdjust(getAttributeValue(Intensity));
             emit intensityChanged();
         }
+        break;
+        case Volume:
+            emit volumeChanged();
         break;
         default:
         break;
@@ -498,6 +533,11 @@ bool Video::saveXML(QXmlStreamWriter *doc) const
         QString size = QString("%1,%2").arg(m_spoutSize.width()).arg(m_spoutSize.height());
         doc->writeAttribute(KXMLQLCVideoSpoutSize, size);
     }
+    // Only written when non-default so projects of older builds stay byte-identical
+    if (volume() != 100.0)
+        doc->writeAttribute(KXMLQLCVideoVolume, QString::number(volume()));
+    if (m_muted)
+        doc->writeAttribute(KXMLQLCVideoMuted, "1");
 #ifdef QMLUI
     if (m_customGeometry.isNull() == false)
     {
@@ -572,6 +612,10 @@ bool Video::loadXML(QXmlStreamReader &root)
                 if (slist.count() == 2)
                     setSpoutSize(QSize(slist.at(0).toInt(), slist.at(1).toInt()));
             }
+            if (attrs.hasAttribute(KXMLQLCVideoVolume))
+                setVolume(attrs.value(KXMLQLCVideoVolume).toString().toDouble());
+            if (attrs.hasAttribute(KXMLQLCVideoMuted))
+                setMuted(attrs.value(KXMLQLCVideoMuted).toString() == "1");
 #ifdef QMLUI
             if (attrs.hasAttribute(KXMLQLCVideoGeometry))
             {

@@ -46,6 +46,8 @@ class Video final : public Function
     Q_PROPERTY(bool fullscreen READ fullscreen WRITE setFullscreen)
     Q_PROPERTY(int outputMode READ outputMode WRITE setOutputMode NOTIFY outputModeChanged)
     Q_PROPERTY(QSize spoutSize READ spoutSize WRITE setSpoutSize NOTIFY spoutSizeChanged)
+    Q_PROPERTY(qreal volume READ volume WRITE setVolume NOTIFY volumeChanged)
+    Q_PROPERTY(bool muted READ muted WRITE setMuted NOTIFY mutedChanged)
 
     /*********************************************************************
      * Initialization
@@ -179,6 +181,16 @@ public:
      *  Kept for API compatibility: fullscreen() is true only in Fullscreen
      *  mode, setFullscreen(true/false) selects Fullscreen/Windowed. */
     bool fullscreen() const;
+
+    /** Get/Set the playback volume (0-100). This is the Volume attribute,
+     *  persisted in the project unlike other attributes. */
+    qreal volume() const;
+    void setVolume(qreal volume);
+
+    /** Get/Set the mute flag: when set, the effective playback volume is 0
+     *  regardless of volume(), intensity and fades */
+    bool muted() const;
+    void setMuted(bool muted);
     void setFullscreen(bool enable);
 
     /** Get/Set the output mode (see OutputMode) */
@@ -228,6 +240,8 @@ public:
 signals:
     void sourceChanged(QString url);
     void intensityChanged();
+    void volumeChanged();
+    void mutedChanged(bool muted);
     void customGeometryChanged(QRect rect);
     void rotationChanged(QVector3D rotation);
     void zIndexChanged(int index);
@@ -269,6 +283,8 @@ private:
     OutputMode m_outputMode;
     /** Spout sender size, 0x0 = native resolution */
     QSize m_spoutSize;
+    /** Mute flag, persisted in the project */
+    bool m_muted;
     /** Spout sender name set by the Show runner for the current run */
     QString m_runtimeSenderName;
 

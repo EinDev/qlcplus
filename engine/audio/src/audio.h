@@ -122,6 +122,13 @@ public:
     qreal volume() const;
     void setVolume(qreal volume);
 
+    /** Get/Set the mute flag: when set the effective playback volume is 0 */
+    bool muted() const;
+    void setMuted(bool muted);
+
+    /** Volume actually applied to the renderer: 0 when muted, volume() otherwise */
+    qreal effectiveVolume() const;
+
     /**
      * Retrieve the audio device set for this function
      */
@@ -179,6 +186,8 @@ private:
     qint64 m_audioDuration;
     /** Startup volume of the audio file */
     qreal m_volume;
+    /** Mute flag, persisted in the project */
+    bool m_muted;
 
     /** Offline BPM detection state and result */
     BpmAnalysisState m_bpmState;

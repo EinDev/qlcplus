@@ -48,6 +48,7 @@
 #define KXMLQLCAudioSource QStringLiteral("Source")
 #define KXMLQLCAudioDevice QStringLiteral("Device")
 #define KXMLQLCAudioVolume QStringLiteral("Volume")
+#define KXMLQLCAudioMuted QStringLiteral("Muted")
 
 #define KXMLQLCAudioBpm QStringLiteral("Bpm")
 #define KXMLQLCAudioBpmValue QStringLiteral("bpm")
@@ -68,6 +69,7 @@ Audio::Audio(Doc* doc)
   , m_sourceFileName("")
   , m_audioDuration(0)
   , m_volume(1.0)
+  , m_muted(false)
   , m_bpmState(NotAnalyzed)
   , m_detectedBpm(0.0)
   , m_beatPeriodMs(0.0)
@@ -131,6 +133,8 @@ bool Audio::copyFrom(const Function* function)
     setBpmResult(aud->m_bpmState, aud->m_detectedBpm, aud->m_beatPeriodMs,
                  aud->m_beatPhaseMs, aud->m_bpmConfidence);
     m_audioDuration = aud->m_audioDuration;
+    m_volume = aud->m_volume;
+    m_muted = aud->m_muted;
 
     return Function::copyFrom(function);
 }
@@ -222,6 +226,28 @@ qreal Audio::volume() const
 void Audio::setVolume(qreal volume)
 {
     m_volume = volume;
+
+    // take effect immediately on a running clip
+    if (m_audio_out != NULL)
+        m_audio_out->adjustIntensity(effectiveVolume() * getAttributeValue(Function::Intensity));
+}
+
+bool Audio::muted() const
+{
+    return m_muted;
+}
+
+void Audio::setMuted(bool muted)
+{
+    m_muted = muted;
+
+    if (m_audio_out != NULL)
+        m_audio_out->adjustIntensity(effectiveVolume() * getAttributeValue(Function::Intensity));
+}
+
+qreal Audio::effectiveVolume() const
+{
+    return m_muted ? 0.0 : m_volume;
 }
 
 QString Audio::audioDevice() const
@@ -234,7 +260,7 @@ int Audio::adjustAttribute(qreal fraction, int attributeId)
     int attrIndex = Function::adjustAttribute(fraction, attributeId);
 
     if (m_audio_out != NULL && attrIndex == Intensity)
-        m_audio_out->adjustIntensity(m_volume * getAttributeValue(Function::Intensity));
+        m_audio_out->adjustIntensity(effectiveVolume() * getAttributeValue(Function::Intensity));
 
     return attrIndex;
 }
@@ -361,6 +387,9 @@ bool Audio::saveXML(QXmlStreamWriter *doc) const
     if (m_volume != 1.0)
         doc->writeAttribute(KXMLQLCAudioVolume, QString::number(m_volume));
 
+    if (m_muted)
+        doc->writeAttribute(KXMLQLCAudioMuted, "1");
+
     doc->writeCharacters(m_doc->normalizeComponentPath(m_sourceFileName));
 
     doc->writeEndElement();
@@ -408,6 +437,8 @@ bool Audio::loadXML(QXmlStreamReader &root)
                 setAudioDevice(attrs.value(KXMLQLCAudioDevice).toString());
             if (attrs.hasAttribute(KXMLQLCAudioVolume))
                 setVolume(attrs.value(KXMLQLCAudioVolume).toString().toDouble());
+            if (attrs.hasAttribute(KXMLQLCAudioMuted))
+                setMuted(attrs.value(KXMLQLCAudioMuted).toString() == "1");
 
             setSourceFileName(m_doc->denormalizeComponentPath(root.readElementText()));
         }
@@ -480,7 +511,7 @@ void Audio::preRun(MasterTimer* timer)
 #endif
         m_audio_out->setDecoder(m_decoder);
         m_audio_out->initialize(ap.sampleRate(), ap.channels(), ap.format());
-        m_audio_out->adjustIntensity(m_volume * getAttributeValue(Intensity));
+        m_audio_out->adjustIntensity(effectiveVolume() * getAttributeValue(Intensity));
         m_audio_out->setFadeIn(elapsed() ? 0 : fadeIn);
         m_audio_out->setLooped(runOrder() == Audio::Loop);
         m_audio_out->setUserStop(false);
