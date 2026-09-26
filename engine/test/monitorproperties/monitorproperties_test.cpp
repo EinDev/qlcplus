@@ -634,11 +634,18 @@ void MonitorProperties_Test::rotationMatrix()
     QVERIFY(qFuzzyIsNull(v.y()));
     QVERIFY(qFuzzyCompare(v.z(), 1.0f));
 
-    // X is applied first: the combined matrix equals Z * X
+    // X is applied first, then Z (both negated): +X -> -Y and +Y -> -Z.
+    // Compared through mapped vectors: qFuzzyCompare() on whole matrices
+    // rejects exact zeros against rounding noise.
     QMatrix4x4 combined = MonitorProperties::fixtureRotationMatrix(QVector3D(90, 0, 90));
-    QMatrix4x4 expected = MonitorProperties::fixtureRotationMatrix(QVector3D(0, 0, 90)) *
-                          MonitorProperties::fixtureRotationMatrix(QVector3D(90, 0, 0));
-    QVERIFY(qFuzzyCompare(combined, expected));
+    QVector3D x = combined.map(QVector3D(1, 0, 0));
+    QVERIFY(qFuzzyIsNull(x.x()));
+    QVERIFY(qFuzzyCompare(x.y(), -1.0f));
+    QVERIFY(qFuzzyIsNull(x.z()));
+    QVector3D y = combined.map(QVector3D(0, 1, 0));
+    QVERIFY(qFuzzyIsNull(y.x()));
+    QVERIFY(qFuzzyIsNull(y.y()));
+    QVERIFY(qFuzzyCompare(y.z(), -1.0f));
 }
 
 void MonitorProperties_Test::beamPosition()
