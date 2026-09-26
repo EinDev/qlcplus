@@ -54,6 +54,18 @@ private slots:
     void claimReleaseDumpReset();
     void blackout();
     void grandMaster();
+    void requestBlackout();
+    void universeLookupAndStart();
+    void replaceInputPatchAndProfile();
+    void feedbackPatch();
+    void inputSourceNamesWithPages();
+    void removeDuplicates();
+    void workspaceProfiles();
+    void beatGenerator();
+    void networkServer();
+    void defaults();
+    void loadSaveXML();
+    void loadXMLWebOnlyAndUnknownTags();
 
 private:
     Doc* m_doc;

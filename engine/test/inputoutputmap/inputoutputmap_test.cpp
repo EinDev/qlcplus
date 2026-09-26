@@ -20,17 +20,21 @@
 #include <QtTest>
 
 #define private public
+#define protected public
 #include "iopluginstub.h"
 #include "inputoutputmap_test.h"
 #include "inputoutputmap.h"
+#include "qlcinputchannel.h"
 #include "qlcinputsource.h"
 #include "grandmaster.h"
+#include "mastertimer.h"
 #include "outputpatch.h"
 #include "inputpatch.h"
 #include "qlcconfig.h"
 #include "universe.h"
 #include "qlcfile.h"
 #include "doc.h"
+#undef protected
 #undef private
 
 #define TESTPLUGINDIR "../iopluginstub"
@@ -869,6 +873,751 @@ void InputOutputMap_Test::grandMaster()
 
     iom.setGrandMasterValueMode(GrandMaster::Limit);
     QVERIFY(iom.grandMasterValueMode() == GrandMaster::Limit);
+}
+
+void InputOutputMap_Test::requestBlackout()
+{
+    InputOutputMap iom(m_doc, 2);
+    QSignalSpy spy(&iom, SIGNAL(blackoutChanged(bool)));
+
+    iom.requestBlackout(InputOutputMap::BlackoutRequestNone);
+    QCOMPARE(iom.blackout(), false);
+    QCOMPARE(spy.size(), 0);
+
+    iom.requestBlackout(InputOutputMap::BlackoutRequestOn);
+    QCOMPARE(iom.blackout(), true);
+    QCOMPARE(spy.size(), 1);
+    QCOMPARE(spy.at(0).at(0).toBool(), true);
+
+    // requesting the same state twice is a no-op
+    iom.requestBlackout(InputOutputMap::BlackoutRequestOn);
+    QCOMPARE(iom.blackout(), true);
+    QCOMPARE(spy.size(), 1);
+
+    iom.requestBlackout(InputOutputMap::BlackoutRequestNone);
+    QCOMPARE(iom.blackout(), true);
+
+    iom.requestBlackout(InputOutputMap::BlackoutRequestOff);
+    QCOMPARE(iom.blackout(), false);
+    QCOMPARE(spy.size(), 2);
+}
+
+void InputOutputMap_Test::universeLookupAndStart()
+{
+    InputOutputMap iom(m_doc, 3);
+
+    QVERIFY(iom.universe(0) != NULL);
+    QCOMPARE(iom.universe(0)->id(), quint32(0));
+    QVERIFY(iom.universe(2) != NULL);
+    QCOMPARE(iom.universe(2)->id(), quint32(2));
+    QVERIFY(iom.universe(3) == NULL);
+    QVERIFY(iom.universe(InputOutputMap::invalidUniverse()) == NULL);
+
+    // out of bounds getters
+    QVERIFY(iom.outputPatch(42, 0) == NULL);
+    QCOMPARE(iom.outputPatchesCount(42), 0);
+    QVERIFY(iom.inputPatch(42) == NULL);
+    QVERIFY(iom.feedbackPatch(42) == NULL);
+
+    // starting the universe threads must not block; the destructor
+    // (removeAllUniverses) is in charge of stopping them again
+    iom.startUniverses();
+    foreach (Universe *uni, iom.universes())
+        QTRY_VERIFY_WITH_TIMEOUT(uni->isRunning() == true, 2000);
+    QTest::qSleep(50);
+}
+
+void InputOutputMap_Test::replaceInputPatchAndProfile()
+{
+    InputOutputMap im(m_doc, 2);
+
+    IOPluginStub* stub = static_cast<IOPluginStub*>
+                                (m_doc->ioPluginCache()->plugins().at(0));
+    QVERIFY(stub != NULL);
+
+    QDir dir(INTERNAL_PROFILEDIR);
+    dir.setFilter(QDir::Files);
+    dir.setNameFilters(QStringList() << QString("*%1").arg(KExtInputProfile));
+    im.loadProfiles(dir);
+    QVERIFY(im.profile("Generic MIDI") != NULL);
+
+    // setting a profile on an unpatched universe is harmless
+    QVERIFY(im.setInputProfile(0, "Generic MIDI") == true);
+    QVERIFY(im.inputPatch(0) == NULL);
+    QVERIFY(im.setInputProfile(42, "Generic MIDI") == false);
+
+    QSignalSpy profileSpy(&im, SIGNAL(profileChanged(quint32, const QString&)));
+
+    QVERIFY(im.setInputPatch(0, stub->name(), "", stub->inputs().at(0), 0) == true);
+    QVERIFY(im.inputPatch(0) != NULL);
+    QCOMPARE(im.inputPatch(0)->input(), quint32(0));
+    QVERIFY(im.inputPatch(0)->profile() == NULL);
+    QCOMPARE(profileSpy.size(), 0);
+
+    // replace the existing patch with another line: the old one is disconnected first
+    QVERIFY(im.setInputPatch(0, stub->name(), "", stub->inputs().at(1), 1, "Generic MIDI") == true);
+    QVERIFY(im.inputPatch(0) != NULL);
+    QCOMPARE(im.inputPatch(0)->input(), quint32(1));
+    QCOMPARE(im.inputPatch(0)->profileName(), QString("Generic MIDI"));
+    QCOMPARE(profileSpy.size(), 1);
+    QCOMPARE(profileSpy.at(0).at(0).toUInt(), quint32(0));
+    QCOMPARE(profileSpy.at(0).at(1).toString(), QString("Generic MIDI"));
+
+    // change only the profile of the patched universe
+    QVERIFY(im.setInputProfile(0, "Foobar") == true);
+    QVERIFY(im.inputPatch(0)->profile() == NULL);
+    QVERIFY(im.setInputProfile(0, "Generic MIDI") == true);
+    QCOMPARE(im.inputPatch(0)->profileName(), QString("Generic MIDI"));
+
+    // matching by UID/name falls back to the saved line number when nothing matches
+    QVERIFY(im.setInputPatch(1, stub->name(), "no-such-uid", "no such name", 2) == true);
+    QVERIFY(im.inputPatch(1) != NULL);
+    QCOMPARE(im.inputPatch(1)->input(), quint32(2));
+
+    // removing the patch again
+    QVERIFY(im.setInputPatch(1, stub->name(), "", "", QLCIOPlugin::invalidLine()) == true);
+    QVERIFY(im.inputPatch(1) == NULL);
+    QVERIFY(im.isUniversePatched(1) == false);
+}
+
+void InputOutputMap_Test::feedbackPatch()
+{
+    InputOutputMap iom(m_doc, 2);
+
+    IOPluginStub* stub = static_cast<IOPluginStub*>
+                                (m_doc->ioPluginCache()->plugins().at(0));
+    QVERIFY(stub != NULL);
+
+    // nothing patched yet
+    QVERIFY(iom.sendFeedBack(0, 1, 255, QVariant()) == false);
+    QVERIFY(iom.sendFeedBack(42, 1, 255, QVariant()) == false);
+    QVERIFY(iom.feedbackPatch(0) == NULL);
+    QVERIFY(iom.universe(0)->hasFeedback() == false);
+
+    // an invalid line cannot create a feedback patch
+    QVERIFY(iom.setOutputPatch(0, stub->name(), "", "", QLCIOPlugin::invalidLine(), true) == false);
+    QVERIFY(iom.feedbackPatch(0) == NULL);
+    QVERIFY(iom.setOutputPatch(0, "Foobar", "", "", 1, true) == false);
+    QVERIFY(iom.feedbackPatch(0) == NULL);
+
+    QSignalSpy fbSpy(iom.universe(0), SIGNAL(hasFeedbackChanged()));
+
+    QVERIFY(iom.setOutputPatch(0, stub->name(), "", stub->outputs().at(1), 1, true) == true);
+    QVERIFY(iom.feedbackPatch(0) != NULL);
+    QCOMPARE(iom.feedbackPatch(0)->output(), quint32(1));
+    QVERIFY(iom.feedbackPatch(0)->plugin() == stub);
+    QVERIFY(iom.universe(0)->hasFeedback() == true);
+    QVERIFY(iom.isUniversePatched(0) == true);
+    QCOMPARE(fbSpy.size(), 1);
+
+    // feedback goes through the plugin (the stub silently accepts it)
+    QVERIFY(iom.sendFeedBack(0, 1, 255, QVariant("param")) == true);
+    QVERIFY(iom.sendFeedBack(1, 1, 255, QVariant()) == false);
+
+    // replace the feedback line
+    QVERIFY(iom.setOutputPatch(0, stub->name(), "", stub->outputs().at(2), 2, true) == true);
+    QCOMPARE(iom.feedbackPatch(0)->output(), quint32(2));
+    QCOMPARE(fbSpy.size(), 2);
+
+    // a plugin reconfiguration reconnects input, output and feedback patches
+    QVERIFY(iom.setInputPatch(0, stub->name(), "", stub->inputs().at(3), 3) == true);
+    QVERIFY(iom.setOutputPatch(0, stub->name(), "", stub->outputs().at(0), 0) == true);
+    QSignalSpy cfgSpy(&iom, SIGNAL(pluginConfigurationChanged(QString, bool)));
+    stub->configure();
+    QCOMPARE(cfgSpy.size(), 1);
+    QCOMPARE(cfgSpy.at(0).at(0).toString(), stub->name());
+    QVERIFY(iom.feedbackPatch(0)->isPatched() == true);
+    QVERIFY(iom.inputPatch(0)->isPatched() == true);
+
+    // remove the feedback patch again
+    QVERIFY(iom.setOutputPatch(0, stub->name(), "", "", QLCIOPlugin::invalidLine(), true) == true);
+    QVERIFY(iom.feedbackPatch(0) == NULL);
+    QVERIFY(iom.universe(0)->hasFeedback() == false);
+    QCOMPARE(fbSpy.size(), 3);
+    QVERIFY(iom.sendFeedBack(0, 1, 255, QVariant()) == false);
+}
+
+void InputOutputMap_Test::inputSourceNamesWithPages()
+{
+    InputOutputMap im(m_doc, 2);
+
+    IOPluginStub* stub = static_cast<IOPluginStub*>
+                                (m_doc->ioPluginCache()->plugins().at(0));
+    QVERIFY(stub != NULL);
+
+    QDir dir(INTERNAL_PROFILEDIR);
+    dir.setFilter(QDir::Files);
+    dir.setNameFilters(QStringList() << QString("*%1").arg(KExtInputProfile));
+    im.loadProfiles(dir);
+
+    QString uni, ch;
+
+    // shared pointer overload, unpatched universe with a page
+    QSharedPointer<QLCInputSource> src(new QLCInputSource(0, 4));
+    src->setPage(2);
+    QCOMPARE(src->page(), ushort(2));
+    QVERIFY(im.inputSourceNames(src, uni, ch) == true);
+    QCOMPARE(uni, QString("1 -UNPATCHED-"));
+    QCOMPARE(ch, QString("5: ? (Page 3)"));
+
+    QSharedPointer<QLCInputSource> nullSrc;
+    QVERIFY(im.inputSourceNames(nullSrc, uni, ch) == false);
+
+    // patched without a profile
+    QVERIFY(im.setInputPatch(0, stub->name(), "", stub->inputs().at(0), 0) == true);
+    QVERIFY(im.inputSourceNames(src, uni, ch) == true);
+    QCOMPARE(uni, QString("1: %1").arg(stub->name()));
+    QCOMPARE(ch, QString("5: ? (Page 3)"));
+
+    // patched with a profile: channel 4 of Generic MIDI is a known control
+    QVERIFY(im.setInputPatch(0, stub->name(), "", stub->inputs().at(0), 0, "Generic MIDI") == true);
+    QVERIFY(im.inputPatch(0)->profile() != NULL);
+    QLCInputChannel *ich = im.inputPatch(0)->profile()->channel(4);
+    QString channelName = (ich != NULL) ? ich->name() : QString("?");
+    QVERIFY(im.inputSourceNames(src, uni, ch) == true);
+    QCOMPARE(uni, QString("1: Generic MIDI"));
+    QCOMPARE(ch, QString("5: %1 (Page 3)").arg(channelName));
+
+    // page 0 with a profile channel that does not exist
+    QSharedPointer<QLCInputSource> src2(new QLCInputSource(0, 60000));
+    QVERIFY(im.inputSourceNames(src2, uni, ch) == true);
+    QCOMPARE(ch, QString("60001: ?"));
+}
+
+void InputOutputMap_Test::removeDuplicates()
+{
+    InputOutputMap im(m_doc, 1);
+
+    QStringList single;
+    single << "A";
+    im.removeDuplicates(single);
+    QCOMPARE(single, QStringList() << "A");
+
+    QStringList list;
+    list << "A" << "B" << "A" << "A" << "B";
+    im.removeDuplicates(list);
+    QCOMPARE(list, QStringList() << "A" << "B" << "A 2" << "A 3" << "B 4");
+}
+
+void InputOutputMap_Test::workspaceProfiles()
+{
+    IOPluginStub* stub = static_cast<IOPluginStub*>
+                                (m_doc->ioPluginCache()->plugins().at(0));
+    QVERIFY(stub != NULL);
+
+    QTemporaryDir tmp;
+    QVERIFY(tmp.isValid());
+
+    // a valid profile next to the workspace...
+    QLCInputProfile local;
+    local.setManufacturer("Local");
+    local.setModel("Board");
+    QLCInputChannel *ich = new QLCInputChannel();
+    ich->setName("Fader");
+    local.insertChannel(0, ich);
+    QVERIFY(local.saveXML(tmp.filePath("local.qxi")) == true);
+
+    // ...and a broken one that must be skipped with a warning
+    QFile broken(tmp.filePath("broken.qxi"));
+    QVERIFY(broken.open(QIODevice::WriteOnly));
+    broken.write("<this is not xml");
+    broken.close();
+
+    m_doc->setWorkspacePath(tmp.path());
+
+    InputOutputMap im(m_doc, 1);
+    QVERIFY(im.profileNames().isEmpty());
+
+    // unknown names never trigger a workspace load when no path is set
+    m_doc->setWorkspacePath(QString());
+    QVERIFY(im.profile("Local Board") == NULL);
+    QVERIFY(im.m_localProfilesLoaded == false);
+
+    m_doc->setWorkspacePath(tmp.path());
+    QLCInputProfile *found = im.profile("Local Board");
+    QVERIFY(found != NULL);
+    QCOMPARE(found->name(), QString("Local Board"));
+    QVERIFY(im.m_localProfilesLoaded == true);
+    QCOMPARE(im.profileNames().size(), 1);
+
+    // already loaded: a second miss returns NULL without reloading
+    QVERIFY(im.profile("Nope") == NULL);
+    QCOMPARE(im.profileNames().size(), 1);
+
+    // a workspace profile can be assigned to a patch by name
+    QVERIFY(im.setInputPatch(0, stub->name(), "", "", 0, "Local Board") == true);
+    QVERIFY(im.inputPatch(0)->profile() == found);
+
+    // resetting the universes re-arms the lazy workspace loading
+    im.resetUniverses();
+    QVERIFY(im.m_localProfilesLoaded == false);
+
+    m_doc->setWorkspacePath(QString());
+}
+
+void InputOutputMap_Test::beatGenerator()
+{
+    InputOutputMap im(m_doc, 1);
+
+    IOPluginStub* stub = static_cast<IOPluginStub*>
+                                (m_doc->ioPluginCache()->plugins().at(0));
+    QVERIFY(stub != NULL);
+
+    QCOMPARE(im.beatGeneratorType(), InputOutputMap::Disabled);
+    QCOMPARE(im.bpmNumber(), 0);
+
+    QCOMPARE(im.beatTypeToString(InputOutputMap::Disabled), QString("Disabled"));
+    QCOMPARE(im.beatTypeToString(InputOutputMap::Internal), QString("Internal"));
+    QCOMPARE(im.beatTypeToString(InputOutputMap::Plugin), QString("Plugin"));
+    QCOMPARE(im.beatTypeToString(InputOutputMap::Audio), QString("Audio"));
+    QCOMPARE(im.stringToBeatType("Internal"), InputOutputMap::Internal);
+    QCOMPARE(im.stringToBeatType("Plugin"), InputOutputMap::Plugin);
+    QCOMPARE(im.stringToBeatType("Audio"), InputOutputMap::Audio);
+    QCOMPARE(im.stringToBeatType("Disabled"), InputOutputMap::Disabled);
+    QCOMPARE(im.stringToBeatType("Foo"), InputOutputMap::Disabled);
+
+    QSignalSpy typeSpy(&im, SIGNAL(beatGeneratorTypeChanged()));
+    QSignalSpy bpmSpy(&im, SIGNAL(bpmNumberChanged(int)));
+    QSignalSpy beatSpy(&im, SIGNAL(beat()));
+
+    // while disabled, BPM requests are ignored
+    im.setBpmNumber(90);
+    QCOMPARE(im.bpmNumber(), 0);
+    QCOMPARE(bpmSpy.size(), 0);
+
+    // setting the same type again is a no-op
+    im.setBeatGeneratorType(InputOutputMap::Disabled);
+    QCOMPARE(typeSpy.size(), 0);
+
+    // internal: the master timer is the beat source
+    im.setBeatGeneratorType(InputOutputMap::Internal);
+    QCOMPARE(im.beatGeneratorType(), InputOutputMap::Internal);
+    QCOMPARE(typeSpy.size(), 1);
+    QCOMPARE(m_doc->masterTimer()->beatSourceType(), MasterTimer::Internal);
+    QCOMPARE(im.bpmNumber(), m_doc->masterTimer()->bpmNumber());
+
+    im.setBpmNumber(90);
+    QCOMPARE(im.bpmNumber(), 90);
+    QCOMPARE(m_doc->masterTimer()->bpmNumber(), 90);
+    QVERIFY(bpmSpy.size() >= 1);
+    QCOMPARE(bpmSpy.last().at(0).toInt(), 90);
+    int bpmSignals = bpmSpy.size();
+    im.setBpmNumber(90);
+    QCOMPARE(bpmSpy.size(), bpmSignals);
+
+    // master timer beats are forwarded only in internal mode
+    im.slotMasterTimerBeat();
+    QCOMPARE(beatSpy.size(), 1);
+
+    // plugin: beats come from an input plugin, BPM is derived from their spacing
+    im.setBeatGeneratorType(InputOutputMap::Plugin);
+    QCOMPARE(im.beatGeneratorType(), InputOutputMap::Plugin);
+    QCOMPARE(m_doc->masterTimer()->beatSourceType(), MasterTimer::External);
+    QCOMPARE(im.bpmNumber(), 0);
+    im.slotMasterTimerBeat();
+    QCOMPARE(beatSpy.size(), 1);
+
+    // synthetic releases and non-beat keys are ignored
+    im.slotPluginBeat(0, 0, 0, "beat");
+    im.slotPluginBeat(0, 0, 255, "foo");
+    QCOMPARE(beatSpy.size(), 1);
+
+    QTest::qSleep(60);
+    im.slotPluginBeat(0, 0, 255, "beat");
+    QCOMPARE(beatSpy.size(), 2);
+    QVERIFY(im.bpmNumber() >= 100);
+    QVERIFY(im.bpmNumber() <= 1100);
+    int derived = im.bpmNumber();
+
+    // a second beat with the same spacing is only a drift, or a small change
+    QTest::qSleep(60);
+    im.slotProcessBeat();
+    QCOMPARE(beatSpy.size(), 3);
+    QVERIFY(im.bpmNumber() > 0);
+    Q_UNUSED(derived);
+
+    // a beat source providing its own tempo estimate wins
+    im.slotProcessBeat(128);
+    QCOMPARE(im.bpmNumber(), 128);
+    QCOMPARE(m_doc->masterTimer()->bpmNumber(), 128);
+    QCOMPARE(beatSpy.size(), 4);
+    im.slotProcessBeat(128);
+    QCOMPARE(im.bpmNumber(), 128);
+    QCOMPARE(beatSpy.size(), 5);
+
+    // back to disabled: BPM is reset and the master timer is told
+    im.setBeatGeneratorType(InputOutputMap::Disabled);
+    QCOMPARE(im.beatGeneratorType(), InputOutputMap::Disabled);
+    QCOMPARE(im.bpmNumber(), 0);
+    QCOMPARE(m_doc->masterTimer()->beatSourceType(), MasterTimer::None);
+    im.slotPluginBeat(0, 0, 255, "beat");
+    QCOMPARE(beatSpy.size(), 5);
+
+    m_doc->masterTimer()->requestBpmNumber(120);
+}
+
+void InputOutputMap_Test::networkServer()
+{
+    InputOutputMap im(m_doc, 1);
+
+    QCOMPARE(im.networkServerType(), int(InputOutputMap::NativeServer));
+    QCOMPARE(im.networkServerAutoStart(), false);
+    QVERIFY(im.networkServerName().isEmpty());
+    QVERIFY(im.networkServerPassword().isEmpty());
+
+    QCOMPARE(im.networkServerTypeToString(InputOutputMap::NoServer), QString("None"));
+    QCOMPARE(im.networkServerTypeToString(InputOutputMap::NativeServer), QString("Native"));
+    QCOMPARE(im.networkServerTypeToString(InputOutputMap::WebServer), QString("Web"));
+    QCOMPARE(im.networkServerTypeToString(InputOutputMap::NativeServer | InputOutputMap::WebServer),
+             QString("Native|Web"));
+
+    QCOMPARE(im.stringToNetworkServerType(""), int(InputOutputMap::NoServer));
+    QCOMPARE(im.stringToNetworkServerType("None"), int(InputOutputMap::NoServer));
+    QCOMPARE(im.stringToNetworkServerType("Native"), int(InputOutputMap::NativeServer));
+    QCOMPARE(im.stringToNetworkServerType("web"), int(InputOutputMap::WebServer));
+    QCOMPARE(im.stringToNetworkServerType(" Native | Web "),
+             int(InputOutputMap::NativeServer | InputOutputMap::WebServer));
+    QCOMPARE(im.stringToNetworkServerType("Web|Native|Bogus"),
+             int(InputOutputMap::NativeServer | InputOutputMap::WebServer));
+
+    im.setNetworkServerType(InputOutputMap::WebServer);
+    QCOMPARE(im.networkServerType(), int(InputOutputMap::WebServer));
+    im.setNetworkServerAutoStart(true);
+    QCOMPARE(im.networkServerAutoStart(), true);
+    im.setNetworkServerName("Console");
+    QCOMPARE(im.networkServerName(), QString("Console"));
+    im.setNetworkServerPassword("secret");
+    QCOMPARE(im.networkServerPassword(), QString("secret"));
+}
+
+void InputOutputMap_Test::defaults()
+{
+    IOPluginStub* stub = static_cast<IOPluginStub*>
+                                (m_doc->ioPluginCache()->plugins().at(0));
+    QVERIFY(stub != NULL);
+
+    // Never touch the real user settings (the registry on Windows): redirect
+    // QSettings to an INI file inside a temporary directory for this process.
+    QTemporaryDir tmp;
+    QVERIFY(tmp.isValid());
+    QCoreApplication::setOrganizationName("QLCPlusTest");
+    QCoreApplication::setApplicationName("inputoutputmap_test");
+    QSettings::setDefaultFormat(QSettings::IniFormat);
+    QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, tmp.path());
+
+    {
+        QSettings check;
+        QVERIFY(QDir::cleanPath(check.fileName()).startsWith(QDir::cleanPath(tmp.path())));
+    }
+
+    QDir dir(INTERNAL_PROFILEDIR);
+    dir.setFilter(QDir::Files);
+    dir.setNameFilters(QStringList() << QString("*%1").arg(KExtInputProfile));
+
+    {
+        InputOutputMap im(m_doc, 3);
+        im.loadProfiles(dir);
+        QVERIFY(im.setInputPatch(0, stub->name(), "", "", 0, "Generic MIDI") == true);
+        QVERIFY(im.setOutputPatch(0, stub->name(), "", "", 1) == true);
+        QVERIFY(im.setOutputPatch(1, stub->name(), "", "", 2, true) == true);
+        im.setUniversePassthrough(2, true);
+        im.saveDefaults();
+    }
+
+    {
+        QSettings settings;
+        QCOMPARE(settings.value("/inputmap/universe0/plugin/").toString(), stub->name());
+        QCOMPARE(settings.value("/inputmap/universe0/input/").toString(), QString("0"));
+        QCOMPARE(settings.value("/inputmap/universe0/profile/").toString(), QString("Generic MIDI"));
+        QCOMPARE(settings.value("/inputmap/universe1/plugin/").toString(), QString(KInputNone));
+        QCOMPARE(settings.value("/inputmap/universe1/input/").toString(), QString(KInputNone));
+        QCOMPARE(settings.value("/inputmap/universe1/profile/").toString(), QString(KInputNone));
+        QCOMPARE(settings.value("/inputmap/universe2/passthrough/").toBool(), true);
+        QVERIFY(settings.contains("/inputmap/universe0/passthrough/") == false);
+        QCOMPARE(settings.value("/outputmap/universe0/plugin/").toString(), stub->name());
+        QCOMPARE(settings.value("/outputmap/universe0/output/").toUInt(), quint32(1));
+        QCOMPARE(settings.value("/outputmap/universe0/feedbackplugin/").toString(), QString(KOutputNone));
+        QCOMPARE(settings.value("/outputmap/universe0/feedback/").toString(), QString(KOutputNone));
+        QCOMPARE(settings.value("/outputmap/universe1/plugin/").toString(), QString(KOutputNone));
+        QCOMPARE(settings.value("/outputmap/universe1/output/").toString(), QString(KOutputNone));
+        QCOMPARE(settings.value("/outputmap/universe1/feedbackplugin/").toString(), stub->name());
+        QCOMPARE(settings.value("/outputmap/universe1/feedback/").toString(), QString("2"));
+    }
+
+    {
+        InputOutputMap im(m_doc, 3);
+        im.loadProfiles(dir);
+        QVERIFY(im.inputPatch(0) == NULL);
+        im.loadDefaults();
+
+        QVERIFY(im.inputPatch(0) != NULL);
+        QVERIFY(im.inputPatch(0)->plugin() == stub);
+        QCOMPARE(im.inputPatch(0)->input(), quint32(0));
+        QCOMPARE(im.inputPatch(0)->profileName(), QString("Generic MIDI"));
+        QVERIFY(im.inputPatch(1) == NULL);
+        QVERIFY(im.inputPatch(2) == NULL);
+
+        QVERIFY(im.outputPatch(0) != NULL);
+        QCOMPARE(im.outputPatch(0)->output(), quint32(1));
+        QVERIFY(im.feedbackPatch(0) == NULL);
+        QVERIFY(im.outputPatch(1) == NULL);
+        QVERIFY(im.feedbackPatch(1) != NULL);
+        QCOMPARE(im.feedbackPatch(1)->output(), quint32(2));
+        QVERIFY(im.outputPatch(2) == NULL);
+
+        QCOMPARE(im.getUniversePassthrough(0), false);
+        QCOMPARE(im.getUniversePassthrough(2), true);
+    }
+}
+
+static QString writeIOMapXML(bool nativeServer)
+{
+    QBuffer buffer;
+    buffer.open(QIODevice::WriteOnly | QIODevice::Text);
+    QXmlStreamWriter w(&buffer);
+    w.setAutoFormatting(true);
+
+    w.writeStartElement("InputOutputMap");
+
+    w.writeStartElement("BeatGenerator");
+    w.writeAttribute("BeatType", "Internal");
+    w.writeAttribute("BPM", "90");
+    w.writeEndElement();
+
+    w.writeStartElement("NetworkServer");
+    w.writeAttribute("Type", nativeServer ? "Native|Web" : "Web");
+    w.writeAttribute("AutoStart", "True");
+    w.writeAttribute("Name", "Console");
+    w.writeAttribute("Password", "secret");
+    w.writeEndElement();
+
+    // Universe 0: input with parameters + profile, feedback with parameters
+    w.writeStartElement("Universe");
+    w.writeAttribute("Name", "First");
+    w.writeAttribute("ID", "0");
+    w.writeAttribute("Passthrough", "True");
+
+    w.writeStartElement("Input");
+    w.writeAttribute("Plugin", "I/O Plugin Stub");
+    w.writeAttribute("Name", "1: Stub 1");
+    w.writeAttribute("UID", "");
+    w.writeAttribute("Line", "0");
+    w.writeAttribute("Profile", "Generic MIDI");
+    w.writeStartElement("PluginParameters");
+    w.writeAttribute("inParam", "in-value");
+    w.writeEndElement();
+    w.writeEndElement();
+
+    w.writeStartElement("Feedback");
+    w.writeAttribute("Plugin", "I/O Plugin Stub");
+    w.writeAttribute("Name", "3: Stub 3");
+    w.writeAttribute("Line", "2");
+    w.writeStartElement("PluginParameters");
+    w.writeAttribute("fbParam", "fb-value");
+    w.writeEndElement();
+    w.writeEndElement();
+
+    w.writeStartElement("Bogus");
+    w.writeEndElement();
+
+    w.writeEndElement(); // Universe 0
+
+    // Universe 1: a single output with parameters, backward compatible UID-as-name
+    w.writeStartElement("Universe");
+    w.writeAttribute("Name", "Second");
+    w.writeAttribute("ID", "1");
+    w.writeStartElement("Output");
+    w.writeAttribute("Plugin", "I/O Plugin Stub");
+    w.writeAttribute("UID", "2: Stub 2");
+    w.writeAttribute("Line", "1");
+    w.writeStartElement("PluginParameters");
+    w.writeAttribute("outParam", "out-value");
+    w.writeEndElement();
+    w.writeEndElement();
+    w.writeEndElement(); // Universe 1
+
+    // Universe 2: two outputs without parameters, no name
+    w.writeStartElement("Universe");
+    w.writeAttribute("ID", "2");
+    w.writeStartElement("Output");
+    w.writeAttribute("Plugin", "I/O Plugin Stub");
+    w.writeAttribute("Line", "3");
+    w.writeEndElement();
+    w.writeStartElement("Output");
+    w.writeAttribute("Plugin", "I/O Plugin Stub");
+    w.writeAttribute("Line", "0");
+    w.writeEndElement();
+    w.writeEndElement(); // Universe 2
+
+    w.writeStartElement("Unknown");
+    w.writeEndElement();
+
+    w.writeEndElement(); // InputOutputMap
+    w.writeEndDocument();
+    buffer.close();
+
+    return QString::fromUtf8(buffer.data());
+}
+
+void InputOutputMap_Test::loadSaveXML()
+{
+    IOPluginStub* stub = static_cast<IOPluginStub*>
+                                (m_doc->ioPluginCache()->plugins().at(0));
+    QVERIFY(stub != NULL);
+
+    QDir dir(INTERNAL_PROFILEDIR);
+    dir.setFilter(QDir::Files);
+    dir.setNameFilters(QStringList() << QString("*%1").arg(KExtInputProfile));
+
+    QString saved;
+    {
+        InputOutputMap im(m_doc, 4);
+        im.loadProfiles(dir);
+
+        // wrong root tag
+        {
+            QXmlStreamReader wrong("<Foo/>");
+            wrong.readNextStartElement();
+            QVERIFY(im.loadXML(wrong) == false);
+            QCOMPARE(im.universesCount(), quint32(4));
+        }
+
+        QString xml = writeIOMapXML(true);
+        QXmlStreamReader reader(xml);
+        reader.readNextStartElement();
+        QCOMPARE(reader.name().toString(), QString("InputOutputMap"));
+        QVERIFY(im.loadXML(reader) == true);
+
+        QCOMPARE(im.universesCount(), quint32(3));
+        QCOMPARE(im.getUniverseNameByIndex(0), QString("First"));
+        QCOMPARE(im.getUniverseNameByIndex(1), QString("Second"));
+        QCOMPARE(im.getUniverseNameByIndex(2), QString("Universe 3"));
+        QCOMPARE(im.getUniversePassthrough(0), true);
+        QCOMPARE(im.getUniversePassthrough(1), false);
+
+        QCOMPARE(im.beatGeneratorType(), InputOutputMap::Internal);
+        QCOMPARE(im.bpmNumber(), 90);
+        QCOMPARE(im.networkServerType(), int(InputOutputMap::NativeServer | InputOutputMap::WebServer));
+        QCOMPARE(im.networkServerAutoStart(), true);
+        QCOMPARE(im.networkServerName(), QString("Console"));
+        QCOMPARE(im.networkServerPassword(), QString("secret"));
+
+        // universe 0
+        InputPatch *ip = im.inputPatch(0);
+        QVERIFY(ip != NULL);
+        QVERIFY(ip->plugin() == stub);
+        QCOMPARE(ip->input(), quint32(0));
+        QCOMPARE(ip->profileName(), QString("Generic MIDI"));
+        QCOMPARE(ip->getPluginParameters().value("inParam").toString(), QString("in-value"));
+        QCOMPARE(im.outputPatchesCount(0), 0);
+        OutputPatch *fb = im.feedbackPatch(0);
+        QVERIFY(fb != NULL);
+        QCOMPARE(fb->output(), quint32(2));
+        QCOMPARE(fb->getPluginParameters().value("fbParam").toString(), QString("fb-value"));
+
+        // universe 1
+        QVERIFY(im.inputPatch(1) == NULL);
+        QCOMPARE(im.outputPatchesCount(1), 1);
+        OutputPatch *op = im.outputPatch(1, 0);
+        QVERIFY(op != NULL);
+        QCOMPARE(op->output(), quint32(1));
+        QCOMPARE(op->outputName(), QString("2: Stub 2"));
+        QCOMPARE(op->getPluginParameters().value("outParam").toString(), QString("out-value"));
+
+        // universe 2
+        QCOMPARE(im.outputPatchesCount(2), 2);
+        QCOMPARE(im.outputPatch(2, 0)->output(), quint32(3));
+        QCOMPARE(im.outputPatch(2, 1)->output(), quint32(0));
+
+        QBuffer out;
+        out.open(QIODevice::WriteOnly | QIODevice::Text);
+        QXmlStreamWriter writer(&out);
+        QVERIFY(im.saveXML(&writer) == true);
+        out.close();
+        saved = QString::fromUtf8(out.data());
+    }
+
+    QVERIFY(saved.contains("<InputOutputMap>"));
+    QVERIFY(saved.contains("BeatType=\"Internal\""));
+    QVERIFY(saved.contains("BPM=\"90\""));
+    QVERIFY(saved.contains("Type=\"Native|Web\""));
+    QVERIFY(saved.contains("AutoStart=\"True\""));
+    QVERIFY(saved.contains("Name=\"Console\""));
+    QVERIFY(saved.contains("Password=\"secret\""));
+    QVERIFY(saved.contains("Passthrough=\"True\""));
+    QVERIFY(saved.contains("inParam=\"in-value\""));
+    QVERIFY(saved.contains("fbParam=\"fb-value\""));
+    QVERIFY(saved.contains("outParam=\"out-value\""));
+    QVERIFY(saved.contains("Profile=\"Generic MIDI\""));
+    QCOMPARE(saved.count("<Universe "), 3);
+    QCOMPARE(saved.count("<Output "), 3);
+    QCOMPARE(saved.count("<Input "), 1);
+    QCOMPARE(saved.count("<Feedback "), 1);
+
+    // the saved document loads back into an equivalent map
+    {
+        InputOutputMap im(m_doc, 1);
+        im.loadProfiles(dir);
+        QXmlStreamReader reader(saved);
+        reader.readNextStartElement();
+        QVERIFY(im.loadXML(reader) == true);
+
+        QCOMPARE(im.universesCount(), quint32(3));
+        QCOMPARE(im.getUniverseNameByIndex(0), QString("First"));
+        QCOMPARE(im.getUniversePassthrough(0), true);
+        QCOMPARE(im.beatGeneratorType(), InputOutputMap::Internal);
+        QCOMPARE(im.bpmNumber(), 90);
+        QCOMPARE(im.networkServerName(), QString("Console"));
+
+        QVERIFY(im.inputPatch(0) != NULL);
+        QCOMPARE(im.inputPatch(0)->input(), quint32(0));
+        QCOMPARE(im.inputPatch(0)->profileName(), QString("Generic MIDI"));
+        QCOMPARE(im.inputPatch(0)->getPluginParameters().value("inParam").toString(), QString("in-value"));
+        QVERIFY(im.feedbackPatch(0) != NULL);
+        QCOMPARE(im.feedbackPatch(0)->output(), quint32(2));
+        QCOMPARE(im.feedbackPatch(0)->getPluginParameters().value("fbParam").toString(), QString("fb-value"));
+        QCOMPARE(im.outputPatchesCount(1), 1);
+        QCOMPARE(im.outputPatch(1, 0)->output(), quint32(1));
+        QCOMPARE(im.outputPatch(1, 0)->getPluginParameters().value("outParam").toString(), QString("out-value"));
+        QCOMPARE(im.outputPatchesCount(2), 2);
+        QCOMPARE(im.outputPatch(2, 0)->output(), quint32(3));
+        QCOMPARE(im.outputPatch(2, 1)->output(), quint32(0));
+
+        im.setBeatGeneratorType(InputOutputMap::Disabled);
+    }
+
+    m_doc->masterTimer()->requestBpmNumber(120);
+}
+
+void InputOutputMap_Test::loadXMLWebOnlyAndUnknownTags()
+{
+    InputOutputMap im(m_doc, 2);
+    im.setNetworkServerName("stale");
+    im.setNetworkServerPassword("stale");
+
+    QString xml = writeIOMapXML(false);
+    QXmlStreamReader reader(xml);
+    reader.readNextStartElement();
+    QVERIFY(im.loadXML(reader) == true);
+
+    // a web-only server carries no native credentials
+    QCOMPARE(im.networkServerType(), int(InputOutputMap::WebServer));
+    QCOMPARE(im.networkServerAutoStart(), true);
+    QVERIFY(im.networkServerName().isEmpty());
+    QVERIFY(im.networkServerPassword().isEmpty());
+
+    QBuffer out;
+    out.open(QIODevice::WriteOnly | QIODevice::Text);
+    QXmlStreamWriter writer(&out);
+    QVERIFY(im.saveXML(&writer) == true);
+    out.close();
+    QString saved = QString::fromUtf8(out.data());
+    QVERIFY(saved.contains("Type=\"Web\""));
+    QVERIFY(saved.contains("Name=\"Console\"") == false);
+    QVERIFY(saved.contains("Password=") == false);
+
+    im.setBeatGeneratorType(InputOutputMap::Disabled);
+    m_doc->masterTimer()->requestBpmNumber(120);
 }
 
 // InputOutputMap_Test::profileDirectories() exercises InputOutputMap::
