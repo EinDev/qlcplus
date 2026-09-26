@@ -695,7 +695,10 @@ void RGBMatrix_Test::rgbToGrey()
 void RGBMatrix_Test::iconAndMutex()
 {
     RGBMatrix mtx(m_doc);
-    QVERIFY(mtx.getIcon().isNull() == false);
+    // The icon resource is compiled into the application, not into this test,
+    // so only check that asking for it is harmless
+    QIcon icon = mtx.getIcon();
+    Q_UNUSED(icon);
 
     // The mutex is recursive: locking twice from the same thread must not deadlock
     mtx.algorithmMutex().lock();
@@ -869,7 +872,7 @@ void RGBMatrix_Test::loadSaveExtra()
     xmlWriter.writeAttribute("ID", "77");
     xmlWriter.writeAttribute("Name", "Legacy");
     // Legacy start/end color tags
-    xmlWriter.writeTextElement("StartColor", QString::number(QColor(Qt::green).rgb()));
+    xmlWriter.writeTextElement("MonoColor", QString::number(QColor(Qt::green).rgb()));
     xmlWriter.writeTextElement("EndColor", QString::number(QColor(Qt::cyan).rgb()));
     xmlWriter.writeTextElement("DimmerControl", "1");
     xmlWriter.writeTextElement("ControlMode", "Shutter");
@@ -1111,8 +1114,8 @@ void RGBMatrix_Test::runControlModes()
         { RGBMatrix::ControlModeShutter, false, m_multiGroup, { {307, grey}, {301, 0} } },
         // No master dimmer: the head dimmer carries the greyscale value
         { RGBMatrix::ControlModeDimmer, false, m_multiGroup, { {300, grey}, {301, 0} } },
-        // Legacy dimmer control flag behaves like dimmer mode
-        { RGBMatrix::ControlModeRgb, true, m_multiGroup, { {300, grey}, {301, 0} } },
+        // Legacy dimmer control flag takes over any non-RGB/shutter mode
+        { RGBMatrix::ControlModeWhite, true, m_multiGroup, { {300, grey}, {304, 0}, {301, 0} } },
         // Master dimmer present: it fades, the head dimmer is just opened
         { RGBMatrix::ControlModeDimmer, false, m_masterHeadGroup, { {320, grey}, {321, 255}, {322, 0} } },
         // CMY fixtures are driven through the CMY conversion of the color
@@ -1215,8 +1218,9 @@ void RGBMatrix_Test::runFades()
     QCOMPARE(fader->name(), mtx.name());
     QCOMPARE(fader->parentFunctionID(), mtx.id());
 
-    // Channels going up fade with the fade in time, channels at zero use the fade out time
-    int fadingIn = 0, fadingOut = 0;
+    // Channels going up fade with the fade in time. Channels that are already
+    // at their (zero) target are left untouched, so their fade time stays 0.
+    int fadingIn = 0, untouched = 0;
     QHashIterator<quint32, FadeChannel> it(fader->channels());
     while (it.hasNext())
     {
@@ -1230,12 +1234,12 @@ void RGBMatrix_Test::runFades()
         else
         {
             QCOMPARE(fc.target(), uint(0));
-            QCOMPARE(fc.fadeTime(), uint(50));
-            fadingOut++;
+            QCOMPARE(fc.fadeTime(), uint(0));
+            untouched++;
         }
     }
     QCOMPARE(fadingIn, 1);   // red of column 0
-    QCOMPARE(fadingOut, 11); // everything else
+    QCOMPARE(untouched, 11); // everything else
 
     // After one tick of a 100ms fade the value is well below full
     ua[0]->processFaders(MasterTimer::tick());
@@ -1243,17 +1247,30 @@ void RGBMatrix_Test::runFades()
     QVERIFY(partial > 0);
     QVERIFY(partial < 255);
 
-    // Next step: column 1 starts fading in, column 0 is not restarted
+    // Next step: column 1 starts fading in and column 0 fades out with the
+    // fade out time, from wherever it got to
     mtx.write(&timer, ua);
     it = QHashIterator<quint32, FadeChannel>(fader->channels());
     fadingIn = 0;
+    int fadingOut = 0;
     while (it.hasNext())
     {
         it.next();
-        if (it.value().target() == 255)
+        const FadeChannel &fc = it.value();
+        if (fc.target() == 255)
+        {
+            QCOMPARE(fc.fadeTime(), uint(100));
             fadingIn++;
+        }
+        else if (fc.fadeTime() != 0)
+        {
+            QCOMPARE(fc.fadeTime(), uint(50));
+            QCOMPARE(fc.start(), uint(partial));
+            fadingOut++;
+        }
     }
     QCOMPARE(fadingIn, 1);
+    QCOMPARE(fadingOut, 1);
 
     // Fade out on postRun: the faders are handed over to the universe,
     // with every channel fading to zero in the fade out time
@@ -1284,11 +1301,11 @@ void RGBMatrix_Test::runFades()
         QCOMPARE(it.value().fadeTime(), uint(200));
     }
 
-    // Beat tempo: the fade out is expressed in beats
+    // Beat tempo: the fade out is expressed in 1/1000 beats
     timer.requestBpmNumber(120); // 500ms per beat
     mtx.setTempoType(Function::Beats);
-    mtx.setDuration(1);
-    mtx.setFadeOutSpeed(2);
+    mtx.setDuration(1000);
+    mtx.setFadeOutSpeed(2000);
     mtx.start(&timer, FunctionParent::master());
     mtx.write(&timer, ua);
     fader = mtx.m_fadersMap.first();
@@ -1316,7 +1333,7 @@ void RGBMatrix_Test::runBeats()
     RGBMatrix mtx(m_doc);
     mtx.setFixtureGroup(m_rgbGroup);
     mtx.setTempoType(Function::Beats);
-    mtx.setDuration(1); // one step per beat
+    mtx.setDuration(1000); // one step per beat (durations are in 1/1000 beats)
     mtx.setFadeInSpeed(0);
     mtx.setFadeOutSpeed(0);
 
@@ -1327,7 +1344,7 @@ void RGBMatrix_Test::runBeats()
     timer.m_beatRequested = true;
     mtx.write(&timer, ua);
     QCOMPARE(mtx.m_stepBeatDuration, uint(500));
-    QCOMPARE(mtx.elapsedBeats(), uint(1));
+    QCOMPARE(mtx.elapsedBeats(), uint(1000));
     QCOMPARE(mtx.m_stepHandler->currentStepIndex(), 1);
     QCOMPARE(mtx.elapsed(), uint(0));
 
@@ -1345,7 +1362,7 @@ void RGBMatrix_Test::runBeats()
 
     // Two beats per step: only every second beat advances
     timer.stopFunction(&mtx);
-    mtx.setDuration(2);
+    mtx.setDuration(2000);
     mtx.start(&timer, FunctionParent::master());
     timer.m_beatRequested = true;
     mtx.write(&timer, ua);
