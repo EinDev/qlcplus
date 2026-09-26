@@ -259,6 +259,11 @@ void VCPage::mapKeySequence(QKeySequence sequence, quint32 id, VCWidget *widget,
     refs.first = id;
     refs.second = widget;
 
+    /** Never map the same control twice, or the widget would receive
+     *  the key event once per copy */
+    if (m_keySequencesMap.contains(sequence, refs))
+        return;
+
     m_keySequencesMap.insert(sequence, refs);
 }
 
@@ -275,16 +280,14 @@ void VCPage::unMapKeySequence(QKeySequence sequence, quint32 id, VCWidget *widge
             return;
     }
 
-    for (QPair<quint32, VCWidget *> match : m_keySequencesMap.values(sequence)) // C++11
-    {
-        if (match.first == id && match.second == widget)
-        {
-            m_keySequencesMap.remove(sequence, match);
+    QPair <quint32, VCWidget *> refs;
+    refs.first = id;
+    refs.second = widget;
 
-            //qDebug() << "Multihash keys after deletion:" << m_keySequencesMap.count(key);
-            return;
-        }
-    }
+    /** Remove every copy of this control, not just the first one */
+    m_keySequencesMap.remove(sequence, refs);
+
+    //qDebug() << "Multihash keys after deletion:" << m_keySequencesMap.count(sequence);
 }
 
 void VCPage::updateKeySequenceIDInMap(QKeySequence sequence, quint32 id, VCWidget *widget, bool checkChildren)
