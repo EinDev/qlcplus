@@ -1428,6 +1428,43 @@ void ChaserRunner_Test::adjustMasterIntensityAcrossRunningCrossfadeSteps()
     m_doc->inputOutputMap()->releaseUniverses(false);
 }
 
+void ChaserRunner_Test::startTimeOffset()
+{
+    m_chaser->setDirection(Function::Forward);
+    m_chaser->setRunOrder(Function::Loop);
+    m_chaser->setDuration(1000);
+
+    // A start time inside the second step: start there, part way through
+    ChaserRunner cr(m_doc, m_chaser, 1500);
+    QCOMPARE(cr.m_pendingAction.m_action, ChaserSetStepIndex);
+    QCOMPARE(cr.m_pendingAction.m_stepIndex, 1);
+    QCOMPARE(cr.m_startOffset, quint32(500));
+
+    MasterTimer timer(m_doc);
+    QVERIFY(cr.write(&timer, QList<Universe*>()) == true);
+    timer.timerTick();
+    QCOMPARE(cr.currentStepIndex(), 1);
+    QCOMPARE(timer.m_functionList.size(), 1);
+    QCOMPARE(timer.m_functionList[0], m_scene2);
+    // The offset plus the start tick, plus the tick of this write's round
+    QCOMPARE(cr.m_runnerSteps.at(0)->m_elapsed, quint32(500 + 2 * MasterTimer::tick()));
+    QCOMPARE(cr.m_startOffset, quint32(0));
+
+    // Per-step durations are used to find the step too
+    m_chaser->setDurationMode(Chaser::PerStep);
+    m_chaser->replaceStep(ChaserStep(m_scene1->id(), 0, 100, 0), 0);
+    m_chaser->replaceStep(ChaserStep(m_scene2->id(), 0, 200, 0), 1);
+    m_chaser->replaceStep(ChaserStep(m_scene3->id(), 0, 300, 0), 2);
+    ChaserRunner cr2(m_doc, m_chaser, 350);
+    QCOMPARE(cr2.m_pendingAction.m_stepIndex, 2);
+    QCOMPARE(cr2.m_startOffset, quint32(50));
+
+    // A start time beyond the last step starts normally
+    ChaserRunner cr3(m_doc, m_chaser, 5000);
+    QCOMPARE(cr3.m_pendingAction.m_action, ChaserNoAction);
+    QCOMPARE(cr3.m_startOffset, quint32(0));
+}
+
 void ChaserRunner_Test::stopStepAction()
 {
     m_chaser->setDirection(Function::Forward);
@@ -1607,7 +1644,7 @@ void ChaserRunner_Test::writeRandomForward()
 
     // At the end of the round the order is reshuffled: the next step is
     // unknown but never the one that just ran
-    for (int round = 0; round < 10; round++)
+    for (int round = 0; round < 60; round++)
     {
         int last = cr.currentStepIndex();
         QVERIFY(cr.write(&timer, QList<Universe*>()) == true);
@@ -1647,7 +1684,7 @@ void ChaserRunner_Test::writeRandomBackward()
     QCOMPARE(timer.m_functionList[0], m_scene3);
     QCOMPARE(cr.currentStepIndex(), 2);
 
-    for (int round = 0; round < 10; round++)
+    for (int round = 0; round < 60; round++)
     {
         int last = cr.currentStepIndex();
         QVERIFY(cr.write(&timer, QList<Universe*>()) == true);

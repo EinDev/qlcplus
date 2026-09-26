@@ -69,6 +69,7 @@ private slots:
     void adjustIntensity();
     void adjustMasterIntensityAcrossRunningCrossfadeSteps();
 
+    void startTimeOffset();
     void stopStepAction();
     void currentRunningStep();
     void computeNextStepLoop();

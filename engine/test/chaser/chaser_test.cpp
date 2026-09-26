@@ -1120,6 +1120,11 @@ void Chaser_Test::iconAndSpeedModeEnum()
     QCOMPARE(QString(speedMode.valueToKey(Chaser::Common)), QString("Common"));
     QCOMPARE(QString(speedMode.valueToKey(Chaser::PerStep)), QString("PerStep"));
     QCOMPARE(QString(speedMode.valueToKey(Chaser::Default)), QString("Default"));
+
+    // The Q_ENUM helpers, called with a run-time value so they really run
+    Chaser::SpeedMode mode = c.fadeInMode();
+    QCOMPARE(QString(qt_getEnumName(mode)), QString("SpeedMode"));
+    QCOMPARE(qt_getEnumMetaObject(mode), &Chaser::staticMetaObject);
 }
 
 void Chaser_Test::totalDuration()
