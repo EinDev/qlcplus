@@ -55,6 +55,7 @@ private slots:
     void writeLTPReady();
 
     void iconPauseAndReleaseFlags();
+    void colorValueEdgeCases();
     void fixtureGroupsAndPalettes();
     void saveLoadRoundTrip();
     void loadLegacyChannelGroupsAndEmptyValues();

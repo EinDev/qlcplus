@@ -1014,6 +1014,55 @@ void Scene_Test::iconPauseAndReleaseFlags()
     QVERIFY(timer.m_dmxSourceList.isEmpty());
 }
 
+void Scene_Test::colorValueEdgeCases()
+{
+    Doc *doc = new Doc(this);
+
+    // A white LED counts as an equal amount of red, green and blue
+    QLCFixtureDef *rgbwDef = m_doc->fixtureDefCache()->fixtureDef("Generic", "Generic RGBW");
+    QVERIFY(rgbwDef != NULL);
+    QLCFixtureMode *rgbwMode = rgbwDef->mode("RGBW");
+    QVERIFY(rgbwMode != NULL);
+    Fixture *rgbw = new Fixture(doc);
+    rgbw->setFixtureDefinition(rgbwDef, rgbwMode);
+    QCOMPARE(rgbw->channels(), quint32(4));
+    rgbw->setAddress(0);
+    rgbw->setUniverse(0);
+    doc->addFixture(rgbw);
+
+    // A colour wheel with split (double) colours reports the first colour
+    QLCFixtureDef *wheelDef = m_doc->fixtureDefCache()->fixtureDef("Showtec", "Acrobat");
+    QVERIFY(wheelDef != NULL);
+    QLCFixtureMode *wheelMode = wheelDef->mode("16 Channel");
+    QVERIFY(wheelMode != NULL);
+    Fixture *wheel = new Fixture(doc);
+    wheel->setFixtureDefinition(wheelDef, wheelMode);
+    QCOMPARE(wheel->channels(), quint32(16));
+    wheel->setAddress(10);
+    wheel->setUniverse(0);
+    doc->addFixture(wheel);
+
+    // A plain dimmer carries no colour information at all
+    Fixture *dimmer = new Fixture(doc);
+    dimmer->setAddress(30);
+    dimmer->setUniverse(0);
+    dimmer->setChannels(2);
+    doc->addFixture(dimmer);
+
+    Scene *s = new Scene(doc);
+    doc->addFunction(s);
+    s->setValue(rgbw->id(), 3, 200);   // White
+    s->setValue(rgbw->id(), 99, 10);   // channel the fixture does not have
+    s->setValue(wheel->id(), 7, 68);   // "White + Blue" split colour
+    s->setValue(dimmer->id(), 0, 255);
+    s->setValue(4242, 0, 77);          // fixture that does not exist
+
+    QCOMPARE(s->colorValue(rgbw->id()), QColor(200, 200, 200));
+    QCOMPARE(s->colorValue(wheel->id()), QColor(255, 255, 255));
+    QVERIFY(s->colorValue(dimmer->id()).isValid() == false);
+    QVERIFY(s->colorValue(4242).isValid() == false);
+}
+
 void Scene_Test::fixtureGroupsAndPalettes()
 {
     Scene s(m_doc);

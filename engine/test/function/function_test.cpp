@@ -22,6 +22,7 @@
 #include <QXmlStreamReader>
 #include <QXmlStreamWriter>
 #include <QMetaEnum>
+#include <QDebug>
 
 #include "function_test.h"
 
@@ -1569,26 +1570,48 @@ void Function_Test::attributeEdgeCases()
     QCOMPARE(stub.m_overrideMap.count(), 0);
 }
 
+/** Stream a Q_ENUM value that is only known at run time, the way debug output
+ *  of a live Function does: this resolves the enum's meta object and name
+ *  through the registration helpers instead of folding them at compile time */
+template <typename Enum>
+static QString enumDebugText(int rawValue)
+{
+    volatile int raw = rawValue;
+    Enum value = Enum(raw);
+    QString text;
+    {
+        QDebug dbg(&text);
+        dbg << value;
+    }
+    return text;
+}
+
 void Function_Test::enumsRegistered()
 {
     QMetaEnum type = QMetaEnum::fromType<Function::Type>();
     QVERIFY(type.isValid());
     QCOMPARE(QString(type.valueToKey(Function::SceneType)), QString("SceneType"));
+    QVERIFY(enumDebugText<Function::Type>(Function::SceneType).contains("SceneType"));
 
     QMetaEnum prop = QMetaEnum::fromType<Function::PropType>();
     QCOMPARE(QString(prop.valueToKey(Function::FadeIn)), QString("FadeIn"));
+    QVERIFY(enumDebugText<Function::PropType>(Function::FadeIn).contains("FadeIn"));
 
     QMetaEnum runOrder = QMetaEnum::fromType<Function::RunOrder>();
     QCOMPARE(QString(runOrder.valueToKey(Function::PingPong)), QString("PingPong"));
+    QVERIFY(enumDebugText<Function::RunOrder>(Function::PingPong).contains("PingPong"));
 
     QMetaEnum direction = QMetaEnum::fromType<Function::Direction>();
     QCOMPARE(QString(direction.valueToKey(Function::Backward)), QString("Backward"));
+    QVERIFY(enumDebugText<Function::Direction>(Function::Backward).contains("Backward"));
 
     QMetaEnum tempo = QMetaEnum::fromType<Function::TempoType>();
     QCOMPARE(QString(tempo.valueToKey(Function::Beats)), QString("Beats"));
+    QVERIFY(enumDebugText<Function::TempoType>(Function::Beats).contains("Beats"));
 
     QMetaEnum fractions = QMetaEnum::fromType<Function::FractionsType>();
     QCOMPARE(QString(fractions.valueToKey(Function::AllFractions)), QString("AllFractions"));
+    QVERIFY(enumDebugText<Function::FractionsType>(Function::AllFractions).contains("AllFractions"));
 }
 
 QTEST_MAIN(Function_Test)

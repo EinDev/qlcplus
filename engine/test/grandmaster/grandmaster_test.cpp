@@ -19,6 +19,7 @@
 
 #include <QtTest>
 #include <QMetaEnum>
+#include <QDebug>
 #include <sys/time.h>
 
 #include "grandmaster_test.h"
@@ -118,6 +119,20 @@ void GrandMaster_Test::enumsRegistered()
     QMetaEnum channelMode = QMetaEnum::fromType<GrandMaster::ChannelMode>();
     QVERIFY(channelMode.isValid());
     QCOMPARE(QString(channelMode.valueToKey(GrandMaster::AllChannels)), QString("AllChannels"));
+
+    // Debug output of the live modes resolves the enum names through the
+    // registration helpers at run time (nothing to fold at compile time here)
+    m_gm->setValueMode(GrandMaster::Limit);
+    m_gm->setChannelMode(GrandMaster::AllChannels);
+    QString text;
+    {
+        QDebug dbg(&text);
+        dbg << m_gm->valueMode() << m_gm->channelMode();
+    }
+    QVERIFY(text.contains("Limit"));
+    QVERIFY(text.contains("AllChannels"));
+    m_gm->setValueMode(GrandMaster::Reduce);
+    m_gm->setChannelMode(GrandMaster::Intensity);
 }
 
 QTEST_APPLESS_MAIN(GrandMaster_Test)
