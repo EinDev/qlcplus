@@ -50,6 +50,25 @@ private slots:
     void save();
     void savePreset();
     void saveAlias();
+
+    void presetStrings();
+    void presetTypes();
+    void presetUnits();
+    void warning();
+    void resources();
+    void copyPresetAndAliases();
+    void lessThan();
+    void savePicture();
+    void saveColours();
+    void saveSingleValue();
+    void loadPreset();
+    void loadPicture();
+    void loadColours();
+    void loadLegacyResource();
+    void loadLegacyColours();
+    void loadEmptyName();
+    void loadUnknownTag();
+    void loadClampedRange();
 };
 
 #endif

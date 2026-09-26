@@ -43,6 +43,23 @@ private slots:
     void load();
     void loadWrongRoot();
     void save();
+
+    void assignment();
+    void presetStrings();
+    void presetMapping();
+    void presetSameValue();
+    void presetCapabilities();
+    void copyPreset();
+    void groupStrings();
+    void colourStrings();
+    void icons();
+    void searchCapabilityContains();
+    void setCapabilityRange();
+    void savePreset();
+    void saveColour();
+    void loadPreset();
+    void loadNoName();
+    void loadUnknownTag();
 };
 
 #endif
