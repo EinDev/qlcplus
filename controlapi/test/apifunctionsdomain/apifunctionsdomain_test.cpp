@@ -168,6 +168,18 @@ void ApiFunctionsDomain_Test::startOnMissingFunctionIsNotFound()
     QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
     QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(),
               QStringLiteral("NOT_FOUND"));
+
+    // Numeric ids outside quint32's range must be NOT_FOUND too, never cast
+    // (double -> quint32 out of range is undefined behaviour).
+    for (double bad : { 1e300, 4294967296.0, -1.0 })
+    {
+        QJsonObject numeric;
+        numeric.insert(QStringLiteral("functionId"), bad);
+        reply = sendAndWaitForReply(QStringLiteral("functions.start"), numeric);
+        QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+        QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(),
+                  QStringLiteral("NOT_FOUND"));
+    }
 }
 
 void ApiFunctionsDomain_Test::stopStopsFunction()

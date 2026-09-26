@@ -1027,6 +1027,14 @@ void ApiVcDomain_Test::liveSliderSetValueBroadcastsAndValidates()
     QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.slider.setValue"), widgetParams(sliderId, neg), QStringLiteral("t-neg"))), QStringLiteral("INVALID_PARAMS"));
     QJsonObject frac; frac.insert(QStringLiteral("value"), 12.5);
     QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.slider.setValue"), widgetParams(sliderId, frac), QStringLiteral("t-frac"))), QStringLiteral("INVALID_PARAMS"));
+    // Whole numbers outside qint32 read back as 0 through QJsonValue::toInt() - they must be
+    // rejected, not silently applied as value 0.
+    QJsonObject huge; huge.insert(QStringLiteral("value"), 4294967296.0);
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.slider.setValue"), widgetParams(sliderId, huge), QStringLiteral("t-huge"))), QStringLiteral("INVALID_PARAMS"));
+    QJsonObject astro; astro.insert(QStringLiteral("value"), 1e300);
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.slider.setValue"), widgetParams(sliderId, astro), QStringLiteral("t-astro"))), QStringLiteral("INVALID_PARAMS"));
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("vc.widget.get"), widgetParams(sliderId), QStringLiteral("t-sg2"))
+                 .value(QStringLiteral("result")).toObject().value(QStringLiteral("value")).toInt(), 200);
     QJsonObject str; str.insert(QStringLiteral("value"), QStringLiteral("100"));
     QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.slider.setValue"), widgetParams(sliderId, str), QStringLiteral("t-str"))), QStringLiteral("INVALID_PARAMS"));
     QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.slider.setValue"), widgetParams(sliderId), QStringLiteral("t-miss"))), QStringLiteral("INVALID_PARAMS"));

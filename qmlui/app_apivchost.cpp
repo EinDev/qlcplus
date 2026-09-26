@@ -48,6 +48,7 @@
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QPointF>
+#include <QPointer>
 #include <QSet>
 
 #include "app.h"
@@ -337,6 +338,20 @@ bool applySliderConfig(VCSlider *s, const QJsonObject &patch, QString *error)
     }
     if (patch.contains(QStringLiteral("catchValues")))
         s->setCatchValues(patch.value(QStringLiteral("catchValues")).toBool());
+    // The limits are DMX values: the on-screen editor's spin boxes confine them to 0..255, and
+    // vcSliderSetValue() below rounds them to int (undefined behaviour for something like 1e300),
+    // so refuse anything the UI itself could not have produced instead of storing it.
+    for (const QString &key : { QStringLiteral("rangeLowLimit"), QStringLiteral("rangeHighLimit") })
+    {
+        if (patch.contains(key) == false)
+            continue;
+        QJsonValue v = patch.value(key);
+        if (v.isDouble() == false || v.toDouble() < 0.0 || v.toDouble() > 255.0)
+        {
+            if (error) *error = QStringLiteral("%1 must be a number 0..255").arg(key);
+            return false;
+        }
+    }
     if (patch.contains(QStringLiteral("rangeLowLimit")))
         s->setRangeLowLimit(patch.value(QStringLiteral("rangeLowLimit")).toDouble());
     if (patch.contains(QStringLiteral("rangeHighLimit")))
@@ -904,98 +919,106 @@ void App::slotVcWidgetRegistered(VCWidget *widget)
     if (widget == nullptr || qobject_cast<VCPage *>(widget) != nullptr)
         return;
 
+    // A widget can enter the map more than once over its lifetime (VirtualConsole::moveWidget()
+    // removes it and re-adds it, id clashes re-register it) and Qt::UniqueConnection is not available
+    // for the functor connections below, so drop whatever relay this App already holds on it first.
+    // App has no other connections from VC widgets - this is exactly the relay set below.
+    disconnect(widget, nullptr, this, nullptr);
+
     // Pointer-to-member connects: these are qmlui classes living in this same binary (not the engine
     // DLL, where only the string-based form is reliable on this MinGW build - see CLAUDE.md), so the
     // compile-time checked form is safe here and preferable, since a silently mistyped SIGNAL() string
-    // could only be caught by running the GUI. UniqueConnection guards against addWidgetToMap() seeing
-    // the same widget twice (id clash re-registration).
+    // could only be caught by running the GUI.
+    //
+    // Each relay captures a QPointer to the widget instead of reading sender() in a member slot. Not
+    // every one of these signals is emitted on the GUI thread: VCSlider::valueChanged fires from
+    // writeDMXLevel()'s monitor feedback on the MasterTimer thread, which makes this connection a
+    // queued one - and for a queued call Qt hands the slot a raw sender pointer that is already
+    // dangling if the widget was deleted (widget/page delete, project close) between emission and
+    // delivery. The QPointer is cleared by the widget's destruction, so such a late delivery is
+    // simply dropped. `this` as the context object keeps every relay on the GUI thread regardless of
+    // where the signal came from, which is what ApiVcLiveListener's contract promises.
     switch (widget->type())
     {
         case VCWidget::ButtonWidget:
-            connect(qobject_cast<VCButton *>(widget), &VCButton::stateChanged,
-                    this, &App::slotVcButtonStateChanged, Qt::UniqueConnection);
+        {
+            QPointer<VCButton> b(qobject_cast<VCButton *>(widget));
+            connect(b.data(), &VCButton::stateChanged, this, [this, b](int state)
+            {
+                if (b.isNull() || m_vcLiveListener == nullptr)
+                    return;
+                m_vcLiveListener->vcButtonStateChanged(b->id(), buttonStateString(state));
+            });
+        }
         break;
         case VCWidget::SliderWidget:
-            connect(qobject_cast<VCSlider *>(widget), &VCSlider::valueChanged,
-                    this, &App::slotVcSliderValueChanged, Qt::UniqueConnection);
+        {
+            QPointer<VCSlider> s(qobject_cast<VCSlider *>(widget));
+            connect(s.data(), &VCSlider::valueChanged, this, [this, s](int value)
+            {
+                if (s.isNull() || m_vcLiveListener == nullptr)
+                    return;
+                m_vcLiveListener->vcSliderValueChanged(s->id(), value);
+            });
+        }
         break;
         case VCWidget::CueListWidget:
         {
-            VCCueList *cl = qobject_cast<VCCueList *>(widget);
+            QPointer<VCCueList> cl(qobject_cast<VCCueList *>(widget));
+            auto relay = [this, cl]()
+            {
+                if (cl.isNull() || m_vcLiveListener == nullptr)
+                    return;
+                int playbackIndex = -1;
+                bool running = false, paused = false;
+                cueListPlaybackState(cl.data(), playbackIndex, running, paused);
+                m_vcLiveListener->vcCueListPlaybackChanged(cl->id(), playbackIndex, running, paused);
+            };
             // Both feed one event: the status signal covers play/pause/stop, the index signal covers
             // the Chaser advancing on its own (slotCurrentStepChanged -> setPlaybackIndex).
-            connect(cl, &VCCueList::playbackStatusChanged, this, &App::slotVcCueListPlaybackChanged, Qt::UniqueConnection);
-            connect(cl, &VCCueList::playbackIndexChanged, this, &App::slotVcCueListPlaybackChanged, Qt::UniqueConnection);
+            connect(cl.data(), &VCCueList::playbackStatusChanged, this, relay);
+            connect(cl.data(), &VCCueList::playbackIndexChanged, this, relay);
         }
         break;
         case VCWidget::XYPadWidget:
-            connect(qobject_cast<VCXYPad *>(widget), &VCXYPad::currentPositionChanged,
-                    this, &App::slotVcXyPadPositionChanged, Qt::UniqueConnection);
+        {
+            QPointer<VCXYPad> pad(qobject_cast<VCXYPad *>(widget));
+            connect(pad.data(), &VCXYPad::currentPositionChanged, this, [this, pad]()
+            {
+                if (pad.isNull() || m_vcLiveListener == nullptr)
+                    return;
+                QPointF pos = pad->currentPosition();
+                m_vcLiveListener->vcXyPadPositionChanged(pad->id(), xyPadPosToNormalized(pos.x()),
+                                                         xyPadPosToNormalized(pos.y()));
+            });
+        }
         break;
         case VCWidget::SpeedWidget:
-            connect(qobject_cast<VCSpeedDial *>(widget), &VCSpeedDial::currentTimeChanged,
-                    this, &App::slotVcSpeedDialTimeChanged, Qt::UniqueConnection);
+        {
+            QPointer<VCSpeedDial> sd(qobject_cast<VCSpeedDial *>(widget));
+            connect(sd.data(), &VCSpeedDial::currentTimeChanged, this, [this, sd]()
+            {
+                if (sd.isNull() || m_vcLiveListener == nullptr)
+                    return;
+                m_vcLiveListener->vcSpeedDialValueChanged(sd->id(), int(sd->currentTime()));
+            });
+        }
         break;
         case VCWidget::FrameWidget:
         case VCWidget::SoloFrameWidget:
-            connect(qobject_cast<VCFrame *>(widget), &VCFrame::currentPageChanged,
-                    this, &App::slotVcFramePageChanged, Qt::UniqueConnection);
+        {
+            QPointer<VCFrame> f(qobject_cast<VCFrame *>(widget));
+            connect(f.data(), &VCFrame::currentPageChanged, this, [this, f](int page)
+            {
+                if (f.isNull() || m_vcLiveListener == nullptr)
+                    return;
+                m_vcLiveListener->vcFramePageChanged(f->id(), page);
+            });
+        }
         break;
         default:
         break;
     }
-}
-
-void App::slotVcButtonStateChanged(int state)
-{
-    VCButton *b = qobject_cast<VCButton *>(sender());
-    if (b == nullptr || m_vcLiveListener == nullptr)
-        return;
-    m_vcLiveListener->vcButtonStateChanged(b->id(), buttonStateString(state));
-}
-
-void App::slotVcSliderValueChanged(int value)
-{
-    VCSlider *s = qobject_cast<VCSlider *>(sender());
-    if (s == nullptr || m_vcLiveListener == nullptr)
-        return;
-    m_vcLiveListener->vcSliderValueChanged(s->id(), value);
-}
-
-void App::slotVcCueListPlaybackChanged()
-{
-    VCCueList *cl = qobject_cast<VCCueList *>(sender());
-    if (cl == nullptr || m_vcLiveListener == nullptr)
-        return;
-    int playbackIndex = -1;
-    bool running = false, paused = false;
-    cueListPlaybackState(cl, playbackIndex, running, paused);
-    m_vcLiveListener->vcCueListPlaybackChanged(cl->id(), playbackIndex, running, paused);
-}
-
-void App::slotVcXyPadPositionChanged()
-{
-    VCXYPad *pad = qobject_cast<VCXYPad *>(sender());
-    if (pad == nullptr || m_vcLiveListener == nullptr)
-        return;
-    QPointF pos = pad->currentPosition();
-    m_vcLiveListener->vcXyPadPositionChanged(pad->id(), xyPadPosToNormalized(pos.x()), xyPadPosToNormalized(pos.y()));
-}
-
-void App::slotVcSpeedDialTimeChanged()
-{
-    VCSpeedDial *sd = qobject_cast<VCSpeedDial *>(sender());
-    if (sd == nullptr || m_vcLiveListener == nullptr)
-        return;
-    m_vcLiveListener->vcSpeedDialValueChanged(sd->id(), int(sd->currentTime()));
-}
-
-void App::slotVcFramePageChanged(int page)
-{
-    VCFrame *f = qobject_cast<VCFrame *>(sender());
-    if (f == nullptr || m_vcLiveListener == nullptr)
-        return;
-    m_vcLiveListener->vcFramePageChanged(f->id(), page);
 }
 
 bool App::vcButtonPress(quint32 id, bool pressed, QString *error)
