@@ -7,13 +7,11 @@
  * No field remapping — params/result shapes here are exactly the spec's, using its own field
  * names (0-based `universeId`, flat 0-based `address` = universeId*512 + channelWithinUniverse,
  * `baseRevision`/`docRevision` for structural (§4a) mutations, `profilesRevision` for the
- * input-profile shared-library resource (§4c)). NOTE: api/qlcplus-api.js already hand-wires
- * simpleDesk/grandMaster/blackout with its own field-name conversions (see setChannel/
- * resetChannel/resetUniverse/getChannelsValues/setGrandMaster/getGrandMaster/setBlackout/
- * getBlackout) — this file exists so every OTHER io.* method is reachable too, and so the full
- * raw io.simpleDesk, io.grandMaster and io.blackout surface is also available here for anyone
- * who wants the untranslated spec shapes directly (in particular: io.blackout here uses the
- * spec's real field name `blackout`, NOT the hand-written client's `value` — see chat report).
+ * input-profile shared-library resource (§4c)). NOTE: api/qlcplus-api.js also wires
+ * simpleDesk/grandMaster/blackout directly (setChannel/resetChannel/resetUniverse/watchUniverse/
+ * getUniverseValues/setGrandMaster/setBlackout/...) using these same spec field names — this
+ * file exists so every OTHER io.* method is reachable too, and so the full raw io.simpleDesk,
+ * io.grandMaster and io.blackout surface is available untranslated as well.
  *
  * Tiering per 00-conventions.md:
  *  - §4a document-state (needs baseRevision/docRevision): io.universe.create/delete/update,
