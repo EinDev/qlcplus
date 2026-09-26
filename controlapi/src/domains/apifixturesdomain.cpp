@@ -27,6 +27,9 @@
 #include "qlcfixturedefcache.h"
 #include "qlcfixturedef.h"
 #include "qlcfixturemode.h"
+#include "qlcfixturehead.h"
+#include "qlcphysical.h"
+#include "qlccapability.h"
 #include "qlcchannel.h"
 #include "fixture.h"
 #include "doc.h"
@@ -124,6 +127,173 @@ bool rangeIsFree(Doc *doc, quint32 universeId, quint32 address, quint32 channels
 
 } // namespace
 
+namespace {
+
+/*********************************************************************
+ * Fixture definition library (fixtures.defs.*) serializers
+ *********************************************************************/
+
+// fixtures.yaml FixturesPhysical - QLCPhysical flattened.
+QJsonObject physicalToJson(const QLCPhysical &physical)
+{
+    QJsonObject obj;
+    obj.insert(QStringLiteral("width"), physical.width());
+    obj.insert(QStringLiteral("height"), physical.height());
+    obj.insert(QStringLiteral("depth"), physical.depth());
+    obj.insert(QStringLiteral("weight"), physical.weight());
+    obj.insert(QStringLiteral("powerConsumption"), physical.powerConsumption());
+    obj.insert(QStringLiteral("dmxConnector"), physical.dmxConnector());
+    obj.insert(QStringLiteral("bulbType"), physical.bulbType());
+    obj.insert(QStringLiteral("bulbLumens"), physical.bulbLumens());
+    obj.insert(QStringLiteral("bulbColourTemperature"), physical.bulbColourTemperature());
+    obj.insert(QStringLiteral("lensName"), physical.lensName());
+    obj.insert(QStringLiteral("lensDegreesMin"), physical.lensDegreesMin());
+    obj.insert(QStringLiteral("lensDegreesMax"), physical.lensDegreesMax());
+    obj.insert(QStringLiteral("focusType"), physical.focusType());
+    obj.insert(QStringLiteral("focusPanMax"), physical.focusPanMax());
+    obj.insert(QStringLiteral("focusTiltMax"), physical.focusTiltMax());
+    obj.insert(QStringLiteral("layoutWidth"), physical.layoutSize().width());
+    obj.insert(QStringLiteral("layoutHeight"), physical.layoutSize().height());
+    return obj;
+}
+
+QString capabilityPresetTypeToJson(QLCCapability::PresetType type)
+{
+    switch (type)
+    {
+    case QLCCapability::SingleColor: return QStringLiteral("SingleColor");
+    case QLCCapability::DoubleColor: return QStringLiteral("DoubleColor");
+    case QLCCapability::SingleValue: return QStringLiteral("SingleValue");
+    case QLCCapability::DoubleValue: return QStringLiteral("DoubleValue");
+    case QLCCapability::Picture:     return QStringLiteral("Picture");
+    default:
+    case QLCCapability::None:        return QStringLiteral("None");
+    }
+}
+
+// fixtures.yaml FixturesCapability (the read-oriented summary shape).
+QJsonObject capabilityToJson(QLCCapability *cap)
+{
+    QJsonObject obj;
+    obj.insert(QStringLiteral("min"), int(cap->min()));
+    obj.insert(QStringLiteral("max"), int(cap->max()));
+    obj.insert(QStringLiteral("name"), cap->name());
+    obj.insert(QStringLiteral("preset"), QLCCapability::presetToString(cap->preset()));
+    QLCCapability::PresetType presetType = cap->presetType();
+    obj.insert(QStringLiteral("presetType"), capabilityPresetTypeToJson(presetType));
+    if (presetType == QLCCapability::SingleColor || presetType == QLCCapability::DoubleColor)
+    {
+        QColor color1 = cap->resource(0).value<QColor>();
+        if (color1.isValid())
+            obj.insert(QStringLiteral("color1"), color1.name());
+        if (presetType == QLCCapability::DoubleColor)
+        {
+            QColor color2 = cap->resource(1).value<QColor>();
+            if (color2.isValid())
+                obj.insert(QStringLiteral("color2"), color2.name());
+        }
+    }
+    return obj;
+}
+
+// fixtures.yaml FixturesModeChannel: QLCChannel as arranged within a mode.
+// "group" is the plain QLCChannel::groupToString() spelling the web UI
+// contract asks for ("Intensity", "Colour", "Pan", ...).
+QJsonObject modeChannelToJson(quint32 index, QLCChannel *channel)
+{
+    QJsonObject obj;
+    obj.insert(QStringLiteral("index"), int(index));
+    obj.insert(QStringLiteral("name"), channel->name());
+    obj.insert(QStringLiteral("group"), QLCChannel::groupToString(channel->group()));
+    obj.insert(QStringLiteral("preset"), QLCChannel::presetToString(channel->preset()));
+    if (channel->group() == QLCChannel::Intensity)
+        obj.insert(QStringLiteral("colour"), QLCChannel::colourToString(channel->colour()));
+    obj.insert(QStringLiteral("controlByte"), channel->controlByte() == QLCChannel::LSB
+               ? QStringLiteral("LSB") : QStringLiteral("MSB"));
+    obj.insert(QStringLiteral("defaultValue"), int(channel->defaultValue()));
+    QJsonArray capabilities;
+    for (QLCCapability *cap : channel->capabilities())
+        capabilities.append(capabilityToJson(cap));
+    obj.insert(QStringLiteral("capabilities"), capabilities);
+    return obj;
+}
+
+QJsonArray modeChannelsToJson(QLCFixtureMode *mode)
+{
+    QJsonArray channels;
+    QVector<QLCChannel *> list = mode->channels();
+    for (int i = 0; i < list.count(); i++)
+        channels.append(modeChannelToJson(quint32(i), list.at(i)));
+    return channels;
+}
+
+QJsonArray modeHeadsToJson(QLCFixtureMode *mode)
+{
+    QJsonArray heads;
+    const QVector<QLCFixtureHead> &list = mode->heads();
+    for (int i = 0; i < list.count(); i++)
+    {
+        QJsonArray channels;
+        for (quint32 ch : list.at(i).channels())
+            channels.append(int(ch));
+        QJsonObject head;
+        head.insert(QStringLiteral("index"), i);
+        head.insert(QStringLiteral("channels"), channels);
+        heads.append(head);
+    }
+    return heads;
+}
+
+// fixtures.defs.getModel's per-mode entry: fixtures.yaml's browsing-level
+// {name, channelCount} plus the web UI contract's inline channel list, so
+// an Add Fixture dialog can show a mode's channels without one more
+// round-trip per mode.
+QJsonObject modeSummaryToJson(QLCFixtureMode *mode)
+{
+    QJsonObject obj;
+    obj.insert(QStringLiteral("name"), mode->name());
+    obj.insert(QStringLiteral("channelCount"), mode->channels().count());
+    obj.insert(QStringLiteral("channels"), modeChannelsToJson(mode));
+    return obj;
+}
+
+// fixtures.defs.getMode result (fixtures.yaml FixturesDefsGetModeOkResponse).
+QJsonObject modeDetailToJson(QLCFixtureDef *def, QLCFixtureMode *mode)
+{
+    QJsonObject obj;
+    obj.insert(QStringLiteral("manufacturer"), def->manufacturer());
+    obj.insert(QStringLiteral("model"), def->model());
+    obj.insert(QStringLiteral("mode"), mode->name());
+    obj.insert(QStringLiteral("channelCount"), mode->channels().count());
+    quint32 masterIntensity = mode->masterIntensityChannel();
+    obj.insert(QStringLiteral("masterIntensityChannel"), masterIntensity == QLCChannel::invalid()
+               ? QJsonValue() : QJsonValue(int(masterIntensity)));
+    obj.insert(QStringLiteral("physical"), physicalToJson(mode->physical()));
+    obj.insert(QStringLiteral("useGlobalPhysical"), mode->useGlobalPhysical());
+    obj.insert(QStringLiteral("channels"), modeChannelsToJson(mode));
+    obj.insert(QStringLiteral("heads"), modeHeadsToJson(mode));
+    return obj;
+}
+
+// Shared manufacturer+model lookup for fixtures.defs.getModel/getMode.
+// QLCFixtureDefCache::fixtureDef() lazily loads the definition file on
+// first access (QLCFixtureDef::checkLoaded()) - until then only the names
+// from FixturesMap.xml are known - so modes()/channels() below are
+// complete. Unknown -> NOT_FOUND, never an empty definition.
+QLCFixtureDef *findDefinitionParam(Doc *doc, ApiSession *session, const QString &id, const QJsonObject &params)
+{
+    QString manufacturer = params.value(QStringLiteral("manufacturer")).toString();
+    QString model = params.value(QStringLiteral("model")).toString();
+    QLCFixtureDef *def = (manufacturer.isEmpty() || model.isEmpty()) ? nullptr
+                       : doc->fixtureDefCache()->fixtureDef(manufacturer, model);
+    if (def == nullptr)
+        session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrNotFound,
+                                                        QStringLiteral("No such fixture definition")));
+    return def;
+}
+
+} // namespace
+
 ApiFixturesDomain::ApiFixturesDomain(Doc *doc, ApiServer *server, QObject *parent)
     : QObject(parent)
     , m_doc(doc)
@@ -139,6 +309,102 @@ void ApiFixturesDomain::registerMethods()
 {
     ApiDispatcher *dispatcher = m_server->dispatcher();
     Doc *doc = m_doc;
+
+    /*********************************************************************
+     * 1. Fixture definition library browsing (read-only)
+     *********************************************************************/
+
+    // fixtures.defs.listManufacturers {} -> {manufacturers: [string]}
+    dispatcher->registerMethod(QStringLiteral("fixtures.defs.listManufacturers"), [doc](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        Q_UNUSED(params)
+        QStringList manufacturers = doc->fixtureDefCache()->manufacturers();
+        manufacturers.sort(Qt::CaseInsensitive);
+        QJsonObject result;
+        result.insert(QStringLiteral("manufacturers"), QJsonArray::fromStringList(manufacturers));
+        session->send(ApiEnvelope::buildOkResponse(id, result));
+    });
+
+    // fixtures.defs.listModels {manufacturer} -> {models: [string], modelDetails: [{model, isUser}]}
+    dispatcher->registerMethod(QStringLiteral("fixtures.defs.listModels"), [doc](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        QString manufacturer = params.value(QStringLiteral("manufacturer")).toString();
+        // fixtureCache() is the manufacturer -> {model -> isUser} index built
+        // from FixturesMap.xml at startup: answers without loading a single
+        // definition file, unlike fixtureDef()->isUser() would.
+        QMap<QString, QMap<QString, bool>> cache = doc->fixtureDefCache()->fixtureCache();
+        if (manufacturer.isEmpty() || cache.contains(manufacturer) == false)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrNotFound,
+                                                            QStringLiteral("No such manufacturer")));
+            return;
+        }
+
+        // "models" is the plain name list the web UI contract asks for;
+        // "modelDetails" carries fixtures.yaml's {model, isUser} objects.
+        QJsonArray models;
+        QJsonArray modelDetails;
+        const QMap<QString, bool> &byModel = cache.value(manufacturer);
+        for (auto it = byModel.constBegin(); it != byModel.constEnd(); ++it)
+        {
+            models.append(it.key());
+            QJsonObject detail;
+            detail.insert(QStringLiteral("model"), it.key());
+            detail.insert(QStringLiteral("isUser"), it.value());
+            modelDetails.append(detail);
+        }
+        QJsonObject result;
+        result.insert(QStringLiteral("manufacturer"), manufacturer);
+        result.insert(QStringLiteral("models"), models);
+        result.insert(QStringLiteral("modelDetails"), modelDetails);
+        session->send(ApiEnvelope::buildOkResponse(id, result));
+    });
+
+    // fixtures.defs.getModel {manufacturer, model}
+    //   -> {manufacturer, model, type, fixtureType, author, isUser, physical, modes: [{name, channelCount, channels}]}
+    dispatcher->registerMethod(QStringLiteral("fixtures.defs.getModel"), [doc](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        QLCFixtureDef *def = findDefinitionParam(doc, session, id, params);
+        if (def == nullptr)
+            return;
+
+        QJsonObject result;
+        result.insert(QStringLiteral("manufacturer"), def->manufacturer());
+        result.insert(QStringLiteral("model"), def->model());
+        // Same value under both keys: "type" is the web UI contract's name,
+        // "fixtureType" fixtures.yaml's.
+        QString type = QLCFixtureDef::typeToString(def->type());
+        result.insert(QStringLiteral("type"), type);
+        result.insert(QStringLiteral("fixtureType"), type);
+        result.insert(QStringLiteral("author"), def->author());
+        result.insert(QStringLiteral("isUser"), def->isUser());
+        result.insert(QStringLiteral("physical"), physicalToJson(def->physical()));
+        QJsonArray modes;
+        for (QLCFixtureMode *mode : def->modes())
+            modes.append(modeSummaryToJson(mode));
+        result.insert(QStringLiteral("modes"), modes);
+        session->send(ApiEnvelope::buildOkResponse(id, result));
+    });
+
+    // fixtures.defs.getMode {manufacturer, model, mode} -> FixturesDefsGetModeOkResponse.result
+    dispatcher->registerMethod(QStringLiteral("fixtures.defs.getMode"), [doc](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        QLCFixtureDef *def = findDefinitionParam(doc, session, id, params);
+        if (def == nullptr)
+            return;
+        QLCFixtureMode *mode = def->mode(params.value(QStringLiteral("mode")).toString());
+        if (mode == nullptr)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrNotFound,
+                                                            QStringLiteral("No such mode in this definition")));
+            return;
+        }
+        session->send(ApiEnvelope::buildOkResponse(id, modeDetailToJson(def, mode)));
+    });
+
+    /*********************************************************************
+     * 2. Patching
+     *********************************************************************/
 
     dispatcher->registerMethod(QStringLiteral("fixtures.list"), [doc](ApiSession *session, const QString &id, const QJsonObject &params)
     {
@@ -293,8 +559,18 @@ void ApiFixturesDomain::registerMethods()
         }
 
         // Resolve FixturesDefinitionRef: exactly one of {manufacturer+model+
-        // mode, generic} - see fixtures.yaml's own schema doc.
+        // mode, generic} - see fixtures.yaml's own schema doc. The web UI
+        // contract spells the same fields flat at the top level
+        // ({manufacturer, model, mode, universe, address, quantity, gap}) -
+        // accepted as an alias whenever no "definition" object is given.
         QJsonObject defObj = params.value(QStringLiteral("definition")).toObject();
+        if (params.contains(QStringLiteral("definition")) == false)
+        {
+            for (const QString &key : { QStringLiteral("manufacturer"), QStringLiteral("model"),
+                                        QStringLiteral("mode"), QStringLiteral("generic") })
+                if (params.contains(key))
+                    defObj.insert(key, params.value(key));
+        }
         bool hasGeneric = defObj.contains(QStringLiteral("generic"));
         bool hasManufacturer = defObj.contains(QStringLiteral("manufacturer"));
         bool hasModel = defObj.contains(QStringLiteral("model"));
