@@ -2463,8 +2463,10 @@ messages:
             Every successful page flip (one that actually changes the page - requesting the current
             page again is a no-op with no event and no bump) stales every client''s baseRevision, so
             their next structural (§4a) request answers CONFLICT until they pick up the new docRevision
-            (from any subsequent response/event carrying it). Clients should treat vc.frame.pageChanged
-            as a hint to refresh docRevision. Not worked around server-side because it is the
+            (from any subsequent response/event carrying it). For exactly that reason vc.frame.pageChanged
+            carries the new docRevision in its data - the only live event that does - so a client that
+            applies the generic "learn docRevision from any event carrying it" rule never sees that
+            CONFLICT. Not worked around server-side because it is the
             engine''s deliberate persistence behaviour, not an API choice. Errors: NOT_FOUND,
             INVALID_PARAMS (not a Frame/SoloFrame, page not an integer or out of range),
             INVALID_STATE (widget isDisabled).
@@ -2494,7 +2496,8 @@ messages:
       description: Broadcast whenever a Frame/SoloFrame's internal current page changes for any reason
         (vc.frame.gotoPage from any client, the QML page arrows, an external input source bound to
         the frame's next/previous page controls). Also the moment docRevision was bumped as a side
-        effect - see VcFrameGotoPageRequest.
+        effect - see VcFrameGotoPageRequest - which is why, unlike every other live event, this one
+        carries the new docRevision.
       properties:
         type:
           const: event
@@ -2509,11 +2512,15 @@ messages:
           required:
           - widgetId
           - page
+          - docRevision
           properties:
             widgetId:
               type: string
             page:
               type: integer
+            docRevision:
+              type: integer
+              description: The document revision after the page flip (VCFrame::setCurrentPage() marks the document modified).
   VcFrameGetRequest:
     payload:
       type: object
