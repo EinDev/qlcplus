@@ -29,8 +29,37 @@
 #include <limits>
 
 /**
- * Virtual Console operations (docs/api-spec/fragments/virtualconsole.yaml's vc.page.* / vc.widget.*)
- * that ApiVcDomain needs. qmlui's App is the real implementation, driving the live VCPage/VCWidget/
+ * Receiver for live (§4b) Virtual Console state changes - the host side of the vc.*.stateChanged/
+ * valueChanged/... event family. ApiVcDomain implements this and registers itself via
+ * ApiVcHost::vcSetLiveListener(); the host calls back whenever a widget's live state changes for ANY
+ * reason (an API request, the QML UI, an external MIDI/DMX/keyboard input source, a Function
+ * stopping on its own, ...). Every callback happens on the host's own (GUI) thread - qmlui's App
+ * only ever receives widget signals there (engine-thread emitters reach the widgets through Qt's
+ * automatic queued delivery), so the listener may broadcast synchronously.
+ *
+ * The listener does its own JSON shaping (topic names, field names, enum spellings live in one place,
+ * ApiVcDomain), so implementations only pass engine-shaped values:
+ *  - button $state is one of "inactive", "active", "monitoring" (VCButton::ButtonState, lowercased)
+ *  - xy pad $x/$y are normalized 0.0..1.0 (see ApiVcHost::vcXyPadSetPosition() for the scale)
+ *  - speed dial $ms is VCSpeedDial::currentTime()
+ */
+class ApiVcLiveListener
+{
+public:
+    virtual ~ApiVcLiveListener() {}
+
+    virtual void vcButtonStateChanged(quint32 widgetId, const QString &state) = 0;
+    virtual void vcSliderValueChanged(quint32 widgetId, int value) = 0;
+    virtual void vcCueListPlaybackChanged(quint32 widgetId, int playbackIndex, bool running, bool paused) = 0;
+    virtual void vcXyPadPositionChanged(quint32 widgetId, double x, double y) = 0;
+    virtual void vcSpeedDialValueChanged(quint32 widgetId, int ms) = 0;
+    virtual void vcFramePageChanged(quint32 widgetId, int page) = 0;
+};
+
+/**
+ * Virtual Console operations (docs/api-spec/fragments/virtualconsole.yaml's vc.page.* / vc.widget.*
+ * plus the live-interaction vc.button, vc.slider, vc.cueList, vc.xyPad, vc.speedDial and vc.frame
+ * methods) that ApiVcDomain needs. qmlui's App is the real implementation, driving the live VCPage/VCWidget/
  * VirtualConsole object graph - but controlapi must build and run without qmlui (see apiserver.h),
  * so ApiVcDomain depends on this plain interface instead, obtained via dynamic_cast on ApiServer's
  * parent (see ApiVcDomain::vcHost()), exactly like ApiCoreDomain does for ApiProjectHost.
@@ -162,6 +191,65 @@ public:
     /** Bulk geometry-only update, all-or-nothing - caller has already validated every id in $updates
      *  exists. Each pair's QJsonObject is a geometry {x,y,width,height}. */
     virtual void vcRepositionWidgets(const QList<QPair<quint32, QJsonObject> > &updates) = 0;
+
+    /*********************************************************************
+     * Widgets - live interaction (§4b: no baseRevision, last-write-wins)
+     *
+     * Every method below assumes the caller already verified the widget exists AND has the matching
+     * wire type (vcWidgetType(): "Button", "Slider", "CueList", "XYPad", "Speed", "Frame"/"SoloFrame")
+     * - the domain sends NOT_FOUND / INVALID_PARAMS for those cases itself. A false return means the
+     * engine refused the action in its current state (e.g. no Function/Chaser attached, page out of
+     * range); *$error carries a human-readable reason for an INVALID_STATE/INVALID_PARAMS response.
+     * The resulting live-state change (if any) is reported through the ApiVcLiveListener, never as a
+     * return value - that keeps "changed by this request" and "changed by anything else" on one path.
+     *********************************************************************/
+
+    /** Registers the single listener that receives every live-state change (nullptr detaches). Owned
+     *  by the caller; the host must stop calling it once detached or destroyed. */
+    virtual void vcSetLiveListener(ApiVcLiveListener *listener) = 0;
+
+    /** vc.button.press - mirrors what VCButtonItem.qml does on a touch: Toggle/Blackout act on the
+     *  down-edge only (pressed=true toggles the current state; pressed=false is a no-op), StopAll fires
+     *  on the down-edge only, Flash follows both edges (flashing exactly while pressed). */
+    virtual bool vcButtonPress(quint32 id, bool pressed, QString *error) = 0;
+
+    /** vc.slider.setValue - VCSlider::setValue() with the slider's own mode semantics (Level/Adjust/
+     *  Submaster/GrandMaster). $value has been validated to 0..255 by the caller; the host confines it
+     *  to the slider's [rangeLowLimit, rangeHighLimit] the same way the on-screen fader does. */
+    virtual bool vcSliderSetValue(quint32 id, int value, QString *error) = 0;
+
+    enum CueListAction { CueListPlay, CueListStop, CueListNext, CueListPrevious };
+
+    /** vc.cueList.play/stop/next/previous - VCCueList::playClicked()/stopClicked()/nextClicked()/
+     *  previousClicked(). Returns false (INVALID_STATE) when no Chaser is attached. */
+    virtual bool vcCueListAction(quint32 id, CueListAction action, QString *error) = 0;
+
+    /** vc.cueList.setPlaybackIndex - VCCueList::setPlaybackIndex() followed by playCurrentStep(), i.e.
+     *  "jump to this step" (start the Chaser there if stopped, or switch step if running). $index has
+     *  already been validated against vcCueListSnapshot()'s step count by the caller (-1 = none). */
+    virtual bool vcCueListSetPlaybackIndex(quint32 id, int index, QString *error) = 0;
+
+    /** vc.cueList.get - {steps:[{index,name,functionId,fadeIn,fadeOut,hold,notes}], playbackIndex,
+     *  running, paused}. Empty steps when no Chaser is attached. */
+    virtual QJsonObject vcCueListSnapshot(quint32 id) const = 0;
+
+    /** vc.xyPad.setPosition - $x/$y are normalized 0.0..1.0 (validated by the caller); the host scales
+     *  them onto VCXYPad's native 0..(255 + 255/256) position domain so 1.0 is the full 16-bit span. */
+    virtual bool vcXyPadSetPosition(quint32 id, double x, double y, QString *error) = 0;
+
+    /** vc.speedDial.setValue - VCSpeedDial::setCurrentTime($ms) (>= 0, validated by the caller). */
+    virtual bool vcSpeedDialSetValue(quint32 id, int ms, QString *error) = 0;
+
+    /** vc.speedDial.tap - VCSpeedDial::tap(). The first tap of a series only arms the timer and changes
+     *  nothing observable; from the second tap within 1.5 s on, currentTime follows the tap interval. */
+    virtual bool vcSpeedDialTap(quint32 id, QString *error) = 0;
+
+    /** vc.frame.gotoPage - VCFrame::gotoPage(). Returns false with *$error set when $page is outside
+     *  0..totalPagesNumber-1. Must be a no-op (no change, no event) when $page is already current. */
+    virtual bool vcFrameGotoPage(quint32 id, int page, QString *error) = 0;
+
+    /** vc.frame.get - {pages, currentPage, multipage}. */
+    virtual QJsonObject vcFrameSnapshot(quint32 id) const = 0;
 };
 
 #endif

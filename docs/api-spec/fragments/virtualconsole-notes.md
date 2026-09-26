@@ -4,11 +4,12 @@ Grounded in `qmlui/virtualconsole/*.h/.cpp` (every header read in full; .cpp
 read for `vcbutton`, `vcslider`, `vcxypad`, `vcspeeddial`, `vcframe` to
 confirm behaviour the headers alone didn't make clear) and cross-checked
 against `qmlui/qml/virtualconsole/*.qml`. Component-key prefix `Vc`,
-method/topic prefix `vc.`. 178 messages / 28 schemas / 170 operations (per a
-fresh `merge.py` run - re-derive with the same command if this fragment
-changes again, rather than trusting this number indefinitely; it has
-drifted from an original 190/25/182 at least once already, via
-MERGE-PLAN #2's consolidation passes).
+method/topic prefix `vc.`. 184 messages / 31 schemas / 174 operations (per a
+fresh `merge.py` run on 2026-09-26 - re-derive with the same command if this
+fragment changes again, rather than trusting this number indefinitely; it has
+drifted from an original 190/25/182 via MERGE-PLAN #2's consolidation passes,
+then to 178/28/170, then to the current count when the live-interaction slice
+was implemented).
 
 ## Channel message keys to add at merge time
 
@@ -25,7 +26,12 @@ rather than hand-transcribe it.
 - **`vc.page.select` / `vc.frame.gotoPage`** (which top-level VC page, and
   which internal page of a multi-page Frame, are showing) are modelled as
   **live (§4b)**, directly per 00-conventions.md §4b's own example ("which
-  VC page is showing"). In reality each operator's screen could reasonably
+  VC page is showing"). **Implementation finding (2026-09-26):** for
+  `vc.frame.gotoPage` this is only half true in the engine - `VCFrame::
+  setCurrentPage()` persists the page into the show file and calls
+  `setDocModified()`, so every real page flip bumps `docRevision` as a side
+  effect (see "Live interaction - implemented" below). `vc.page.select` is
+  genuinely ephemeral. In reality each operator's screen could reasonably
   show a *different* page independently, but `VirtualConsole::selectedPage`
   and `VCFrame::currentPage` are single engine-side values (not per-client),
   so a shared broadcast is the only option that matches current engine
@@ -64,6 +70,68 @@ rather than hand-transcribe it.
   base color) - reasoning from the header comment on
   `VCAnimationPreset::valueToRgb`/`rgbToValue` being a live transform, not a
   persisted field, but not independently verified against the .cpp.
+
+## Live interaction - implemented (2026-09-26)
+
+`controlapi/src/domains/apivcdomain.cpp` (`registerLiveMethods()`) now
+registers the live-interaction slice a browser web UI needs, against the
+CONTRACT the web UI agents were handed. Where that contract differed from
+this fragment's original (never implemented) drafts, **the contract won and
+the fragment was rewritten to match** - a client written against the old
+drafts would have broken anyway, since nothing ever served them:
+
+| Was in the draft | Is now (implemented) |
+| --- | --- |
+| `vc.button.press`: one call per click for Toggle/Blackout/StopAll, edge pair only for Flash | edge pair (`pressed` true on down, false on up) for **every** actionType; the server filters: Toggle/Blackout/StopAll act on the down edge only, Flash on both. `pressed` must be a JSON boolean. Toggle/Flash with no Function attached, or any disabled widget, is `INVALID_STATE` instead of the engine's silent no-op. Note the on-screen QML fires Toggle on *release/click*; the contract asked for the down edge, so the API is ~one pointer-up earlier than a mouse click would be. |
+| `vc.button.stateChanged.state` enum `Inactive/Monitoring/Active` | lowercase `inactive/monitoring/active` (also in the new `VcWidgetSummary.state`). |
+| `vc.xyPad.setPosition`/`positionChanged` x/y in the engine's 0..255.996 domain | normalized **0..1** (1.0 = full 16-bit span, scale factor 65535/256). `VcXyPadConfig.horizontalRange`/`verticalRange` and `VcXyPadPreset.position` stay in engine units. |
+| `vc.cueList.setPlaybackIndex {playbackIndex}` | `{index}` (`playbackIndex` accepted as a deprecated alias). Range-checked to -1..steps-1 (`INVALID_PARAMS` with `details.stepCount`). `index >= 0` also plays the step (`playCurrentStep()`); -1 only clears the selection. |
+| `vc.cueList.playbackChanged {playbackStatus, playbackIndex, nextStepIndex, primaryTop}` | `{widgetId, playbackIndex, running, paused}` (`VcCueListPlaybackState`; `running` = Playing **or** Paused, `paused` = Paused). `nextStepIndex`/`primaryTop` dropped - side-fader crossfade UI is out of this slice. |
+| - | **new** `vc.cueList.get` -> `{steps:[{index,name,functionId,fadeIn,fadeOut,hold,notes}], playbackIndex, running, paused}` (`VcCueListStep`: resolved speeds like the on-screen list, infinite = 4294967295). |
+| `vc.speedDial.setCurrentTime {valueMs}` / `vc.speedDial.currentTimeChanged {valueMs}` | `vc.speedDial.setValue {ms}` / `vc.speedDial.valueChanged {ms}` (`valueMs` accepted as a deprecated alias). Message/operation keys renamed `VcSpeedDialSetValue*` / `VcSpeedDialValueChangedEvent`. |
+| `vc.frame.gotoPage {pageIndex}` / `vc.frame.currentPageChanged {currentPage}` | `vc.frame.gotoPage {page}` (`pageIndex` alias) / `vc.frame.pageChanged {page}` (`VcFramePageChangedEvent`). Same-page requests are a no-op (no event). |
+| - | **new** `vc.frame.get` -> `{pages, currentPage, multipage}` (`VcFrameLiveState`). |
+| `VcWidgetSummary` had no live state | additive per-type live seed fields: Button `state`; Slider `value`,`min`,`max`; CueList `playbackIndex`,`running`,`paused`; XYPad `x`,`y`; Speed `ms`; Frame/SoloFrame `currentPage`,`pages`,`multipage`. Nothing removed or renamed. |
+
+Other implementation facts worth knowing:
+
+- **`vc.frame.gotoPage` bumps `docRevision`.** `VCFrame::setCurrentPage()`
+  calls `setDocModified()` because the current page is saved in the show
+  file. The method is still modelled live (no `baseRevision`, `{}` ack), but
+  after every successful flip other clients' `baseRevision` is stale and
+  their next §4a request will `CONFLICT` until they refresh. Documented on
+  the message; deliberately not worked around server-side.
+- **Disabled widgets refuse live input** (`INVALID_STATE`), matching the QML
+  items disabling their MouseArea/TouchArea. The read-only `vc.cueList.get` /
+  `vc.frame.get` still work on a disabled widget.
+- **`vc.slider.setValue` is confined to `[rangeLowLimit, rangeHighLimit]`**
+  server-side (the fader is physically confined to them); the 0..255 contract
+  range is validated first (`INVALID_PARAMS` outside it, or for non-integers).
+- **No event when nothing changed**: every widget setter early-returns on an
+  equal value (`VCSlider::setValue`, `VCButton::setState`, ...), so a repeat
+  request acks `{}` without a broadcast. `vc.speedDial.tap`'s first tap is
+  the same: it only arms the timer.
+- **`vc.speedDial.setValue` with `ms = 0`** is stored but not applied to the
+  attached Functions (`VCSpeedDial::setCurrentTime()` skips
+  `applyFunctionsTime()` for 0) - engine behaviour, surfaced as-is.
+- **Two `vc.cueList.playbackChanged` events per transport action** are
+  normal (status signal + index signal, each carrying full state).
+- **Delivery**: all six live event topics are broadcast to every session
+  (not subscribe-gated) - the contract asked for that, and per-event volume
+  is one frame per discrete gesture/step; a client dragging a fader is
+  expected to throttle its own `vc.slider.setValue` calls. This overrides
+  the "recommend gating `vc.slider.valueChanged`/`vc.xyPad.positionChanged`"
+  judgment call further down for these six topics only.
+- **Origin**: `originClientId` is the requesting client for API-caused
+  changes, `null` for anything else (QML UI, external MIDI/DMX/keyboard
+  input, a Function stopping on its own, Solo Frame side effects) - the
+  qmlui host relays every widget's own change signal through one
+  `VirtualConsole::widgetRegistered` hook, so widgets loaded from a show
+  file are covered exactly like ones created over the API.
+- **Not verified against a running GUI**: the `apivcdomain_test` suite runs
+  against a headless `FakeVcHost`; the real `App` implementation
+  (`qmlui/app_apivchost.cpp`) compiles and mirrors the QML call paths line
+  by line, but no live `qlcplus5.exe` session exercised it yet.
 
 ## Cross-domain touch points (things this fragment deliberately does NOT redefine)
 
