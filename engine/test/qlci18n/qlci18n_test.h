@@ -31,7 +31,7 @@ private slots:
     void translationFilePath();
     void loadTranslation();
     void loadQtTranslation();
-    void init();
+    void initSetsDefaultPath();
 };
 
 #endif

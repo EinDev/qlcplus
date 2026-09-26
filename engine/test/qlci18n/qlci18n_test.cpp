@@ -81,7 +81,7 @@ void QLCi18n_Test::loadQtTranslation()
     QCOMPARE(QLCi18n::loadQtTranslation("qtbase"), available);
 }
 
-void QLCi18n_Test::init()
+void QLCi18n_Test::initSetsDefaultPath()
 {
     // the default path is the installed translations directory
     QLCi18n::setTranslationFilePath(QString());
