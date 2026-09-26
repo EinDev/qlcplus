@@ -217,6 +217,7 @@ Rectangle
                 height: width
                 imgSource: "qrc:/grid.svg"
                 tooltip: qsTr("Snap to grid")
+                shortcutActionId: "showmgr.toggleSnap"
                 checkable: true
                 checked: showManager.gridEnabled
                 onToggled: showManager.gridEnabled = checked
@@ -230,6 +231,7 @@ Rectangle
                 faSource: FontAwesome.fa_arrows_left_right_to_line
                 faColor: "lightyellow"
                 tooltip: qsTr("Stretch the original function")
+                shortcutActionId: "showmgr.toggleStretch"
                 checkable: true
                 checked: showManager.stretchFunctions
                 onToggled: showManager.stretchFunctions = checked
@@ -278,6 +280,7 @@ Rectangle
                 faSource: FontAwesome.fa_copy
                 faColor: UISettings.fgMain
                 tooltip: qsTr("Copy the selected items in the clipboard")
+                shortcutActionId: "showmgr.copy"
                 counter: showManager.selectedItemsCount
                 onClicked: showManager.copyToClipboard()
             }
@@ -290,6 +293,7 @@ Rectangle
                 faSource: FontAwesome.fa_paste
                 faColor: UISettings.fgMain
                 tooltip: qsTr("Paste items in the clipboard at cursor position")
+                shortcutActionId: "showmgr.paste"
                 counter: showManager.clipboardItemsCount
                 onClicked: showManager.pasteFromClipboard()
             }
@@ -331,6 +335,7 @@ Rectangle
                          (showManager.isPlaying ? "darkorange" : UISettings.bgLight)
                 tooltip: (showManager.isPlaying && !showManager.isPaused) ? qsTr("Pause") :
                          (showManager.isPreviewing ? qsTr("Play from the cursor") : qsTr("Play or resume"))
+                shortcutActionId: "showmgr.play"
                 checkable: false
                 enabled: showManager.isEditing
                 onClicked: showManager.playShow()
@@ -344,6 +349,7 @@ Rectangle
                 faColor: UISettings.fgMain
                 bgColor: showManager.isPlaying ? "red" : UISettings.bgLight
                 tooltip: showManager.isPreviewing ? qsTr("Stop the preview") : qsTr("Stop or rewind")
+                shortcutActionId: "showmgr.stop"
                 checkable: false
                 enabled: showManager.isEditing
                 onClicked: showManager.stopShow()
@@ -462,6 +468,7 @@ Rectangle
                 faSource: FontAwesome.fa_angle_up
                 faColor: UISettings.fgMain
                 tooltip: qsTr("Move the selected track up")
+                shortcutActionId: "showmgr.moveTrackUp"
                 onClicked: moveSelectedTrackUp()
             }
 
@@ -473,6 +480,7 @@ Rectangle
                 faSource: FontAwesome.fa_angle_down
                 faColor: UISettings.fgMain
                 tooltip: qsTr("Move the selected track down")
+                shortcutActionId: "showmgr.moveTrackDown"
                 onClicked: moveSelectedTrackDown()
             }
 
