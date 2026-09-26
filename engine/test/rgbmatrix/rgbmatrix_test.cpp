@@ -1312,7 +1312,7 @@ void RGBMatrix_Test::runFades()
     }
 
     // Beat tempo: the fade out is expressed in 1/1000 beats
-    timer.requestBpmNumber(120); // 500ms per beat
+    timer.requestBpmNumber(100); // 600ms per beat (not the 120 default, so the beat timer starts)
     mtx.setTempoType(Function::Beats);
     mtx.setDuration(1000);
     mtx.setFadeOutSpeed(2000);
@@ -1325,7 +1325,7 @@ void RGBMatrix_Test::runFades()
     while (it.hasNext())
     {
         it.next();
-        QCOMPARE(it.value().fadeTime(), uint(1000));
+        QCOMPARE(it.value().fadeTime(), uint(1200));
     }
 
     qDeleteAll(ua);
@@ -1337,8 +1337,11 @@ void RGBMatrix_Test::runBeats()
     QList<Universe*> ua;
     ua.append(new Universe(0, gm.data()));
     MasterTimerStub timer(m_doc, ua);
-    timer.requestBpmNumber(120); // 500ms per beat
-    QCOMPARE(timer.beatTimeDuration(), 500);
+    // 120 is the MasterTimer default: requesting it would be a no-op and
+    // leave the beat timer (used by timeToNextBeat()) never started
+    timer.requestBpmNumber(100); // 600ms per beat
+    QCOMPARE(timer.beatTimeDuration(), 600);
+    QVERIFY(timer.m_beatTimer.isValid());
 
     RGBMatrix mtx(m_doc);
     mtx.setFixtureGroup(m_rgbGroup);
@@ -1353,7 +1356,7 @@ void RGBMatrix_Test::runBeats()
     // A beat moves to the next step and restarts the elapsed time
     timer.m_beatRequested = true;
     mtx.write(&timer, ua);
-    QCOMPARE(mtx.m_stepBeatDuration, uint(500));
+    QCOMPARE(mtx.m_stepBeatDuration, uint(600));
     QCOMPARE(mtx.elapsedBeats(), uint(0)); // reset together with the elapsed time
     QCOMPARE(mtx.m_stepHandler->currentStepIndex(), 1);
     QCOMPARE(mtx.elapsed(), uint(0));
@@ -1367,8 +1370,8 @@ void RGBMatrix_Test::runBeats()
         ticks++;
     }
     QCOMPARE(mtx.m_stepHandler->currentStepIndex(), 2);
-    QCOMPARE(ticks, int(500 / MasterTimer::tick()));
-    QVERIFY(mtx.elapsed() < 500);
+    QCOMPARE(ticks, int(600 / MasterTimer::tick()));
+    QVERIFY(mtx.elapsed() < 600);
 
     // Two beats per step: only every second beat advances
     timer.stopFunction(&mtx);
@@ -1394,7 +1397,7 @@ void RGBMatrix_Test::runTap()
 
     RGBMatrix mtx(m_doc);
     mtx.setFixtureGroup(m_rgbGroup);
-    mtx.setDuration(40);
+    mtx.setDuration(400); // taps closer than 100ms to the last step are ignored
 
     // Tapping a stopped matrix does nothing
     mtx.tap();
@@ -1409,7 +1412,7 @@ void RGBMatrix_Test::runTap()
     QCOMPARE(mtx.m_stepHandler->currentStepIndex(), 0);
 
     // After a quarter of the step duration a tap advances the step
-    QTest::qSleep(30);
+    QTest::qSleep(150);
     mtx.tap();
     QCOMPARE(mtx.m_stepHandler->currentStepIndex(), 1);
     QCOMPARE(mtx.elapsed(), uint(0));
@@ -1422,7 +1425,7 @@ void RGBMatrix_Test::runTap()
     mtx2.setDuration(40);
     mtx2.setAlgorithm(NULL);
     mtx2.start(&timer, FunctionParent::master());
-    QTest::qSleep(30);
+    QTest::qSleep(50);
     mtx2.tap();
     QCOMPARE(mtx2.m_stepHandler->currentStepIndex(), 0);
     timer.stopFunction(&mtx2);

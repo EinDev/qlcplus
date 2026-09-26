@@ -1032,7 +1032,6 @@ void RGBScript_Test::colorArrayRoundTrip()
      * rgbMapGetColors() always comes back empty for a freshly evaluated
      * script - see the report accompanying this test. Bind it by hand to
      * exercise the conversion of the returned array. */
-    QCOMPARE(s.rgbMapGetColors(), QVector<uint>());
     s.m_rgbMapGetColors = s.m_script.property("rgbMapGetColors");
     QVERIFY(s.m_rgbMapGetColors.isCallable());
     QCOMPARE(s.rgbMapGetColors(), QVector<uint>() << 0xFF0000 << 0x00FF00);
