@@ -122,7 +122,6 @@ bool RGBScript::load(const QString& fileName)
         m_rgbMap = QJSValue();
         m_rgbMapStepCount = QJSValue();
         m_rgbMapSetColors = QJSValue();
-        m_rgbMapGetColors = QJSValue();
         m_apiVersion = 0;
     }
 
@@ -180,7 +179,6 @@ bool RGBScript::evaluate()
     m_rgbMap = QJSValue();
     m_rgbMapStepCount = QJSValue();
     m_rgbMapSetColors = QJSValue();
-    m_rgbMapGetColors = QJSValue();
     m_apiVersion = 0;
 
     if (m_fileName.isEmpty() || m_contents.isEmpty())
@@ -223,11 +221,6 @@ bool RGBScript::evaluate()
                 qWarning() << m_fileName << "is missing the rgbMapSetColors() function!";
                 return false;
             }
-
-            // Optional: a script that dictates its own colors (e.g. presets)
-            m_rgbMapGetColors = m_script.property(QStringLiteral("rgbMapGetColors"));
-            if (m_rgbMapGetColors.isCallable() == false)
-                qWarning() << m_fileName << "is missing the rgbMapGetColors() function!";
         }
         if (m_apiVersion >= 2)
             return loadProperties();
@@ -326,7 +319,7 @@ QVector<uint> RGBScript::rgbMapGetColors()
 
     QVector<uint> colArray;
 
-    if (m_rgbMap.isUndefined() == true || m_rgbMapGetColors.isCallable() == false)
+    if (m_rgbMap.isUndefined() == true)
         return colArray;
 
     QJSValue colors = m_rgbMapGetColors.call();
