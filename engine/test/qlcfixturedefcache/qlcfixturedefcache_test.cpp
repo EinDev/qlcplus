@@ -464,11 +464,11 @@ void QLCFixtureDefCache_Test::loadMapFailures()
     QVERIFY(c.loadMap(dir) == false);
 
     /* The right document type but no root element at all */
-    QVERIFY(writeTextFile(mapPath, "<!DOCTYPE FixtureMap>\n"));
+    QVERIFY(writeTextFile(mapPath, "<!DOCTYPE FixturesMap>\n"));
     QVERIFY(c.loadMap(dir) == false);
 
     /* The right document type with a foreign root element */
-    QVERIFY(writeTextFile(mapPath, "<!DOCTYPE FixtureMap>\n<Foo/>\n"));
+    QVERIFY(writeTextFile(mapPath, "<!DOCTYPE FixturesMap>\n<Foo/>\n"));
     QVERIFY(c.loadMap(dir) == false);
 
     QVERIFY(c.m_defs.isEmpty());
@@ -484,8 +484,8 @@ void QLCFixtureDefCache_Test::loadMapContent()
     /* A duplicate entry, an entry without a model, an unknown tag inside a
        manufacturer and an unknown top-level tag must all be tolerated */
     const QString map(
-        "<!DOCTYPE FixtureMap>\n"
-        "<FixtureMap>\n"
+        "<!DOCTYPE FixturesMap>\n"
+        "<FixturesMap>\n"
         " <M n=\"Foo_Bar\">\n"
         "  <F n=\"Foo-Bar-One\" m=\"One\"/>\n"
         "  <F n=\"Foo-Bar-One\" m=\"One\"/>\n"
@@ -493,7 +493,7 @@ void QLCFixtureDefCache_Test::loadMapContent()
         "  <Unknown/>\n"
         " </M>\n"
         " <Bogus/>\n"
-        "</FixtureMap>\n");
+        "</FixturesMap>\n");
     QVERIFY(writeTextFile(dir.absoluteFilePath("FixturesMap.xml"), map));
 
     QLCFixtureDefCache c;
