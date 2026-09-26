@@ -199,7 +199,11 @@ bool ScriptRunner::write(MasterTimer *timer, QList<Universe *> universes)
             Function *function = m_doc->function(fID);
             if (function == NULL)
             {
+                // The Function was deleted from the Doc after the script
+                // enqueued it: drop the entry, or this loop would spin
+                // forever on the same queue head
                 qWarning() << QString("No such function (ID %1)").arg(fID);
+                m_functionQueue.removeFirst();
                 continue;
             }
 
