@@ -107,8 +107,10 @@ QLCInputProfile& QLCInputProfile::operator=(const QLCInputProfile& profile)
         m_midiSendNoteOff = profile.m_midiSendNoteOff;
         m_globalSettingsMap = profile.m_globalSettingsMap;
 
-        /* Destroy all existing channels */
+        /* Destroy all existing channels and tables */
         destroyChannels();
+        m_colorTable.clear();
+        m_midiChannelTable.clear();
 
         /* Copy the other profile's channels */
         QMapIterator <quint32, QLCInputChannel*> it(profile.m_channels);
