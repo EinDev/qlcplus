@@ -515,6 +515,11 @@ public:
     /** Returns a list of the registered external controls suitable for the UI */
     QVariant externalControlsList() const;
 
+    /** Returns the user-visible name of the external control registered
+     *  with $id (e.g. "Play", "Flash"), or an empty string if $id is not
+     *  registered by this widget */
+    QString externalControlName(quint8 id) const;
+
 protected:
     /** A list of the external controls known by this widget */
     QMap <quint8, ExternalControlInfo> m_externalControlList;

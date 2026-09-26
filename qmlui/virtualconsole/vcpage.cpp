@@ -353,7 +353,20 @@ QList<QKeySequence> VCPage::pageKeySequences()
     return list;
 }
 
-bool VCPage::handleKeyEvent(QKeySequence &seq, bool pressed)
+QString VCPage::keyBindingDescription(const VCWidget *widget, quint8 id)
+{
+    QString description = widget->caption();
+    if (description.isEmpty())
+        description = VCWidget::typeToString(widget->type());
+
+    QString controlName = widget->externalControlName(id);
+    if (!controlName.isEmpty())
+        description += QString(": %1").arg(controlName);
+
+    return description;
+}
+
+bool VCPage::handleKeyEvent(QKeySequence &seq, bool pressed, QStringList *descriptions)
 {
     bool handled = false;
 
@@ -372,6 +385,9 @@ bool VCPage::handleKeyEvent(QKeySequence &seq, bool pressed)
             // TODO: match frame page??
             match.second->slotInputValueChanged(match.first, pressed ? 255 : 0);
             handled = true;
+
+            if (descriptions != nullptr)
+                descriptions->append(keyBindingDescription(match.second, quint8(match.first)));
         }
     }
 

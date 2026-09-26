@@ -116,8 +116,19 @@ public:
 
     /** Method invoked by the Virtual Console when an key press/release signal is received.
      *  This is in charge of delivering the event to the children widgets expecting it.
-     *  Returns true if $seq matched at least one bound widget */
-    bool handleKeyEvent(QKeySequence &seq, bool pressed);
+     *  Returns true if $seq matched at least one bound widget.
+     *
+     *  When $descriptions is given, one human-readable entry per widget that
+     *  actually received the event is appended to it, in the form
+     *  "<widget caption>: <control name>" (see keyBindingDescription()),
+     *  so the caller can report what the key just did */
+    bool handleKeyEvent(QKeySequence &seq, bool pressed, QStringList *descriptions = nullptr);
+
+    /** Describe the key binding of $widget's external control $id for the
+     *  UI: "<caption>: <control name>". Falls back to the widget type name
+     *  when the caption is empty and omits the control part when $id is
+     *  not a registered external control of $widget */
+    static QString keyBindingDescription(const VCWidget *widget, quint8 id);
 
     /** Return true if $seq is bound to any widget on this page, without
      *  dispatching anything - used to decide whether an auto-repeated key

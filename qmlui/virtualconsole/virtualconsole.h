@@ -311,6 +311,15 @@ public:
      *  handled by the Virtual Console */
     bool externalInputEnabled() const;
 
+signals:
+    /** Emitted once per key press that a per-show VC key binding accepted
+     *  (never on release or auto-repeat), so the UI can show the same
+     *  key-cast feedback it shows for ShortcutManager actions.
+     *  $sequenceText is the native text of the key sequence; $description
+     *  is the activated page's caption, or the accepting widgets'
+     *  "<caption>: <control>" entries joined by ", " */
+    void keyBindingFired(QString sequenceText, QString description);
+
 protected slots:
     /**
      * Slot that receives external input data from the InputOutputMap class.
