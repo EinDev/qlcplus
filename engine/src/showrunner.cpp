@@ -80,6 +80,13 @@ void ShowRunner::start()
 
 void ShowRunner::setPause(bool enable)
 {
+    // Resumed straight into scrub mode (the Show Manager moving the cursor
+    // of a paused Show): the clips stay held where the pause left them,
+    // the first frozen tick seeks them and holds whatever it starts. Letting
+    // them run until then would step Chasers and continue fades for a tick.
+    if (enable == false && m_show->isScrubMode())
+        return;
+
     for (int i = 0; i < m_runningQueue.count(); i++)
         m_runningQueue.at(i).function->setPause(enable);
 }

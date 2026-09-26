@@ -355,7 +355,7 @@ Rectangle
                 height: width
                 faSource: FontAwesome.fa_eye
                 faColor: UISettings.fgMain
-                tooltip: qsTr("Preview the Show at the cursor while it is stopped")
+                tooltip: qsTr("Preview the Show at the cursor while it is stopped or paused")
                 checkable: true
                 checked: showManager.previewEnabled
                 enabled: showManager.isEditing

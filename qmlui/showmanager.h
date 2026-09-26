@@ -134,7 +134,7 @@ public:
     bool isPaused() const;
 
     /**
-     * Get/Set whether moving the cursor while the Show is stopped previews
+     * Get/Set whether moving the cursor while the Show is stopped (or paused) previews
      * the Show's state at the cursor: every clip under it renders on the
      * real output (fixtures via DMX/2D/3D, a Video's frame at the in-clip
      * offset), Audio stays silent. Implemented with Show::setScrubMode.
@@ -164,8 +164,9 @@ signals:
 private:
     void setPlaybackState(bool playing, bool paused);
 
-    /** Start the preview frozen at $time, or seek a running one to it.
-     *  Nothing happens while the Show plays or is paused. */
+    /** Start the preview frozen at $time, or seek a running one to it. A
+     *  paused Show is handed over to the preview; a playing one is left
+     *  alone. */
     void previewAt(int time);
 
     /** Stop the preview if one is running; the cursor stays put */

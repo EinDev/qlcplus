@@ -2011,12 +2011,27 @@ void ShowManager::previewAt(int time)
         return;
     }
 
-    // Only a stopped Show is previewed: a playing or paused one keeps
-    // its own cursor handling (see playShow). Note isRunning() stays true
-    // for one tick after a stop, so a click right after stopping the Show
-    // does not preview yet.
+    // A playing Show keeps its cursor. Note isRunning() stays true for one
+    // tick after a stop, so a click right after stopping the Show does not
+    // preview yet.
     if (m_currentShow->isRunning())
+    {
+        if (m_currentShow->isPaused() == false)
+            return;
+
+        // Paused: hand the runner over to the frozen scrub state at the new
+        // cursor. Scrub mode goes on first so that the runner keeps its
+        // clips held through the unpause (see ShowRunner::setPause) and its
+        // first tick seeks them; from here on this is a preview like the
+        // stopped case - play continues from the cursor.
+        m_cursorMovedDuringPause = false;
+        m_currentShow->setScrubMode(true);
+        m_currentShow->requestSeek(position);
+        m_currentShow->setPause(false);
+        setPreviewing(true);
+        setPlaybackState(false, false);
         return;
+    }
 
     m_currentShow->rebuildSchedule();
     m_currentShow->setScrubMode(true);

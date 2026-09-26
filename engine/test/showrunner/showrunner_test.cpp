@@ -1350,3 +1350,54 @@ void ShowRunner_Test::stopOfHeldSceneFadesOut()
 // Guiless rather than appless: Chaser::createRunner() moves its runner to
 // QCoreApplication::instance()->thread(), which needs a live application.
 QTEST_GUILESS_MAIN(ShowRunner_Test)
+
+void ShowRunner_Test::scrubHandoffFromPauseKeepsClipsHeld()
+{
+    // A paused Show whose cursor moves is handed over to scrub mode: scrub
+    // mode on, seek requested, then unpaused. The unpause must not let the
+    // held clips run (Show::write skips the runner while paused, so the
+    // frozen tick can only take over afterwards); the first tick seeks and
+    // holds as usual, and leaving scrub mode plays on from there.
+    LiveShow ls(this, 0, 20000, 60000);
+    Scene *later = ls.makeScene("later");
+    ShowFunction *sfLater = ls.track->createShowFunction(later->id());
+    sfLater->setStartTime(14000);
+    sfLater->setDuration(6000);
+    ls.commitEdit();
+    ShowRunner runner(ls.doc, ls.show->id());
+
+    ls.advanceTo(runner, 12000);
+    runner.setPause(true);
+    QVERIFY(ls.scene->isPaused() == true);
+    QVERIFY(ls.fillerScene->isPaused() == true);
+
+    ls.show->setScrubMode(true);
+    ls.show->requestSeek(15000);
+    runner.setPause(false);
+    QVERIFY(ls.scene->isPaused() == true);
+    QVERIFY(ls.fillerScene->isPaused() == true);
+
+    // first tick: frozen, seeked; A (0-20s) and the filler keep holding,
+    // B (14-20s) starts at its offset and is held in turn
+    runner.write(ls.timer(), ls.universes());
+    QVERIFY(runner.m_frozen == true);
+    QCOMPARE(runner.m_elapsedTime, quint32(15000));
+    QVERIFY(queueHas(runner, ls.sf->id()) == true);
+    QVERIFY(ls.scene->isPaused() == true);
+    QVERIFY(ls.fillerScene->isPaused() == true);
+    QVERIFY(queueHas(runner, sfLater->id()) == true);
+    QCOMPARE(later->elapsed(), quint32(1000));
+    ls.timer()->timerTick();
+    ls.processFaders();
+    ls.frozenTicks(runner, 3);
+    QVERIFY(later->isPaused() == true);
+    QCOMPARE(runner.m_elapsedTime, quint32(15000));
+
+    // play from the cursor
+    ls.show->setScrubMode(false);
+    runner.write(ls.timer(), ls.universes());
+    QVERIFY(runner.m_frozen == false);
+    QVERIFY(ls.scene->isPaused() == false);
+    QVERIFY(later->isPaused() == false);
+    QVERIFY(runner.m_elapsedTime > quint32(15000));
+}

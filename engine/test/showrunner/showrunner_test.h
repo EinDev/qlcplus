@@ -73,6 +73,7 @@ private slots:
     void showStopClearsScrubMode();
     void scrubHoldWaitsForFaderCycles();
     void stopOfHeldSceneFadesOut();
+    void scrubHandoffFromPauseKeepsClipsHeld();
 
 private:
     Doc *m_doc;
