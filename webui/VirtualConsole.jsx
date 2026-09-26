@@ -128,7 +128,14 @@ function VirtualConsole() {
     setStore(s => Object.assign({}, s, { [section]: Object.assign({}, s[section], { [id]: typeof value === 'function' ? value(s[section][id]) : value }) }));
   }, []);
   const say = React.useCallback((text) => setNotice(text), []);
-  const notFound = (method) => (e) => { if (e && e.code === 'NOT_FOUND') say('This server has no ' + method + ' yet'); else if (e && e.code !== 'NOT_CONNECTED') say(method + ': ' + (e.message || 'failed')); };
+  /* NOT_FOUND "Unknown method" = server predates the method (view-only). Everything else — NOT_FOUND
+     for an unknown widget, INVALID_PARAMS (wrong widget type), INVALID_STATE (no Function attached,
+     disabled widget, cue list without a Chaser) — is a real answer and is shown as such. */
+  const notFound = (method) => (e) => {
+    if (!e || e.code === 'NOT_CONNECTED') return;
+    if (e.code === 'NOT_FOUND' && /^Unknown method/.test(e.message || '')) say('This server has no ' + method + ' yet');
+    else say(method + ': ' + (e.message || e.code || 'failed') + (e.details && e.details.widgetType ? ' (' + e.details.widgetType + ')' : ''));
+  };
 
   /* Engine mode gates editing (AC_VCEditing in the QML app = Design mode only). */
   React.useEffect(() => {

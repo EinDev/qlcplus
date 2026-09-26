@@ -108,8 +108,9 @@ function VCSliderBody({ w }) {
   const style = w.style || {};
   const cfg = w.typeConfig || {};
   const g = w.geometry || { width: 60, height: 150 };
-  const lo = Number.isFinite(cfg.rangeLowLimit) ? cfg.rangeLowLimit : 0;
-  const hi = Number.isFinite(cfg.rangeHighLimit) ? cfg.rangeHighLimit : 255;
+  /* Live seeds carry min/max (the server clamps setValue to them); older snapshots only the config limits. */
+  const lo = Number.isFinite(w.min) ? w.min : Number.isFinite(cfg.rangeLowLimit) ? cfg.rangeLowLimit : 0;
+  const hi = Number.isFinite(w.max) ? w.max : Number.isFinite(cfg.rangeHighLimit) ? cfg.rangeHighLimit : 255;
   const raw = vc.live.sliders[w.id];
   const v = vcClamp(raw != null ? Number(raw) : lo, lo, hi);
   const knob = cfg.widgetStyle === 'Knob';
@@ -156,7 +157,9 @@ function VCCueListBody({ w }) {
       textAlign: i === 0 ? 'right' : 'left' }}>{label}</span>
   );
   const row = (s, i) => {
-    const cells = [(s.index != null ? s.index : i) + 1, s.name || '', vcMsToString(s.fadeIn), vcMsToString(s.fadeOut), s.hold === -1 || s.hold == null ? '∞' : vcMsToString(s.hold), s.notes || ''];
+    /* Function::infiniteSpeed() = 4294967295 on the wire; older mocks used -1. */
+    const infinite = s.hold == null || s.hold === -1 || Number(s.hold) >= 4294967295;
+    const cells = [(s.index != null ? s.index : i) + 1, s.name || '', vcMsToString(s.fadeIn), vcMsToString(s.fadeOut), infinite ? '∞' : vcMsToString(s.hold), s.notes || ''];
     const stepIndex = s.index != null ? s.index : i;
     const isCurrent = stepIndex === idx;
     return (

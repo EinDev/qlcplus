@@ -45,9 +45,10 @@ default until "Use server default" is pressed.
 | `api/qlcplus-api.js` | Transport: envelopes, `hello`, reconnect, unsupported-method tracking, Simple Desk / DMX merging. |
 | `api/domains/*.js` | One namespace per spec fragment (`qlc.core`, `qlc.io`, `qlc.vc`, `qlc.fixtures`, ...), thin wrappers over `call()`. |
 | `Connection.jsx` | `QLCConnectionProvider` / `useQLC()` / the network button popover. |
-| `App.jsx` | Main toolbar, context switching, blackout, mode, save, About. |
+| `App.jsx` | Main toolbar: actions menu (New / Open / Save / Save as / Undo / Redo / About), context switching, blackout, Stop all, BPM + beat indicator, mode. |
 | `FixturesFunctions.jsx` | Fixture tree (per universe) + function tree (per folder), detail panes, start/stop, rename, delete. |
-| `VirtualConsole.jsx` | Pages + widgets at their real geometry, button press / slider move, Grand Master. |
+| `VirtualConsole.jsx` | Pages + widgets at their real geometry, live interaction, Design-mode layout editing, Grand Master. |
+| `vc/vc-shared.jsx`, `vc/vc-widgets.jsx`, `vc/vc-edit.jsx` | VC context + pointer-event fader/knob; one body per widget type (button, slider/knob, cue list, XY pad, speed dial, frame, label); selection/move/resize wrapper, widget palette and properties panel. |
 | `SimpleDesk.jsx` | 512 channel strips per universe, live DMX values + overrides, keypad, dump to scene. |
 | `InputOutput.jsx` | Universe / patch table (read-only against today's server). |
 | `data.js` | Mock workspace used while offline. |
