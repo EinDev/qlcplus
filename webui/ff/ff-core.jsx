@@ -94,6 +94,16 @@
     return err;
   };
 
+  /* ---- own-mutation revisions ------------------------------------------------------------------ */
+  /* core.history.changed is broadcast (coalesced, origin null) after every undoable action — our
+     own edits included — so it cannot be told apart by originClientId. Every docRevision one of
+     our mutations produced is remembered; a history event carrying one of them is our own echo. */
+  const ownRevisions = [];
+  function rememberOwnRevision(rev) { ownRevisions.push(rev); if (ownRevisions.length > 200) ownRevisions.shift(); }
+  FF.isOwnHistory = function (data) {
+    return !!(data && typeof data.docRevision === 'number' && ownRevisions.indexOf(data.docRevision) !== -1);
+  };
+
   /* ---- revision-gated mutation queue -------------------------------------------------------- */
   const queues = new WeakMap();
   function queueFor(client) {
@@ -121,6 +131,7 @@
           if (stale) result = await client.call(it.method, withRevision(client, it.params));
           else throw e;
         }
+        if (result && typeof result.docRevision === 'number') rememberOwnRevision(result.docRevision);
         it.resolvers.forEach(r => r[0](result));
       } catch (e) {
         if (!e || e.code !== 'LOCAL_CLOSED') FF.reportError(e, it.method);
@@ -228,8 +239,9 @@
     client.on('fixtures.unpatched', d => ((d && d.fixtureIds) || []).forEach(drop));
     const flush = () => { const ids = Array.from(c.fixtures.keys()); c.fixtures.clear(); c.modes.clear(); ids.forEach(id => c.listeners.forEach(fn => fn(id))); };
     client.on('core.project.loaded', flush);
-    /* Undo/redo emits no domain events, only core.history.changed — anything cached may be stale. */
-    client.on('core.history.changed', flush);
+    /* Undo/redo emits no domain events, only core.history.changed — anything cached may be stale.
+       (The same topic also follows our own mutations; those are recognised by revision.) */
+    client.on('core.history.changed', (d) => { if (!FF.isOwnHistory(d)) flush(); });
     return c;
   }
   /** fixtures.get, cached per client until that fixture changes. */

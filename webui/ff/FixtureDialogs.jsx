@@ -182,7 +182,7 @@
     React.useEffect(() => {
       if (!qlc.online) { setGroups(null); return undefined; }
       loadList();
-      const offs = ['fixtures.group.created', 'fixtures.group.deleted', 'fixtures.group.renamed', 'fixtures.group.updated', 'core.project.loaded', 'core.history.changed'].map(t => qlc.subscribeTo(t, () => { loadList(); if (current != null) loadDetail(current); }));
+      const offs = ['fixtures.group.created', 'fixtures.group.deleted', 'fixtures.group.renamed', 'fixtures.group.updated', 'core.project.loaded', 'core.history.changed'].map(t => qlc.subscribeTo(t, (d) => { if (t === 'core.history.changed' && FF.isOwnHistory(d)) return; loadList(); if (current != null) loadDetail(current); }));
       return () => offs.forEach(f => f());
     }, [qlc.online, current]);
     React.useEffect(() => { setDetail(null); if (current != null && qlc.online) loadDetail(current); }, [current, qlc.online]);

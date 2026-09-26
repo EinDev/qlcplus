@@ -55,7 +55,8 @@ function useLiveList(qlc, load, topics) {
     /* Coalesce bursts (a multi-fixture patch fires one event per fixture). */
     const debounced = () => { clearTimeout(timer); timer = setTimeout(refresh, 150); };
     refresh();
-    const offs = topics.map(t => qlc.subscribeTo(t, debounced));
+    /* core.history.changed also follows this client's own mutations (see FF.isOwnHistory). */
+    const offs = topics.map(t => qlc.subscribeTo(t, t === 'core.history.changed' ? (d) => { if (!(window.FF && window.FF.isOwnHistory(d))) debounced(); } : debounced));
     return () => { alive = false; clearTimeout(timer); offs.forEach(f => f()); };
   }, [qlc.online]);
   return data;
@@ -169,7 +170,12 @@ function useFunctionStatus(qlc, functions) {
       const id = d.functionId != null ? d.functionId : d.id;
       if (id == null) return;
       setReported(true);
-      setStatus(s => Object.assign({}, s, { [String(id)]: { running: d.running !== undefined ? !!d.running : (s[String(id)] || {}).running, paused: d.paused !== undefined ? !!d.paused : (s[String(id)] || {}).paused } }));
+      setStatus(s => {
+        const cur = s[String(id)] || {};
+        const next = { running: d.running !== undefined ? !!d.running : cur.running, paused: d.paused !== undefined ? !!d.paused : cur.paused };
+        if (cur.running === next.running && cur.paused === next.paused) return s; /* elapsed-only ticks: no re-render */
+        return Object.assign({}, s, { [String(id)]: next });
+      });
     });
     return off;
   }, [qlc.online]);
@@ -253,7 +259,7 @@ function useFunctionDetail(qlc, functionId) {
   const load = React.useCallback(() => qlc.call('functions.get', { functionId: String(functionId) }).then(setDetail).catch(() => {}), [functionId, qlc.online]);
   React.useEffect(() => { setDetail(null); if (qlc.online) load(); }, [functionId, qlc.online]);
   /* Undo/redo (from this client too) emits only core.history.changed — always refetch on it. */
-  React.useEffect(() => qlc.subscribeTo('core.history.changed', () => load()), [functionId, qlc.online]);
+  React.useEffect(() => qlc.subscribeTo('core.history.changed', (d) => { if (!FF.isOwnHistory(d)) load(); }), [functionId, qlc.online]);
   const topics = ['functions.updated', 'functions.renamed', 'functions.moved', 'functions.scene.valuesChanged', 'functions.scene.membersChanged',
     'functions.chaser.stepsChanged', 'functions.chaser.changed', 'functions.sequence.stepsChanged', 'functions.sequence.changed', 'functions.collection.membersChanged'];
   FF.useForeignEvents(qlc, topics, (topic, d) => {
@@ -459,8 +465,10 @@ function FixturesFunctions() {
   const doDelete = () => {
     setDlg(null);
     if (!live) return;
-    const fns = selectedFunctionIds.length ? selectedFunctionIds : (isFunction ? [detail.functionId] : []);
-    const fxs = selectedFixtureIds.length ? selectedFixtureIds : (isFixture ? [detail.fixtureId] : []);
+    /* Act on the tree selection when there is one; the open item alone only when nothing is selected. */
+    const anySel = selectedFunctionIds.length + selectedFixtureIds.length > 0;
+    const fns = anySel ? selectedFunctionIds : (isFunction ? [detail.functionId] : []);
+    const fxs = anySel ? selectedFixtureIds : (isFixture ? [detail.fixtureId] : []);
     if (fns.length) FF.mutateSeq(qlc, fns.map(id => ['functions.delete', { functionId: String(id) }])).catch(() => {});
     if (fxs.length) FF.mutate(qlc, 'fixtures.unpatch', { fixtureIds: fxs.map(String) }).catch(() => {});
     setSelected([]); setDetail(null);
@@ -716,9 +724,10 @@ function FixturesFunctions() {
         </div>
       </CustomPopupDialog>
 
-      <CustomPopupDialog open={dlg === 'delete'} title={selectedFunctionIds.length && selectedFixtureIds.length ? 'Delete items' : (selectedFunctionIds.length || isFunction) ? 'Delete functions' : 'Unpatch fixtures'} width={400}
+      <CustomPopupDialog open={dlg === 'delete'} title={selectedFunctionIds.length && selectedFixtureIds.length ? 'Delete items' : (selectedFunctionIds.length || (!selectedFixtureIds.length && isFunction)) ? 'Delete functions' : 'Unpatch fixtures'} width={400}
         message={(() => {
-          const nf = selectedFunctionIds.length || (isFunction ? 1 : 0), nx = selectedFixtureIds.length || (isFixture ? 1 : 0);
+          const anySel = selectedFunctionIds.length + selectedFixtureIds.length > 0;
+          const nf = anySel ? selectedFunctionIds.length : (isFunction ? 1 : 0), nx = anySel ? selectedFixtureIds.length : (isFixture ? 1 : 0);
           const parts = [];
           if (nf) parts.push(nf === 1 ? 'the function "' + (selectedNodes.find(n => n.kind === 'function') || detail || {}).name + '"' : nf + ' functions');
           if (nx) parts.push(nx === 1 ? 'the fixture "' + (selectedNodes.find(n => n.kind === 'fixture') || detail || {}).name + '"' : nx + ' fixtures');
