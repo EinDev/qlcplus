@@ -106,7 +106,10 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 function Invoke-MsysBash([string]$Command) {
-    & $Bash -lc "export MSYSTEM=MINGW64; export MSYSTEM_CARCH=x86_64; source /etc/profile; cd $RepoRootMsys; $Command"
+    # Out-Host: the build output must go to the console, not into the
+    # function's return value, or the caller gets "ninja: no work to do." as
+    # part of $rc and treats a successful build as a failure.
+    & $Bash -lc "export MSYSTEM=MINGW64; export MSYSTEM_CARCH=x86_64; source /etc/profile; cd $RepoRootMsys; $Command" | Out-Host
     return $LASTEXITCODE
 }
 
