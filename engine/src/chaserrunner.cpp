@@ -694,10 +694,22 @@ int ChaserRunner::getNextStepIndex()
             else
                 currentStepIndex = 0;
         }
-        // Don't run the same function 2 times in a row
-        while (currentStepIndex < m_chaser->stepsCount()
-                && randomStepIndex(currentStepIndex) == m_lastRunStepIdx)
-            ++currentStepIndex;
+        // Don't run the same function 2 times in a row. Walk away from the
+        // boundary that was just landed on: a backward round (or a manual
+        // "previous") lands on the last position, where walking forward
+        // would run past the end of the order.
+        if (currentStepIndex == 0)
+        {
+            while (currentStepIndex < m_chaser->stepsCount() - 1
+                    && randomStepIndex(currentStepIndex) == m_lastRunStepIdx)
+                ++currentStepIndex;
+        }
+        else
+        {
+            while (currentStepIndex > 0
+                    && randomStepIndex(currentStepIndex) == m_lastRunStepIdx)
+                --currentStepIndex;
+        }
         currentStepIndex = randomStepIndex(currentStepIndex);
     }
     else // Ping Pong
