@@ -3656,6 +3656,8 @@ void EFX_Test::loadExtraTags()
     xmlWriter.writeTextElement("DimmerDecay", "10");
     xmlWriter.writeTextElement("DimmerShape", "Sine");
     xmlWriter.writeTextElement("DimmerOrder", "Serial");
+    // Unknown tags are skipped too
+    xmlWriter.writeTextElement("Foo", "Bar");
 
     xmlWriter.writeEndElement();
 
@@ -3697,9 +3699,10 @@ void EFX_Test::writeFaders()
     e->setName("Test EFX");
     e->setDuration(2000);
     e->setIsRelative(true);
-    EFXFixture* ef = new EFXFixture(e);
-    ef->setHead(GroupHead(fxi->id(), 0));
-    e->addFixture(ef);
+    QVERIFY(e->addFixture(fxi->id(), 0));
+    QCOMPARE(e->fixtures().size(), 1);
+    QCOMPARE(e->fixtures().at(0)->head(), GroupHead(fxi->id(), 0));
+    QCOMPARE(e->components(), QList<quint32>() << fxi->id());
 
     e->start(&timer, FunctionParent::master());
     QVERIFY(e->isRunning());
@@ -3764,6 +3767,48 @@ void EFX_Test::writeNoFixturesStops()
     QCOMPARE(e->m_fadersMap.count(), 0);
 
     e->postRun(&timer, ua);
+}
+
+void EFX_Test::writeSingleShotDone()
+{
+    QLCFixtureDef* def = m_doc->fixtureDefCache()->fixtureDef("Martin", "MAC250+");
+    QVERIFY(def != NULL);
+    QLCFixtureMode* mode = def->mode("Mode 4");
+    QVERIFY(mode != NULL);
+
+    Fixture* fxi = new Fixture(m_doc);
+    fxi->setFixtureDefinition(def, mode);
+    fxi->setAddress(0);
+    fxi->setUniverse(0);
+    m_doc->addFixture(fxi);
+
+    QList<Universe*> ua;
+    ua.append(new Universe(0, new GrandMaster()));
+    MasterTimerStub timer(m_doc, ua);
+
+    EFX* e = new EFX(m_doc);
+    m_doc->addFunction(e);
+    e->setDuration(1000);
+    e->setRunOrder(Function::SingleShot);
+    QVERIFY(e->addFixture(fxi->id(), 0));
+
+    e->start(&timer, FunctionParent::master());
+    QVERIFY(e->stopped() == false);
+
+    // A single shot EFX stops itself once its only fixture has run its cycle
+    int writes = 0;
+    while (e->stopped() == false && writes < 200)
+    {
+        e->write(&timer, ua);
+        writes++;
+    }
+    QVERIFY(e->stopped() == true);
+    QVERIFY(e->fixtures().at(0)->isDone());
+    QVERIFY(writes > 1);
+    QVERIFY(writes < 200);
+
+    e->postRun(&timer, ua);
+    QVERIFY(e->fixtures().at(0)->isDone() == false);
 }
 
 QTEST_MAIN(EFX_Test)

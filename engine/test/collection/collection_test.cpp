@@ -594,4 +594,65 @@ void Collection_Test::stopNotOwnChildren()
     QVERIFY(s2->stopped() == true);
 }
 
-QTEST_APPLESS_MAIN(Collection_Test)
+void Collection_Test::iconAndMissingMembers()
+{
+    Collection c(m_doc);
+    // The icon resource lives in the UI, not in the engine: only check that
+    // asking for it is safe
+    QIcon icon = c.getIcon();
+    Q_UNUSED(icon);
+
+    Scene *s = new Scene(m_doc);
+    s->setDuration(700);
+    m_doc->addFunction(s);
+
+    QVERIFY(c.addFunction(12345));
+    // An insert index puts the member in front
+    QVERIFY(c.addFunction(s->id(), 0));
+    QCOMPARE(c.functions(), QList<quint32>() << s->id() << 12345);
+
+    // A member that doesn't exist (anymore) is skipped
+    QCOMPARE(c.totalDuration(), quint32(700));
+    QVERIFY(c.contains(s->id()));
+    QVERIFY(c.contains(12345) == false);
+    QVERIFY(c.contains(999) == false);
+}
+
+void Collection_Test::writePausedAndPostRunAfterFirstTick()
+{
+    Scene *s1 = new Scene(m_doc);
+    m_doc->addFunction(s1);
+
+    Collection *c = new Collection(m_doc);
+    m_doc->addFunction(c);
+    c->addFunction(s1->id());
+
+    QList<Universe*> ua;
+    ua.append(new Universe(0, new GrandMaster()));
+    MasterTimerStub timer(m_doc, ua);
+
+    c->start(&timer, FunctionParent::master());
+    QCOMPARE(c->m_tick, uint(1));
+    QVERIFY(s1->isRunning());
+
+    // Paused: the first tick is not consumed
+    c->setPause(true);
+    QVERIFY(c->isPaused());
+    QVERIFY(s1->isPaused());
+    c->write(&timer, ua);
+    QCOMPARE(c->m_tick, uint(1));
+
+    c->setPause(false);
+    QVERIFY(s1->isPaused() == false);
+    c->write(&timer, ua);
+    QCOMPARE(c->m_tick, uint(2));
+    QVERIFY(c->stopped() == false);
+
+    // Stopping right after the first tick still detaches the child signals
+    c->postRun(&timer, ua);
+    QVERIFY(c->isRunning() == false);
+    QCOMPARE(c->m_intensityOverrideIds.count(), 0);
+    QVERIFY(s1->stopped());
+}
+
+QTEST_MAIN(Collection_Test)

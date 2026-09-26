@@ -19,6 +19,7 @@
 
 #include <QtTest>
 #include <QFileInfo>
+#include <QTemporaryDir>
 
 #define private public
 #include "rgbscript_test.h"
@@ -1132,6 +1133,30 @@ void RGBScript_Test::unusualPropertyDeclarations()
 
     QCOMPARE(props.at(4).m_name, QString("text"));
     QCOMPARE(props.at(4).m_type, RGBScriptProperty::String);
+}
+
+void RGBScript_Test::cacheLoadErrors()
+{
+    RGBScriptsCache cache(m_doc);
+
+    // A directory that doesn't exist
+    QVERIFY(cache.load(QDir("/no/such/directory/anywhere")) == false);
+    QCOMPARE(cache.names().size(), 0);
+
+    // A script file that can't be opened: a directory named like a script
+    QTemporaryDir tmp;
+    QVERIFY(tmp.isValid());
+    QVERIFY(QDir(tmp.path()).mkdir("unreadable.js"));
+    QVERIFY(cache.load(QDir(tmp.path())) == false);
+    QCOMPARE(cache.names().size(), 0);
+
+    // Loading the same directory twice: the scripts are already known
+    QDir dir(INTERNAL_SCRIPTDIR);
+    QVERIFY(cache.load(dir));
+    int count = cache.names().size();
+    QVERIFY(count > 0);
+    QVERIFY(cache.load(dir));
+    QCOMPARE(cache.names().size(), count);
 }
 
 QTEST_MAIN(RGBScript_Test)

@@ -454,6 +454,11 @@ void RGBImage_Test::animatedGif()
     QVERIFY(copy.animatedSource());
     copy.rgbMap(QSize(2, 1), 0, 0, map);
     QCOMPARE(map[0][0], uint(qRgb(255, 0, 0)));
+
+    // A frame scaled to nothing is a null image: the map is left alone
+    RGBMap untouched = map;
+    image.rgbMap(QSize(0, 0), 0, 0, map);
+    QCOMPARE(map, untouched);
 }
 
 void RGBImage_Test::saveXML()

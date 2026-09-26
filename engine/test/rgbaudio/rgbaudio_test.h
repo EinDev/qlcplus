@@ -38,6 +38,7 @@ private slots:
     void rgbMapNoSignal();
     void postRun();
     void loadSaveXML();
+    void firstRound();
 
 private:
     Doc *m_doc;

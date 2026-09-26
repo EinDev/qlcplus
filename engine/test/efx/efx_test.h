@@ -101,6 +101,7 @@ private slots:
     void loadExtraTags();
     void writeFaders();
     void writeNoFixturesStops();
+    void writeSingleShotDone();
 
 private:
     Doc* m_doc;

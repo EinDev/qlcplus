@@ -55,6 +55,13 @@ private slots:
     void postRun();
     void write();
 
+    void perCueNameAndSpeeds();
+    void loadWrongRoot();
+    void writeNoCues();
+    void intensityWithFaders();
+    void switchCueUniverseOutOfRange();
+    void heapInstance();
+
 private:
     Doc* m_doc;
 };

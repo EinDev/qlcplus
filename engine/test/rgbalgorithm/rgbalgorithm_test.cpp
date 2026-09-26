@@ -215,6 +215,28 @@ void RGBAlgorithm_Test::loaderInvalidScript()
     QVERIFY(algo == NULL);
 }
 
+void RGBAlgorithm_Test::loaderUnknownType()
+{
+    // An algorithm type nobody knows about loads as nothing
+    QBuffer buffer;
+    buffer.open(QIODevice::WriteOnly | QIODevice::Text);
+    QXmlStreamWriter xmlWriter(&buffer);
+    xmlWriter.writeStartElement("Algorithm");
+    xmlWriter.writeAttribute("Type", "Bogus");
+    xmlWriter.writeCharacters("Whatever");
+    xmlWriter.writeEndElement();
+    xmlWriter.writeEndDocument();
+    xmlWriter.setDevice(NULL);
+    buffer.close();
+
+    buffer.open(QIODevice::ReadOnly | QIODevice::Text);
+    QXmlStreamReader xmlReader(&buffer);
+    xmlReader.readNextStartElement();
+
+    RGBAlgorithm* algo = RGBAlgorithm::loader(m_doc, xmlReader);
+    QVERIFY(algo == NULL);
+}
+
 void RGBAlgorithm_Test::loader()
 {
     // Script algo

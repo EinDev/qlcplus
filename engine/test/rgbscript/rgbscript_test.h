@@ -57,6 +57,7 @@ private slots:
     void colorArrayRoundTrip();
     void loadSaveXML();
     void unusualPropertyDeclarations();
+    void cacheLoadErrors();
 
 private:
     Doc * m_doc;

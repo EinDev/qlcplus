@@ -51,6 +51,9 @@ private slots:
 
     void stopNotOwnChildren();
 
+    void iconAndMissingMembers();
+    void writePausedAndPostRunAfterFirstTick();
+
 private:
     Doc* m_doc;
 };
