@@ -885,6 +885,7 @@ void RGBMatrix_Test::loadSaveExtra()
     xmlWriter.writeCharacters("Stripes");
     xmlWriter.writeEndElement();
     xmlWriter.writeTextElement("FixtureGroup", QString::number(m_rgbGroup));
+    xmlWriter.writeTextElement("TempoType", "Beats");
     xmlWriter.writeTextElement("Foo", "Bar"); // unknown tag, skipped
     xmlWriter.writeEndElement();
 
@@ -906,6 +907,7 @@ void RGBMatrix_Test::loadSaveExtra()
     QVERIFY(mtx.algorithm() != NULL);
     QCOMPARE(mtx.algorithm()->name(), QString("Stripes"));
     QCOMPARE(mtx.property("orientation"), QString("Vertical"));
+    QCOMPARE(mtx.tempoType(), Function::Beats);
     buffer.close();
 
     // Save it back: dimmer control and properties must be written, invalid colors skipped
@@ -973,6 +975,8 @@ void RGBMatrix_Test::runLoopForward()
     mtx.setDuration(MasterTimer::tick());
     mtx.setFadeInSpeed(0);
     mtx.setFadeOutSpeed(0);
+    // A cached property is re-applied to the script when the run starts
+    mtx.setProperty("orientation", "Horizontal");
     QCOMPARE(mtx.stepsCount(), 4);
     QCOMPARE(mtx.getColor(0), QColor(Qt::red));
 
@@ -1121,6 +1125,10 @@ void RGBMatrix_Test::runControlModes()
         // CMY fixtures are driven through the CMY conversion of the color
         { RGBMatrix::ControlModeRgb, false, m_cmyGroup,
           { {340, uchar(color.cyan())}, {341, uchar(color.magenta())}, {342, uchar(color.yellow())} } },
+        // A fixture without the requested channel is left alone
+        { RGBMatrix::ControlModeWhite, false, m_rgbGroup, { {256, 0}, {257, 0}, {258, 0} } },
+        { RGBMatrix::ControlModeShutter, false, m_rgbGroup, { {256, 0}, {257, 0}, {258, 0} } },
+        { RGBMatrix::ControlModeRgb, false, m_multiGroup, { {301, 200} } },
     };
 
     foreach (const Case &c, cases)
@@ -1185,6 +1193,8 @@ void RGBMatrix_Test::runControlModes()
         // Shrink the group after preRun so the algorithm renders a 1x1 map
         FixtureGroup *grp = m_doc->fixtureGroup(m_rgbSquareGroup);
         grp->setSize(QSize(1, 1));
+        // A head pointing to a fixture that doesn't exist is skipped as well
+        QVERIFY(grp->assignHead(QLCPoint(1, 1), GroupHead(12345, 0)) == true);
         mtx.write(&timer, ua);
         ua[0]->processFaders(MasterTimer::tick());
         grp->setSize(QSize(2, 2));
@@ -1405,6 +1415,18 @@ void RGBMatrix_Test::runTap()
     QCOMPARE(mtx.elapsed(), uint(0));
 
     timer.stopFunction(&mtx);
+
+    // Without an algorithm a tap has nothing to advance
+    RGBMatrix mtx2(m_doc);
+    mtx2.setFixtureGroup(m_rgbGroup);
+    mtx2.setDuration(40);
+    mtx2.setAlgorithm(NULL);
+    mtx2.start(&timer, FunctionParent::master());
+    QTest::qSleep(30);
+    mtx2.tap();
+    QCOMPARE(mtx2.m_stepHandler->currentStepIndex(), 0);
+    timer.stopFunction(&mtx2);
+
     qDeleteAll(ua);
 }
 
