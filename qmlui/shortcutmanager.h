@@ -40,6 +40,12 @@ class ShortcutManager : public QObject
      *  action on any key, so the QML capture UI sees the raw event instead of
      *  a matching built-in action's callback firing at the same time */
     Q_PROPERTY(bool capturing READ isCapturing WRITE setCapturing NOTIFY capturingChanged)
+    /** Master switch for the shortcut learning aids: the key-cast toast shown
+     *  when a shortcut fires (shortcutFired) and the click hints shown when a
+     *  button bound to an action is clicked with the mouse
+     *  (clickHintRequested). Persisted via QSettings; defaults to true.
+     *  Tooltip suffixes ("(Ctrl+B)") are not affected by this switch */
+    Q_PROPERTY(bool hintsEnabled READ hintsEnabled WRITE setHintsEnabled NOTIFY hintsEnabledChanged)
 
 public:
     /** The tab/area a registered action is meaningful in. Global actions
@@ -57,7 +63,11 @@ public:
     };
     Q_ENUM(ShortcutScope)
 
-    explicit ShortcutManager(QObject *parent = nullptr);
+    /** $overridesFilePath is the JSON file user overrides are read from and
+     *  persisted to. Empty (the default, what App uses) means the standard
+     *  per-user QLC+ config directory; unit tests pass a temporary file so
+     *  they never touch a real user's overrides */
+    explicit ShortcutManager(QObject *parent = nullptr, const QString &overridesFilePath = QString());
 
     /** Get/Set the QML context (tab) currently visible.
      *  Set by MainView.qml from switchToContext() - not computed here */
@@ -109,6 +119,27 @@ public:
     bool isCapturing() const;
     void setCapturing(bool capturing);
 
+    bool hintsEnabled() const;
+    void setHintsEnabled(bool enabled);
+
+    /** The key sequence currently bound to the action $id, in display
+     *  (NativeText) form - eg. "Ctrl+B" - or an empty string if $id is not
+     *  a registered action or is currently unbound. Used by IconButton/
+     *  MenuBarEntry to append a live "(Ctrl+B)" suffix to their tooltip;
+     *  callers re-read it on actionsChanged() so remaps stay truthful */
+    Q_INVOKABLE QString sequenceTextForAction(const QString &id) const;
+
+    /** The description registered for the action $id, or an empty string
+     *  if $id is not a registered action */
+    Q_INVOKABLE QString descriptionForAction(const QString &id) const;
+
+    /** Called by a QML button bound to the action $id when it is clicked
+     *  with the mouse. Emits clickHintRequested() with the action's display
+     *  strings so the UI can point the user at the equivalent shortcut.
+     *  A no-op for an unknown or currently unbound $id, and while
+     *  hintsEnabled is false */
+    Q_INVOKABLE void notifyButtonClicked(const QString &id);
+
     /** Build a QKeySequence out of a raw Qt::Key + Qt::KeyboardModifiers
      *  combo, as delivered by a QML Keys.onPressed KeyEvent, and return it
      *  both in storage form ("storage", QKeySequence::toString()'s default
@@ -133,12 +164,24 @@ public:
 signals:
     void currentContextChanged();
     void capturingChanged();
+    void hintsEnabledChanged();
 
     /** Emitted right before a matched action's callback is invoked.
      *  Not load-bearing for any Phase 1 action (every one of them has a
      *  direct C++ callback) - infrastructure for QML-only actions and for
      *  a future shortcut cheat-sheet */
     void actionTriggered(QString actionId);
+
+    /** Emitted alongside actionTriggered() for every matched key press,
+     *  carrying the display strings the key-cast toast needs
+     *  ($sequenceText is NativeText, eg. "Ctrl+B") so QML never has to
+     *  search listActions() on a keypress. Emitted regardless of
+     *  hintsEnabled - the listener decides whether to show anything */
+    void shortcutFired(QString actionId, QString sequenceText, QString description);
+
+    /** Emitted by notifyButtonClicked() - see there. Only emitted while
+     *  hintsEnabled is true */
+    void clickHintRequested(QString actionId, QString sequenceText, QString description);
 
     /** Emitted whenever the registry's bindings change (override saved/reset/
      *  imported) - qml/ShortcutsEditor.qml reloads listActions() on this */
@@ -158,6 +201,7 @@ private:
     void loadOverrides();
     bool scopeMatchesCurrentContext(ShortcutScope scope) const;
     QString userConfFilepath() const;
+    const ShortcutAction *findAction(const QString &id) const;
 
     /** Write m_overrides in full to userConfFilepath(), replacing whatever
      *  was there before. m_overrides is always kept as the complete override
@@ -171,6 +215,11 @@ private:
     QString m_currentContext;
     QVector<ShortcutAction> m_actions;
     bool m_capturing = false;
+    bool m_hintsEnabled = true;
+
+    /** Explicit overrides file (see the constructor), or empty for the
+     *  default per-user location */
+    QString m_overridesFilePath;
 
     /** Action id -> user-overridden key sequence, read once at startup
      *  from userConfFilepath() and applied as each action is registered */

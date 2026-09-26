@@ -852,6 +852,40 @@ Rectangle
         z: visible ? 99 : 0
     }
 
+    // The one feedback strip of the app - a generic component (see
+    // FeedbackToast.qml) so a future global command line can reuse it.
+    // Today it carries the shortcut learning aids: a key-cast of every
+    // shortcut that fires, and a hint when a button that has a shortcut
+    // equivalent is clicked with the mouse. Sits above dimScreen and the
+    // Show Wizard overlay; it never takes input so that's harmless.
+    FeedbackToast
+    {
+        id: feedbackToast
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: UISettings.iconSizeDefault * 1.5
+        z: 200
+    }
+
+    Connections
+    {
+        target: shortcutManager
+
+        function onShortcutFired(actionId, sequenceText, description)
+        {
+            if (shortcutManager.hintsEnabled)
+                feedbackToast.show(sequenceText, description)
+        }
+
+        function onClickHintRequested(actionId, sequenceText, description)
+        {
+            // notifyButtonClicked() already checks hintsEnabled; a button
+            // click never goes through handleKeyEvent(), so this and the
+            // key-cast above can't both fire for one user gesture
+            feedbackToast.show(sequenceText, qsTr("Tip: shortcut for \"%1\"").arg(description))
+        }
+    }
+
     /* Rectangle covering the whole window to
      * have a dimmered background for popups */
     Rectangle

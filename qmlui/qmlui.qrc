@@ -31,6 +31,7 @@
     <file alias="ExternalControlDelegate.qml">qml/ExternalControlDelegate.qml</file>
     <file alias="FixtureConsole.qml">qml/FixtureConsole.qml</file>
     <file alias="FixtureDelegate.qml">qml/FixtureDelegate.qml</file>
+    <file alias="FeedbackToast.qml">qml/FeedbackToast.qml</file>
     <file alias="FunctionDelegate.qml">qml/FunctionDelegate.qml</file>
     <file alias="GenericButton.qml">qml/GenericButton.qml</file>
     <file alias="GenericMultiDragItem.qml">qml/GenericMultiDragItem.qml</file>
