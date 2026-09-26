@@ -55,6 +55,29 @@ private slots:
     void save();
     //void status();
 
+    // Appended after loader()/save(): loader() asserts the shared m_doc is
+    // still empty, so anything that adds fixtures to a Doc below uses a local one.
+    void crossUniverse();
+    void setChannelsReplacesGenericDef();
+    void channelLookupMisses();
+    void positionNoMovement();
+    void positionRelative();
+    void axisValues();
+    void zoom();
+    void channelValuesCache();
+    void fadeAndPrecedenceLists();
+    void channelModifiers();
+    void iconResources();
+    void aliasChannels();
+    void componentStrings();
+    void saveBare();
+    void saveLoadOptionalParts();
+    void saveLoadRGBPanel();
+    void loadMissingMode();
+    void loadZeroChannels();
+    void loadUnknownTag();
+    void loaderFailures();
+
 private:
     Doc* m_doc;
 };
