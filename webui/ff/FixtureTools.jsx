@@ -94,6 +94,22 @@
     );
   }
 
+  /** Hex colour text field: buffered locally so it can be typed character by character (a
+      controlled input bound straight to the current colour reset itself after every keystroke
+      that was not yet a complete #rrggbb, so keyboard entry never got through). Applies as soon
+      as the text is a valid colour, and snaps back to the current colour on blur/Escape. */
+  function HexInput({ value, onCommit }) {
+    const [text, setText] = React.useState(value);
+    const [editing, setEditing] = React.useState(false);
+    React.useEffect(() => { if (!editing) setText(value); }, [value, editing]);
+    const change = (e) => { const t = e.target.value; setText(t); const c = FF.parseHex(t); if (c) onCommit(c); };
+    return (
+      <input value={text} onChange={change} onFocus={() => setEditing(true)} onBlur={() => { setEditing(false); setText(value); }}
+        onKeyDown={e => { if (e.key === 'Escape' || e.key === 'Enter') e.currentTarget.blur(); }} spellCheck={false} title="Hex colour, e.g. #ff2000"
+        style={{ width: 78, height: 24, boxSizing: 'border-box', background: 'var(--bg-stronger)', color: FF.parseHex(text) ? 'var(--fg-main)' : 'var(--override-red)', border: 'var(--border-control)', fontFamily: 'var(--font-mono)', fontSize: 13, padding: '0 4px' }} />
+    );
+  }
+
   function FixtureTools({ qlc, fixtureIds, fixtures, sceneId, sceneName }) {
     const D = window.QLCData;
     const items = useToolFixtures(qlc, fixtureIds);
@@ -194,8 +210,7 @@
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <input type="color" value={FF.hex(rgb)} onChange={e => { const c = FF.parseHex(e.target.value); if (c) setColour(c); }}
                 title="Pick a colour" style={{ width: 44, height: 30, padding: 0, border: 'var(--border-control)', background: 'var(--bg-control)', cursor: 'pointer' }} />
-              <input value={FF.hex(rgb)} onChange={e => { const c = FF.parseHex(e.target.value); if (c) setColour(c); }} spellCheck={false}
-                style={{ width: 78, height: 24, boxSizing: 'border-box', background: 'var(--bg-stronger)', color: 'var(--fg-main)', border: 'var(--border-control)', fontFamily: 'var(--font-mono)', fontSize: 13, padding: '0 4px' }} />
+              <HexInput value={FF.hex(rgb)} onCommit={setColour} />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 4 }}>
               {BASIC_COLOURS.map(([name, r, g, b]) => (
