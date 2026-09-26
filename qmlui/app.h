@@ -586,18 +586,11 @@ public:
 
 protected slots:
     /** VirtualConsole::widgetRegistered() - hooks the per-type live-state signals of every widget
-     *  that enters the VC (created, loaded, pasted) to the slotVc*Changed() slots below. */
+     *  that enters the VC (created, loaded, pasted) to relays that forward the new state to
+     *  m_vcLiveListener (if any). The relays are context-bound functors holding a QPointer to the
+     *  widget, so they always run on the GUI thread and survive the widget being deleted while a
+     *  queued delivery is still pending - see the implementation for why sender() is not used. */
     void slotVcWidgetRegistered(VCWidget *widget);
-
-    // Per-widget live-state relays: each reads sender() to identify the widget and forwards the new
-    // state to m_vcLiveListener (if any). Always run on the GUI thread - engine-thread emitters reach
-    // the widgets through queued connections already.
-    void slotVcButtonStateChanged(int state);
-    void slotVcSliderValueChanged(int value);
-    void slotVcCueListPlaybackChanged();
-    void slotVcXyPadPositionChanged();
-    void slotVcSpeedDialTimeChanged();
-    void slotVcFramePageChanged(int page);
 
 private:
     /** Resolve a VC widget id to its live VCWidget instance via m_virtualConsole->widget(id), or
