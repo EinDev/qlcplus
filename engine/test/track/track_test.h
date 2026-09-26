@@ -41,6 +41,12 @@ private slots:
     void functions();
     void save();
     void saveSpoutSize();
+    void muteNoop();
+    void loadInvalid();
+    void loadLegacyFunctions();
+    void postLoadBoundSequence();
+    void containsMissingFunction();
+    void containsViaMember();
 
 private:
     Doc *m_doc;

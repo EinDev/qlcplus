@@ -27,12 +27,17 @@
 #define private public
 
 #include "qlcfixturedefcache.h"
+#include "qlcmodifierscache.h"
+#include "channelmodifier.h"
 #include "monitorproperties.h"
 #include "qlcfixturemode.h"
 #include "qlcfixturedef.h"
 #include "scriptwrapper.h"
+#include "channelsgroup.h"
 #include "qlcphysical.h"
+#include "qlcpalette.h"
 #include "collection.h"
+#include "universe.h"
 #include "showfunction.h"
 #include "qlcchannel.h"
 #include "track.h"
@@ -1284,6 +1289,335 @@ void Doc_Test::save()
 
     /* Saving doesn't implicitly reset modified status */
     QVERIFY(m_doc->isModified() == true);
+}
+
+void Doc_Test::startupFunction()
+{
+    // own Doc: Operate mode queues the function on the MasterTimer, whose
+    // thread never runs here, so the queue is simply dropped with the Doc
+    Doc doc(this);
+    QCOMPARE(doc.startupFunction(), Function::invalidId());
+
+    Scene *s = new Scene(&doc);
+    QVERIFY(doc.addFunction(s));
+    doc.setStartupFunction(s->id());
+    QCOMPARE(doc.startupFunction(), s->id());
+
+    // Operate mode hands the startup function to the timer
+    QCOMPARE(doc.masterTimer()->m_startQueue.count(), 0);
+    doc.setMode(Doc::Operate);
+    QCOMPARE(doc.masterTimer()->m_startQueue.count(), 1);
+    QVERIFY(doc.masterTimer()->m_startQueue.first() == s);
+    doc.setMode(Doc::Design);
+    doc.masterTimer()->m_startQueue.clear();
+
+    // deleting it forgets the setting
+    QVERIFY(doc.deleteFunction(s->id()));
+    QCOMPARE(doc.startupFunction(), Function::invalidId());
+
+    // a dangling id is erased when Operate mode looks it up
+    doc.setStartupFunction(4242);
+    doc.setMode(Doc::Operate);
+    QCOMPARE(doc.startupFunction(), Function::invalidId());
+    QCOMPARE(doc.masterTimer()->m_startQueue.count(), 0);
+    doc.setMode(Doc::Design);
+}
+
+void Doc_Test::autosaveOnDesign()
+{
+    // the autosave timer only runs in Design mode: it is stopped when
+    // switching to Operate and re-armed on the way back while the
+    // document still has unsaved changes (no event loop here, so only
+    // the mode transitions themselves are checked)
+    m_doc->resetModified();
+    m_doc->setMode(Doc::Operate);
+    m_doc->setMode(Doc::Design);
+    QVERIFY(m_doc->isModified() == false);
+
+    m_doc->setModified();
+    m_doc->setMode(Doc::Operate);
+    QCOMPARE(m_doc->mode(), Doc::Operate);
+    m_doc->setMode(Doc::Design);
+    QCOMPARE(m_doc->mode(), Doc::Design);
+    QVERIFY(m_doc->isModified());
+    m_doc->resetModified();
+}
+
+void Doc_Test::fixtureExtras()
+{
+    QCOMPARE(m_doc->fixturesCount(), 0);
+
+    // the definition cache can be swapped (the same one here, so nothing
+    // changes hands)
+    QLCFixtureDefCache *cache = m_doc->fixtureDefCache();
+    m_doc->setFixtureDefinitionCache(cache);
+    QVERIFY(m_doc->fixtureDefCache() == cache);
+
+    // forced HTP/LTP channels are handed to the universe when adding
+    Fixture *f = new Fixture(m_doc);
+    f->setName("Forced");
+    f->setChannels(3);
+    f->setAddress(0);
+    f->setUniverse(0);
+    f->setForcedHTPChannels(QList<int>() << 0);
+    f->setForcedLTPChannels(QList<int>() << 1);
+    MonitorProperties *props = m_doc->monitorProperties();
+    QVERIFY(props != NULL);
+    QVERIFY(m_doc->addFixture(f));
+    QCOMPARE(m_doc->fixturesCount(), 1);
+    props->setFixturePosition(f->id(), 0, 0, QVector3D(1, 2, 3));
+    QVERIFY(props->containsFixture(f->id()));
+
+    Universe *universe = m_doc->inputOutputMap()->universe(0);
+    QVERIFY(universe != NULL);
+    QVERIFY(universe->channelCapabilities(0) & Universe::HTP);
+    QVERIFY(universe->channelCapabilities(1) & Universe::LTP);
+    QVERIFY((universe->channelCapabilities(1) & Universe::HTP) == 0);
+
+    // a fixture without a mode counts as "unknown" power consumption
+    int fuzzy = -1;
+    QCOMPARE(m_doc->totalPowerConsumption(fuzzy), 0);
+    QCOMPARE(fuzzy, 1);   // generic dimmers carry no power figure
+    QLCFixtureMode *mode = f->m_fixtureMode;
+    f->m_fixtureMode = NULL;
+    fuzzy = -1;
+    QCOMPARE(m_doc->totalPowerConsumption(fuzzy), 0);
+    QCOMPARE(fuzzy, 1);
+    f->m_fixtureMode = mode;
+
+    // deleting the fixture drops its monitor layout entry as well
+    quint32 id = f->id();
+    QVERIFY(m_doc->deleteFixture(id));
+    QCOMPARE(m_doc->fixturesCount(), 0);
+    QVERIFY(props->containsFixture(id) == false);
+}
+
+void Doc_Test::replaceRGBPanelFixture()
+{
+    // RGB panel definitions are per fixture (not cached), so a replacement
+    // gets a deep copy; channel modifiers travel along
+    Fixture *panel = new Fixture(m_doc);
+    panel->setName("Panel");
+    QLCFixtureDef *def = panel->genericRGBPanelDef(4, Fixture::RGB, false);
+    QLCFixtureMode *mode = panel->genericRGBPanelMode(def, Fixture::RGB, false, 400, 100);
+    panel->setFixtureDefinition(def, mode);
+    panel->setAddress(0);
+    panel->setUniverse(0);
+    QVERIFY(m_doc->addFixture(panel));
+    QCOMPARE(panel->channels(), 12u);
+
+    ChannelModifier *modifier = new ChannelModifier();
+    modifier->setName("Doc test modifier");
+    if (m_doc->modifiersCache()->addModifier(modifier) == false)
+    {
+        delete modifier;
+        modifier = m_doc->modifiersCache()->modifier("Doc test modifier");
+    }
+    QVERIFY(modifier != NULL);
+
+    Fixture *replacement = new Fixture(m_doc);
+    replacement->setName("Panel 2");
+    replacement->setID(panel->id());
+    QLCFixtureDef *def2 = replacement->genericRGBPanelDef(2, Fixture::BGR, false);
+    replacement->setFixtureDefinition(def2, replacement->genericRGBPanelMode(def2, Fixture::BGR, false, 200, 100));
+    replacement->setAddress(10);
+    replacement->setUniverse(0);
+    replacement->setChannelModifier(2, modifier);
+
+    QVERIFY(m_doc->replaceFixtures(QList<Fixture *>() << replacement));
+    QCOMPARE(m_doc->fixtures().count(), 1);
+    Fixture *copy = m_doc->fixture(replacement->id());
+    QVERIFY(copy != NULL);
+    QVERIFY(copy != replacement);
+    QCOMPARE(copy->name(), QString("Panel 2"));
+    QCOMPARE(copy->address(), 10u);
+    QCOMPARE(copy->channels(), 6u);
+    QVERIFY(copy->fixtureDef() != NULL);
+    QVERIFY(copy->fixtureDef() != replacement->fixtureDef());
+    QCOMPARE(copy->fixtureDef()->manufacturer(), QString(KXMLFixtureGeneric));
+    QCOMPARE(copy->fixtureDef()->model(), QString(KXMLFixtureRGBPanel));
+    QVERIFY(copy->fixtureMode() != NULL);
+    QCOMPARE(copy->fixtureMode()->name(), replacement->fixtureMode()->name());
+    QVERIFY(copy->channelModifier(2) == modifier);
+    QVERIFY(copy->channelModifier(0) == NULL);
+}
+
+void Doc_Test::addFixtureBeyondUniverses()
+{
+    // a fixture patched past the last universe grows the universe list
+    Doc doc(this, 2);
+    QCOMPARE(doc.inputOutputMap()->universesCount(), 2u);
+
+    Fixture *f = new Fixture(&doc);
+    f->setChannels(1);
+    f->setAddress(0);
+    f->setUniverse(4);
+    QVERIFY(doc.addFixture(f));
+    QCOMPARE(doc.inputOutputMap()->universesCount(), 5u);
+    QVERIFY(doc.fixture(f->id()) == f);
+    QVERIFY(doc.inputOutputMap()->universe(4) != NULL);
+    QVERIFY(doc.inputOutputMap()->universe(4)->channelCapabilities(0) & Universe::HTP);
+}
+
+void Doc_Test::paletteDuplicateId()
+{
+    QLCPalette *p1 = new QLCPalette(QLCPalette::Color);
+    QVERIFY(m_doc->addPalette(p1, 7));
+    QCOMPARE(p1->id(), 7u);
+
+    // an id that is taken is refused and the palette is left to the caller
+    QLCPalette *p2 = new QLCPalette(QLCPalette::Color);
+    QVERIFY(m_doc->addPalette(p2, 7) == false);
+    QCOMPARE(m_doc->palettes().count(), 1);
+    QVERIFY(m_doc->addPalette(p2));
+    QCOMPARE(m_doc->palettes().count(), 2);
+    QVERIFY(p2->id() != 7u);
+}
+
+void Doc_Test::functionByName()
+{
+    Scene *a = new Scene(m_doc);
+    a->setName("Alpha");
+    QVERIFY(m_doc->addFunction(a));
+    Scene *b = new Scene(m_doc);
+    b->setName("Beta");
+    QVERIFY(m_doc->addFunction(b));
+
+    QVERIFY(m_doc->functionByName("Beta") == b);
+    QVERIFY(m_doc->functionByName("Alpha") == a);
+    QVERIFY(m_doc->functionByName("Gamma") == NULL);
+    QVERIFY(m_doc->functionByName(QString()) == NULL);
+}
+
+static Show *makeShowWithClip(Doc *doc, Show::TimeDivision division, Function *clip)
+{
+    Show *show = new Show(doc);
+    show->setTimeDivisionType(division);
+    doc->addFunction(show);
+    Track *track = new Track(Function::invalidId(), show);
+    show->addTrack(track);
+    if (clip != NULL)
+        track->createShowFunction(clip->id());
+    return show;
+}
+
+void Doc_Test::legacyBeatShows()
+{
+    Scene *timeScene = new Scene(m_doc);
+    QVERIFY(m_doc->addFunction(timeScene));
+    Scene *beatScene = new Scene(m_doc);
+    beatScene->setTempoType(Function::Beats);
+    QVERIFY(m_doc->addFunction(beatScene));
+
+    Show *empty = makeShowWithClip(m_doc, Show::BPM_4_4, NULL);
+    Show *beatsFunction = makeShowWithClip(m_doc, Show::Time, beatScene);
+    Show *bpmDivision = makeShowWithClip(m_doc, Show::BPM_4_4, timeScene);
+    Show *plainTime = makeShowWithClip(m_doc, Show::Time, timeScene);
+
+    // files saved before the canonical-ms fix: any Show whose timeline may
+    // have been written in beat pseudo-counts is flagged
+    QList<Show *> flagged = m_doc->possiblyAffectedLegacyBeatShows("5.0.0");
+    QCOMPARE(flagged.count(), 2);
+    QVERIFY(flagged.contains(beatsFunction));
+    QVERIFY(flagged.contains(bpmDivision));
+    QVERIFY(flagged.contains(empty) == false);
+    QVERIFY(flagged.contains(plainTime) == false);
+
+    // unknown or unparseable version information counts as "old"
+    QCOMPARE(m_doc->possiblyAffectedLegacyBeatShows(QString()).count(), 2);
+    QCOMPARE(m_doc->possiblyAffectedLegacyBeatShows("garbage").count(), 2);
+    QCOMPARE(m_doc->possiblyAffectedLegacyBeatShows("5.3.0").count(), 2);
+
+    // files written by a fixed build are never flagged
+    QVERIFY(m_doc->possiblyAffectedLegacyBeatShows("5.3.1").isEmpty());
+    QVERIFY(m_doc->possiblyAffectedLegacyBeatShows("6.0.0-beta").isEmpty());
+}
+
+void Doc_Test::showUsage()
+{
+    Scene *s = new Scene(m_doc);
+    QVERIFY(m_doc->addFunction(s));
+    Scene *unused = new Scene(m_doc);
+    QVERIFY(m_doc->addFunction(unused));
+
+    Show *show = new Show(m_doc);
+    QVERIFY(m_doc->addFunction(show));
+    Track *track = new Track(Function::invalidId(), show);
+    show->addTrack(track);
+    track->createShowFunction(s->id());
+    track->createShowFunction(s->id());   // twice on the same track
+
+    // a Show reports itself and the track for every clip using the function
+    QList<quint32> usage = m_doc->getUsage(s->id());
+    QCOMPARE(usage.count(), 4);
+    QCOMPARE(usage.at(0), show->id());
+    QCOMPARE(usage.at(1), track->id());
+    QCOMPARE(usage.at(2), show->id());
+    QCOMPARE(usage.at(3), track->id());
+    QVERIFY(m_doc->getUsage(unused->id()).isEmpty());
+}
+
+void Doc_Test::saveLoadRoundTrip()
+{
+    // channel groups, palettes, the monitor layout and the startup function
+    // all travel through the Engine element
+    Fixture *f = new Fixture(m_doc);
+    f->setName("Dimmer");
+    f->setChannels(4);
+    f->setAddress(0);
+    f->setUniverse(0);
+    QVERIFY(m_doc->addFixture(f));
+
+    ChannelsGroup *group = new ChannelsGroup(m_doc);
+    group->setName("Dimmers");
+    QVERIFY(group->addChannel(f->id(), 0));
+    QVERIFY(group->addChannel(f->id(), 1));
+    QVERIFY(m_doc->addChannelsGroup(group));
+
+    QLCPalette *palette = new QLCPalette(QLCPalette::Dimmer);
+    palette->setName("Half");
+    palette->setValue(128);
+    QVERIFY(m_doc->addPalette(palette));
+
+    Scene *scene = new Scene(m_doc);
+    scene->setName("Start");
+    QVERIFY(m_doc->addFunction(scene));
+    m_doc->setStartupFunction(scene->id());
+    m_doc->monitorProperties()->setFixturePosition(f->id(), 0, 0, QVector3D(10, 20, 30));
+
+    QBuffer buffer;
+    buffer.open(QIODevice::WriteOnly | QIODevice::Text);
+    QXmlStreamWriter xmlWriter(&buffer);
+    QVERIFY(m_doc->saveXML(&xmlWriter));
+    xmlWriter.setDevice(NULL);
+    buffer.close();
+
+    const QString xml = QString::fromUtf8(buffer.data());
+    QVERIFY2(xml.contains(QString("Autostart=\"%1\"").arg(scene->id())), qPrintable(xml));
+    QVERIFY(xml.contains("<ChannelsGroup"));
+    QVERIFY(xml.contains("<Palette"));
+    QVERIFY(xml.contains("<Monitor"));
+
+    Doc other(this);
+    buffer.open(QIODevice::ReadOnly | QIODevice::Text);
+    QXmlStreamReader xmlReader(&buffer);
+    xmlReader.readNextStartElement();
+    QCOMPARE(xmlReader.name().toString(), QString("Engine"));
+    QVERIFY(other.loadXML(xmlReader));
+    buffer.close();
+
+    QCOMPARE(other.loadStatus(), Doc::Loaded);
+    QCOMPARE(other.fixtures().count(), 1);
+    QCOMPARE(other.functions().count(), 1);
+    QCOMPARE(other.startupFunction(), scene->id());
+    QCOMPARE(other.channelsGroups().count(), 1);
+    QCOMPARE(other.channelsGroups().first()->name(), QString("Dimmers"));
+    QCOMPARE(other.channelsGroups().first()->getChannels().count(), 2);
+    QCOMPARE(other.palettes().count(), 1);
+    QCOMPARE(other.palettes().first()->name(), QString("Half"));
+    QCOMPARE(other.palettes().first()->type(), QLCPalette::Dimmer);
+    QVERIFY(other.monitorProperties()->containsFixture(f->id()));
+    QCOMPARE(other.monitorProperties()->fixturePosition(f->id(), 0, 0), QVector3D(10, 20, 30));
 }
 
 void Doc_Test::createFixtureNode(QXmlStreamWriter &doc, quint32 id, quint32 address, quint32 channels)

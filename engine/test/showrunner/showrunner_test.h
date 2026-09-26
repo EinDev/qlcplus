@@ -75,6 +75,14 @@ private slots:
     void stopOfHeldSceneFadesOut();
     void scrubHandoffFromPauseKeepsClipsHeld();
 
+    // remaining edge paths
+    void runnerWithoutShow();
+    void stopUnpausesHeldClip();
+    void sharedFunctionClipsStopTogether();
+    void spoutVideoSeekAndTimeChanged();
+    void startPassSkipsDeletedFunction();
+    void adjustIntensityOnRunningClip();
+
 private:
     Doc *m_doc;
     Show *m_show;

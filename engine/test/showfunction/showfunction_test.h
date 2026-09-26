@@ -30,6 +30,10 @@ private slots:
     void defaults();
     void load();
     void save();
+    void noopSetters();
+    void durationFromDoc();
+    void loadWrongRoot();
+    void saveWithTrackId();
 };
 
 #endif

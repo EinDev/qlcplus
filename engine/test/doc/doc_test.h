@@ -67,6 +67,17 @@ private slots:
     void loadWrongRoot();
     void save();
 
+    void startupFunction();
+    void autosaveOnDesign();
+    void fixtureExtras();
+    void replaceRGBPanelFixture();
+    void addFixtureBeyondUniverses();
+    void paletteDuplicateId();
+    void functionByName();
+    void legacyBeatShows();
+    void showUsage();
+    void saveLoadRoundTrip();
+
 private:
     void createFixtureNode(QXmlStreamWriter &doc, quint32 id, quint32 address, quint32 channels);
     void createFixtureGroupNode(QXmlStreamWriter &doc, quint32 id);

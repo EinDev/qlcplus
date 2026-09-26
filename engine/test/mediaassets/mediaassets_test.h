@@ -67,6 +67,20 @@ private slots:
     void reloadChangedQueuesLargeFiles();
     void removeUnreferencedDropsOrigin();
 
+    // error paths and remaining variants
+    void storeDirectoryIsAFile();
+    void hashDirectoryIsAFile();
+    void stagingDirectoryUnavailable();
+    void copyAndManifestErrors();
+    void longStoredPathsWarn();
+    void relocateCopyFailure();
+    void manifestReadWriteErrors();
+    void reloadVariants();
+    void relocateReimportsFinishedCopySynchronously();
+    void removeUnreferencedErrors();
+    void unreferencedIgnoresForeignDirectories();
+    void partialFileCannotBeCreated();
+
 private:
     /** Overwrite @path with @content and push its mtime clearly past the
      *  old one (same-millisecond rewrites may keep it on some file systems) */

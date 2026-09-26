@@ -22,7 +22,9 @@
 #include <QXmlStreamWriter>
 
 #include "track_test.h"
+#include "chaserstep.h"
 #include "sequence.h"
+#include "chaser.h"
 #include "track.h"
 
 void Track_Test::initTestCase()
@@ -331,6 +333,143 @@ void Track_Test::saveSpoutSize()
     QCOMPARE(t2.id(), 7u);
     QCOMPARE(t2.name(), QString("Video"));
     QCOMPARE(t2.spoutSize(), QSize(1920, 1080));
+}
+
+void Track_Test::muteNoop()
+{
+    Track t;
+    t.setId(3);
+    QSignalSpy muteSpy(&t, SIGNAL(muteChanged(bool)));
+    QSignalSpy changedSpy(&t, SIGNAL(changed(quint32)));
+
+    // already unmuted: nothing happens
+    t.setMute(false);
+    QCOMPARE(muteSpy.count(), 0);
+    QCOMPARE(changedSpy.count(), 0);
+
+    t.setMute(true);
+    QCOMPARE(muteSpy.count(), 1);
+    QCOMPARE(changedSpy.count(), 1);
+    QCOMPARE(changedSpy.at(0).at(0).toUInt(), 3u);
+}
+
+static bool loadTrackFromXml(Track &t, const QString &xml)
+{
+    QByteArray data = xml.toUtf8();
+    QBuffer buffer(&data);
+    buffer.open(QIODevice::ReadOnly | QIODevice::Text);
+    QXmlStreamReader xmlReader(&buffer);
+    xmlReader.readNextStartElement();
+    return t.loadXML(xmlReader);
+}
+
+void Track_Test::loadInvalid()
+{
+    // wrong root element
+    Track t1;
+    QVERIFY(loadTrackFromXml(t1, "<NotATrack ID=\"1\" isMute=\"0\"/>") == false);
+    QCOMPARE(t1.id(), Track::invalidId());
+
+    // unparseable ID
+    Track t2;
+    QVERIFY(loadTrackFromXml(t2, "<Track ID=\"abc\" isMute=\"0\"/>") == false);
+    QCOMPARE(t2.id(), Track::invalidId());
+
+    // unparseable Scene ID (the track ID has been taken over by then)
+    Track t3;
+    QVERIFY(loadTrackFromXml(t3, "<Track ID=\"7\" SceneID=\"xyz\" isMute=\"0\"/>") == false);
+    QCOMPARE(t3.id(), 7u);
+    QCOMPARE(t3.getSceneID(), Function::invalidId());
+
+    // unparseable mute flag
+    Track t4;
+    QVERIFY(loadTrackFromXml(t4, "<Track ID=\"7\" isMute=\"maybe\"/>") == false);
+    QCOMPARE(t4.isMute(), false);
+
+    // a ShowFunction without a function ID is dropped, an unknown child
+    // tag is skipped, and the track itself still loads
+    Track t5;
+    QVERIFY(loadTrackFromXml(t5, "<Track ID=\"8\" Name=\"Odd\" isMute=\"1\">"
+                                 "<ShowFunction StartTime=\"10\"/>"
+                                 "<Bogus><Nested/></Bogus>"
+                                 "<ShowFunction ID=\"42\" StartTime=\"20\"/>"
+                                 "</Track>") == true);
+    QCOMPARE(t5.id(), 8u);
+    QCOMPARE(t5.name(), QString("Odd"));
+    QCOMPARE(t5.isMute(), true);
+    QCOMPARE(t5.showFunctions().count(), 1);
+    QCOMPARE(t5.showFunctions().first()->functionID(), 42u);
+    QCOMPARE(t5.showFunctions().first()->startTime(), 20u);
+}
+
+void Track_Test::loadLegacyFunctions()
+{
+    // pre-ShowFunction files listed the function IDs as a comma separated
+    // text element; each one becomes a ShowFunction of its own
+    Track t;
+    QVERIFY(loadTrackFromXml(t, "<Track ID=\"2\" isMute=\"0\">"
+                                "<Functions>11,22,33</Functions>"
+                                "</Track>") == true);
+    QCOMPARE(t.showFunctions().count(), 3);
+    QCOMPARE(t.showFunctions().at(0)->functionID(), 11u);
+    QCOMPARE(t.showFunctions().at(1)->functionID(), 22u);
+    QCOMPARE(t.showFunctions().at(2)->functionID(), 33u);
+
+    // an empty list adds nothing
+    Track t2;
+    QVERIFY(loadTrackFromXml(t2, "<Track ID=\"2\" isMute=\"0\"><Functions></Functions></Track>") == true);
+    QCOMPARE(t2.showFunctions().count(), 0);
+}
+
+void Track_Test::postLoadBoundSequence()
+{
+    Scene *s = new Scene(m_doc);
+    m_doc->addFunction(s);
+
+    Sequence *sq = new Sequence(m_doc);
+    sq->setBoundSceneID(s->id());
+    m_doc->addFunction(sq);
+
+    // the sequence is bound to this very track's scene: nothing to fix up
+    Track t(s->id());
+    t.setId(1);
+    ShowFunction *sf = t.createShowFunction(sq->id());
+    sf->setColor(QColor(1, 2, 3));
+    QVERIFY(t.postLoad(m_doc) == false);
+    QCOMPARE(t.showFunctions().count(), 1);
+    QCOMPARE(sf->color(), QColor(1, 2, 3));
+
+    // the track's own scene counts as contained
+    QVERIFY(t.contains(m_doc, s->id()) == true);
+    QVERIFY(t.contains(m_doc, sq->id()) == true);
+    QVERIFY(t.contains(m_doc, 9999) == false);
+}
+
+void Track_Test::containsMissingFunction()
+{
+    Track t;
+    t.setId(1);
+    // a ShowFunction pointing at a function the Doc does not know (yet)
+    // is skipped rather than dereferenced
+    t.createShowFunction(31337);
+    QVERIFY(t.contains(m_doc, 31337) == false);
+    QVERIFY(t.contains(m_doc, 1) == false);
+}
+
+void Track_Test::containsViaMember()
+{
+    // a function used by one of the track's clips counts as contained
+    Scene *s = new Scene(m_doc);
+    m_doc->addFunction(s);
+    Chaser *c = new Chaser(m_doc);
+    c->addStep(ChaserStep(s->id()));
+    m_doc->addFunction(c);
+
+    Track t;
+    t.setId(1);
+    t.createShowFunction(c->id());
+    QVERIFY(t.contains(m_doc, c->id()) == true);
+    QVERIFY(t.contains(m_doc, s->id()) == true);
 }
 
 

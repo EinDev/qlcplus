@@ -66,6 +66,8 @@ private slots:
     void defaults();
     void loadSaveXML();
     void loadXMLWebOnlyAndUnknownTags();
+    void pluginCacheEdgeCases();
+    void pluginCacheHotplugSetting();
 
 private:
     Doc* m_doc;

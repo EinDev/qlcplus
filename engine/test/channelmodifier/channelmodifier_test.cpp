@@ -19,6 +19,7 @@
 
 #include <QtTest>
 #include <QTemporaryFile>
+#include <QTemporaryDir>
 #include <QFile>
 
 #define protected public
@@ -81,6 +82,79 @@ void ChannelModifier_Test::saveLoad()
     QCOMPARE(mod2.getValue(127), uchar(127));
 
     QFile::remove(path);
+}
+
+static QString writeTemplate(const QTemporaryDir &dir, const QString &name, const QByteArray &content)
+{
+    QFile f(dir.filePath(name));
+    if (f.open(QIODevice::WriteOnly) == false)
+        return QString();
+    f.write(content);
+    f.close();
+    return f.fileName();
+}
+
+void ChannelModifier_Test::saveErrors()
+{
+    ChannelModifier mod;
+    QCOMPARE(mod.saveXML(QString()), QFile::OpenError);
+
+    // a directory that does not exist cannot be written into
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    QVERIFY(mod.saveXML(dir.filePath("missing/subdir/mod.qxmt")) != QFile::NoError);
+}
+
+void ChannelModifier_Test::loadErrors()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+
+    ChannelModifier mod;
+    QCOMPARE(mod.loadXML(QString(), ChannelModifier::UserTemplate), QFile::OpenError);
+    QCOMPARE(mod.loadXML(dir.filePath("nope.qxmt"), ChannelModifier::UserTemplate), QFile::ReadError);
+
+    // not well-formed before the DTD is reached
+    QString truncated = writeTemplate(dir, "truncated.qxmt", "<?xml version=\"1.0\"?><Broken");
+    QVERIFY(truncated.isEmpty() == false);
+    QCOMPARE(mod.loadXML(truncated, ChannelModifier::UserTemplate), QFile::ResourceError);
+
+    // a DTD with no root element behind it
+    QString empty = writeTemplate(dir, "empty.qxmt", "<?xml version=\"1.0\"?><!DOCTYPE ChannelModifier>");
+    QVERIFY(empty.isEmpty() == false);
+    QCOMPARE(mod.loadXML(empty, ChannelModifier::UserTemplate), QFile::ResourceError);
+
+    // the wrong document type parses but yields nothing
+    QString other = writeTemplate(dir, "other.qxmt",
+        "<?xml version=\"1.0\"?><!DOCTYPE FixtureDefinition><FixtureDefinition><Name>X</Name></FixtureDefinition>");
+    QCOMPARE(mod.loadXML(other, ChannelModifier::UserTemplate), QFile::NoError);
+    QCOMPARE(mod.name(), QString());
+    QVERIFY(mod.modifierMap().isEmpty());
+}
+
+void ChannelModifier_Test::loadUnknownTag()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+
+    QString path = writeTemplate(dir, "odd.qxmt",
+        "<?xml version=\"1.0\"?><!DOCTYPE ChannelModifier>"
+        "<ChannelModifier>"
+        "<Creator><Name>Test</Name></Creator>"
+        "<Name>Odd</Name>"
+        "<Bogus><Nested/></Bogus>"
+        "<Handler Original=\"0\" Modified=\"10\"/>"
+        "<Handler Original=\"255\" Modified=\"20\"/>"
+        "</ChannelModifier>");
+    QVERIFY(path.isEmpty() == false);
+
+    ChannelModifier mod;
+    QCOMPARE(mod.loadXML(path, ChannelModifier::SystemTemplate), QFile::NoError);
+    QCOMPARE(mod.name(), QString("Odd"));
+    QCOMPARE(mod.type(), ChannelModifier::SystemTemplate);
+    QCOMPARE(mod.modifierMap().count(), 2);
+    QCOMPARE(mod.getValue(0), uchar(10));
+    QCOMPARE(mod.getValue(255), uchar(20));
 }
 
 QTEST_APPLESS_MAIN(ChannelModifier_Test)

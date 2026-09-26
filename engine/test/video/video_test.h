@@ -41,6 +41,11 @@ private slots:
     void saveLoadSpout();
     void saveLoadVolumeMuted();
     void loadLegacyFullscreen();
+    void iconAndCapabilities();
+    void createCopy();
+    void moreProperties();
+    void runningState();
+    void loadInvalid();
 
 private:
     Doc* m_doc;

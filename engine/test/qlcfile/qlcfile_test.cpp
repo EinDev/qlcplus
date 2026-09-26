@@ -18,6 +18,9 @@
 */
 
 #include <QtTest>
+#include <QTemporaryDir>
+#include <QUrl>
+#include <QDir>
 
 #if defined(WIN32) || defined(Q_OS_WIN)
 #else
@@ -161,6 +164,78 @@ void QLCFile_Test::windowManager()
 
     QLCFile::setHasWindowManager(false);
     QVERIFY(QLCFile::hasWindowManager() == false);
+}
+
+void QLCFile_Test::writeXMLHeaderInvalid()
+{
+    QVERIFY(QLCFile::writeXMLHeader(NULL, "DocumentTag") == false);
+
+    // a writer without a device cannot be written to either
+    QXmlStreamWriter doc;
+    QVERIFY(QLCFile::writeXMLHeader(&doc, "DocumentTag") == false);
+}
+
+/** Point the process' idea of the home directory somewhere else for the
+ *  duration of a scope, restoring the previous value on the way out (also
+ *  on an early return from a failed assertion) */
+struct ScopedHomeEnv
+{
+    QByteArray name;
+    QByteArray previous;
+    bool wasSet;
+
+    explicit ScopedHomeEnv(const QString &home)
+    {
+#if defined(WIN32) || defined(Q_OS_WIN)
+        name = "USERPROFILE";
+#else
+        name = "HOME";
+#endif
+        wasSet = qEnvironmentVariableIsSet(name.constData());
+        previous = qgetenv(name.constData());
+        qputenv(name.constData(), QDir::toNativeSeparators(home).toLocal8Bit());
+    }
+
+    ~ScopedHomeEnv()
+    {
+        if (wasSet)
+            qputenv(name.constData(), previous);
+        else
+            qunsetenv(name.constData());
+    }
+};
+
+void QLCFile_Test::userDirectory()
+{
+    QTemporaryDir home;
+    QVERIFY(home.isValid());
+    const QString homePath = QDir::cleanPath(home.path());
+
+    ScopedHomeEnv env(homePath);
+
+    // a directory that does not exist yet is created on the way
+    QDir dir = QLCFile::userDirectory("qlcplus-test/profiles", "/unused/fallback",
+                                      QStringList() << "*.foo" << "*.bar");
+    const QString expected = homePath + "/qlcplus-test/profiles";
+    QVERIFY2(QDir::cleanPath(dir.absolutePath()).compare(expected, Qt::CaseInsensitive) == 0,
+             qPrintable(dir.absolutePath()));
+    QVERIFY(QDir(expected).exists());
+    QVERIFY(dir.filter() & QDir::Files);
+    QCOMPARE(dir.nameFilters(), QStringList() << "*.foo" << "*.bar");
+
+    // second time round it exists already
+    QDir again = QLCFile::userDirectory("qlcplus-test/profiles", "/unused/fallback", QStringList());
+    QCOMPARE(QDir::cleanPath(again.absolutePath()).toLower(), expected.toLower());
+}
+
+void QLCFile_Test::fileUrlPrefix()
+{
+#if defined(WIN32) || defined(Q_OS_WIN)
+    QCOMPARE(QLCFile::fileUrlPrefix(), QString("file:///"));
+#else
+    QCOMPARE(QLCFile::fileUrlPrefix(), QString("file://"));
+#endif
+    QVERIFY(QUrl(QLCFile::fileUrlPrefix() + "tmp/x.qxw").isLocalFile());
 }
 
 QTEST_APPLESS_MAIN(QLCFile_Test)

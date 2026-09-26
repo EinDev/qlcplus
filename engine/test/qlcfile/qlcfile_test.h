@@ -32,6 +32,9 @@ private slots:
     void errorString();
     void version();
     void windowManager();
+    void writeXMLHeaderInvalid();
+    void userDirectory();
+    void fileUrlPrefix();
 };
 
 #endif
