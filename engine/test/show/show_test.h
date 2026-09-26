@@ -38,6 +38,16 @@ private slots:
     void duration();
     void load();
     void save();
+    void icon();
+    void createCopy();
+    void copyFromInvalid();
+    void tempoStrings();
+    void trackLookups();
+    void moveTrackDown();
+    void loadInvalid();
+    void postLoad();
+    void scheduleSkips();
+    void running();
 
 private:
     Doc *m_doc;
