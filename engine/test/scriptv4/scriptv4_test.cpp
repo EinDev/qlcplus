@@ -349,9 +349,11 @@ void ScriptV4_Test::setDataAndDataLines()
     // Setting the same data again is a no-op
     QVERIFY(scr.setData(scr.data()) == false);
 
-    // appendData() converts legacy syntax and adds a newline
+    // appendData() converts legacy syntax and adds a newline; the formerly
+    // trailing blank line is now an interior one and is kept
     QVERIFY(scr.appendData("blackout:on"));
-    QCOMPARE(scr.dataLines().size(), 4);
+    QCOMPARE(scr.dataLines().size(), 5);
+    QCOMPARE(scr.dataLines().at(3), QString(""));
     QCOMPARE(scr.dataLines().last(), QString("Engine.setBlackout(true);"));
 }
 
@@ -1157,6 +1159,24 @@ void ScriptV4_Test::runnerThreadedStopWhileWaiting()
     QVERIFY(runner->m_fixtureValueQueue.isEmpty());
     QVERIFY(runner->write(&timer, universes) == false);
     delete runner;
+
+    // Same interruption, this time parked in the string flavour of waitTime()
+    ScriptRunner *waiting = new ScriptRunner(m_doc, "Engine.waitTime('10m');\n");
+    waiting->execute();
+    QTRY_VERIFY_WITH_TIMEOUT(waiting->m_waitCount > 0, 10000);
+    QCOMPARE(waiting->currentWaitTime(), 10 * 60 * 1000);
+    waiting->stop();
+    QVERIFY2(waiting->wait(10000), "JS thread did not finish after stop()");
+    QVERIFY(waiting->m_running == false);
+    delete waiting;
+
+    // A program that doesn't even compile: the thread reports and ends
+    ScriptRunner *broken = new ScriptRunner(m_doc, "var a = ;\n");
+    broken->execute();
+    QVERIFY2(broken->wait(10000), "JS thread did not finish on a syntax error");
+    QVERIFY(broken->m_running == false);
+    QVERIFY(broken->write(&timer, universes) == false);
+    delete broken;
 }
 
 void ScriptV4_Test::runnerThreadedRunsToCompletion()
