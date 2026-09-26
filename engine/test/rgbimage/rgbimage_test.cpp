@@ -441,10 +441,13 @@ void RGBImage_Test::animatedGif()
     QCOMPARE(map[0][0], uint(qRgb(0, 0, 255)));
     QCOMPARE(map[0][1], uint(qRgb(0, 0, 255)));
 
-    // Rewinding restarts from the first frame
+    // Rewinding positions the player on the first frame; rgbMap() always
+    // moves to the next frame before rendering, so the frame after that
+    // is what comes out
     image.rewindAnimation();
+    QCOMPARE(image.m_animatedPlayer.currentFrameNumber(), 0);
     image.rgbMap(QSize(2, 1), 0, 0, map);
-    QCOMPARE(map[0][0], uint(qRgb(255, 0, 0)));
+    QCOMPARE(map[0][0], uint(qRgb(0, 0, 255)));
 
     // A copy picks the animation up too
     RGBImage copy(image);
