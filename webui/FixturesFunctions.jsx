@@ -620,7 +620,7 @@ function FixturesFunctions() {
           )}
         </div>
 
-        <SidePanel isOpen={!!panel} alignment="right" expandedWidth={panel === 'tools' ? 300 : 'var(--side-panel-width)'} rail={
+        <SidePanel isOpen={!!panel} alignment="right" expandedWidth={panel === 'tools' ? 344 : 300} rail={
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: 4 }}>
             <IconButton imgSource={D.icon('intensity')} checked={panel === 'tools'} onClick={() => setPanel(panel === 'tools' ? null : 'tools')} tooltip="Fixture tools: intensity, colour, position, presets" />
             <IconButton imgSource={D.icon('palette')} checked={panel === 'palettes'} onClick={() => setPanel(panel === 'palettes' ? null : 'palettes')} tooltip="Palettes" />

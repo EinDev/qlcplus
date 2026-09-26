@@ -46,7 +46,11 @@ default until "Use server default" is pressed.
 | `api/domains/*.js` | One namespace per spec fragment (`qlc.core`, `qlc.io`, `qlc.vc`, `qlc.fixtures`, ...), thin wrappers over `call()`. |
 | `Connection.jsx` | `QLCConnectionProvider` / `useQLC()` / the network button popover. |
 | `App.jsx` | Main toolbar, context switching, blackout, mode, save, About. |
-| `FixturesFunctions.jsx` | Fixture tree (per universe) + function tree (per folder), detail panes, start/stop, rename, delete. |
+| `FixturesFunctions.jsx` | Fixture tree (per universe) + function tree (per folder), multi-select, context menus, start/pause/stop, create/rename/move/delete, fixture re-addressing. |
+| `ff/ff-core.jsx` | Shared F&F plumbing: serial revision-gated mutation queue (CONFLICT retry, per-key coalescing), cached `fixtures.get`, capability lookup via `fixtures.defs.*`, channel classification and colour/position DMX maths, own-echo event filter. |
+| `ff/FixtureTools.jsx` | Live fixture tools for the selected fixtures (intensity, colour, pan/tilt, capability presets) writing through `io.simpleDesk.setChannels`, or into the open Scene. |
+| `ff/FunctionEditors.jsx` | Scene editor (channel console, members, palettes), Chaser/Sequence step editor, timing/run-order editor, Collection editor (marked unavailable). |
+| `ff/FixtureDialogs.jsx` | Add Fixtures dialog (`fixtures.defs.*` + `fixtures.patch`), Fixture Groups panel, Palettes panel (create/edit/apply). |
 | `VirtualConsole.jsx` | Pages + widgets at their real geometry, button press / slider move, Grand Master. |
 | `SimpleDesk.jsx` | 512 channel strips per universe, live DMX values + overrides, keypad, dump to scene. |
 | `InputOutput.jsx` | Universe / patch table (read-only against today's server). |
@@ -61,7 +65,12 @@ path. `?ctx=fx|vc|sd|io` in the URL picks the initial screen.
 ## What is live and what is not
 
 Live against the Control API when connected: fixture and function trees and details, function
-start/stop (running state is *not* reported back by the server), rename/delete/unpatch, Simple
+start/stop/pause (running state from `running`/`paused` on `functions.list` and
+`functions.status.changed` where the server reports them, otherwise shown as last sent),
+function create/rename/move/delete with multi-select, Scene values and members, Chaser/Sequence
+steps and timing, fixture re-addressing, fixture groups, palettes, live fixture tools (intensity /
+colour / position / presets via Simple Desk overrides), Add Fixtures (needs `fixtures.defs.*` on
+the server; generic dimmer otherwise), rename/delete/unpatch, Simple
 Desk values/overrides/reset/keypad/dump, Virtual Console pages and widget layout, Grand Master,
 blackout, engine mode, project name and save, universe table.
 
