@@ -212,9 +212,12 @@ bool QLCFixtureDefCache::reloadOrAddFixtureDef(QLCFixtureDef *fixtureDef)
             }
             else
             {
-                // Set as user and perform a deep copy.
-                def->setIsUser(true);
+                // Perform a deep copy, then set as user: the assignment
+                // copies the source's user flag as well, so setting it
+                // first would leave the cache entry with whatever the
+                // editor's instance happened to carry.
                 *def = *fixtureDef;
+                def->setIsUser(true);
                 def->setLoaded(true);
             }
 
