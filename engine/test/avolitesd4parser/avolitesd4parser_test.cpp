@@ -212,6 +212,11 @@ void AvolitesD4Parser_Test::wrongRootElement()
     QCOMPARE(parser.lastError(), QString("wrong document format"));
     QVERIFY(def.manufacturer().isEmpty());
     QVERIFY(def.model().isEmpty());
+
+    // The failed load must not keep the file open: an early return that
+    // leaked the XML reader (and its QFile) made this remove() fail on
+    // Windows and left every test's temporary directory behind in %TEMP%.
+    QVERIFY(QFile::remove(path));
 }
 
 void AvolitesD4Parser_Test::missingRequiredAttributes()

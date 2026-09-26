@@ -140,9 +140,13 @@ bool AvolitesD4Parser::loadXML(const QString& path, QLCFixtureDef *fixtureDef)
     }
 
     QXmlStreamReader *doc = QLCFile::getXMLReader(path);
+    // Every early return below must release the reader (and the QFile it
+    // owns): leaking it keeps the file open, which on Windows also stops the
+    // caller from deleting the directory it lives in.
     if (doc == NULL || doc->device() == NULL || doc->hasError())
     {
         m_lastError = QString("Unable to read from %1").arg(path);
+        QLCFile::releaseXMLReader(doc);
         return false;
     }
 
@@ -150,6 +154,7 @@ bool AvolitesD4Parser::loadXML(const QString& path, QLCFixtureDef *fixtureDef)
     if (doc->readNextStartElement() == false || doc->name() != KD4TagFixture)
     {
         m_lastError = "wrong document format";
+        QLCFile::releaseXMLReader(doc);
         return false;
     }
 
@@ -157,6 +162,7 @@ bool AvolitesD4Parser::loadXML(const QString& path, QLCFixtureDef *fixtureDef)
     if ((!attrs.hasAttribute(KD4TagName)) || (!attrs.hasAttribute(KD4TagCompany)))
     {
         m_lastError = "the document doesn't have the required attributes";
+        QLCFile::releaseXMLReader(doc);
         return false;
     }
 
@@ -170,7 +176,10 @@ bool AvolitesD4Parser::loadXML(const QString& path, QLCFixtureDef *fixtureDef)
         {
             // Parse a channel
             if (parseChannel(doc, fixtureDef) == false)
+            {
+                QLCFile::releaseXMLReader(doc);
                 return false;
+            }
         }
         else if (doc->name() == KD4TagMode)
         {
