@@ -21,6 +21,7 @@
 #include <QtTest>
 #include <QXmlStreamReader>
 #include <QXmlStreamWriter>
+#include <QMetaEnum>
 
 #include "function_test.h"
 
@@ -28,11 +29,12 @@
 #define private public
 #include "function_stub.h"
 #include "function.h"
+#include "mastertimer.h"
 #undef private
 #undef protected
 
 #include "doc.h"
-#include "mastertimer.h"
+#include "qlcfile.h"
 
 void Function_Test::initTestCase()
 {
@@ -523,6 +525,8 @@ void Function_Test::speedOperations()
     QCOMPARE(Function::speedSubtract(Function::infiniteSpeed(), 10), Function::infiniteSpeed());
     QCOMPARE(Function::speedSubtract(10, Function::infiniteSpeed()), uint(0));
     QCOMPARE(Function::speedSubtract(Function::infiniteSpeed(), Function::infiniteSpeed()), uint(0));
+    // defaultSpeed() is the only value numerically above infiniteSpeed()
+    QCOMPARE(Function::speedSubtract(Function::defaultSpeed(), Function::infiniteSpeed()), uint(0));
 }
 
 void Function_Test::tempo()
@@ -1157,4 +1161,434 @@ void Function_Test::speedXML()
     //QVERIFY(stub.loadXMLSpeed(root) == false);
 }
 
-QTEST_APPLESS_MAIN(Function_Test)
+/** Build a <Function> element with the given attributes and no children */
+static QByteArray functionXml(const QString& type, const QString& id, const QString& name,
+                              const QMap<QString, QString>& extraAttrs = QMap<QString, QString>())
+{
+    QBuffer buffer;
+    buffer.open(QIODevice::WriteOnly | QIODevice::Text);
+    QXmlStreamWriter xmlWriter(&buffer);
+
+    xmlWriter.writeStartElement("Function");
+    xmlWriter.writeAttribute("Type", type);
+    xmlWriter.writeAttribute("ID", id);
+    xmlWriter.writeAttribute("Name", name);
+    QMapIterator<QString, QString> it(extraAttrs);
+    while (it.hasNext())
+    {
+        it.next();
+        xmlWriter.writeAttribute(it.key(), it.value());
+    }
+    xmlWriter.writeEndElement();
+    xmlWriter.writeEndDocument();
+    xmlWriter.setDevice(NULL);
+    buffer.close();
+
+    return buffer.data();
+}
+
+void Function_Test::baseClassInstance()
+{
+    Doc doc(this);
+
+    // Function is not abstract: the QObject-only constructor and the base
+    // implementations of the virtuals are what every subclass falls back to
+    Function *f = new Function(&doc);
+    QCOMPARE(f->id(), Function::invalidId());
+    QCOMPARE(f->type(), Function::Undefined);
+    QCOMPARE(f->doc(), &doc);
+    QCOMPARE(f->tempoType(), Function::Time);
+    QCOMPARE(f->attributes().count(), 0);
+    QCOMPARE(f->getAttributeValue(Function::Intensity), 0.0);
+
+    QVERIFY(f->saveXML(NULL) == false);
+    QXmlStreamReader reader;
+    QVERIFY(f->loadXML(reader) == false);
+    f->write(NULL, QList<Universe*>());
+    f->postLoad();
+    f->tap();
+    f->setTotalDuration(1234);
+    QCOMPARE(f->totalDuration(), quint32(0));
+    QVERIFY(f->components().isEmpty());
+    QVERIFY(f->contains(0) == false);
+    // Only the QIcon construction is exercised: the image resource lives in the application binary
+    f->getIcon();
+
+    // createCopy() of the base class produces another bare Function
+    Function *copy = f->createCopy(&doc, false);
+    QVERIFY(copy != NULL);
+    QVERIFY(copy != f);
+    QCOMPARE(copy->type(), Function::Undefined);
+    QCOMPARE(copy->id(), Function::invalidId());
+    QCOMPARE(doc.functions().size(), 0);
+    delete copy;
+
+    f->setName("Base");
+    Function *added = f->createCopy(&doc);
+    QVERIFY(added != NULL);
+    QVERIFY(added->id() != Function::invalidId());
+    QCOMPARE(added->name(), QString("Base"));
+    QCOMPARE(doc.functions().size(), 1);
+    QCOMPARE(doc.function(added->id()), added);
+
+    delete f;
+}
+
+void Function_Test::pathTypePrefix()
+{
+    Doc doc(this);
+    Function_Stub stub(&doc); // its type has no name, so it maps to "Undefined"
+
+    stub.setPath("Undefined/Sub/Folder");
+    QCOMPARE(stub.path(true), QString("Sub/Folder"));
+    QCOMPARE(stub.path(false), QString("Undefined/Sub/Folder"));
+
+    stub.setPath("Other");
+    QCOMPARE(stub.path(true), QString("Other"));
+    QCOMPARE(stub.path(false), QString("Undefined/Other"));
+}
+
+void Function_Test::saveXMLCommonOptional()
+{
+    Doc doc(this);
+    Function_Stub *stub = new Function_Stub(&doc);
+    stub->setName("Common");
+    stub->setVisible(false);
+    stub->setPath("Undefined/Folder");
+    stub->setBlendMode(Universe::AdditiveBlend);
+
+    QBuffer buffer;
+    buffer.open(QIODevice::WriteOnly | QIODevice::Text);
+    QXmlStreamWriter xmlWriter(&buffer);
+    xmlWriter.writeStartElement("Function");
+    QVERIFY(stub->saveXMLCommon(&xmlWriter) == true);
+    xmlWriter.writeEndElement();
+    xmlWriter.setDevice(NULL);
+    buffer.close();
+
+    buffer.open(QIODevice::ReadOnly | QIODevice::Text);
+    QXmlStreamReader xmlReader(&buffer);
+    xmlReader.readNextStartElement();
+    QCOMPARE(xmlReader.name().toString(), QString("Function"));
+    QXmlStreamAttributes attrs = xmlReader.attributes();
+    QCOMPARE(attrs.value("Name").toString(), QString("Common"));
+    QCOMPARE(attrs.value("Type").toString(), QString("Undefined"));
+    QCOMPARE(attrs.value("Hidden").toString(), KXMLQLCTrue);
+    QCOMPARE(attrs.value("Path").toString(), QString("Folder"));
+    QCOMPARE(attrs.value("BlendMode").toString(), Universe::blendModeToString(Universe::AdditiveBlend));
+}
+
+void Function_Test::loadXMLInvalidNodes()
+{
+    Doc doc(this);
+    Function_Stub stub(&doc);
+    stub.setRunOrder(Function::PingPong);
+    stub.setDirection(Function::Backward);
+    stub.setFadeInSpeed(42);
+
+    // An element with the wrong name is rejected by every loader without consuming it
+    {
+        QXmlStreamReader reader(QByteArray("<Foo>Bar</Foo>"));
+        reader.readNextStartElement();
+        QVERIFY(stub.loadXMLRunOrder(reader) == false);
+        QVERIFY(stub.loadXMLDirection(reader) == false);
+        QVERIFY(stub.loadXMLTempoType(reader) == false);
+        QVERIFY(stub.loadXMLSpeed(reader) == false);
+    }
+
+    // The right element without any text is rejected as well, keeping the current value
+    {
+        QXmlStreamReader reader(QByteArray("<RunOrder></RunOrder>"));
+        reader.readNextStartElement();
+        QVERIFY(stub.loadXMLRunOrder(reader) == false);
+        QCOMPARE(stub.runOrder(), Function::PingPong);
+    }
+    {
+        QXmlStreamReader reader(QByteArray("<Direction></Direction>"));
+        reader.readNextStartElement();
+        QVERIFY(stub.loadXMLDirection(reader) == false);
+        QCOMPARE(stub.direction(), Function::Backward);
+    }
+    {
+        QXmlStreamReader reader(QByteArray("<Tempo></Tempo>"));
+        reader.readNextStartElement();
+        QVERIFY(stub.loadXMLTempoType(reader) == false);
+        QCOMPARE(stub.tempoType(), Function::Time);
+    }
+    QCOMPARE(stub.fadeInSpeed(), uint(42));
+}
+
+void Function_Test::tempoTypeUnhandled()
+{
+    Doc doc(this);
+    Function_Stub stub(&doc);
+    stub.setFadeInSpeed(1000);
+    QSignalSpy spy(&stub, SIGNAL(tempoTypeChanged()));
+
+    // Original is a placeholder for "no override", not a real tempo: no conversion happens
+    stub.setTempoType(Function::Original);
+    QCOMPARE(stub.tempoType(), Function::Original);
+    QCOMPARE(stub.fadeInSpeed(), uint(1000));
+    QCOMPARE(spy.size(), 1);
+}
+
+void Function_Test::bpmChangeMarksBeatResync()
+{
+    Doc doc(this);
+    Function_Stub stub(&doc);
+    QVERIFY(stub.m_beatResyncNeeded == false);
+
+    // A time based function does not listen to BPM changes
+    doc.masterTimer()->requestBpmNumber(130);
+    QVERIFY(stub.m_beatResyncNeeded == false);
+
+    stub.setTempoType(Function::Beats);
+    doc.masterTimer()->requestBpmNumber(140);
+    QVERIFY(stub.m_beatResyncNeeded == true);
+
+    // Switching back to time disconnects again
+    stub.m_beatResyncNeeded = false;
+    stub.setTempoType(Function::Time);
+    doc.masterTimer()->requestBpmNumber(150);
+    QVERIFY(stub.m_beatResyncNeeded == false);
+}
+
+void Function_Test::loaderInvalidId()
+{
+    Doc d(this);
+
+    QXmlStreamReader xmlReader(functionXml("Scene", QString::number(Function::invalidId()), "Nobody"));
+    xmlReader.readNextStartElement();
+    QCOMPARE(xmlReader.name().toString(), QString("Function"));
+
+    QVERIFY(Function::loader(xmlReader, &d) == false);
+    QVERIFY(d.functions().isEmpty());
+}
+
+void Function_Test::loaderOptionalAttributes()
+{
+    Doc d(this);
+
+    QMap<QString, QString> attrs;
+    attrs["Path"] = "Scene/Group/Sub";
+    attrs["Hidden"] = KXMLQLCTrue;
+    attrs["BlendMode"] = Universe::blendModeToString(Universe::AdditiveBlend);
+
+    QXmlStreamReader xmlReader(functionXml("Scene", "3", "Optional", attrs));
+    xmlReader.readNextStartElement();
+
+    QVERIFY(Function::loader(xmlReader, &d) == true);
+    Function *f = d.function(3);
+    QVERIFY(f != NULL);
+    QCOMPARE(f->path(true), QString("Group/Sub"));
+    QVERIFY(f->isVisible() == false);
+    QCOMPARE(f->blendMode(), Universe::AdditiveBlend);
+}
+
+void Function_Test::loaderOtherTypes()
+{
+    Doc d(this);
+
+    {
+        QXmlStreamReader xmlReader(functionXml("Script", "1", "Script"));
+        xmlReader.readNextStartElement();
+        QVERIFY(Function::loader(xmlReader, &d) == true);
+        QVERIFY(d.function(1) != NULL);
+        QCOMPARE(d.function(1)->type(), Function::ScriptType);
+    }
+    {
+        QXmlStreamReader xmlReader(functionXml("RGBMatrix", "2", "Matrix"));
+        xmlReader.readNextStartElement();
+        QVERIFY(Function::loader(xmlReader, &d) == true);
+        QVERIFY(d.function(2) != NULL);
+        QCOMPARE(d.function(2)->type(), Function::RGBMatrixType);
+    }
+    {
+        QXmlStreamReader xmlReader(functionXml("Show", "3", "Show"));
+        xmlReader.readNextStartElement();
+        QVERIFY(Function::loader(xmlReader, &d) == true);
+        QVERIFY(d.function(3) != NULL);
+        QCOMPARE(d.function(3)->type(), Function::ShowType);
+    }
+    {
+        QMap<QString, QString> attrs;
+        attrs["BoundScene"] = "7";
+        QXmlStreamReader xmlReader(functionXml("Sequence", "4", "Sequence", attrs));
+        xmlReader.readNextStartElement();
+        QVERIFY(Function::loader(xmlReader, &d) == true);
+        QVERIFY(d.function(4) != NULL);
+        QCOMPARE(d.function(4)->type(), Function::SequenceType);
+    }
+    QCOMPARE(d.functions().size(), 4);
+}
+
+void Function_Test::loaderDuplicateId()
+{
+    Doc d(this);
+
+    {
+        QXmlStreamReader xmlReader(functionXml("Scene", "15", "First"));
+        xmlReader.readNextStartElement();
+        QVERIFY(Function::loader(xmlReader, &d) == true);
+    }
+    {
+        // The second function loads fine but cannot be added under an ID that is taken
+        QXmlStreamReader xmlReader(functionXml("Scene", "15", "Second"));
+        xmlReader.readNextStartElement();
+        QVERIFY(Function::loader(xmlReader, &d) == false);
+    }
+    QCOMPARE(d.functions().size(), 1);
+    QCOMPARE(d.function(15)->name(), QString("First"));
+}
+
+void Function_Test::loaderLoadXMLFailure()
+{
+    Doc d(this);
+
+    // A Sequence without its mandatory BoundScene attribute fails its own loadXML()
+    QXmlStreamReader xmlReader(functionXml("Sequence", "8", "Unbound"));
+    xmlReader.readNextStartElement();
+    QVERIFY(Function::loader(xmlReader, &d) == false);
+    QVERIFY(d.functions().isEmpty());
+}
+
+void Function_Test::pauseGuards()
+{
+    Doc doc(this);
+    MasterTimer timer(&doc);
+    Function_Stub stub(&doc);
+    QSignalSpy spy(&stub, SIGNAL(pauseChanged(quint32,bool)));
+
+    // Pausing something that is not running is refused
+    stub.setPause(true);
+    QVERIFY(stub.isPaused() == false);
+    QCOMPARE(spy.size(), 0);
+
+    // Un-pausing something that is not paused is a no-op
+    stub.setPause(false);
+    QCOMPARE(spy.size(), 0);
+
+    stub.preRun(&timer);
+    stub.setPause(true);
+    QVERIFY(stub.isPaused() == true);
+    QCOMPARE(spy.size(), 1);
+    stub.setPause(true); // already paused
+    QCOMPARE(spy.size(), 1);
+
+    // start() on a paused function only resumes it instead of queueing it on the timer again
+    stub.start(&timer, FunctionParent::master());
+    QVERIFY(stub.isPaused() == false);
+    QVERIFY(timer.m_startQueue.isEmpty());
+    QCOMPARE(spy.size(), 1);
+
+    stub.postRun(&timer, QList<Universe*>());
+}
+
+void Function_Test::roundElapsed()
+{
+    Doc doc(this);
+    Function_Stub stub(&doc);
+
+    stub.m_elapsed = 1234;
+    stub.roundElapsed(1000);
+    QCOMPARE(stub.elapsed(), quint32(234));
+
+    stub.roundElapsed(0);
+    QCOMPARE(stub.elapsed(), quint32(0));
+}
+
+void Function_Test::startedAsChild()
+{
+    Doc doc(this);
+    MasterTimer timer(&doc);
+    Function_Stub *stub = new Function_Stub(&doc);
+    doc.addFunction(stub);
+
+    QVERIFY(stub->startedAsChild() == false);
+
+    stub->start(&timer, FunctionParent::master());
+    QVERIFY(stub->startedAsChild() == false); // the master is not a parent Function
+    stub->stop(FunctionParent::master());
+
+    FunctionParent self(FunctionParent::Function, stub->id());
+    stub->start(&timer, self);
+    QVERIFY(stub->startedAsChild() == false); // started by itself
+    stub->stop(self);
+
+    FunctionParent other(FunctionParent::Function, stub->id() + 1);
+    stub->start(&timer, other);
+    QVERIFY(stub->startedAsChild() == true);
+    stub->stop(other);
+}
+
+void Function_Test::stopAndWaitNotRunning()
+{
+    Doc doc(this);
+    Function_Stub stub(&doc);
+
+    // Nothing to wait for: returns right away, without the 2s watchdog
+    QVERIFY(stub.isRunning() == false);
+    QVERIFY(stub.stopAndWait() == true);
+    QVERIFY(stub.stopped() == true);
+}
+
+void Function_Test::attributeEdgeCases()
+{
+    Doc doc(this);
+    Function_Stub stub(&doc);
+
+    // Re-registering an existing name re-initialises that attribute in place
+    stub.adjustAttribute(0.3, Function::Intensity);
+    int idx = stub.registerAttribute("Intensity", Function::Multiply | Function::Single, 0.0, 2.0, 1.5);
+    QCOMPARE(idx, int(Function::Intensity));
+    QCOMPARE(stub.attributes().count(), 1);
+    QCOMPARE(stub.getAttributeValue(Function::Intensity), 1.5);
+
+    // Override requests on a non-existent attribute are refused
+    QCOMPARE(stub.requestAttributeOverride(99, 0.5), -1);
+    QCOMPARE(stub.requestAttributeOverride(-1, 0.5), -1);
+
+    // A Single attribute hands out the same override ID on repeated requests
+    int first = stub.requestAttributeOverride(Function::Intensity, 0.5);
+    QVERIFY(first >= 0);
+    int second = stub.requestAttributeOverride(Function::Intensity, 0.2);
+    QCOMPARE(second, first);
+    QCOMPARE(stub.m_overrideMap.count(), 1);
+    QCOMPARE(stub.getAttributeValue(Function::Intensity), 1.5 * 0.2);
+
+    // Releasing / unregistering unknown entries is a no-op
+    stub.releaseAttributeOverride(9999);
+    QCOMPARE(stub.m_overrideMap.count(), 1);
+    QVERIFY(stub.unregisterAttribute("nope") == false);
+    QCOMPARE(stub.attributes().count(), 1);
+
+    // An override whose attribute index no longer exists is ignored
+    stub.m_overrideMap[first].m_attrIndex = 99;
+    QCOMPARE(stub.adjustAttribute(0.7, first), -1);
+    stub.releaseAttributeOverride(first); // the stale index bails out of the recalculation
+    QCOMPARE(stub.m_overrideMap.count(), 0);
+}
+
+void Function_Test::enumsRegistered()
+{
+    QMetaEnum type = QMetaEnum::fromType<Function::Type>();
+    QVERIFY(type.isValid());
+    QCOMPARE(QString(type.valueToKey(Function::SceneType)), QString("SceneType"));
+
+    QMetaEnum prop = QMetaEnum::fromType<Function::PropType>();
+    QCOMPARE(QString(prop.valueToKey(Function::FadeIn)), QString("FadeIn"));
+
+    QMetaEnum runOrder = QMetaEnum::fromType<Function::RunOrder>();
+    QCOMPARE(QString(runOrder.valueToKey(Function::PingPong)), QString("PingPong"));
+
+    QMetaEnum direction = QMetaEnum::fromType<Function::Direction>();
+    QCOMPARE(QString(direction.valueToKey(Function::Backward)), QString("Backward"));
+
+    QMetaEnum tempo = QMetaEnum::fromType<Function::TempoType>();
+    QCOMPARE(QString(tempo.valueToKey(Function::Beats)), QString("Beats"));
+
+    QMetaEnum fractions = QMetaEnum::fromType<Function::FractionsType>();
+    QCOMPARE(QString(fractions.valueToKey(Function::AllFractions)), QString("AllFractions"));
+}
+
+QTEST_MAIN(Function_Test)
