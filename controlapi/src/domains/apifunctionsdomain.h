@@ -22,6 +22,7 @@
 
 class ApiServer;
 class Doc;
+class Function;
 
 /**
  * docs/api-spec/fragments/functions-core.yaml: functions.start/stop/setPause
@@ -39,6 +40,16 @@ class Doc;
  * get a minimal {functionId} placeholder for now - their full detail shapes
  * (FunctionsEfxDetail etc.) are functions-advanced.yaml territory, a
  * deliberately separate future slice, not an oversight.
+ *
+ * Live run-state (§4b): every summary/detail carries running/paused, and
+ * functions.status.changed {id, functionId, running, paused, elapsed} is
+ * broadcast (ungated) whenever MasterTimer starts or stops ANY function -
+ * regardless of who started it (this API, a VC widget, the QML UI) - and
+ * whenever Function::setPause() flips a running function's pause flag.
+ * functions.stopAll mirrors the QML toolbar's "stop all functions" action
+ * (App::stopAllFunctions() when hosted by qmlui, so it also drops the
+ * Function Manager preview and closes fullscreen video; bare
+ * MasterTimer::stopAllFunctions() otherwise).
  */
 class ApiFunctionsDomain : public QObject
 {
@@ -50,7 +61,30 @@ public:
 private:
     void registerMethods();
 
+    /** Hook function's pauseChanged signal (string-based connect, engine
+     *  DLL) so functions.status.changed also covers pause/resume, which
+     *  MasterTimer has no signal for. Called for every Function present at
+     *  construction and for each one Doc adds afterwards. */
+    void watchFunction(Function *function);
+
+    /** Build + broadcast functions.status.changed for id. running/paused
+     *  are passed in rather than re-read because the Function may already
+     *  be gone (deleted between MasterTimer's queued emit and delivery
+     *  here) - elapsed is only included when it still exists. */
+    void broadcastStatus(quint32 id, bool running, bool paused);
+
 private slots:
+    /** MasterTimer::functionStarted/functionStopped relays - emitted on the
+     *  timer thread, delivered here queued (see apiserver.h). */
+    void slotFunctionStarted(quint32 id);
+    void slotFunctionStopped(quint32 id);
+
+    /** Function::pauseChanged relay - see watchFunction() */
+    void slotFunctionPauseChanged(quint32 id, bool paused);
+
+    /** Doc::functionAdded relay - see watchFunction() */
+    void slotFunctionAdded(quint32 id);
+
     /** MediaAssets re-pointed an Audio/Video at a fresh copy of its origin
      *  (functions.media.reload, the editors' Reload button, the bulk
      *  "Reload changed media" action, or a background copy that landed):
