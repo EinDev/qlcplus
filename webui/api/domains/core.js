@@ -121,6 +121,27 @@
         recentFiles: function (params) { return self.call('core.project.recentFiles', params); }
       },
 
+      bpm: {
+        /**
+         * Global beat generator state (web UI contract, 2026-09; not in the original core.yaml).
+         * Rejects NOT_FOUND "Unknown method" on a server predating it — probe once on 'ready'.
+         * @param {object} [params] - {} (no fields)
+         * @returns {Promise<object>} result - {bpm: integer (0 = generator off), generator: string, beatsPerBar?: integer}
+         */
+        get: function (params) { return self.call('core.bpm.get', params); },
+        /**
+         * Sets the global BPM. Live/runtime, no baseRevision. Confirmation is the broadcast
+         * core.bpm.changed ({bpm, generator}); a live beat pulse is the payload-less core.beat event.
+         * @param {number} bpm - beats per minute
+         */
+        set: function (bpm) { return self.call('core.bpm.set', { bpm: bpm }); },
+        /**
+         * Tap tempo: successive taps compute a new BPM from the interval average (mirrors
+         * VCSpeedDial's tap with controlBPM). -> ack; broadcasts core.bpm.changed.
+         */
+        tap: function () { return self.call('core.bpm.tap', {}); }
+      },
+
       mode: {
         /**
          * Current engine Design/Operate mode (Doc::Mode).
@@ -186,7 +207,9 @@
     'core.project.saved',            // {docRevision, filePath, fileName} — NOT fired for saveAs target='download'
     'core.project.recentFilesChanged', // {files: [{filePath, fileName}]}
     'core.mode.changed',             // {mode:'design'|'operate'}
-    'core.history.changed',          // {direction:'undo'|'redo', stepsApplied, docRevision, canUndo, canRedo}
+    'core.history.changed',          // {direction:'undo'|'redo', stepsApplied, docRevision, canUndo, canRedo, undoText?, redoText?}
+    'core.bpm.changed',              // {bpm, generator} — web UI contract (2026-09)
+    'core.beat',                     // {} — one pulse per beat of the active generator; web UI contract (2026-09)
     'core.settings.changed',         // CoreSettings — {locale, defaultWorkingPath, masterTimerFrequencyHz}
     'core.log',                      // subscribe-gated firehose — {level, message, timestampMs, file?, line?, function?}
     'core.log.debug',                // subscribe-gated, per-level filter of core.log

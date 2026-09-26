@@ -134,6 +134,10 @@
       },
 
       cueList: {
+        /** widgetId: string. Steps + live playback state of one cue list (web UI contract, 2026-09):
+            -> {steps: [{index, name, functionId, fadeIn, fadeOut, hold, notes}], playbackIndex,
+            running, paused}. Rejects NOT_FOUND "Unknown method" on a server predating it. */
+        get: function (widgetId) { return self.call('vc.cueList.get', { widgetId: widgetId }); },
         /** widgetId: string. Jump to the next step. -> ack; broadcasts vc.cueList.playbackChanged. */
         next: function (widgetId) { return self.call('vc.cueList.next', { widgetId: widgetId }); },
         /** widgetId: string. Start, or resume from Paused. -> ack; broadcasts
@@ -164,12 +168,17 @@
         cloneFirstPage: function (widgetId, baseRevision) {
           return self.call('vc.frame.cloneFirstPage', { widgetId: widgetId, baseRevision: baseRevision });
         },
-        /** widgetId: string. pageIndex: integer — a multi-page Frame's OWN internal page cursor
+        /** widgetId: string. -> {pages, currentPage, multipage} — a Frame's internal page cursor
+            (web UI contract, 2026-09). Rejects NOT_FOUND "Unknown method" on a server predating it. */
+        get: function (widgetId) { return self.call('vc.frame.get', { widgetId: widgetId }); },
+        /** widgetId: string. page: integer — a multi-page Frame's OWN internal page cursor
             (distinct from vc.page.select, the top-level VC page). Live (§4b), single shared value
             per frame (matches engine's VCFrame::currentPage, not per-client). -> ack; broadcasts
-            vc.frame.currentPageChanged. */
-        gotoPage: function (widgetId, pageIndex) {
-          return self.call('vc.frame.gotoPage', { widgetId: widgetId, pageIndex: pageIndex });
+            vc.frame.pageChanged ({widgetId, page}). The parameter is sent under both the current
+            contract name (`page`) and the older spec name (`pageIndex`); listen to both
+            vc.frame.pageChanged and the older vc.frame.currentPageChanged. */
+        gotoPage: function (widgetId, page) {
+          return self.call('vc.frame.gotoPage', { widgetId: widgetId, page: page, pageIndex: page });
         },
         /** widgetId: string (a top-level Frame only). currentPIN/newPIN: string, default ''.
             baseRevision: integer. currentPIN must match the existing PIN; newPIN='' clears
@@ -272,6 +281,13 @@
             -> ack; broadcasts vc.speedDial.currentTimeChanged. */
         setCurrentTime: function (widgetId, valueMs) {
           return self.call('vc.speedDial.setCurrentTime', { widgetId: widgetId, valueMs: valueMs });
+        },
+        /** widgetId: string. ms: integer >=0. The web UI contract's (2026-09) name for the same
+            absolute-time edit: vc.speedDial.setValue {widgetId, ms} -> ack; broadcasts
+            vc.speedDial.valueChanged ({widgetId, ms}). Listen to both that and the older
+            vc.speedDial.currentTimeChanged ({widgetId, currentTimeMs}). */
+        setValue: function (widgetId, ms) {
+          return self.call('vc.speedDial.setValue', { widgetId: widgetId, ms: ms });
         },
         /** widgetId: string. factor: one of VcSpeedDialMultiplier ('None'|'Zero'|'OneSixteenth'|
             'OneEighth'|'OneFourth'|'Half'|'One'|'Two'|'Four'|'Eight'|'Sixteen') — client computes
@@ -489,11 +505,13 @@
             widget's current displayMode units. -> {docRevision}; broadcasts
             vc.xyPad.fixturesChanged. */
         setHeadsRange: function (params) { return self.call('vc.xyPad.setHeadsRange', params); },
-        /** widgetId: string. x/y: numbers, 0..255.99609375 — the engine's native DMX-with-fraction
-            domain (NOT normalized 0.0-1.0, and NOT affected by the widget's displayMode, which only
-            relabels axes client-side). Live (§4b), no baseRevision. -> ack; broadcasts
-            vc.xyPad.positionChanged (same units). Fire-and-forget (this.send): explicitly called
-            out in virtualconsole-notes.md as a continuous-drag topic, confirmed by the event. */
+        /** widgetId: string. x/y: numbers. UNIT CAVEAT: the original spec fragment documents
+            0..255.99609375 (the engine's DMX-with-fraction domain); the web UI contract (2026-09)
+            specifies normalized 0..1 for both this call and vc.xyPad.positionChanged. The web UI
+            sends 0..1 and, on receive, treats any coordinate > 1 as DMX-domain and divides by 256,
+            so it renders correctly against either server. Live (§4b), no baseRevision. -> ack;
+            broadcasts vc.xyPad.positionChanged. Fire-and-forget (this.send): a continuous-drag
+            topic, confirmed by the event. */
         setPosition: function (widgetId, x, y) {
           return self.send('vc.xyPad.setPosition', { widgetId: widgetId, x: x, y: y });
         }
@@ -538,10 +556,12 @@
     'vc.xyPad.floorPositionChanged',       // subscribe-gated: continuous drag
     'vc.xyPad.activePresetChanged',
     'vc.frame.currentPageChanged',
+    'vc.frame.pageChanged',                // web UI contract name (2026-09): {widgetId, page}
     'vc.clock.timeChanged',                // subscribe-gated: 1Hz, or 10Hz while a Stopwatch/Countdown runs
-    'vc.cueList.playbackChanged',
+    'vc.cueList.playbackChanged',          // {widgetId, playbackIndex, running, paused} (contract) or {playbackStatus, ...} (older spec)
     'vc.cueList.sideFaderChanged',
     'vc.speedDial.currentTimeChanged',
+    'vc.speedDial.valueChanged',           // web UI contract name (2026-09): {widgetId, ms}
     'vc.speedDial.factorChanged',
     'vc.speedDial.tapChanged',
     'vc.animation.faderLevelChanged',
