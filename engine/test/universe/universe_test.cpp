@@ -857,9 +857,19 @@ void Universe_Test::writeMultipleAndBlended()
     QCOMPARE(m_uni->postGMValue(10), uchar(0x12));
     QCOMPARE(m_uni->postGMValue(11), uchar(0x34));
 
-    // normal blend honours HTP on intensity channels
+    // normal blend honours HTP on intensity channels, and so does write()
+    // unless LTP is forced
+    QVERIFY(m_uni->write(0, 200) == true);
+    QVERIFY(m_uni->write(0, 100) == false);
+    QCOMPARE(m_uni->postGMValue(0), uchar(200));
+    QVERIFY(m_uni->write(0, 100, true) == true);
+    QCOMPARE(m_uni->postGMValue(0), uchar(100));
     QVERIFY(m_uni->write(0, 200) == true);
     QVERIFY(m_uni->writeBlended(0, 100, 1, Universe::NormalBlend) == false);
+    QCOMPARE(m_uni->postGMValue(0), uchar(200));
+
+    // resetting past the end of the universe is a no-op
+    m_uni->reset(UNIVERSE_SIZE, 1);
     QCOMPARE(m_uni->postGMValue(0), uchar(200));
     QVERIFY(m_uni->writeBlended(0, 250, 1, Universe::NormalBlend) == true);
     QCOMPARE(m_uni->postGMValue(0), uchar(250));
@@ -1485,6 +1495,13 @@ void Universe_Test::savePatches()
     xmlReader.readNextStartElement();
     QCOMPARE(xmlReader.name().toString(), QString("Universe"));
     QCOMPARE(xmlReader.attributes().value("Name").toString(), QString("Universe 1"));
+
+    // plugin parameters can only be loaded from their own tag
+    QVERIFY(m_uni->loadXMLPluginParameters(xmlReader, Universe::InputPatchTag, 0) == false);
+    QXmlStreamReader params("<PluginParameters loadedKey=\"loadedValue\"/>");
+    params.readNextStartElement();
+    QVERIFY(m_uni->loadXMLPluginParameters(params, Universe::InputPatchTag, 0) == true);
+    QCOMPARE(m_uni->inputPatch()->getPluginParameters().value("loadedKey").toString(), QString("loadedValue"));
 
     // remove the patches again so the plugin lines are closed in order
     QVERIFY(m_uni->setInputPatch(m_stub, QLCIOPlugin::invalidLine(), NULL) == true);

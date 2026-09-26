@@ -988,7 +988,8 @@ void InputOutputMap_Test::feedbackPatch()
                                 (m_doc->ioPluginCache()->plugins().at(0));
     QVERIFY(stub != NULL);
 
-    // nothing patched yet
+    // nothing patched yet, and unknown plugins offer no feedback
+    QVERIFY(iom.pluginSupportsFeedback("Foobar") == false);
     QVERIFY(iom.sendFeedBack(0, 1, 255, QVariant()) == false);
     QVERIFY(iom.sendFeedBack(42, 1, 255, QVariant()) == false);
     QVERIFY(iom.feedbackPatch(0) == NULL);
@@ -1397,10 +1398,10 @@ static QString writeIOMapXML(bool nativeServer)
     w.writeAttribute("ID", "0");
     w.writeAttribute("Passthrough", "True");
 
+    // backward compatible: old files stored the line name in the UID attribute
     w.writeStartElement("Input");
     w.writeAttribute("Plugin", "I/O Plugin Stub");
-    w.writeAttribute("Name", "1: Stub 1");
-    w.writeAttribute("UID", "");
+    w.writeAttribute("UID", "1: Stub 1");
     w.writeAttribute("Line", "0");
     w.writeAttribute("Profile", "Generic MIDI");
     w.writeStartElement("PluginParameters");
@@ -1410,7 +1411,7 @@ static QString writeIOMapXML(bool nativeServer)
 
     w.writeStartElement("Feedback");
     w.writeAttribute("Plugin", "I/O Plugin Stub");
-    w.writeAttribute("Name", "3: Stub 3");
+    w.writeAttribute("UID", "3: Stub 3");
     w.writeAttribute("Line", "2");
     w.writeStartElement("PluginParameters");
     w.writeAttribute("fbParam", "fb-value");

@@ -210,6 +210,12 @@ void QLCInputChannel_Test::save()
 void QLCInputChannel_Test::typeStringAndIcons()
 {
     QLCInputChannel ch;
+    QSignalSpy nameSpy(&ch, SIGNAL(nameChanged()));
+    ch.setName("Same");
+    ch.setName("Same");
+    QCOMPARE(nameSpy.size(), 1);
+    QCOMPARE(ch.name(), QString("Same"));
+
     ch.setType(QLCInputChannel::Knob);
     QCOMPARE(ch.typeString(), QString(KXMLQLCInputChannelKnob));
     ch.setType(QLCInputChannel::PageSet);
