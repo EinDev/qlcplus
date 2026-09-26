@@ -1299,14 +1299,15 @@ void QLCPalette_Test::fixturesPosition3D()
     QCOMPARE(valueOf(list, m->id(), MoverTilt), int(degreesMSB(downTilt, MoverTiltMax)));
     QCOMPARE(valueOf(list, m->id(), MoverPan), int(degreesMSB(270, MoverPanMax)));
 
-    /* inverted pan/tilt flags mirror both axes */
+    /* inverted flags: pan is mirrored over the pan range, tilt adds the raw
+       90 degree off-axis angle to the centre instead of subtracting it */
     mProps->setFixtureFlags(m->id(), 0, 0,
                             MonitorProperties::InvertedPanFlag | MonitorProperties::InvertedTiltFlag);
     p.setValue(1.0f, 0.0f, 1.0f);
     list = p.valuesFromFixtures(&doc, QList<quint32>() << m->id());
     QCOMPARE(list.size(), 4);
     QCOMPARE(valueOf(list, m->id(), MoverPan), int(degreesMSB(MoverPanMax - 225, MoverPanMax)));
-    QCOMPARE(valueOf(list, m->id(), MoverTilt), int(degreesMSB(135 + 45, MoverTiltMax)));
+    QCOMPARE(valueOf(list, m->id(), MoverTilt), int(degreesMSB(135 + 90, MoverTiltMax)));
     mProps->setFixtureFlags(m->id(), 0, 0, 0);
 
     /* imperial grid units only change the metric conversion of the offset */
