@@ -53,6 +53,7 @@ private slots:
     void loadLegacyAndOptional();
     void saveOptionalParts();
     void meshItemsXML();
+    void heapInstanceAndEnums();
 };
 
 #endif

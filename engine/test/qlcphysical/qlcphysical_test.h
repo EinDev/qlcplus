@@ -53,6 +53,7 @@ private slots:
     void load();
     void loadWrongRoot();
     void save();
+    void heapInstance();
 
 private:
     QLCPhysical p;

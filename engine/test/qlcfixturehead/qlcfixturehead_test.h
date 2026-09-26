@@ -40,6 +40,9 @@ private slots:
     void cacheChannelsPanTilt();
     void cacheChannelsColor();
     void doublePanTilt();
+    void heapInstance();
+    void cacheUndefinedChannel();
+    void loadWrongRoot();
 
     void cleanupTestCase();
 

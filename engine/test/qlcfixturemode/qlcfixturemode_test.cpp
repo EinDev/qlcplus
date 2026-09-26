@@ -718,4 +718,119 @@ void QLCFixtureMode_Test::cleanupTestCase()
     delete m_fixtureDef;
 }
 
+void QLCFixtureMode_Test::replaceChannel()
+{
+    QLCFixtureMode mode(m_fixtureDef);
+    QVERIFY(mode.insertChannel(m_ch1, 0) == true);
+    QVERIFY(mode.insertChannel(m_ch2, 1) == true);
+
+    QVERIFY(mode.replaceChannel(NULL, m_ch3) == false);
+    QVERIFY(mode.replaceChannel(m_ch1, NULL) == false);
+    // m_ch3 is not part of the mode
+    QVERIFY(mode.replaceChannel(m_ch3, m_ch4) == false);
+    QCOMPARE(mode.channels().size(), 2);
+
+    QVERIFY(mode.replaceChannel(m_ch2, m_ch4) == true);
+    QCOMPARE(mode.channels().size(), 2);
+    QVERIFY(mode.channel(0) == m_ch1);
+    QVERIFY(mode.channel(1) == m_ch4);
+}
+
+void QLCFixtureMode_Test::removeAllChannels()
+{
+    QLCFixtureMode mode(m_fixtureDef);
+    QVERIFY(mode.insertChannel(m_ch1, 0) == true);
+    QVERIFY(mode.insertChannel(m_ch2, 1) == true);
+    QCOMPARE(mode.channels().size(), 2);
+
+    mode.removeAllChannels();
+    QVERIFY(mode.channels().isEmpty());
+    QVERIFY(mode.channel(0) == NULL);
+    // the definition still owns the channels themselves
+    QCOMPARE(m_fixtureDef->channels().size(), 4);
+}
+
+void QLCFixtureMode_Test::actsOn()
+{
+    QLCFixtureMode mode(m_fixtureDef);
+    QVERIFY(mode.insertChannel(m_ch1, 0) == true);
+    QVERIFY(mode.insertChannel(m_ch2, 1) == true);
+
+    QCOMPARE(mode.channelActsOn(0), QLCChannel::invalid());
+    QCOMPARE(mode.channelActsOn(1), QLCChannel::invalid());
+
+    mode.setChannelActsOn(1, 0);
+    QCOMPARE(mode.channelActsOn(1), quint32(0));
+    QCOMPARE(mode.channelActsOn(0), QLCChannel::invalid());
+
+    // an invalid index removes the relation again
+    mode.setChannelActsOn(1, QLCChannel::invalid());
+    QCOMPARE(mode.channelActsOn(1), QLCChannel::invalid());
+    QVERIFY(mode.m_actsOnMap.isEmpty());
+}
+
+void QLCFixtureMode_Test::resetPhysical()
+{
+    QLCFixtureMode mode(m_fixtureDef);
+    QVERIFY(mode.useGlobalPhysical() == true);
+
+    QLCPhysical phys;
+    phys.setWeight(12);
+    mode.setPhysical(phys);
+    QVERIFY(mode.useGlobalPhysical() == false);
+
+    mode.resetPhysical();
+    QVERIFY(mode.useGlobalPhysical() == true);
+}
+
+void QLCFixtureMode_Test::saveActsOn()
+{
+    QLCFixtureMode mode(m_fixtureDef);
+    mode.setName("ActsOn");
+    QVERIFY(mode.insertChannel(m_ch1, 0) == true);
+    QVERIFY(mode.insertChannel(m_ch2, 1) == true);
+    mode.setChannelActsOn(1, 0);
+
+    QBuffer buffer;
+    buffer.open(QIODevice::WriteOnly | QIODevice::Text);
+    QXmlStreamWriter xmlWriter(&buffer);
+    QVERIFY(mode.saveXML(&xmlWriter) == true);
+    xmlWriter.setDevice(NULL);
+    buffer.close();
+
+    buffer.open(QIODevice::ReadOnly | QIODevice::Text);
+    QXmlStreamReader xmlReader(&buffer);
+    xmlReader.readNextStartElement();
+    QCOMPARE(xmlReader.name().toString(), QString(KXMLQLCFixtureMode));
+
+    QMap<int, QString> actsOnByChannel;
+    while (xmlReader.readNextStartElement())
+    {
+        if (xmlReader.name() == KXMLQLCChannel)
+        {
+            int num = xmlReader.attributes().value(KXMLQLCFixtureModeChannelNumber).toString().toInt();
+            actsOnByChannel[num] = xmlReader.attributes().value(KXMLQLCFixtureModeChannelActsOn).toString();
+            xmlReader.skipCurrentElement();
+        }
+        else
+        {
+            xmlReader.skipCurrentElement();
+        }
+    }
+
+    QCOMPARE(actsOnByChannel.size(), 2);
+    QVERIFY(actsOnByChannel[0].isEmpty());
+    QCOMPARE(actsOnByChannel[1], QString("0"));
+
+    // and it survives a round trip
+    buffer.close();
+    buffer.open(QIODevice::ReadOnly | QIODevice::Text);
+    QXmlStreamReader loadReader(&buffer);
+    loadReader.readNextStartElement();
+    QLCFixtureMode loaded(m_fixtureDef);
+    QVERIFY(loaded.loadXML(loadReader) == true);
+    QCOMPARE(loaded.channelActsOn(1), quint32(0));
+    QCOMPARE(loaded.channelActsOn(0), QLCChannel::invalid());
+}
+
 QTEST_APPLESS_MAIN(QLCFixtureMode_Test)

@@ -351,4 +351,48 @@ void QLCFixtureHead_Test::cleanupTestCase()
     delete m_fixtureDef;
 }
 
+void QLCFixtureHead_Test::heapInstance()
+{
+    QLCFixtureHead *head = new QLCFixtureHead();
+    head->addChannel(3);
+    QLCFixtureHead *copy = new QLCFixtureHead(*head);
+    QVERIFY(copy->channels().contains(quint32(3)));
+    delete head;
+    delete copy;
+}
+
+void QLCFixtureHead_Test::cacheUndefinedChannel()
+{
+    QLCFixtureMode mode(m_fixtureDef);
+    m_ch1->setGroup(QLCChannel::Pan);
+    m_ch2->setGroup(QLCChannel::Tilt);
+    mode.insertChannel(m_ch1, 0);
+    mode.insertChannel(m_ch2, 1);
+
+    // a channel index beyond the mode's channels is ignored, the valid
+    // ones are still cached
+    QLCFixtureHead head;
+    head.addChannel(0);
+    head.addChannel(7);
+    head.addChannel(1);
+    head.cacheChannels(&mode);
+
+    QCOMPARE(head.channelNumber(QLCChannel::Pan, QLCChannel::MSB), quint32(0));
+    QCOMPARE(head.channelNumber(QLCChannel::Tilt, QLCChannel::MSB), quint32(1));
+    QCOMPARE(head.channelsMap().size(), 2);
+
+    m_ch1->setGroup(QLCChannel::NoGroup);
+    m_ch2->setGroup(QLCChannel::NoGroup);
+}
+
+void QLCFixtureHead_Test::loadWrongRoot()
+{
+    QXmlStreamReader xmlReader("<Foo><Channel>0</Channel></Foo>");
+    QVERIFY(xmlReader.readNextStartElement());
+
+    QLCFixtureHead head;
+    QVERIFY(head.loadXML(xmlReader) == false);
+    QVERIFY(head.channels().isEmpty());
+}
+
 QTEST_APPLESS_MAIN(QLCFixtureHead_Test)

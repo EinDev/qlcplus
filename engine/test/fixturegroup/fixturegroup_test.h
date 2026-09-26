@@ -46,6 +46,7 @@ private slots:
     void copy();
     void loadWrongID();
     void loadWrongHeadAttributes();
+    void loadUnknownTag();
     void load();
     void save();
     void dmxOrderGridRegeneration();

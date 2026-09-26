@@ -19,6 +19,7 @@
 
 #include <QtTest>
 #include <QBuffer>
+#include <QMetaEnum>
 #include <QMatrix4x4>
 #include <QXmlStreamReader>
 #include <QXmlStreamWriter>
@@ -949,6 +950,22 @@ void MonitorProperties_Test::meshItemsXML()
 
     QVERIFY(loaded.itemResource(3).endsWith("elsewhere.obj"));
     QCOMPARE(loaded.itemScale(3), QVector3D(1, 1, 1));
+}
+
+void MonitorProperties_Test::heapInstanceAndEnums()
+{
+    MonitorProperties *mp = new MonitorProperties();
+    mp->setGridUnits(MonitorProperties::Feet);
+    QCOMPARE(mp->gridUnits(), MonitorProperties::Feet);
+    delete mp;
+
+    // the Q_ENUM registrations
+    QMetaEnum units = QMetaEnum::fromType<MonitorProperties::GridUnits>();
+    QCOMPARE(units.valueToKey(MonitorProperties::Feet), "Feet");
+    QMetaEnum pov = QMetaEnum::fromType<MonitorProperties::PointOfView>();
+    QCOMPARE(pov.valueToKey(MonitorProperties::TopView), "TopView");
+    QMetaEnum flags = QMetaEnum::fromType<MonitorProperties::ItemFlags>();
+    QCOMPARE(flags.valueToKey(MonitorProperties::HasDmxRotationFlag), "HasDmxRotationFlag");
 }
 
 // QTEST_GUILESS_MAIN: saving generic items resolves the system meshes folder

@@ -19,10 +19,26 @@
 
 #include <QtTest>
 
+#define protected public
+#include "qlcfixturedef.h"
+#undef protected
+
 #include "qlcfixturedef_test.h"
 #include "qlcfixturemode.h"
-#include "qlcfixturedef.h"
 #include "qlcchannel.h"
+#include "fixture.h"
+#include "qlcfile.h"
+
+/** Write @p content into @p path, creating/truncating the file */
+static bool writeTextFile(const QString &path, const QString &content)
+{
+    QFile file(path);
+    if (file.open(QIODevice::WriteOnly | QIODevice::Text) == false)
+        return false;
+    file.write(content.toUtf8());
+    file.close();
+    return true;
+}
 
 void QLCFixtureDef_Test::initial()
 {
@@ -359,6 +375,220 @@ void QLCFixtureDef_Test::saveLoadXML()
     delete def2;
     QFile::remove(path);
     QVERIFY(QFile::exists(path) == false);
+}
+
+void QLCFixtureDef_Test::assignment()
+{
+    /* The target already owns channels and modes: they must be thrown away */
+    QLCFixtureDef target;
+    target.setManufacturer("Old");
+    target.setModel("Target");
+    QLCChannel *oldCh = new QLCChannel();
+    oldCh->setName("Old channel");
+    target.addChannel(oldCh);
+    QLCFixtureMode *oldMode = new QLCFixtureMode(&target);
+    oldMode->setName("Old mode");
+    oldMode->insertChannel(oldCh, 0);
+    target.addMode(oldMode);
+
+    QLCFixtureDef source;
+    source.setManufacturer("New");
+    source.setModel("Source");
+    source.setType(QLCFixtureDef::Scanner);
+    source.setAuthor("Me");
+    QLCChannel *newCh = new QLCChannel();
+    newCh->setName("New channel");
+    source.addChannel(newCh);
+    QLCFixtureMode *newMode = new QLCFixtureMode(&source);
+    newMode->setName("New mode");
+    newMode->insertChannel(newCh, 0);
+    source.addMode(newMode);
+
+    target = source;
+    QCOMPARE(target.manufacturer(), QString("New"));
+    QCOMPARE(target.model(), QString("Source"));
+    QCOMPARE(target.type(), QLCFixtureDef::Scanner);
+    QCOMPARE(target.author(), QString("Me"));
+    QCOMPARE(target.channels().size(), 1);
+    QVERIFY(target.channels().at(0) != newCh);
+    QCOMPARE(target.channels().at(0)->name(), QString("New channel"));
+    QCOMPARE(target.modes().size(), 1);
+    QVERIFY(target.modes().at(0) != newMode);
+    QCOMPARE(target.modes().at(0)->name(), QString("New mode"));
+    QVERIFY(target.modes().at(0)->channel(0) == target.channels().at(0));
+
+    /* Self assignment is a no-op */
+    QLCFixtureDef &self = target;
+    target = self;
+    QCOMPARE(target.channels().size(), 1);
+    QCOMPARE(target.modes().size(), 1);
+}
+
+void QLCFixtureDef_Test::typeStrings()
+{
+    const QList<QLCFixtureDef::FixtureType> types = QList<QLCFixtureDef::FixtureType>()
+        << QLCFixtureDef::ColorChanger << QLCFixtureDef::Dimmer << QLCFixtureDef::Effect
+        << QLCFixtureDef::Fan << QLCFixtureDef::Flower << QLCFixtureDef::Hazer
+        << QLCFixtureDef::Laser << QLCFixtureDef::MovingHead << QLCFixtureDef::Scanner
+        << QLCFixtureDef::Smoke << QLCFixtureDef::Strobe << QLCFixtureDef::LEDBarBeams
+        << QLCFixtureDef::LEDBarPixels << QLCFixtureDef::Other;
+
+    foreach (QLCFixtureDef::FixtureType type, types)
+        QCOMPARE(QLCFixtureDef::stringToType(QLCFixtureDef::typeToString(type)), type);
+
+    QCOMPARE(QLCFixtureDef::typeToString(QLCFixtureDef::Fan), QString("Fan"));
+    QCOMPARE(QLCFixtureDef::typeToString(QLCFixtureDef::Other), QString("Other"));
+    QCOMPARE(QLCFixtureDef::stringToType("Whatever"), QLCFixtureDef::Other);
+}
+
+void QLCFixtureDef_Test::checkLoadedGeneric()
+{
+    /* The built-in generic definitions never come from a file */
+    QLCFixtureDef generic;
+    generic.setManufacturer(KXMLFixtureGeneric);
+    generic.setModel(KXMLFixtureGeneric);
+    QVERIFY(generic.m_isLoaded == false);
+    generic.checkLoaded(QString());
+    QVERIFY(generic.m_isLoaded == true);
+
+    QLCFixtureDef panel;
+    panel.setManufacturer(KXMLFixtureGeneric);
+    panel.setModel(KXMLFixtureRGBPanel);
+    panel.checkLoaded(QString());
+    QVERIFY(panel.m_isLoaded == true);
+
+    /* Anything else without a source path stays unloaded */
+    QLCFixtureDef other;
+    other.setManufacturer("Foo");
+    other.setModel("Bar");
+    other.checkLoaded(QString());
+    QVERIFY(other.m_isLoaded == false);
+
+    /* Already loaded: nothing happens, whatever the path */
+    other.setLoaded(true);
+    other.setDefinitionSourceFile("/no/such/file.qxf");
+    other.checkLoaded(QString());
+    QVERIFY(other.m_isLoaded == true);
+    QCOMPARE(other.definitionSourceFile(), QString("/no/such/file.qxf"));
+}
+
+void QLCFixtureDef_Test::clearContents()
+{
+    QLCFixtureDef def;
+    def.setManufacturer("Foo");
+    def.setModel("Bar");
+    def.setAuthor("Me");
+    def.setType(QLCFixtureDef::Laser);
+    QLCPhysical phys;
+    phys.setWeight(42);
+    def.setPhysical(phys);
+
+    QLCChannel *ch = new QLCChannel();
+    ch->setName("Dimmer");
+    def.addChannel(ch);
+    QLCFixtureMode *mode = new QLCFixtureMode(&def);
+    mode->setName("Mode");
+    mode->insertChannel(ch, 0);
+    def.addMode(mode);
+
+    def.clear();
+    QVERIFY(def.manufacturer().isEmpty());
+    QVERIFY(def.model().isEmpty());
+    QVERIFY(def.author().isEmpty());
+    QCOMPARE(def.type(), QLCFixtureDef::Dimmer);
+    QVERIFY(def.channels().isEmpty());
+    QVERIFY(def.modes().isEmpty());
+    QCOMPARE(def.physical().weight(), 0.0);
+}
+
+void QLCFixtureDef_Test::saveFailures()
+{
+    QLCFixtureDef def;
+    def.setManufacturer("Foo");
+    def.setModel("Bar");
+
+    QCOMPARE(def.saveXML(QString()), QFile::OpenError);
+
+    /* The temporary file can be written, but the final name is taken by a
+       directory that can't be removed to make room for it */
+    QTemporaryDir tmp;
+    QVERIFY(tmp.isValid());
+    QDir dir(tmp.path());
+    QVERIFY(dir.mkdir("taken.qxf"));
+    const QString path(dir.absoluteFilePath("taken.qxf"));
+    QVERIFY(def.saveXML(path) != QFile::NoError);
+    QVERIFY(QFileInfo(path).isDir());
+    QFile::remove(path + ".temp");
+    QVERIFY(tmp.remove());
+}
+
+void QLCFixtureDef_Test::loadFileFailures()
+{
+    QTemporaryDir tmp;
+    QVERIFY(tmp.isValid());
+    QDir dir(tmp.path());
+    QLCFixtureDef def;
+
+    /* Malformed XML: an error before any document type is found */
+    const QString garbage(dir.absoluteFilePath("garbage.qxf"));
+    QVERIFY(writeTextFile(garbage, "<?xml version=\"1.0\"?>\n<<<"));
+    QCOMPARE(def.loadXML(garbage), QFile::ResourceError);
+
+    /* Some other document type */
+    const QString foreign(dir.absoluteFilePath("foreign.qxf"));
+    QVERIFY(writeTextFile(foreign, "<!DOCTYPE Workspace>\n<Workspace/>\n"));
+    QCOMPARE(def.loadXML(foreign), QFile::ReadError);
+
+    /* The right document type, but the root element isn't a fixture */
+    const QString wrongRoot(dir.absoluteFilePath("wrongroot.qxf"));
+    QVERIFY(writeTextFile(wrongRoot, "<!DOCTYPE FixtureDefinition>\n<Foo/>\n"));
+    QCOMPARE(def.loadXML(wrongRoot), QFile::ReadError);
+
+    QVERIFY(def.manufacturer().isEmpty());
+    QVERIFY(def.channels().isEmpty());
+    QVERIFY(tmp.remove());
+}
+
+void QLCFixtureDef_Test::loadReaderEdgeCases()
+{
+    /* A reader that has already run to its end */
+    QXmlStreamReader spent("<Foo/>");
+    while (spent.atEnd() == false)
+        spent.readNext();
+    QLCFixtureDef def;
+    QVERIFY(def.loadXML(spent) == false);
+
+    /* Creator information hanging off the wrong element */
+    QXmlStreamReader wrong("<Foo><Author>Me</Author></Foo>");
+    QVERIFY(wrong.readNextStartElement());
+    QVERIFY(def.loadCreator(wrong) == false);
+    QVERIFY(def.author().isEmpty());
+
+    /* Duplicate and nameless channels/modes plus unknown tags are skipped,
+       the rest of the definition still loads */
+    const QString xml(
+        "<FixtureDefinition>"
+        " <Creator><Name>Q</Name><Version>1</Version><Author>Me</Author><Bogus/></Creator>"
+        " <Manufacturer>Foo</Manufacturer>"
+        " <Model>Bar</Model>"
+        " <Type>Scanner</Type>"
+        " <Channel Name=\"Dimmer\"><Group Byte=\"0\">Intensity</Group></Channel>"
+        " <Channel Name=\"Dimmer\"><Group Byte=\"0\">Intensity</Group></Channel>"
+        " <Channel/>"
+        " <Mode Name=\"M1\"><Channel Number=\"0\">Dimmer</Channel></Mode>"
+        " <Mode Name=\"M1\"><Channel Number=\"0\">Dimmer</Channel></Mode>"
+        " <Mode/>"
+        " <Unknown/>"
+        "</FixtureDefinition>");
+    QXmlStreamReader reader(xml);
+    QVERIFY(def.loadXML(reader) == true);
+    QCOMPARE(def.manufacturer(), QString("Foo"));
+    QCOMPARE(def.model(), QString("Bar"));
+    QCOMPARE(def.author(), QString("Me"));
+    QCOMPARE(def.type(), QLCFixtureDef::Scanner);
+    QCOMPARE(def.channels().size(), 1);
+    QCOMPARE(def.modes().size(), 1);
+    QCOMPARE(def.modes().at(0)->channels().size(), 1);
 }
 
 QTEST_APPLESS_MAIN(QLCFixtureDef_Test)
