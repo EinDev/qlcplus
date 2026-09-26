@@ -66,12 +66,19 @@ start/stop (running state is *not* reported back by the server), rename/delete/u
 Desk values/overrides/reset/keypad/dump, Virtual Console pages and widget layout, Grand Master,
 blackout, engine mode, project name and save, universe table.
 
-Not yet possible because the server lacks the methods: Virtual Console button presses and slider
-moves (`vc.button.press` / `vc.slider.setValue` are in the spec but not registered by the
-server - the UI detects the `Unknown method` reply and switches to view-only), cue lists / XY
-pads / speed dials, I/O patching and plugin enumeration, adding fixtures (no fixture-definition
-browsing), stop-all, BPM. Not yet built in the UI although the server could do it: function
-editors (scene values, chaser steps), fixture re-addressing, VC layout editing, Show Manager.
+Virtual Console live interaction is wired to the server contract that landed on master
+(`vc.button.press`, `vc.slider.setValue`, `vc.cueList.*`, `vc.xyPad.setPosition`,
+`vc.speedDial.setValue/tap`, `vc.frame.gotoPage/get` and their `*Changed` events); on a server
+that predates a method the UI detects the `Unknown method` reply and shows that control as
+view-only. VC layout editing (add / move / resize / configure Button and Slider / copy / paste /
+delete, page add / rename / delete) works in Design mode over `vc.widget.*` and `vc.page.*`.
+
+Wired in the toolbar but still waiting for server methods: Stop all (`functions.stopAll`),
+running-function state (`functions.status.changed`, `running` on `functions.list`), BPM / tap /
+beat (`core.bpm.*`, `core.beat`), Undo / Redo (`core.undo/redo`, `core.history.get`) - the
+buttons probe once per connection and grey out when the server lacks them. Still not possible:
+adding fixtures (no fixture-definition browsing). Not yet built in the UI although the server
+could do it: function editors (scene values, chaser steps), fixture re-addressing, Show Manager.
 
 The source design system (component sources, guidelines, templates) lives outside this repo;
 only runtime files are vendored here. When re-importing from it, keep the load order in
