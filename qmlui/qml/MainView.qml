@@ -280,6 +280,7 @@ Rectangle
                 //visible: qlcplus.accessMask & App.AC_FunctionEditing
                 imgSource: "qrc:/editor.svg"
                 entryText: qsTr("Fixtures & Functions")
+                shortcutActionId: "context.switchFixturesAndFunctions"
                 checked: false
                 ButtonGroup.group: menuBarGroup
                 onCheckedChanged:
@@ -298,6 +299,7 @@ Rectangle
                 visible: qlcplus.accessMask & App.AC_VCControl
                 imgSource: "qrc:/virtualconsole.svg"
                 entryText: qsTr("Virtual Console")
+                shortcutActionId: "context.switchVirtualConsole"
                 ButtonGroup.group: menuBarGroup
                 onCheckedChanged:
                 {
@@ -320,6 +322,7 @@ Rectangle
                 visible: qlcplus.accessMask & App.AC_SimpleDesk
                 imgSource: "qrc:/simpledesk.svg"
                 entryText: qsTr("Simple Desk")
+                shortcutActionId: "context.switchSimpleDesk"
                 ButtonGroup.group: menuBarGroup
                 onCheckedChanged:
                 {
@@ -342,6 +345,7 @@ Rectangle
                 visible: qlcplus.accessMask & App.AC_ShowManager
                 imgSource: "qrc:/showmanager.svg"
                 entryText: qsTr("Show Manager")
+                shortcutActionId: "context.switchShowManager"
                 ButtonGroup.group: menuBarGroup
                 onCheckedChanged:
                 {
@@ -364,6 +368,7 @@ Rectangle
                 visible: qlcplus.accessMask & App.AC_InputOutput
                 imgSource: "qrc:/inputoutput.svg"
                 entryText: qsTr("Input/Output")
+                shortcutActionId: "context.switchIOManager"
                 ButtonGroup.group: menuBarGroup
                 onCheckedChanged:
                 {
@@ -396,6 +401,7 @@ Rectangle
                 imgSource: "qrc:/dmxdump.svg"
                 imgMargins: 10
                 tooltip: qsTr("Dump DMX values on a Scene")
+                shortcutActionId: "app.dmxDump"
                 counter: (qlcplus.accessMask & App.AC_FunctionEditing)
 
                 property string bubbleLabel: {
@@ -451,6 +457,9 @@ Rectangle
 
                     onClicked: (mouse) =>
                     {
+                        // this drag area swallows the click, so the
+                        // button's own clicked() (and its hint) never fires
+                        sceneDump.notifyShortcutClick()
                         sceneDump.updateDumpVariables()
                         dmxDumpDialog.open()
                         dmxDumpDialog.focusEditItem()
@@ -617,6 +626,7 @@ Rectangle
                 faSource: FontAwesome.fa_octagon
                 faColor: "red"
                 tooltip: qsTr("Stop all the running functions")
+                shortcutActionId: "app.panic"
 
                 onClicked: qlcplus.stopAllFunctions()
 

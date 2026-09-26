@@ -85,6 +85,7 @@ SidePanel
                 ButtonGroup.group: vcButtonsGroup
                 autoExclusive: false
                 tooltip: qsTr("Enable/Disable the widgets edit mode")
+                shortcutActionId: "vc.editMode"
 
                 onClicked: virtualConsole.editMode = !checked
 
@@ -157,6 +158,9 @@ SidePanel
                 faSource: FontAwesome.fa_copy
                 faColor: UISettings.fgMain
                 tooltip: qsTr("Copy the selected widgets to clipboard")
+                // widgets can only be selected in edit mode, which is also
+                // what the shortcut's callback requires - a true 1:1 match
+                shortcutActionId: "vc.copy"
                 counter: virtualConsole.selectedWidgetsCount
                 onClicked: virtualConsole.copyToClipboard()
             }
@@ -170,6 +174,7 @@ SidePanel
                 faSource: FontAwesome.fa_scissors
                 faColor: UISettings.fgMain
                 tooltip: qsTr("Cut the selected widgets to clipboard")
+                shortcutActionId: "vc.cut"
                 counter: virtualConsole.selectedWidgetsCount
                 onClicked: virtualConsole.cutToClipboard()
             }

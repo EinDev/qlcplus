@@ -331,7 +331,8 @@ Rectangle
                     height: topBar.height - 2
                     faSource: FontAwesome.fa_retweet
                     faColor: "white"
-                    tooltip: qsTr("Invert Selection in Group(s)") + " (CTRL+G)"
+                    tooltip: qsTr("Invert Selection in Group(s)")
+                    shortcutActionId: "fixture.invertGroupSelection"
                     enabled: contextManager.selectedFixturesCount > 0
                     onClicked: contextManager.invertGroupSelection()
                 }
@@ -431,6 +432,7 @@ Rectangle
                     height: topBar.height - 2
                     imgSource: "qrc:/rename.svg"
                     tooltip: qsTr("Rename the selected items")
+                    shortcutActionId: "item.renameSelected"
                     enabled: false
 
                     onClicked:
