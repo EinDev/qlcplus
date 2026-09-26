@@ -832,7 +832,10 @@ void FunctionManager::closeHiddenEditorPanels()
         QQuickItem *parent = panel->parentItem();
         if (parent != nullptr && parent->isVisible())
             continue;
-        if (panel->property("itemID").toInt() == -1)
+        // nothing loaded (e.g. the panel was collapsed with the editor
+        // open, which clears the source but not itemID): nothing to unload
+        if (panel->property("itemID").toInt() == -1 ||
+            panel->property("loaderSource").toString().isEmpty())
             continue;
         QMetaObject::invokeMethod(panel, "closeEditor");
     }
