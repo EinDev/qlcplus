@@ -112,6 +112,7 @@ App::App()
     , m_videoProvider(nullptr)
     , m_networkManager(nullptr)
     , m_apiServer(nullptr)
+    , m_tardis(nullptr)
     , m_uiManager(nullptr)
     , m_stageWizard(nullptr)
     , m_doc(nullptr)
@@ -261,6 +262,10 @@ void App::startup()
     m_tardis = new Tardis(this, m_doc, m_networkManager, m_fixtureManager, m_functionManager,
                           m_contextManager, m_simpleDesk, m_showManager, m_virtualConsole);
     rootContext()->setContextProperty("tardis", m_tardis);
+    // Relay for ApiCoreDomain's core.history.changed (see ApiProjectHost).
+    // Tardis emits this from its worker thread too - auto connection queues
+    // it onto this (GUI) thread, where the domain's slot then runs.
+    connect(m_tardis, &Tardis::historyChanged, this, &App::historyChanged);
 
     m_shortcutManager = new ShortcutManager(this);
     rootContext()->setContextProperty("shortcutManager", m_shortcutManager);
@@ -1603,6 +1608,42 @@ void App::loadLastWorkspace()
 QString App::workingPath() const
 {
     return m_workingPath;
+}
+
+bool App::canUndo() const
+{
+    return m_tardis != nullptr && m_tardis->canUndo();
+}
+
+bool App::canRedo() const
+{
+    return m_tardis != nullptr && m_tardis->canRedo();
+}
+
+QString App::undoText() const
+{
+    return m_tardis != nullptr ? m_tardis->undoActionName() : QString();
+}
+
+QString App::redoText() const
+{
+    return m_tardis != nullptr ? m_tardis->redoActionName() : QString();
+}
+
+bool App::undo()
+{
+    if (m_tardis == nullptr || m_tardis->canUndo() == false)
+        return false;
+    m_tardis->undoAction();
+    return true;
+}
+
+bool App::redo()
+{
+    if (m_tardis == nullptr || m_tardis->canRedo() == false)
+        return false;
+    m_tardis->redoAction();
+    return true;
 }
 
 void App::setWorkingPath(QString workingPath)
