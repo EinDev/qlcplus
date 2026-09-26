@@ -444,6 +444,158 @@ messages:
               enum: [design, operate]
 
   # -----------------------------------------------------------------------
+  # Beat generator (InputOutputMap::setBeatGeneratorType/setBpmNumber) -
+  # §4b live state: no baseRevision, last write wins. Added for the web UI's
+  # toolbar BPM/tap button (2026-09-26).
+  # -----------------------------------------------------------------------
+
+  CoreBpmGetRequest:
+    payload:
+      type: object
+      required: [type, id, method]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: core.bpm.get }
+        params:
+          type: object
+          description: No parameters.
+
+  CoreBpmGetResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/CoreBpmGetOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  CoreBpmGetOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          $ref: '#/components/schemas/CoreBpmState'
+
+  CoreBpmSetRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: core.bpm.set }
+        params:
+          type: object
+          description: >
+            At least one of bpm / generator. bpm > 0 sets the tempo; if the
+            generator is currently "disabled" it is switched to "internal"
+            first (InputOutputMap::setBpmNumber() is a silent no-op while
+            disabled - the same thing picking Internal in the toolbar's beat
+            panel does). bpm = 0 disables the generator ("BPM: Off"). While a
+            "plugin" or "audio" source owns the tempo, setting bpm is refused
+            with INVALID_STATE (details.generator) - send generator:"internal"
+            first. generator:"audio" starts the audio input capture, exactly
+            like the beat panel's Audio choice.
+          properties:
+            bpm:
+              type: integer
+              minimum: 0
+              maximum: 1000
+              description: 0 = off. Upper bound is the same cap qmlui's tap button applies.
+            generator:
+              type: string
+              enum: [disabled, internal, plugin, audio]
+
+  CoreBpmSetResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/GenericAckResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  CoreBpmTapRequest:
+    payload:
+      type: object
+      required: [type, id, method]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: core.bpm.tap }
+        params:
+          type: object
+          description: >
+            Tap tempo, server-timed: the tempo is the mean spacing of the
+            last (up to) 4 taps within the current run; a gap of more than
+            2 s starts a new run, whose first tap sets no tempo. Applies the
+            same generator rules as core.bpm.set (disabled -> internal;
+            plugin/audio -> INVALID_STATE). Tap timing is global engine
+            state, not per client - as on a physical console.
+
+  CoreBpmTapResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/CoreBpmTapOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  CoreBpmTapOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          type: object
+          required: [bpm, tapCount]
+          properties:
+            bpm:
+              type: integer
+              description: The tempo now in effect (unchanged by a run's first tap).
+            tapCount:
+              type: integer
+              description: Taps counted in the current run (1 after a run's first tap).
+
+  CoreBpmChangedEvent:
+    payload:
+      type: object
+      required: [type, topic, data]
+      properties:
+        type: { const: event }
+        topic: { const: core.bpm.changed }
+        originClientId: { type: [string, "null"] }
+        data:
+          $ref: '#/components/schemas/CoreBpmState'
+          description: >
+            Broadcast (not subscribe-gated) on InputOutputMap::bpmNumberChanged
+            and beatGeneratorTypeChanged - a generator switch typically
+            produces two of these in a row. originClientId is the requester
+            for API-driven changes, null when a plugin/audio source re-derived
+            the tempo or the QML UI changed it.
+
+  CoreBeatEvent:
+    payload:
+      type: object
+      required: [type, topic, data]
+      properties:
+        type: { const: event }
+        topic: { const: core.beat }
+        originClientId: { type: "null" }
+        data:
+          type: object
+          required: [bpm]
+          properties:
+            bpm: { type: integer }
+          description: >
+            One frame per beat of the active generator (InputOutputMap::beat):
+            MasterTimer's ticks for "internal", the source's processed beats
+            for "plugin"/"audio"; never fires while disabled. Deliberately NOT
+            subscribe-gated despite §5's ~2 Hz rule of thumb: the web UI
+            contract has clients simply listen for it, the frame is tiny and
+            the rate is bounded by the 1000 BPM cap.
+
+  # -----------------------------------------------------------------------
   # Undo / Redo (Tardis)
   # -----------------------------------------------------------------------
 
@@ -458,15 +610,16 @@ messages:
         params:
           type: object
           description: >
-            Lists the shared undo/redo stack (one Tardis instance for the
-            whole engine, not per client - see core-notes.md for what that
-            means for multi-client undo). Reset to empty by
+            Reports the shared undo/redo stack's state (one Tardis instance
+            for the whole engine, not per client - see core-notes.md for what
+            that means for multi-client undo). Reset to empty by
             core.project.new/open/close (Tardis::resetHistory(), called
-            from App::clearDocument()).
+            from App::clearDocument()). UNSUPPORTED when the server runs
+            without a qmlui host (no undo engine at all).
           properties:
             limit:
               type: integer
-              description: "Max entries to return, most recent first. Optional, server may cap regardless."
+              description: "Reserved. Tardis exposes only the next undo/redo step, not the stack, so entries is currently always empty and limit is ignored."
 
   CoreHistoryGetResponse:
     payload:
@@ -484,14 +637,22 @@ messages:
         ok: { const: true }
         result:
           type: object
-          required: [entries, canUndo, canRedo]
+          required: [entries, canUndo, canRedo, docRevision]
           properties:
             entries:
               type: array
+              description: Currently always empty (see params.limit); kept for a future Tardis history accessor.
               items:
                 $ref: '#/components/schemas/CoreHistoryEntry'
             canUndo: { type: boolean }
             canRedo: { type: boolean }
+            undoText:
+              type: string
+              description: Tardis action name of the next undo step (e.g. "FunctionSetName"); present only when canUndo.
+            redoText:
+              type: string
+              description: Tardis action name of the next redo step; present only when canRedo.
+            docRevision: { type: integer }
 
   CoreUndoRequest:
     payload:
@@ -509,7 +670,13 @@ messages:
             change - see core-notes.md, "what undo means with multiple
             clients", for the reasoning and tradeoff. No baseRevision: you
             are asking "undo whatever is on top of the stack right now",
-            not applying a diff against a known base.
+            not applying a diff against a known base. Two implementation
+            limits (core-notes.md, "Undo/redo as implemented"): only edits
+            made through the qmlui UI are recorded - this API's own
+            structural methods bypass Tardis and are not undoable - and an
+            undo re-invokes engine setters directly, so no domain change
+            event describes what changed; refetch on the docRevision bump.
+            UNSUPPORTED without a qmlui host.
           properties:
             steps:
               type: integer
@@ -555,26 +722,29 @@ messages:
         originClientId: { type: [string, "null"] }
         data:
           type: object
-          required: [direction, stepsApplied, docRevision, canUndo, canRedo]
+          required: [docRevision, canUndo, canRedo]
           description: >
-            Broadcast after a successful core.undo or core.redo. This is a
-            meta/catch-all notification for the history stack itself
-            (docRevision + undo/redo availability) - it deliberately does
-            NOT try to describe what changed. Applying a reverted
-            TardisAction re-invokes the same underlying engine setters a
-            normal request would (Scene::setChannelValue,
-            Function::setName, VCWidget geometry, ...), so the affected
-            domain's own normal structural-change event(s) are expected to
-            fire alongside this one. See core-notes.md, this is flagged as
-            an open coordination point for the other domain fragments.
+            Broadcast (originClientId null) whenever the history stack's
+            shape changed: an action was recorded by the qmlui UI, undone,
+            redone, or the history was reset - coalesced over 50 ms since a
+            drag records dozens of actions. This is a meta notification for
+            the stack itself (docRevision + undo/redo availability) - it
+            deliberately does NOT describe what changed. Note that, unlike
+            the original assumption here, the affected domain's own change
+            event does NOT fire for an undo/redo today: controlapi domains
+            broadcast from their request handlers, not from engine signals,
+            and Tardis re-invokes engine setters directly. Treat a
+            docRevision bump as "refetch".
           properties:
-            direction:
-              type: string
-              enum: [undo, redo]
-            stepsApplied: { type: integer }
             docRevision: { type: integer }
             canUndo: { type: boolean }
             canRedo: { type: boolean }
+            undoText:
+              type: string
+              description: Present only when canUndo (see CoreHistoryGetOkResponse).
+            redoText:
+              type: string
+              description: Present only when canRedo.
 
   # -----------------------------------------------------------------------
   # General engine-level settings (not per-project)
@@ -750,8 +920,17 @@ messages:
         ok: { const: true }
         result:
           type: object
-          required: [docRevision, stepsApplied, canUndo, canRedo]
+          required: [ok, docRevision, stepsApplied, direction, canUndo, canRedo]
           properties:
+            ok:
+              type: boolean
+              description: "true if at least one step was applied (stepsApplied > 0); false when there was nothing to undo/redo - still an ok:true envelope, not an error."
+            description:
+              type: string
+              description: "Tardis action name of the (first) step applied, e.g. \"FunctionSetName\"; present only when ok."
+            direction:
+              type: string
+              enum: [undo, redo]
             docRevision:
               type: integer
               description: "Only changes if at least one undone/redone action was structural; unchanged if the affected step(s) were purely live/runtime actions."
@@ -760,8 +939,31 @@ messages:
               description: "May be less than requested steps if history ran out."
             canUndo: { type: boolean }
             canRedo: { type: boolean }
+            undoText:
+              type: string
+              description: Present only when canUndo.
+            redoText:
+              type: string
+              description: Present only when canRedo.
 
 schemas:
+
+  CoreBpmState:
+    type: object
+    required: [bpm, generator]
+    description: >
+      InputOutputMap's beat generator state (core.bpm.get result and
+      core.bpm.changed data). No beatsPerBar: the engine has no bar concept
+      at generator level (only Show has a per-show beatsDivision), so the web
+      UI contract's optional field is simply absent.
+    properties:
+      bpm:
+        type: integer
+        description: InputOutputMap::bpmNumber() - 0 while the generator is disabled (or a plugin/audio source hasn't detected a tempo yet).
+      generator:
+        type: string
+        enum: [disabled, internal, plugin, audio]
+        description: InputOutputMap::BeatGeneratorType, lower-case (NOT the capitalized .qxw persistence spelling).
 
   CoreProjectMetadata:
     type: object
@@ -1081,6 +1283,62 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
       - $ref: '#/channels/qlcplus/messages/coreLogEvent'
+
+  sendCoreBpmGet:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/coreBpmGetRequest'
+
+  receiveCoreBpmGetResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/coreBpmGetResponse'
+
+  sendCoreBpmSet:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/coreBpmSetRequest'
+
+  receiveCoreBpmSetResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/coreBpmSetResponse'
+
+  sendCoreBpmTap:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/coreBpmTapRequest'
+
+  receiveCoreBpmTapResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/coreBpmTapResponse'
+
+  receiveCoreBpmChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/coreBpmChangedEvent'
+
+  receiveCoreBeat:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/coreBeatEvent'
 
 # Note: at merge time, each message key defined above also needs a matching
 # lowerCamelCase entry added under channels.qlcplus.messages (e.g.

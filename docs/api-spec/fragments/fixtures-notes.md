@@ -237,3 +237,21 @@ definition to disk via `QLCFixtureDefCache::storeFixtureDef`/`reloadFixtureDef`)
 is out of scope here per the task brief. I only read from
 `QLCFixtureDefCache` (`manufacturers()`, `models()`/`fixtureCache()`,
 `fixtureDef()`) for browsing.
+
+## Implemented 2026-09-26: definition browsing and flat patch params (web UI slice)
+
+Server: `controlapi/src/domains/apifixturesdomain.cpp`.
+
+- `fixtures.defs.listManufacturers/listModels/getModel/getMode` over the
+  Doc's `QLCFixtureDefCache`. Shapes are a union of the web UI contract
+  and this fragment's earlier draft: `listModels` returns plain `models:
+  [string]` (contract) plus `modelDetails: [{model, isUser}]` (draft) and
+  echoes `manufacturer`; `getModel` returns `type` and `fixtureType` (same
+  value), `physical`, and inlines each mode's `channels` (the contract's
+  `{index, name, group, controlByte}` per channel, as
+  `FixturesModeChannel`). Unknown names are `NOT_FOUND`, never empty
+  lists. `getModel`/`getMode` trigger the cache's lazy definition load.
+- `fixtures.patch` additionally accepts flat top-level
+  `manufacturer`/`model`/`mode` (or `generic`) when no `definition` object
+  is given. Its response still carries `fixtureIds` (+ `docRevision`); the
+  full `fixtures` list is on the `fixtures.patched` event, as before.

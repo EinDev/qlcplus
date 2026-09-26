@@ -179,6 +179,13 @@ bite:
       `docRevision`-keyed server-side action log as the better-fitting
       alternative — but that's still just a suggestion, not a design. Only
       matters once Phase 1 domains exist to have something to undo.
+      **Update 2026-09-26:** `core.undo`/`core.redo`/`core.history.get`/
+      `core.history.changed` now exist, backed by Tardis through
+      `ApiProjectHost` (the web UI needed the toolbar's Undo/Redo, which
+      undoes *UI-made* edits). The Tardis coupling is behind the host
+      interface, not in controlapi. What remains open is exactly this
+      item: edits made *through the API* are not recorded and cannot be
+      undone - see `core-notes.md`, "Implemented 2026-09-26".
 - [ ] **2.6 `io.inputProfile.learn.signal` scoping bug.** Broadcasts to
       every connected client instead of just the one running the MIDI/OSC
       learn session — minor UX noise, not a correctness bug. `io-notes.md`.

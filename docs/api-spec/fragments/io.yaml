@@ -191,12 +191,27 @@ messages:
           type: object
           required:
           - universeId
-          - baseRevision
+          description: >
+            Removes a universe. Only the highest-numbered universe can be
+            deleted (InputOutputMap::removeUniverse() refuses anything that
+            would leave a gap in the index == id list) - INVALID_PARAMS with
+            details.deletableUniverseId otherwise; the last remaining
+            universe cannot be deleted (INVALID_STATE). Fixtures still
+            patched into it make the call fail with INVALID_STATE and
+            details.fixtureIds unless force is true, in which case they are
+            unpatched first (a fixtures.unpatched event precedes
+            io.universe.deleted). qmlui deletes them silently; the API
+            deliberately doesn't.
           properties:
             universeId:
               type: integer
+            force:
+              type: boolean
+              default: false
+              description: Also delete every fixture patched into the universe.
             baseRevision:
               type: integer
+              description: Optional here (unlike io.universe.create) - enforced only when present, see io-notes.md "baseRevision on the web UI methods".
   IoUniverseDeleteResponse:
     payload:
       oneOf:
@@ -269,9 +284,9 @@ messages:
           type: object
           required:
           - universeId
-          - baseRevision
           description: 'Partial update of the universe''s persisted (document-state) properties. Omit
-            a field to leave it unchanged.
+            a field to leave it unchanged; at least one of name/passthrough is required (INVALID_PARAMS
+            otherwise). Bumps docRevision and broadcasts io.universe.updated.
 
             '
           properties:
@@ -285,6 +300,7 @@ messages:
                 output.
             baseRevision:
               type: integer
+              description: Optional - enforced only when present, see io-notes.md "baseRevision on the web UI methods".
   IoUniverseUpdateResponse:
     payload:
       oneOf:
@@ -1951,24 +1967,32 @@ messages:
           type: object
           required:
           - universeId
-          - patchType
-          - baseRevision
-          description: 'Detaches a patch from a universe. patchType selects which one: input and feedback
-            are singleton per universe (index not used); output patches are an indexed array, so `index`
-            is required when patchType is ''output''.'
+          description: 'Detaches a patch from a universe. direction (alias: patchType) selects which one:
+            input and feedback are singleton per universe (index not used; removing the input also
+            drops the feedback patch, as qmlui does); output patches are an indexed array - pass `index`
+            to remove one slot, omit it to remove every output patch. NOT_FOUND when nothing of that
+            kind is patched. Bumps docRevision and broadcasts io.universe.updated with the full detail.'
           properties:
             universeId:
               type: integer
+            direction:
+              enum:
+              - input
+              - output
+              - feedback
+              description: Web UI contract spelling; one of direction/patchType is required.
             patchType:
               enum:
               - input
               - output
               - feedback
+              description: Alias of direction.
             index:
               type: integer
-              description: Output patch slot index; required when patchType='output', unused otherwise.
+              description: Output patch slot index; omit to remove all output patches. Unused for input/feedback.
             baseRevision:
               type: integer
+              description: Optional - enforced only when present, see io-notes.md "baseRevision on the web UI methods".
   IoPatchRemoveResponse:
     payload:
       oneOf:
@@ -1993,37 +2017,64 @@ messages:
           type: object
           required:
           - universeId
-          - patchType
-          - pluginName
           - line
-          - baseRevision
-          description: Attaches a plugin line to a universe's patch. patchType selects which one (input/output/feedback
-            - the plugin must advertise the Feedback capability for patchType='feedback', see io.plugin.list).
-            `line` is the plugin's line index either way (see io.plugin.getLines) - the input line for
-            patchType='input', the output line for 'output'/'feedback'.
+          description: >
+            Attaches a plugin line to a universe's patch. direction (alias:
+            patchType) selects which one - the plugin must advertise the
+            matching capability (Input/Output/Feedback, see io.plugin.list),
+            UNSUPPORTED otherwise. `line` is the plugin's 0-based line index
+            (inputLines/outputLines in io.plugin.list) - the input line for
+            'input', the output line for 'output'/'feedback'; it must exist
+            unless the plugin advertises Infinite (INVALID_PARAMS). Unknown
+            plugin -> NOT_FOUND. Bumps docRevision and broadcasts
+            io.universe.updated with the full IoUniverseDetail.
           properties:
             universeId:
               type: integer
+            direction:
+              enum:
+              - input
+              - output
+              - feedback
+              description: Web UI contract spelling; one of direction/patchType is required.
             patchType:
               enum:
               - input
               - output
               - feedback
+              description: Alias of direction.
+            plugin:
+              type: string
+              description: Plugin name (io.plugin.list). Web UI contract spelling; one of plugin/pluginName is required.
             pluginName:
               type: string
+              description: Alias of plugin.
             line:
               type: integer
-              description: Plugin input/output line index (see io.plugin.getLines).
+              description: Plugin input/output line index (see io.plugin.list's inputLines/outputLines).
             index:
               type: integer
-              description: Output patch slot index; only used when patchType='output'. Omit (or pass outputPatchesCount)
-                to append a new patch; pass an existing index to replace it.
+              default: 0
+              description: >
+                Output patch slot, only used for direction='output'. Defaults
+                to 0 = replace (or create) the primary output patch - the web
+                UI contract has one output per universe in mind. Pass
+                outputPatchesCount to append a further patch, or an existing
+                index to replace that one; anything larger is INVALID_PARAMS.
+            profile:
+              type: string
+              description: >
+                Input profile name (io.inputProfile.list), direction='input'
+                only. Three cases, matching QML's setInputProfile(): key absent
+                -> the current input patch's profile is kept (so a line change
+                needn't re-send it); "" -> no profile; a name -> must exist
+                (NOT_FOUND otherwise). Web UI contract spelling.
             profileName:
               type: string
-              description: Input profile name to attach (see io.inputProfile.*); only used when patchType='input'.
-                Omit/empty for none.
+              description: Alias of profile.
             baseRevision:
               type: integer
+              description: Optional - enforced only when present, see io-notes.md "baseRevision on the web UI methods".
   IoPatchSetResponse:
     payload:
       oneOf:
@@ -2167,9 +2218,21 @@ schemas:
     - description
     - canConfigure
     - supportsFeedback
+    - inputLines
+    - outputLines
     properties:
       name:
         type: string
+      inputLines:
+        type: array
+        description: QLCIOPlugin::inputs()/inputsUID(), inline so a patch dialog needs one round-trip (the web UI contract's shape; io.plugin.getLines returns the same lists).
+        items:
+          $ref: '#/components/schemas/IoPluginLine'
+      outputLines:
+        type: array
+        description: QLCIOPlugin::outputs()/outputsUID(), see inputLines.
+        items:
+          $ref: '#/components/schemas/IoPluginLine'
       capabilities:
         type: array
         description: QLCIOPlugin::Capability bitmask, expanded to strings.
@@ -2193,13 +2256,17 @@ schemas:
   IoPluginLine:
     type: object
     required:
+    - index
     - line
     - name
     - uid
     properties:
+      index:
+        type: integer
+        description: 0-based line number, the value io.patch.set takes as `line` (web UI contract spelling; same as `line`).
       line:
         type: integer
-        description: Index passed to io.patch.*.set as input/output.
+        description: Same as index.
       name:
         type: string
       uid:

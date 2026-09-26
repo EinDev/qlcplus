@@ -100,6 +100,26 @@ channels:
         $ref: '#/components/messages/CoreModeSetResponse'
       coreModeChangedEvent:
         $ref: '#/components/messages/CoreModeChangedEvent'
+      coreBpmGetRequest:
+        $ref: '#/components/messages/CoreBpmGetRequest'
+      coreBpmGetResponse:
+        $ref: '#/components/messages/CoreBpmGetResponse'
+      coreBpmGetOkResponse:
+        $ref: '#/components/messages/CoreBpmGetOkResponse'
+      coreBpmSetRequest:
+        $ref: '#/components/messages/CoreBpmSetRequest'
+      coreBpmSetResponse:
+        $ref: '#/components/messages/CoreBpmSetResponse'
+      coreBpmTapRequest:
+        $ref: '#/components/messages/CoreBpmTapRequest'
+      coreBpmTapResponse:
+        $ref: '#/components/messages/CoreBpmTapResponse'
+      coreBpmTapOkResponse:
+        $ref: '#/components/messages/CoreBpmTapOkResponse'
+      coreBpmChangedEvent:
+        $ref: '#/components/messages/CoreBpmChangedEvent'
+      coreBeatEvent:
+        $ref: '#/components/messages/CoreBeatEvent'
       coreHistoryGetRequest:
         $ref: '#/components/messages/CoreHistoryGetRequest'
       coreHistoryGetResponse:
@@ -444,6 +464,14 @@ channels:
         $ref: '#/components/messages/FunctionsSetPauseRequest'
       functionsSetPauseResponse:
         $ref: '#/components/messages/FunctionsSetPauseResponse'
+      functionsPauseRequest:
+        $ref: '#/components/messages/FunctionsPauseRequest'
+      functionsPauseResponse:
+        $ref: '#/components/messages/FunctionsPauseResponse'
+      functionsStopAllRequest:
+        $ref: '#/components/messages/FunctionsStopAllRequest'
+      functionsStopAllResponse:
+        $ref: '#/components/messages/FunctionsStopAllResponse'
       functionsTapRequest:
         $ref: '#/components/messages/FunctionsTapRequest'
       functionsTapResponse:
@@ -1743,6 +1771,54 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/coreLogEvent'
+  sendCoreBpmGet:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/coreBpmGetRequest'
+  receiveCoreBpmGetResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/coreBpmGetResponse'
+  sendCoreBpmSet:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/coreBpmSetRequest'
+  receiveCoreBpmSetResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/coreBpmSetResponse'
+  sendCoreBpmTap:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/coreBpmTapRequest'
+  receiveCoreBpmTapResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/coreBpmTapResponse'
+  receiveCoreBpmChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/coreBpmChangedEvent'
+  receiveCoreBeat:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/coreBeatEvent'
   sendFixturesDefsListManufacturers:
     action: send
     channel:
@@ -2554,6 +2630,30 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/functionsSetPauseResponse'
+  sendFunctionsPause:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsPauseRequest'
+  receiveFunctionsPauseResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsPauseResponse'
+  sendFunctionsStopAll:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsStopAllRequest'
+  receiveFunctionsStopAllResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsStopAllResponse'
   sendFunctionsTap:
     action: send
     channel:
@@ -6023,6 +6123,188 @@ components:
                 enum:
                 - design
                 - operate
+    CoreBpmGetRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: core.bpm.get
+          params:
+            type: object
+            description: No parameters.
+    CoreBpmGetResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/CoreBpmGetOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    CoreBpmGetOkResponse:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - ok
+        - result
+        properties:
+          type:
+            const: response
+          id:
+            type: string
+          ok:
+            const: true
+          result:
+            $ref: '#/components/schemas/CoreBpmState'
+    CoreBpmSetRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: core.bpm.set
+          params:
+            type: object
+            description: 'At least one of bpm / generator. bpm > 0 sets the tempo; if the generator is
+              currently "disabled" it is switched to "internal" first (InputOutputMap::setBpmNumber()
+              is a silent no-op while disabled - the same thing picking Internal in the toolbar''s beat
+              panel does). bpm = 0 disables the generator ("BPM: Off"). While a "plugin" or "audio" source
+              owns the tempo, setting bpm is refused with INVALID_STATE (details.generator) - send generator:"internal"
+              first. generator:"audio" starts the audio input capture, exactly like the beat panel''s
+              Audio choice.'
+            properties:
+              bpm:
+                type: integer
+                minimum: 0
+                maximum: 1000
+                description: 0 = off. Upper bound is the same cap qmlui's tap button applies.
+              generator:
+                type: string
+                enum:
+                - disabled
+                - internal
+                - plugin
+                - audio
+    CoreBpmSetResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/GenericAckResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    CoreBpmTapRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: core.bpm.tap
+          params:
+            type: object
+            description: 'Tap tempo, server-timed: the tempo is the mean spacing of the last (up to) 4
+              taps within the current run; a gap of more than 2 s starts a new run, whose first tap sets
+              no tempo. Applies the same generator rules as core.bpm.set (disabled -> internal; plugin/audio
+              -> INVALID_STATE). Tap timing is global engine state, not per client - as on a physical
+              console.'
+    CoreBpmTapResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/CoreBpmTapOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    CoreBpmTapOkResponse:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - ok
+        - result
+        properties:
+          type:
+            const: response
+          id:
+            type: string
+          ok:
+            const: true
+          result:
+            type: object
+            required:
+            - bpm
+            - tapCount
+            properties:
+              bpm:
+                type: integer
+                description: The tempo now in effect (unchanged by a run's first tap).
+              tapCount:
+                type: integer
+                description: Taps counted in the current run (1 after a run's first tap).
+    CoreBpmChangedEvent:
+      payload:
+        type: object
+        required:
+        - type
+        - topic
+        - data
+        properties:
+          type:
+            const: event
+          topic:
+            const: core.bpm.changed
+          originClientId:
+            type:
+            - string
+            - 'null'
+          data:
+            $ref: '#/components/schemas/CoreBpmState'
+            description: Broadcast (not subscribe-gated) on InputOutputMap::bpmNumberChanged and beatGeneratorTypeChanged
+              - a generator switch typically produces two of these in a row. originClientId is the requester
+              for API-driven changes, null when a plugin/audio source re-derived the tempo or the QML
+              UI changed it.
+    CoreBeatEvent:
+      payload:
+        type: object
+        required:
+        - type
+        - topic
+        - data
+        properties:
+          type:
+            const: event
+          topic:
+            const: core.beat
+          originClientId:
+            type: 'null'
+          data:
+            type: object
+            required:
+            - bpm
+            properties:
+              bpm:
+                type: integer
+            description: 'One frame per beat of the active generator (InputOutputMap::beat): MasterTimer''s
+              ticks for "internal", the source''s processed beats for "plugin"/"audio"; never fires while
+              disabled. Deliberately NOT subscribe-gated despite §5''s ~2 Hz rule of thumb: the web UI
+              contract has clients simply listen for it, the frame is tiny and the rate is bounded by
+              the 1000 BPM cap.'
     CoreHistoryGetRequest:
       payload:
         type: object
@@ -6040,13 +6322,15 @@ components:
             const: core.history.get
           params:
             type: object
-            description: Lists the shared undo/redo stack (one Tardis instance for the whole engine, not
-              per client - see core-notes.md for what that means for multi-client undo). Reset to empty
-              by core.project.new/open/close (Tardis::resetHistory(), called from App::clearDocument()).
+            description: Reports the shared undo/redo stack's state (one Tardis instance for the whole
+              engine, not per client - see core-notes.md for what that means for multi-client undo). Reset
+              to empty by core.project.new/open/close (Tardis::resetHistory(), called from App::clearDocument()).
+              UNSUPPORTED when the server runs without a qmlui host (no undo engine at all).
             properties:
               limit:
                 type: integer
-                description: Max entries to return, most recent first. Optional, server may cap regardless.
+                description: Reserved. Tardis exposes only the next undo/redo step, not the stack, so
+                  entries is currently always empty and limit is ignored.
     CoreHistoryGetResponse:
       payload:
         oneOf:
@@ -6073,15 +6357,27 @@ components:
             - entries
             - canUndo
             - canRedo
+            - docRevision
             properties:
               entries:
                 type: array
+                description: Currently always empty (see params.limit); kept for a future Tardis history
+                  accessor.
                 items:
                   $ref: '#/components/schemas/CoreHistoryEntry'
               canUndo:
                 type: boolean
               canRedo:
                 type: boolean
+              undoText:
+                type: string
+                description: Tardis action name of the next undo step (e.g. "FunctionSetName"); present
+                  only when canUndo.
+              redoText:
+                type: string
+                description: Tardis action name of the next redo step; present only when canRedo.
+              docRevision:
+                type: integer
     CoreUndoRequest:
       payload:
         type: object
@@ -6102,7 +6398,11 @@ components:
             description: 'Undoes the last (or last N) recorded action batch(es), global to the engine
               regardless of which client originally made the change - see core-notes.md, "what undo means
               with multiple clients", for the reasoning and tradeoff. No baseRevision: you are asking
-              "undo whatever is on top of the stack right now", not applying a diff against a known base.'
+              "undo whatever is on top of the stack right now", not applying a diff against a known base.
+              Two implementation limits (core-notes.md, "Undo/redo as implemented"): only edits made through
+              the qmlui UI are recorded - this API''s own structural methods bypass Tardis and are not
+              undoable - and an undo re-invokes engine setters directly, so no domain change event describes
+              what changed; refetch on the docRevision bump. UNSUPPORTED without a qmlui host.'
             properties:
               steps:
                 type: integer
@@ -6161,32 +6461,30 @@ components:
           data:
             type: object
             required:
-            - direction
-            - stepsApplied
             - docRevision
             - canUndo
             - canRedo
-            description: Broadcast after a successful core.undo or core.redo. This is a meta/catch-all
-              notification for the history stack itself (docRevision + undo/redo availability) - it deliberately
-              does NOT try to describe what changed. Applying a reverted TardisAction re-invokes the same
-              underlying engine setters a normal request would (Scene::setChannelValue, Function::setName,
-              VCWidget geometry, ...), so the affected domain's own normal structural-change event(s)
-              are expected to fire alongside this one. See core-notes.md, this is flagged as an open coordination
-              point for the other domain fragments.
+            description: 'Broadcast (originClientId null) whenever the history stack''s shape changed:
+              an action was recorded by the qmlui UI, undone, redone, or the history was reset - coalesced
+              over 50 ms since a drag records dozens of actions. This is a meta notification for the stack
+              itself (docRevision + undo/redo availability) - it deliberately does NOT describe what changed.
+              Note that, unlike the original assumption here, the affected domain''s own change event
+              does NOT fire for an undo/redo today: controlapi domains broadcast from their request handlers,
+              not from engine signals, and Tardis re-invokes engine setters directly. Treat a docRevision
+              bump as "refetch".'
             properties:
-              direction:
-                type: string
-                enum:
-                - undo
-                - redo
-              stepsApplied:
-                type: integer
               docRevision:
                 type: integer
               canUndo:
                 type: boolean
               canRedo:
                 type: boolean
+              undoText:
+                type: string
+                description: Present only when canUndo (see CoreHistoryGetOkResponse).
+              redoText:
+                type: string
+                description: Present only when canRedo.
     CoreSettingsGetRequest:
       payload:
         type: object
@@ -6418,11 +6716,26 @@ components:
           result:
             type: object
             required:
+            - ok
             - docRevision
             - stepsApplied
+            - direction
             - canUndo
             - canRedo
             properties:
+              ok:
+                type: boolean
+                description: true if at least one step was applied (stepsApplied > 0); false when there
+                  was nothing to undo/redo - still an ok:true envelope, not an error.
+              description:
+                type: string
+                description: Tardis action name of the (first) step applied, e.g. "FunctionSetName"; present
+                  only when ok.
+              direction:
+                type: string
+                enum:
+                - undo
+                - redo
               docRevision:
                 type: integer
                 description: Only changes if at least one undone/redone action was structural; unchanged
@@ -6434,6 +6747,12 @@ components:
                 type: boolean
               canRedo:
                 type: boolean
+              undoText:
+                type: string
+                description: Present only when canUndo.
+              redoText:
+                type: string
+                description: Present only when canRedo.
     FixturesDefsListManufacturersRequest:
       payload:
         type: object
@@ -6527,11 +6846,23 @@ components:
           result:
             type: object
             required:
+            - manufacturer
             - models
+            - modelDetails
+            description: Unknown manufacturer -> NOT_FOUND (never an empty list). Answered from QLCFixtureDefCache::fixtureCache(),
+              i.e. FixturesMap.xml's index - no definition file is loaded by this call.
             properties:
+              manufacturer:
+                type: string
               models:
                 type: array
-                description: QLCFixtureDefCache::fixtureCache()[manufacturer], as a list.
+                description: Plain model names, sorted (the web UI contract's shape).
+                items:
+                  type: string
+              modelDetails:
+                type: array
+                description: QLCFixtureDefCache::fixtureCache()[manufacturer], as a list - same models
+                  with their isUser flag.
                 items:
                   type: object
                   required:
@@ -6594,15 +6925,23 @@ components:
             required:
             - manufacturer
             - model
+            - type
             - fixtureType
             - author
             - isUser
+            - physical
             - modes
+            description: Unknown manufacturer/model -> NOT_FOUND. This call lazily loads the definition
+              file (QLCFixtureDefCache::fixtureDef() -> QLCFixtureDef::checkLoaded()), so modes/channels
+              are complete.
             properties:
               manufacturer:
                 type: string
               model:
                 type: string
+              type:
+                type: string
+                description: Same value as fixtureType (web UI contract spelling).
               fixtureType:
                 type: string
                 description: QLCFixtureDef::FixtureType as string via typeToString() (e.g. "Moving Head",
@@ -6611,19 +6950,29 @@ components:
                 type: string
               isUser:
                 type: boolean
+              physical:
+                $ref: '#/components/schemas/FixturesPhysical'
+                description: The definition's global physical block (QLCFixtureDef::physical()).
               modes:
                 type: array
-                description: Browsing-level mode list; use fixtures.defs.getMode for full detail.
+                description: Every mode with its channel list inline (so an Add Fixture dialog can show
+                  a mode's channels without a round-trip per mode); fixtures.defs.getMode adds heads,
+                  physical and the master intensity channel.
                 items:
                   type: object
                   required:
                   - name
                   - channelCount
+                  - channels
                   properties:
                     name:
                       type: string
                     channelCount:
                       type: integer
+                    channels:
+                      type: array
+                      items:
+                        $ref: '#/components/schemas/FixturesModeChannel'
     FixturesDefsGetModeRequest:
       payload:
         type: object
@@ -6902,8 +7251,10 @@ components:
             required:
             - universe
             - address
-            - definition
             - baseRevision
+            description: The definition may be given either as the nested `definition` object below or
+              - the web UI contract's spelling - as flat top-level manufacturer/model/mode (or generic)
+              params, which are used whenever `definition` is absent. One of the two forms is required.
             properties:
               universe:
                 type: integer
@@ -6913,6 +7264,15 @@ components:
                 description: 0-based DMX address (0-511) for the first fixture.
               definition:
                 $ref: '#/components/schemas/FixturesDefinitionRef'
+              manufacturer:
+                type: string
+                description: Flat alias of definition.manufacturer.
+              model:
+                type: string
+                description: Flat alias of definition.model.
+              mode:
+                type: string
+                description: Flat alias of definition.mode.
               name:
                 type: string
                 description: 'Base friendly name. The engine appends " [<n>]" unconditionally — even for
@@ -10308,14 +10668,79 @@ components:
           params:
             type: object
             required:
-            - functionId
             - paused
+            description: Function::setPause(). "id" is accepted as an alias of functionId here and in
+              every other functions.* method. paused must be a JSON boolean (INVALID_PARAMS otherwise).
+              The resulting functions.status.changed is only broadcast when the flag actually changed
+              (pausing a stopped function is a no-op in the engine).
             properties:
               functionId:
                 type: string
+              id:
+                type: string
+                description: Alias of functionId.
               paused:
                 type: boolean
     FunctionsSetPauseResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/GenericAckResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    FunctionsPauseRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: functions.pause
+          params:
+            type: object
+            required:
+            - id
+            - paused
+            description: Alias of functions.setPause with the web UI contract's parameter spelling - identical
+              handler.
+            properties:
+              id:
+                type: string
+              paused:
+                type: boolean
+    FunctionsPauseResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/GenericAckResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    FunctionsStopAllRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: functions.stopAll
+          params:
+            type: object
+            description: 'The main toolbar''s "stop all functions": App::stopAllFunctions() when the server
+              is hosted by qmlui (also disables the Function Manager preview and closes fullscreen video),
+              bare MasterTimer::stopAllFunctions() otherwise. Stops every running function regardless
+              of who started it (VC widgets included). The call returns once MasterTimer has flushed its
+              running list; one functions.status.changed {running:false} follows per stopped function.
+              No parameters.'
+    FunctionsStopAllResponse:
       payload:
         oneOf:
         - $ref: '#/components/messages/GenericAckResponse/payload'
@@ -15575,12 +16000,23 @@ components:
             type: object
             required:
             - universeId
-            - baseRevision
+            description: Removes a universe. Only the highest-numbered universe can be deleted (InputOutputMap::removeUniverse()
+              refuses anything that would leave a gap in the index == id list) - INVALID_PARAMS with details.deletableUniverseId
+              otherwise; the last remaining universe cannot be deleted (INVALID_STATE). Fixtures still
+              patched into it make the call fail with INVALID_STATE and details.fixtureIds unless force
+              is true, in which case they are unpatched first (a fixtures.unpatched event precedes io.universe.deleted).
+              qmlui deletes them silently; the API deliberately doesn't.
             properties:
               universeId:
                 type: integer
+              force:
+                type: boolean
+                default: false
+                description: Also delete every fixture patched into the universe.
               baseRevision:
                 type: integer
+                description: Optional here (unlike io.universe.create) - enforced only when present, see
+                  io-notes.md "baseRevision on the web UI methods".
     IoUniverseDeleteResponse:
       payload:
         oneOf:
@@ -15653,9 +16089,9 @@ components:
             type: object
             required:
             - universeId
-            - baseRevision
             description: Partial update of the universe's persisted (document-state) properties. Omit
-              a field to leave it unchanged.
+              a field to leave it unchanged; at least one of name/passthrough is required (INVALID_PARAMS
+              otherwise). Bumps docRevision and broadcasts io.universe.updated.
             properties:
               universeId:
                 type: integer
@@ -15667,6 +16103,8 @@ components:
                   universe's output.
               baseRevision:
                 type: integer
+                description: Optional - enforced only when present, see io-notes.md "baseRevision on the
+                  web UI methods".
     IoUniverseUpdateResponse:
       payload:
         oneOf:
@@ -17306,24 +17744,33 @@ components:
             type: object
             required:
             - universeId
-            - patchType
-            - baseRevision
-            description: 'Detaches a patch from a universe. patchType selects which one: input and feedback
-              are singleton per universe (index not used); output patches are an indexed array, so `index`
-              is required when patchType is ''output''.'
+            description: 'Detaches a patch from a universe. direction (alias: patchType) selects which
+              one: input and feedback are singleton per universe (index not used; removing the input also
+              drops the feedback patch, as qmlui does); output patches are an indexed array - pass `index`
+              to remove one slot, omit it to remove every output patch. NOT_FOUND when nothing of that
+              kind is patched. Bumps docRevision and broadcasts io.universe.updated with the full detail.'
             properties:
               universeId:
                 type: integer
+              direction:
+                enum:
+                - input
+                - output
+                - feedback
+                description: Web UI contract spelling; one of direction/patchType is required.
               patchType:
                 enum:
                 - input
                 - output
                 - feedback
+                description: Alias of direction.
               index:
                 type: integer
-                description: Output patch slot index; required when patchType='output', unused otherwise.
+                description: Output patch slot index; omit to remove all output patches. Unused for input/feedback.
               baseRevision:
                 type: integer
+                description: Optional - enforced only when present, see io-notes.md "baseRevision on the
+                  web UI methods".
     IoPatchRemoveResponse:
       payload:
         oneOf:
@@ -17348,37 +17795,58 @@ components:
             type: object
             required:
             - universeId
-            - patchType
-            - pluginName
             - line
-            - baseRevision
-            description: Attaches a plugin line to a universe's patch. patchType selects which one (input/output/feedback
-              - the plugin must advertise the Feedback capability for patchType='feedback', see io.plugin.list).
-              `line` is the plugin's line index either way (see io.plugin.getLines) - the input line for
-              patchType='input', the output line for 'output'/'feedback'.
+            description: 'Attaches a plugin line to a universe''s patch. direction (alias: patchType)
+              selects which one - the plugin must advertise the matching capability (Input/Output/Feedback,
+              see io.plugin.list), UNSUPPORTED otherwise. `line` is the plugin''s 0-based line index (inputLines/outputLines
+              in io.plugin.list) - the input line for ''input'', the output line for ''output''/''feedback'';
+              it must exist unless the plugin advertises Infinite (INVALID_PARAMS). Unknown plugin ->
+              NOT_FOUND. Bumps docRevision and broadcasts io.universe.updated with the full IoUniverseDetail.'
             properties:
               universeId:
                 type: integer
+              direction:
+                enum:
+                - input
+                - output
+                - feedback
+                description: Web UI contract spelling; one of direction/patchType is required.
               patchType:
                 enum:
                 - input
                 - output
                 - feedback
+                description: Alias of direction.
+              plugin:
+                type: string
+                description: Plugin name (io.plugin.list). Web UI contract spelling; one of plugin/pluginName
+                  is required.
               pluginName:
                 type: string
+                description: Alias of plugin.
               line:
                 type: integer
-                description: Plugin input/output line index (see io.plugin.getLines).
+                description: Plugin input/output line index (see io.plugin.list's inputLines/outputLines).
               index:
                 type: integer
-                description: Output patch slot index; only used when patchType='output'. Omit (or pass
-                  outputPatchesCount) to append a new patch; pass an existing index to replace it.
+                default: 0
+                description: Output patch slot, only used for direction='output'. Defaults to 0 = replace
+                  (or create) the primary output patch - the web UI contract has one output per universe
+                  in mind. Pass outputPatchesCount to append a further patch, or an existing index to
+                  replace that one; anything larger is INVALID_PARAMS.
+              profile:
+                type: string
+                description: 'Input profile name (io.inputProfile.list), direction=''input'' only. Three
+                  cases, matching QML''s setInputProfile(): key absent -> the current input patch''s profile
+                  is kept (so a line change needn''t re-send it); "" -> no profile; a name -> must exist
+                  (NOT_FOUND otherwise). Web UI contract spelling.'
               profileName:
                 type: string
-                description: Input profile name to attach (see io.inputProfile.*); only used when patchType='input'.
-                  Omit/empty for none.
+                description: Alias of profile.
               baseRevision:
                 type: integer
+                description: Optional - enforced only when present, see io-notes.md "baseRevision on the
+                  web UI methods".
     IoPatchSetResponse:
       payload:
         oneOf:
@@ -21603,6 +22071,28 @@ components:
               docRevision:
                 type: integer
   schemas:
+    CoreBpmState:
+      type: object
+      required:
+      - bpm
+      - generator
+      description: 'InputOutputMap''s beat generator state (core.bpm.get result and core.bpm.changed data).
+        No beatsPerBar: the engine has no bar concept at generator level (only Show has a per-show beatsDivision),
+        so the web UI contract''s optional field is simply absent.'
+      properties:
+        bpm:
+          type: integer
+          description: InputOutputMap::bpmNumber() - 0 while the generator is disabled (or a plugin/audio
+            source hasn't detected a tempo yet).
+        generator:
+          type: string
+          enum:
+          - disabled
+          - internal
+          - plugin
+          - audio
+          description: InputOutputMap::BeatGeneratorType, lower-case (NOT the capitalized .qxw persistence
+            spelling).
     CoreProjectMetadata:
       type: object
       required:
@@ -22649,6 +23139,8 @@ components:
       - type
       - path
       - hidden
+      - running
+      - paused
       properties:
         id:
           type: string
@@ -22665,6 +23157,14 @@ components:
         hidden:
           type: boolean
           description: Function::isVisible() negated.
+        running:
+          type: boolean
+          description: Function::isRunning() at the time of the reply - §4b live state, also pushed via
+            functions.status.changed.
+        paused:
+          type: boolean
+          description: Function::isPaused() at the time of the reply - §4b live state, also pushed via
+            functions.status.changed.
     FunctionsDetail:
       type: object
       required:
@@ -22683,12 +23183,20 @@ components:
       - blendMode
       - attributes
       - typeDetail
+      - running
+      - paused
       description: Generic Function base detail, valid for all 10 types. Type-specific detail (values/steps/geometry/members)
         is always present as typeDetail below (the old per-type functions.<type>.get calls were consolidated
         away on the premise that it's never absent).
       properties:
         id:
           type: string
+        running:
+          type: boolean
+          description: See FunctionsSummary.running.
+        paused:
+          type: boolean
+          description: See FunctionsSummary.paused.
         name:
           type: string
         type:
@@ -22749,12 +23257,21 @@ components:
     FunctionsStatusData:
       type: object
       required:
+      - id
       - functionId
       - running
       - paused
       - elapsed
-      description: 4b live/runtime status - see 00-conventions.md §4b, not revision-gated.
+      description: '4b live/runtime status - see 00-conventions.md §4b, not revision-gated. Broadcast
+        (to every client, not subscribe-gated) on every MasterTimer::functionStarted/functionStopped -
+        whatever started or stopped the function (this API, a VC widget, the QML UI, a Collection) - and
+        on every Function::pauseChanged. Implemented fields today: id, functionId, running, paused, elapsed
+        (elapsed is 0 on a stop event). elapsedBeats/attributes/currentStepIndex/runningStepsNumber below
+        are still spec-only.'
       properties:
+        id:
+          type: string
+          description: Same value as functionId - the web UI contract's spelling.
         functionId:
           type: string
         running:
@@ -23714,9 +24231,22 @@ components:
       - description
       - canConfigure
       - supportsFeedback
+      - inputLines
+      - outputLines
       properties:
         name:
           type: string
+        inputLines:
+          type: array
+          description: QLCIOPlugin::inputs()/inputsUID(), inline so a patch dialog needs one round-trip
+            (the web UI contract's shape; io.plugin.getLines returns the same lists).
+          items:
+            $ref: '#/components/schemas/IoPluginLine'
+        outputLines:
+          type: array
+          description: QLCIOPlugin::outputs()/outputsUID(), see inputLines.
+          items:
+            $ref: '#/components/schemas/IoPluginLine'
         capabilities:
           type: array
           description: QLCIOPlugin::Capability bitmask, expanded to strings.
@@ -23740,13 +24270,18 @@ components:
     IoPluginLine:
       type: object
       required:
+      - index
       - line
       - name
       - uid
       properties:
+        index:
+          type: integer
+          description: 0-based line number, the value io.patch.set takes as `line` (web UI contract spelling;
+            same as `line`).
         line:
           type: integer
-          description: Index passed to io.patch.*.set as input/output.
+          description: Same as index.
         name:
           type: string
         uid:

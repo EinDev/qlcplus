@@ -44,3 +44,32 @@ engine).
   description references this domain as the source of truth for that
   concept, since a reader encountering `baseRevision` in, say, `fixtures.yaml`
   first won't otherwise know where it's defined.
+
+## Implemented 2026-09-26: beat generator and undo/redo (web UI slice)
+
+Server: `controlapi/src/domains/apicoredomain.cpp`. Tests:
+`controlapi/test/apicoredomain/`.
+
+- `core.bpm.get/set/tap`, `core.bpm.changed`, `core.beat` - see the
+  message descriptions. Deviations from the web UI contract: no
+  `beatsPerBar` (the engine has no bar concept at generator level);
+  `core.bpm.set` with a `plugin`/`audio` generator active is refused with
+  `INVALID_STATE` instead of silently being overwritten by the source;
+  `bpm: 0` disables the generator. `core.beat` is deliberately not
+  subscribe-gated (contract clients just listen for it).
+- `core.undo`/`core.redo`/`core.history.get`/`core.history.changed` are
+  implemented on top of Tardis through `ApiProjectHost`'s undo hooks
+  (`controlapi/src/apiprojecthost.h`; `App` implements them, `Tardis`
+  gained `canUndo()/canRedo()/undoActionName()/redoActionName()` and a
+  `historyChanged()` signal). The result shapes are a superset of the
+  contract's (`{ok, description?}` / `{canUndo, canRedo, undoText?,
+  redoText?}`) and of this spec's earlier draft.
+- **Limits (documented in the messages too):** Tardis only records edits
+  made through the qmlui UI, so nothing changed via this API's own
+  structural methods is undoable (TODO.md 2.5 stays open for that); undo
+  re-invokes engine setters, so no domain change event fires - clients
+  must refetch on the `docRevision` carried by `core.history.changed`;
+  `entries` in `core.history.get` is always empty (Tardis exposes only the
+  next step); everything answers `UNSUPPORTED` when the server runs
+  without a qmlui host, which is also why `controlapi/test` can only cover
+  that path - the happy path needs the real app.
