@@ -1646,11 +1646,14 @@ void InputOutputMap_Test::inputPatchBeatsPlugin()
     QCOMPARE(im.inputPatch(0)->input(), quint32(1));
 
     // a plugin beat is only counted while the plugin is the beat source
+    // (patches buffer their values, hence the flush)
     im.setBeatGeneratorType(InputOutputMap::Plugin);
     QSignalSpy beatSpy(&im, SIGNAL(beat()));
     stub->emitValueChanged(UINT_MAX, 1, 0, UCHAR_MAX, "beat");
+    im.flushInputs();
     QCOMPARE(beatSpy.size(), 1);
-    stub->emitValueChanged(UINT_MAX, 1, 0, UCHAR_MAX, "foo");
+    stub->emitValueChanged(UINT_MAX, 1, 1, UCHAR_MAX, "foo");
+    im.flushInputs();
     QCOMPARE(beatSpy.size(), 1);
     im.setBeatGeneratorType(InputOutputMap::Disabled);
 
@@ -1679,7 +1682,7 @@ void InputOutputMap_Test::inputPatchUnknownPlugin()
     QString uni, ch;
     QVERIFY(im.inputSourceNames(new QLCInputSource(0, 3), uni, ch) == true);
     QCOMPARE(uni, QString("1: ??"));
-    QCOMPARE(ch, QString("4"));
+    QCOMPARE(ch, QString("4: ?"));
 
     // patching it again must cope with the plugin-less patch
     QVERIFY(im.setInputPatch(0, stub->name(), "", stub->inputs().at(1), 1) == true);
