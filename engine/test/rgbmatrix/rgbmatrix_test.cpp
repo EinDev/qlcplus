@@ -1344,7 +1344,7 @@ void RGBMatrix_Test::runBeats()
     timer.m_beatRequested = true;
     mtx.write(&timer, ua);
     QCOMPARE(mtx.m_stepBeatDuration, uint(500));
-    QCOMPARE(mtx.elapsedBeats(), uint(1000));
+    QCOMPARE(mtx.elapsedBeats(), uint(0)); // reset together with the elapsed time
     QCOMPARE(mtx.m_stepHandler->currentStepIndex(), 1);
     QCOMPARE(mtx.elapsed(), uint(0));
 
