@@ -22,11 +22,11 @@
 
 #define protected public
 #define private public
+#include "audiocapture.h"
 #include "rgbaudio.h"
 #undef private
 #undef protected
 
-#include "audiocapture.h"
 #include "rgbaudio_test.h"
 #include "doc.h"
 
@@ -327,6 +327,51 @@ void RGBAudio_Test::loadSaveXML()
         QVERIFY(loaded.loadXML(xmlReader) == false);
         xmlReader.setDevice(NULL);
     }
+}
+
+void RGBAudio_Test::firstRound()
+{
+    QSharedPointer<AudioCapture> capture = m_doc->audioInputCapture();
+    QVERIFY(capture.isNull() == false);
+    QVERIFY(capture->isRunning() == false);
+
+    /* Registering the very first band count would start the capture
+     * device: pretend another listener already registered one, so that
+     * the device is left alone */
+    BandsData other;
+    other.m_registerCounter = 1;
+    capture->m_fftMagnitudeMap[16] = other;
+
+    RGBAudio audio(m_doc);
+    QVERIFY(audio.m_audioInput == NULL);
+    QCOMPARE(audio.m_bandsNumber, -1);
+
+    /* The first round only attaches the capture and asks it for as many
+     * bands as the map is wide: the map itself stays black */
+    RGBMap map;
+    audio.rgbMap(QSize(4, 3), 0xff0000, 0, map);
+    QCOMPARE(audio.m_audioInput, capture.data());
+    QCOMPARE(audio.m_bandsNumber, 4);
+    QVERIFY(capture->isRunning() == false);
+    QVERIFY(capture->m_fftMagnitudeMap.contains(4));
+    QCOMPARE(capture->m_fftMagnitudeMap.value(4).m_registerCounter, 1);
+    QCOMPARE(map.size(), 3);
+    for (int y = 0; y < 3; y++)
+    {
+        QCOMPARE(map[y].size(), 4);
+        for (int x = 0; x < 4; x++)
+            QCOMPARE(map[y][x], uint(0));
+    }
+
+    /* The following rounds keep the same capture, without data yet */
+    audio.rgbMap(QSize(4, 3), 0xff0000, 0, map);
+    QCOMPARE(audio.m_audioInput, capture.data());
+    QCOMPARE(audio.m_bandsNumber, 4);
+    QVERIFY(capture->isRunning() == false);
+    QCOMPARE(map[2][0], uint(0));
+
+    capture->m_fftMagnitudeMap.remove(4);
+    capture->m_fftMagnitudeMap.remove(16);
 }
 
 QTEST_GUILESS_MAIN(RGBAudio_Test)

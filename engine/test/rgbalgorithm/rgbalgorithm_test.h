@@ -39,6 +39,7 @@ private slots:
     void loader();
     void loaderBuiltIn();
     void loaderInvalidScript();
+    void loaderUnknownType();
 private:
    Doc * m_doc;
 };

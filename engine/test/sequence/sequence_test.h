@@ -42,6 +42,16 @@ private slots:
     void loadWithoutScene();
     void save();
 
+    void iconAndCopyFromOtherType();
+    void components();
+    void applyDumpValues();
+    void fixtureRemoved();
+    void loadNoBoundScene();
+    void loadTempoUnknownTagAndStepOrder();
+    void postLoadNoFixup();
+    void postLoadEmptyBoundScene();
+    void postLoadFixup();
+
 private:
     Doc* m_doc;
 };

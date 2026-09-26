@@ -1,8 +1,6 @@
 /*
-  Q Light Controller
-  rgbtext_test.h
-
-  Copyright (C) Heikki Junnila
+  Q Light Controller Plus - Unit test
+  gradient_test.h
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -17,36 +15,18 @@
   limitations under the License.
 */
 
-#ifndef RGBTEXT_TEST_H
-#define RGBTEXT_TEST_H
+#ifndef GRADIENT_TEST_H
+#define GRADIENT_TEST_H
 
 #include <QObject>
 
-class Doc;
-class RGBText_Test final : public QObject
+class Gradient_Test final : public QObject
 {
     Q_OBJECT
 
 private slots:
-    void initTestCase();
-    void cleanupTestCase();
-
-    void initial();
-    void text();
-    void font();
-    void animationStyle();
-    void offset();
-    void clone();
-    void save();
-    void load();
-    void staticLetters();
-    void horizontalScroll();
-    void verticalScroll();
-    void unused();
-    void acceptColors();
-
-private:
-   Doc * m_doc;
+    void fullGradient();
+    void scaledGradient();
 };
 
 #endif

@@ -71,7 +71,9 @@ bool RGBScriptsCache::load(const QDir& dir)
         QFile absFile(dir.absoluteFilePath(file));
         QString absFilename = absFile.fileName();
 
-        if (m_scriptsMap.value(absFilename).isEmpty())
+        // m_scriptsMap maps a script name to its file: look the file up
+        // among the values, not the keys
+        if (m_scriptsMap.key(absFilename).isEmpty())
         {
             if (!absFile.open(QIODevice::ReadOnly | QIODevice::Text))
                 return false;

@@ -19,6 +19,7 @@
 */
 
 #include <QtTest>
+#include <QMetaEnum>
 #include <QXmlStreamReader>
 #include <QXmlStreamWriter>
 
@@ -1105,6 +1106,314 @@ void Chaser_Test::quickChaser()
     QVERIFY(s1->stopped() == true);
     QVERIFY(s2->isRunning() == false);
     QVERIFY(s2->stopped() == true);
+}
+
+void Chaser_Test::iconAndSpeedModeEnum()
+{
+    Chaser c(m_doc);
+    // The icon resource lives in the UI, not in the engine: only check that
+    // asking for it is safe
+    QIcon icon = c.getIcon();
+    Q_UNUSED(icon);
+
+    QMetaEnum speedMode = QMetaEnum::fromType<Chaser::SpeedMode>();
+    QCOMPARE(QString(speedMode.valueToKey(Chaser::Common)), QString("Common"));
+    QCOMPARE(QString(speedMode.valueToKey(Chaser::PerStep)), QString("PerStep"));
+    QCOMPARE(QString(speedMode.valueToKey(Chaser::Default)), QString("Default"));
+
+    // The Q_ENUM helpers, called with a run-time value so they really run
+    Chaser::SpeedMode mode = c.fadeInMode();
+    QCOMPARE(QString(qt_getEnumName(mode)), QString("SpeedMode"));
+    QCOMPARE(qt_getEnumMetaObject(mode), &Chaser::staticMetaObject);
+}
+
+void Chaser_Test::totalDuration()
+{
+    Chaser c(m_doc);
+    c.setID(42);
+
+    // Common duration mode: every step lasts the chaser duration
+    c.setDurationMode(Chaser::Common);
+    c.setDuration(1000);
+    QCOMPARE(c.totalDuration(), quint32(0));
+
+    // Without steps the total duration goes to the chaser itself
+    c.setTotalDuration(3000);
+    QCOMPARE(c.duration(), uint(3000));
+
+    QVERIFY(c.addStep(ChaserStep(1, 100, 200, 50)));
+    QVERIFY(c.addStep(ChaserStep(2, 0, 700, 0)));
+    QVERIFY(c.addStep(ChaserStep(3, 500, 0, 0)));
+    QCOMPARE(c.totalDuration(), quint32(9000));
+
+    c.setTotalDuration(6000);
+    QCOMPARE(c.duration(), uint(2000));
+    QCOMPARE(c.totalDuration(), quint32(6000));
+
+    // Per step duration mode: the sum of the step durations
+    c.setDurationMode(Chaser::PerStep);
+    QCOMPARE(c.totalDuration(), quint32(300 + 700 + 500));
+
+    // Scaling the total duration scales every step, keeping the proportions
+    // of fade in, hold and fade out
+    c.setTotalDuration(3000);
+    QCOMPARE(c.totalDuration(), quint32(3000));
+
+    QCOMPARE(c.steps().at(0).duration, uint(600));
+    QCOMPARE(c.steps().at(0).hold, uint(400));
+    QCOMPARE(c.steps().at(0).fadeIn, uint(200));
+    QCOMPARE(c.steps().at(0).fadeOut, uint(100));
+
+    QCOMPARE(c.steps().at(1).duration, uint(1400));
+    QCOMPARE(c.steps().at(1).hold, uint(1400));
+    QCOMPARE(c.steps().at(1).fadeIn, uint(0));
+    QCOMPARE(c.steps().at(1).fadeOut, uint(0));
+
+    // A step without hold keeps a zero hold and becomes all fade in
+    QCOMPARE(c.steps().at(2).duration, uint(1000));
+    QCOMPARE(c.steps().at(2).hold, uint(0));
+    QCOMPARE(c.steps().at(2).fadeIn, uint(1000));
+    QCOMPARE(c.steps().at(2).fadeOut, uint(0));
+
+    // The Default mode counts like PerStep
+    c.setDurationMode(Chaser::Default);
+    QCOMPARE(c.totalDuration(), quint32(3000));
+}
+
+void Chaser_Test::moveStepBounds()
+{
+    Chaser c(m_doc);
+    c.setID(42);
+    QVERIFY(c.addStep(ChaserStep(1)));
+    QVERIFY(c.addStep(ChaserStep(2)));
+
+    QVERIFY(c.moveStep(-1, 0) == false);
+    QVERIFY(c.moveStep(2, 0) == false);
+    QVERIFY(c.moveStep(0, -1) == false);
+    QVERIFY(c.moveStep(0, 2) == false);
+    QVERIFY(c.moveStep(1, 1) == false);
+    QVERIFY(c.steps().at(0) == ChaserStep(1));
+    QVERIFY(c.steps().at(1) == ChaserStep(2));
+
+    QVERIFY(c.moveStep(0, 1) == true);
+    QVERIFY(c.steps().at(0) == ChaserStep(2));
+    QVERIFY(c.steps().at(1) == ChaserStep(1));
+}
+
+void Chaser_Test::runnerWrappersWithoutRunner()
+{
+    Chaser c(m_doc);
+    QVERIFY(c.addStep(ChaserStep(1)));
+    QVERIFY(c.addStep(ChaserStep(2)));
+
+    // Without a runner the actions are stored for the next start
+    QCOMPARE(c.currentStepIndex(), -1);
+    QCOMPARE(c.computeNextStep(0), -1);
+    QCOMPARE(c.runningStepsNumber(), 0);
+    QVERIFY(c.currentRunningStep().m_function == NULL);
+
+    ChaserAction action;
+    action.m_action = ChaserSetStepIndex;
+    action.m_stepIndex = 1;
+    action.m_masterIntensity = 0.7;
+    action.m_stepIntensity = 0.6;
+    action.m_fadeMode = Chaser::Crossfade;
+    c.setAction(action);
+
+    QCOMPARE(c.m_startupAction.m_action, ChaserSetStepIndex);
+    QCOMPARE(c.m_startupAction.m_stepIndex, 1);
+    QCOMPARE(c.m_startupAction.m_masterIntensity, qreal(0.7));
+    QCOMPARE(c.m_startupAction.m_stepIntensity, qreal(0.6));
+    QCOMPARE(c.m_startupAction.m_fadeMode, (int)Chaser::Crossfade);
+    QCOMPARE(c.currentStepIndex(), 1);
+    QCOMPARE(c.computeNextStep(0), 1);
+
+    c.adjustAttribute(0.5, Function::Intensity);
+    c.adjustStepIntensity(0.3, 0);
+    QCOMPARE(c.m_startupAction.m_masterIntensity, qreal(0.5));
+    QCOMPARE(c.m_startupAction.m_stepIntensity, qreal(0.3));
+}
+
+void Chaser_Test::runnerWrappersWithRunner()
+{
+    Scene *s1 = new Scene(m_doc);
+    m_doc->addFunction(s1);
+    Scene *s2 = new Scene(m_doc);
+    m_doc->addFunction(s2);
+
+    Chaser *c = new Chaser(m_doc);
+    m_doc->addFunction(c);
+    c->addStep(ChaserStep(s1->id()));
+    c->addStep(ChaserStep(s2->id()));
+    c->setDuration(Function::infiniteSpeed());
+
+    QList<Universe*> ua;
+    ua.append(new Universe(0, new GrandMaster()));
+    MasterTimerStub timer(m_doc, ua);
+
+    c->preRun(&timer);
+    QVERIFY(c->m_runner != NULL);
+    QCOMPARE(c->runningStepsNumber(), 0);
+    QVERIFY(c->currentRunningStep().m_function == NULL);
+
+    c->write(&timer, ua);
+    QCOMPARE(c->runningStepsNumber(), 1);
+    QCOMPARE(c->currentStepIndex(), 0);
+    QCOMPARE(c->computeNextStep(0), 1);
+    QCOMPARE(c->computeNextStep(1), 0);
+
+    ChaserRunnerStep step = c->currentRunningStep();
+    QCOMPARE(step.m_function, s1);
+    QCOMPARE(step.m_index, 0);
+
+    // The actions go straight to the runner
+    ChaserAction action;
+    action.m_action = ChaserNextStep;
+    c->setAction(action);
+    QCOMPARE(c->m_runner->m_pendingAction.m_action, ChaserNextStep);
+    QCOMPARE(c->m_startupAction.m_action, ChaserNoAction);
+
+    c->adjustStepIntensity(0.5, 0);
+    QCOMPARE(c->m_runner->m_runnerSteps.at(0)->m_stepIntensity, qreal(0.5));
+    QCOMPARE(s1->getAttributeValue(Function::Intensity), qreal(0.5));
+
+    c->postRun(&timer, ua);
+    QVERIFY(c->m_runner == NULL);
+}
+
+void Chaser_Test::containsAndSelfContainment()
+{
+    Scene *s1 = new Scene(m_doc);
+    m_doc->addFunction(s1);
+    Scene *s2 = new Scene(m_doc);
+    m_doc->addFunction(s2);
+
+    Collection *coll = new Collection(m_doc);
+    m_doc->addFunction(coll);
+    coll->addFunction(s1->id());
+
+    Chaser *c = new Chaser(m_doc);
+    m_doc->addFunction(c);
+    c->addStep(ChaserStep(12345)); // no such function
+    c->addStep(ChaserStep(coll->id()));
+
+    // Direct member, member of a member, and not a member
+    QVERIFY(c->contains(coll->id()));
+    QVERIFY(c->contains(s1->id()));
+    QVERIFY(c->contains(s2->id()) == false);
+    QVERIFY(c->contains(12345) == false);
+    QCOMPARE(c->components(), QList<quint32>() << 12345 << coll->id());
+
+    // postLoad drops missing members and members that contain the chaser
+    coll->addFunction(c->id());
+    c->addStep(ChaserStep(s2->id()));
+    c->postLoad();
+    QCOMPARE(c->stepsCount(), 1);
+    QCOMPARE(c->steps().at(0).fid, s2->id());
+}
+
+void Chaser_Test::loadTempoAndLegacySequence()
+{
+    QBuffer buffer;
+    buffer.open(QIODevice::WriteOnly | QIODevice::Text);
+    QXmlStreamWriter xmlWriter(&buffer);
+
+    xmlWriter.writeStartElement("Function");
+    xmlWriter.writeAttribute("Type", "Chaser");
+    xmlWriter.writeTextElement("Tempo", "Beats");
+    xmlWriter.writeStartElement("Sequence");
+    xmlWriter.writeAttribute("SceneID", "5");
+    xmlWriter.writeTextElement("Step", "0");
+    xmlWriter.writeEndElement();
+    xmlWriter.writeEndElement();
+
+    xmlWriter.setDevice(NULL);
+    buffer.close();
+
+    buffer.open(QIODevice::ReadOnly | QIODevice::Text);
+    QXmlStreamReader xmlReader(&buffer);
+    xmlReader.readNextStartElement();
+
+    Chaser c(m_doc);
+    QVERIFY(c.loadXML(xmlReader) == true);
+    QCOMPARE(c.tempoType(), Function::Beats);
+    QCOMPARE(c.stepsCount(), 0);
+    QVERIFY(m_doc->errorLog().contains("Unsupported sequences"));
+}
+
+void Chaser_Test::writePaused()
+{
+    Scene *s1 = new Scene(m_doc);
+    m_doc->addFunction(s1);
+
+    Chaser *c = new Chaser(m_doc);
+    m_doc->addFunction(c);
+    c->addStep(ChaserStep(s1->id()));
+    c->setDuration(Function::infiniteSpeed());
+
+    QList<Universe*> ua;
+    ua.append(new Universe(0, new GrandMaster()));
+    MasterTimerStub timer(m_doc, ua);
+
+    c->preRun(&timer);
+    c->write(&timer, ua);
+    QCOMPARE(c->runningStepsNumber(), 1);
+    QVERIFY(s1->isRunning());
+    QVERIFY(s1->isPaused() == false);
+
+    // The pause is requested and applied on the next write
+    c->setPause(true);
+    QVERIFY(c->isPaused());
+    QCOMPARE(c->m_startupAction.m_action, ChaserPauseRequest);
+    QCOMPARE(c->m_startupAction.m_fadeMode, 1);
+    c->write(&timer, ua);
+    QCOMPARE(c->m_startupAction.m_action, ChaserNoAction);
+    QVERIFY(s1->isPaused());
+
+    // While paused, write does nothing
+    quint32 elapsed = c->elapsed();
+    c->write(&timer, ua);
+    QCOMPARE(c->elapsed(), elapsed);
+    QVERIFY(s1->isPaused());
+
+    // Stopping while paused resumes the steps before stopping them
+    c->postRun(&timer, ua);
+    QVERIFY(c->m_runner == NULL);
+    QVERIFY(c->isRunning() == false);
+    QVERIFY(s1->isPaused() == false);
+}
+
+void Chaser_Test::writeSelfStop()
+{
+    Scene *s1 = new Scene(m_doc);
+    m_doc->addFunction(s1);
+
+    Chaser *c = new Chaser(m_doc);
+    m_doc->addFunction(c);
+    c->addStep(ChaserStep(s1->id()));
+    c->setRunOrder(Function::SingleShot);
+    c->setDuration(0);
+
+    QList<Universe*> ua;
+    ua.append(new Universe(0, new GrandMaster()));
+    MasterTimerStub timer(m_doc, ua);
+
+    // start() clears the stop flag and the stub timer calls preRun()
+    QVERIFY(c->stopped() == true);
+    c->start(&timer, FunctionParent::master());
+    QVERIFY(c->isRunning());
+    QVERIFY(c->stopped() == false);
+    c->write(&timer, ua);
+    QCOMPARE(c->runningStepsNumber(), 1);
+    QVERIFY(c->stopped() == false);
+
+    // The single step is over and there's no next one: the chaser stops itself
+    c->write(&timer, ua);
+    QCOMPARE(c->runningStepsNumber(), 0);
+    QVERIFY(c->stopped() == true);
+
+    c->postRun(&timer, ua);
+    QVERIFY(c->isRunning() == false);
 }
 
 QTEST_MAIN(Chaser_Test)

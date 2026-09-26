@@ -24,6 +24,7 @@ add_subdirectory(fixtureremapper)
 add_subdirectory(function)
 add_subdirectory(genericdmxsource)
 add_subdirectory(genericfader)
+add_subdirectory(gradient)
 add_subdirectory(grandmaster)
 add_subdirectory(inputoutputmap)
 add_subdirectory(inputpatch)
@@ -110,6 +111,7 @@ set(QLCPLUS_ENGINE_TESTS
     function_test
     genericdmxsource_test
     genericfader_test
+    gradient_test
     grandmaster_test
     inputoutputmap_test
     inputpatch_test

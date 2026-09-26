@@ -19,6 +19,8 @@
 */
 
 #include <QtTest>
+#include <QImageReader>
+#include <QTemporaryDir>
 #include <QXmlStreamReader>
 #include <QXmlStreamWriter>
 
@@ -39,6 +41,11 @@
 #include "rgbmatrix.h"
 #include "rgbplain.h"
 #include "rgbimage.h"
+#ifdef QT_QML_LIB
+  #include "rgbscriptv4.h"
+#else
+  #include "rgbscript.h"
+#endif
 #include "universe.h"
 #include "fixture.h"
 #include "qlcfile.h"
@@ -1739,6 +1746,139 @@ void RGBMatrix_Test::blendMode()
     timer.stopFunction(&mtx);
 
     qDeleteAll(ua);
+}
+
+void RGBMatrix_Test::scriptColorsFromScript()
+{
+    RGBMatrix mtx(m_doc);
+    mtx.setFixtureGroup(m_rgbGroup);
+
+    // A script that dictates its own colors (Plasma presets) hands them to
+    // the matrix when it is set...
+    RGBAlgorithm *plasma = RGBAlgorithm::algorithm(m_doc, "Plasma");
+    QVERIFY(plasma != NULL);
+    QCOMPARE(plasma->type(), RGBAlgorithm::Script);
+    mtx.setAlgorithm(plasma);
+    QCOMPARE(mtx.algorithm(), plasma);
+
+    RGBScript *script = static_cast<RGBScript*>(plasma);
+    QVector<uint> colors = script->rgbMapGetColors();
+    QVERIFY(colors.count() > 0);
+    QVERIFY(colors.count() <= RGBAlgorithmColorDisplayCount);
+    for (int i = 0; i < colors.count(); i++)
+        QCOMPARE(mtx.getColor(i), QColor::fromRgb(colors.at(i)));
+
+    // ...and again whenever a property changes them
+    QVERIFY(script->setProperty("presetIndex", "Fire"));
+    mtx.setProperty("presetIndex", "Fire");
+    QVector<uint> fire = script->rgbMapGetColors();
+    QVERIFY(fire.count() > 0);
+    QVERIFY(fire != colors);
+    for (int i = 0; i < fire.count(); i++)
+        QCOMPARE(mtx.getColor(i), QColor::fromRgb(fire.at(i)));
+}
+
+void RGBMatrix_Test::propertyStepRescaleClamp()
+{
+    RGBMatrix mtx(m_doc);
+    mtx.setFixtureGroup(m_rgbGroup); // 4x1
+    QCOMPARE(mtx.stepsCount(), 4);
+
+    // A stale negative phase with no previous step count to recompute it
+    // from is clamped to the first step
+    mtx.m_stepsCount = 0;
+    mtx.m_continuousPhase = -1.0;
+    mtx.setProperty("orientation", "Vertical");
+    QCOMPARE(mtx.stepsCount(), 1);
+    QCOMPARE(mtx.m_stepHandler->currentStepIndex(), 0);
+}
+
+void RGBMatrix_Test::runAnimatedImageAlgorithm()
+{
+    if (QImageReader::supportedImageFormats().contains("gif") == false)
+        QSKIP("No GIF image format support in this Qt build");
+
+    /* The same hand-made 2x1 two-frame GIF89a as in rgbimage_test */
+    static const unsigned char gifData[] = {
+        'G', 'I', 'F', '8', '9', 'a',
+        0x02, 0x00, 0x01, 0x00, 0x91, 0x00, 0x00,
+        0xFF, 0x00, 0x00,  0x00, 0x00, 0xFF,  0x00, 0xFF, 0x00,  0x00, 0x00, 0x00,
+        0x21, 0xFF, 0x0B, 'N', 'E', 'T', 'S', 'C', 'A', 'P', 'E', '2', '.', '0',
+        0x03, 0x01, 0x00, 0x00, 0x00,
+        0x21, 0xF9, 0x04, 0x00, 0x0A, 0x00, 0x00, 0x00,
+        0x2C, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x01, 0x00, 0x00,
+        0x02, 0x02, 0x04, 0x0A, 0x00,
+        0x21, 0xF9, 0x04, 0x00, 0x0A, 0x00, 0x00, 0x00,
+        0x2C, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x01, 0x00, 0x00,
+        0x02, 0x02, 0x4C, 0x0A, 0x00,
+        0x3B
+    };
+
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    QString gifPath = QDir(dir.path()).absoluteFilePath("anim.gif");
+    QFile gif(gifPath);
+    QVERIFY(gif.open(QIODevice::WriteOnly));
+    gif.write(reinterpret_cast<const char*>(gifData), sizeof(gifData));
+    gif.close();
+
+    QScopedPointer<GrandMaster> gm(new GrandMaster());
+    QList<Universe*> ua;
+    ua.append(new Universe(0, gm.data()));
+    MasterTimerStub timer(m_doc, ua);
+
+    RGBMatrix mtx(m_doc);
+    mtx.setFixtureGroup(m_rgbGroup);
+    mtx.setDuration(MasterTimer::tick());
+    RGBImage *image = new RGBImage(m_doc);
+    image->setFilename(gifPath);
+    QVERIFY(image->animatedSource());
+    mtx.setAlgorithm(image);
+
+    // Starting rewinds the animation of the running copy of the algorithm
+    mtx.start(&timer, FunctionParent::master());
+    QVERIFY(mtx.m_runAlgorithm != NULL);
+    QCOMPARE(mtx.m_runAlgorithm->type(), RGBAlgorithm::Image);
+    RGBImage *runImage = static_cast<RGBImage*>(mtx.m_runAlgorithm);
+    QVERIFY(runImage->animatedSource());
+    QCOMPARE(runImage->m_animatedPlayer.currentFrameNumber(), 0);
+
+    mtx.write(&timer, ua);
+    QCOMPARE(mtx.m_stepHandler->m_map.count(), 1);
+    QCOMPARE(mtx.m_stepHandler->m_map[0].count(), 4);
+    timer.stopFunction(&mtx);
+
+    qDeleteAll(ua);
+}
+
+void RGBMatrix_Test::attributeHelpersOutOfRange()
+{
+    RGBMatrix mtx(m_doc);
+
+    // No universe, no fader
+    QVERIFY(mtx.getFader(NULL).isNull());
+
+    mtx.setFixtureGroup(m_rgbGroup);
+
+    // Script property attributes out of range are ignored
+    QList<RGBScriptProperty> props = mtx.scriptPropertyAttributes();
+    mtx.applyScriptPropertyAttribute(-1, 1.0);
+    mtx.applyScriptPropertyAttribute(props.count(), 1.0);
+    mtx.applyScriptPropertyAttribute(9999, 1.0);
+    QCOMPARE(mtx.scriptPropertyAttributes().count(), props.count());
+
+    // The pattern index is clamped to the list of algorithms
+    QStringList algos = RGBAlgorithm::algorithms(m_doc);
+    QVERIFY(algos.count() > 1);
+    mtx.applyPatternAttribute(-5.0);
+    QVERIFY(mtx.algorithm() != NULL);
+    QCOMPARE(mtx.algorithm()->name(), algos.first());
+    mtx.applyPatternAttribute(100000.0);
+    QCOMPARE(mtx.algorithm()->name(), algos.last());
+    // Same pattern again: nothing changes
+    RGBAlgorithm *current = mtx.algorithm();
+    mtx.applyPatternAttribute(100000.0);
+    QCOMPARE(mtx.algorithm(), current);
 }
 
 QTEST_MAIN(RGBMatrix_Test)

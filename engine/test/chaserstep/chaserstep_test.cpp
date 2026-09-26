@@ -349,4 +349,137 @@ void ChaserStep_Test::save_sequence()
 
 }
 
+void ChaserStep_Test::values_insert_created()
+{
+    ChaserStep step(1, 2, 3, 4);
+    QVERIFY(step.setValue(SceneValue(5, 6, 7)) == 0);
+
+    /* inserting a different value in front of an existing one creates it */
+    bool created = false;
+    QVERIFY(step.setValue(SceneValue(9, 9, 9), 0, &created) == 0);
+    QVERIFY(created == true);
+    QVERIFY(step.values.count() == 2);
+    QVERIFY(step.values.at(0) == SceneValue(9, 9, 9));
+    QVERIFY(step.values.at(1) == SceneValue(5, 6, 7));
+}
+
+void ChaserStep_Test::load_sequence_missing_fixture()
+{
+    // A Doc without the step's fixtures: their values are dropped
+    Doc doc(this);
+
+    int number = -1;
+    ChaserStep step;
+
+    QBuffer buffer;
+    QXmlStreamReader xmlReader(&buffer);
+    buffer.open(QIODevice::WriteOnly | QIODevice::Text);
+    QXmlStreamWriter xmlWriter(&buffer);
+
+    xmlWriter.writeStartElement("Step");
+    xmlWriter.writeAttribute("Number", "2");
+    xmlWriter.writeAttribute("Values", "5");
+    xmlWriter.writeCharacters("5:0,150,2,100:7:10,100");
+
+    xmlWriter.writeEndDocument();
+    xmlWriter.setDevice(NULL);
+    buffer.close();
+
+    buffer.open(QIODevice::ReadOnly | QIODevice::Text);
+    xmlReader.setDevice(&buffer);
+    xmlReader.readNextStartElement();
+
+    QVERIFY(step.loadXML(xmlReader, number, &doc) == true);
+    QCOMPARE(number, 2);
+    QCOMPARE(step.values.count(), 0);
+}
+
+void ChaserStep_Test::load_infinite_hold_and_duration()
+{
+    // An infinite hold makes the whole step infinite
+    {
+        int number = -1;
+        ChaserStep step;
+
+        QBuffer buffer;
+        QXmlStreamReader xmlReader(&buffer);
+        buffer.open(QIODevice::WriteOnly | QIODevice::Text);
+        QXmlStreamWriter xmlWriter(&buffer);
+
+        xmlWriter.writeStartElement("Step");
+        xmlWriter.writeAttribute("Number", "0");
+        xmlWriter.writeAttribute("FadeIn", "10");
+        xmlWriter.writeAttribute("Hold", QString::number(Function::infiniteSpeed()));
+        xmlWriter.writeCharacters("1");
+
+        xmlWriter.writeEndDocument();
+        xmlWriter.setDevice(NULL);
+        buffer.close();
+
+        buffer.open(QIODevice::ReadOnly | QIODevice::Text);
+        xmlReader.setDevice(&buffer);
+        xmlReader.readNextStartElement();
+
+        QVERIFY(step.loadXML(xmlReader, number, NULL) == true);
+        QCOMPARE(step.fid, quint32(1));
+        QCOMPARE(step.fadeIn, uint(10));
+        QCOMPARE(step.hold, Function::infiniteSpeed());
+        QCOMPARE(step.duration, Function::infiniteSpeed());
+    }
+
+    // Without a hold, an infinite duration means an infinite hold
+    {
+        int number = -1;
+        ChaserStep step;
+
+        QBuffer buffer;
+        QXmlStreamReader xmlReader(&buffer);
+        buffer.open(QIODevice::WriteOnly | QIODevice::Text);
+        QXmlStreamWriter xmlWriter(&buffer);
+
+        xmlWriter.writeStartElement("Step");
+        xmlWriter.writeAttribute("Number", "0");
+        xmlWriter.writeAttribute("FadeIn", "10");
+        xmlWriter.writeAttribute("Duration", QString::number(Function::infiniteSpeed()));
+        xmlWriter.writeCharacters("1");
+
+        xmlWriter.writeEndDocument();
+        xmlWriter.setDevice(NULL);
+        buffer.close();
+
+        buffer.open(QIODevice::ReadOnly | QIODevice::Text);
+        xmlReader.setDevice(&buffer);
+        xmlReader.readNextStartElement();
+
+        QVERIFY(step.loadXML(xmlReader, number, NULL) == true);
+        QCOMPARE(step.fadeIn, uint(10));
+        QCOMPARE(step.hold, Function::infiniteSpeed());
+        QCOMPARE(step.duration, Function::infiniteSpeed());
+    }
+}
+
+void ChaserStep_Test::save_note()
+{
+    ChaserStep step(1, 2, 3, 4);
+    step.note = "Hello";
+
+    QBuffer buffer;
+    buffer.open(QIODevice::WriteOnly | QIODevice::Text);
+    QXmlStreamWriter xmlWriter(&buffer);
+
+    QVERIFY(step.saveXML(&xmlWriter, 5, false) == true);
+
+    xmlWriter.setDevice(NULL);
+    buffer.close();
+
+    buffer.open(QIODevice::ReadOnly | QIODevice::Text);
+    QXmlStreamReader xmlReader(&buffer);
+    xmlReader.readNextStartElement();
+
+    QCOMPARE(xmlReader.name().toString(), QString("Step"));
+    QCOMPARE(xmlReader.attributes().value("Number").toString(), QString("5"));
+    QCOMPARE(xmlReader.attributes().value("Note").toString(), QString("Hello"));
+    QCOMPARE(xmlReader.readElementText(), QString("1"));
+}
+
 QTEST_APPLESS_MAIN(ChaserStep_Test)

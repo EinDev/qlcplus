@@ -3412,4 +3412,403 @@ void EFX_Test::adjustIntensity()
     e->postRun(m_doc->masterTimer(), ua);
 }
 
-QTEST_APPLESS_MAIN(EFX_Test)
+void EFX_Test::iconAndPropagationModeEnum()
+{
+    EFX e(m_doc);
+    // The icon resource lives in the UI, not in the engine: only check that
+    // asking for it is safe
+    QIcon icon = e.getIcon();
+    Q_UNUSED(icon);
+
+    // The Q_ENUM helpers, called with a run-time value so they really run
+    EFX::PropagationMode mode = e.propagationMode();
+    QCOMPARE(QString(qt_getEnumName(mode)), QString("PropagationMode"));
+    QCOMPARE(qt_getEnumMetaObject(mode), &EFX::staticMetaObject);
+}
+
+void EFX_Test::setSameAlgorithm()
+{
+    EFX e(m_doc);
+    QSignalSpy spy(&e, SIGNAL(changed(quint32)));
+
+    QCOMPARE(e.algorithm(), EFX::Circle);
+    e.setAlgorithm(EFX::Circle);
+    QCOMPARE(e.algorithm(), EFX::Circle);
+    QCOMPARE(spy.count(), 0);
+
+    e.setAlgorithm(EFX::Leaf);
+    QCOMPARE(e.algorithm(), EFX::Leaf);
+    QCOMPARE(spy.count(), 1);
+
+    // An unknown algorithm falls back to Circle
+    e.setAlgorithm(EFX::Algorithm(EFX::Lissajous + 5));
+    QCOMPARE(e.algorithm(), EFX::Circle);
+    QCOMPARE(spy.count(), 2);
+}
+
+void EFX_Test::previewFixtures()
+{
+    EFX e(m_doc);
+
+    QVector<QPolygonF> polygons;
+    e.previewFixtures(polygons);
+    QCOMPARE(polygons.size(), 0);
+
+    EFXFixture *ef1 = new EFXFixture(&e);
+    ef1->setHead(GroupHead(1, 0));
+    e.addFixture(ef1);
+    EFXFixture *ef2 = new EFXFixture(&e);
+    ef2->setHead(GroupHead(2, 0));
+    ef2->setDirection(Function::Backward);
+    e.addFixture(ef2);
+
+    // Parallel: every fixture follows the plain preview, in its own direction
+    QPolygonF forward, backward;
+    e.preview(forward, Function::Forward, 0);
+    e.preview(backward, Function::Backward, 0);
+    QCOMPARE(forward.size(), 512);
+    QVERIFY(forward != backward);
+
+    e.previewFixtures(polygons);
+    QCOMPARE(polygons.size(), 2);
+    QCOMPARE(polygons[0], forward);
+    QCOMPARE(polygons[1], backward);
+
+    // Serial and Asymmetric spread the fixtures around the cycle
+    QPolygonF backwardHalf;
+    e.preview(backwardHalf, Function::Backward, 180);
+    QVERIFY(backwardHalf != backward);
+
+    e.setPropagationMode(EFX::Serial);
+    e.previewFixtures(polygons);
+    QCOMPARE(polygons.size(), 2);
+    QCOMPARE(polygons[0], forward);
+    QCOMPARE(polygons[1], backwardHalf);
+
+    e.setPropagationMode(EFX::Asymmetric);
+    e.previewFixtures(polygons);
+    QCOMPARE(polygons.size(), 2);
+    QCOMPARE(polygons[0], forward);
+    QCOMPARE(polygons[1], backwardHalf);
+
+    // The fixture's own start offset adds up
+    ef1->setStartOffset(90);
+    QPolygonF forwardQuarter;
+    e.preview(forwardQuarter, Function::Forward, 90);
+    e.previewFixtures(polygons);
+    QCOMPARE(polygons[0], forwardQuarter);
+}
+
+void EFX_Test::previewLissajousZeroFrequency()
+{
+    EFX e(m_doc);
+    e.setAlgorithm(EFX::Lissajous);
+    e.setXFrequency(0);
+    e.setYFrequency(0);
+    e.setXPhase(0);
+    e.setYPhase(0);
+
+    // A zero frequency gives a triangle wave on that axis: from one end
+    // to the other during the first half of the cycle, and back
+    QPolygonF poly;
+    e.preview(poly);
+    QCOMPARE(poly.size(), 512);
+
+    QVERIFY(qAbs(poly[0].x() - 0.0) < 1.0);
+    QVERIFY(qAbs(poly[0].y() - 0.0) < 1.0);
+    QVERIFY(qAbs(poly[128].x() - 127.0) < 1.0);
+    QVERIFY(qAbs(poly[128].y() - 127.0) < 1.0);
+    QVERIFY(qAbs(poly[256].x() - 254.0) < 1.0);
+    QVERIFY(qAbs(poly[256].y() - 254.0) < 1.0);
+    QVERIFY(qAbs(poly[384].x() - 127.0) < 1.0);
+    QVERIFY(qAbs(poly[384].y() - 127.0) < 1.0);
+
+    // Only one axis at zero frequency
+    e.setYFrequency(1);
+    e.preview(poly);
+    QVERIFY(qAbs(poly[256].x() - 254.0) < 1.0);
+    QVERIFY(qAbs(poly[256].y() - 0.0) < 1.0); // cos(PI) -> -1 -> 127 - 127
+
+    e.setXFrequency(1);
+    e.setYFrequency(0);
+    e.preview(poly);
+    QVERIFY(qAbs(poly[256].x() - 0.0) < 1.0);
+    QVERIFY(qAbs(poly[256].y() - 254.0) < 1.0);
+}
+
+void EFX_Test::addFixtureSameHead()
+{
+    EFX e(m_doc);
+
+    EFXFixture *ef1 = new EFXFixture(&e);
+    ef1->setHead(GroupHead(12, 0));
+    QVERIFY(e.addFixture(ef1));
+    EFXFixture *ef2 = new EFXFixture(&e);
+    ef2->setHead(GroupHead(34, 0));
+    QVERIFY(e.addFixture(ef2));
+
+    // A fixture with a head that is already there goes in front of it
+    EFXFixture *ef3 = new EFXFixture(&e);
+    ef3->setHead(GroupHead(34, 0));
+    QVERIFY(e.addFixture(ef3));
+    QCOMPARE(e.fixtures().size(), 3);
+    QCOMPARE(e.fixtures().at(0), ef1);
+    QCOMPARE(e.fixtures().at(1), ef3);
+    QCOMPARE(e.fixtures().at(2), ef2);
+}
+
+void EFX_Test::removeAllFixtures()
+{
+    EFX e(m_doc);
+
+    EFXFixture *ef1 = new EFXFixture(&e);
+    ef1->setHead(GroupHead(12, 0));
+    e.addFixture(ef1);
+    EFXFixture *ef2 = new EFXFixture(&e);
+    ef2->setHead(GroupHead(34, 0));
+    e.addFixture(ef2);
+    QCOMPARE(e.fixtures().size(), 2);
+
+    QSignalSpy spy(&e, SIGNAL(changed(quint32)));
+    e.removeAllFixtures();
+    QCOMPARE(e.fixtures().size(), 0);
+    QCOMPARE(spy.count(), 1);
+
+    // The fixtures are only removed from the list, not deleted
+    delete ef1;
+    delete ef2;
+}
+
+void EFX_Test::rotateAndScaleFadeIn()
+{
+    EFX e(m_doc);
+    e.setFadeInSpeed(1000);
+
+    // Not running: no fade in scaling
+    float x = 1.0, y = 1.0;
+    e.rotateAndScale(&x, &y);
+    QCOMPARE(x, float(127 + 127));
+    QCOMPARE(y, float(127 + 127));
+
+    QList<Universe*> ua;
+    ua.append(new Universe(0, new GrandMaster()));
+    MasterTimerStub timer(m_doc, ua);
+
+    // Just started: the pattern is scaled down to its center
+    e.preRun(&timer);
+    QCOMPARE(e.elapsed(), quint32(0));
+    x = 1.0;
+    y = 1.0;
+    e.rotateAndScale(&x, &y);
+    QCOMPARE(x, float(127));
+    QCOMPARE(y, float(127));
+
+    // Half way through the fade in: half the size
+    for (int i = 0; i < 25; i++)
+        e.incrementElapsed();
+    QCOMPARE(e.elapsed(), quint32(500));
+    x = 1.0;
+    y = 1.0;
+    e.rotateAndScale(&x, &y);
+    QCOMPARE(x, float(127 + 63.5));
+    QCOMPARE(y, float(127 + 63.5));
+
+    // Past the fade in: full size
+    for (int i = 0; i < 26; i++)
+        e.incrementElapsed();
+    x = 1.0;
+    y = 1.0;
+    e.rotateAndScale(&x, &y);
+    QCOMPARE(x, float(127 + 127));
+    QCOMPARE(y, float(127 + 127));
+
+    e.postRun(&timer, ua);
+}
+
+void EFX_Test::dimmerLevelNegativeAngle()
+{
+    EFX e(m_doc);
+    const float pi = float(M_PI);
+
+    // A negative angle wraps around into the cycle
+    QCOMPARE(e.dimmerLevel(-1.0f, 0.0f), 0.0f);                 // -> 2PI - 1: black half
+    QVERIFY(e.dimmerLevel(-2.0f * pi + 0.1f, 0.0f) > 0.99f);   // -> 0.1: nearly full
+    QVERIFY(qAbs(e.dimmerLevel(-pi * 0.5f, 0.0f) - 0.0f) < 0.001f); // -> 3PI/2: black
+}
+
+void EFX_Test::loadExtraTags()
+{
+    QBuffer buffer;
+    buffer.open(QIODevice::WriteOnly | QIODevice::Text);
+    QXmlStreamWriter xmlWriter(&buffer);
+
+    xmlWriter.writeStartElement("Function");
+    xmlWriter.writeAttribute("Type", "EFX");
+    xmlWriter.writeAttribute("Name", "Extra");
+
+    xmlWriter.writeTextElement("Tempo", "Beats");
+    xmlWriter.writeTextElement("StartOffset", "90");
+    xmlWriter.writeTextElement("IsRelative", "1");
+    xmlWriter.writeTextElement("DimmerControl", "1");
+    // Legacy dimmer sub-parameters, skipped
+    xmlWriter.writeTextElement("DimmerWidth", "50");
+    xmlWriter.writeTextElement("DimmerAttack", "10");
+    xmlWriter.writeTextElement("DimmerDecay", "10");
+    xmlWriter.writeTextElement("DimmerShape", "Sine");
+    xmlWriter.writeTextElement("DimmerOrder", "Serial");
+    // Unknown tags are skipped too
+    xmlWriter.writeTextElement("Foo", "Bar");
+
+    xmlWriter.writeEndElement();
+
+    xmlWriter.setDevice(NULL);
+    buffer.close();
+
+    buffer.open(QIODevice::ReadOnly | QIODevice::Text);
+    QXmlStreamReader xmlReader(&buffer);
+    xmlReader.readNextStartElement();
+
+    EFX e(m_doc);
+    QVERIFY(e.loadXML(xmlReader) == true);
+    QCOMPARE(e.tempoType(), Function::Beats);
+    QCOMPARE(e.startOffset(), 90);
+    QCOMPARE(e.isRelative(), true);
+    QCOMPARE(e.dimmerControlEnabled(), true);
+}
+
+void EFX_Test::writeFaders()
+{
+    QLCFixtureDef* def = m_doc->fixtureDefCache()->fixtureDef("Martin", "MAC250+");
+    QVERIFY(def != NULL);
+    QLCFixtureMode* mode = def->mode("Mode 4");
+    QVERIFY(mode != NULL);
+
+    Fixture* fxi = new Fixture(m_doc);
+    fxi->setFixtureDefinition(def, mode);
+    fxi->setName("Test Scanner");
+    fxi->setAddress(0);
+    fxi->setUniverse(0);
+    m_doc->addFixture(fxi);
+
+    QList<Universe*> ua;
+    ua.append(new Universe(0, new GrandMaster()));
+    MasterTimerStub timer(m_doc, ua);
+
+    EFX* e = new EFX(m_doc);
+    m_doc->addFunction(e);
+    e->setName("Test EFX");
+    e->setDuration(2000);
+    e->setIsRelative(true);
+    QVERIFY(e->addFixture(fxi->id(), 0));
+    QCOMPARE(e->fixtures().size(), 1);
+    QCOMPARE(e->fixtures().at(0)->head(), GroupHead(fxi->id(), 0));
+    QCOMPARE(e->components(), QList<quint32>() << fxi->id());
+
+    e->start(&timer, FunctionParent::master());
+    QVERIFY(e->isRunning());
+    QCOMPARE(e->m_fadersMap.count(), 0);
+
+    // The first write requests a fader on the fixture's universe...
+    e->write(&timer, ua);
+    QCOMPARE(e->elapsed(), quint32(MasterTimer::tick()));
+    QCOMPARE(e->m_fadersMap.count(), 1);
+    QSharedPointer<GenericFader> fader = e->m_fadersMap.value(0);
+    QVERIFY(fader.isNull() == false);
+    QCOMPARE(fader->name(), QString("Test EFX"));
+    QCOMPARE(fader->parentFunctionID(), e->id());
+    QCOMPARE(fader->priority(), (int)Universe::Override);
+    QCOMPARE(fader->intensity(), qreal(1.0));
+    QCOMPARE(fader->m_blendMode, Universe::NormalBlend);
+    QVERIFY(fader->channelsCount() > 0);
+
+    // ...and reuses it afterwards
+    e->write(&timer, ua);
+    QCOMPARE(e->m_fadersMap.count(), 1);
+    QCOMPARE(e->m_fadersMap.value(0), fader);
+    QVERIFY(e->stopped() == false);
+
+    // Intensity and blend mode changes reach the fader
+    e->adjustAttribute(0.5, Function::Intensity);
+    QCOMPARE(fader->intensity(), qreal(0.5));
+
+    e->setBlendMode(Universe::AdditiveBlend);
+    QCOMPARE(e->blendMode(), Universe::AdditiveBlend);
+    QCOMPARE(fader->m_blendMode, Universe::AdditiveBlend);
+    e->setBlendMode(Universe::AdditiveBlend);
+    QCOMPARE(fader->m_blendMode, Universe::AdditiveBlend);
+
+    // Paused: nothing moves
+    e->setPause(true);
+    quint32 elapsed = e->elapsed();
+    e->write(&timer, ua);
+    QCOMPARE(e->elapsed(), elapsed);
+    e->setPause(false);
+
+    e->postRun(&timer, ua);
+    QCOMPARE(e->m_fadersMap.count(), 0);
+    QVERIFY(e->isRunning() == false);
+}
+
+void EFX_Test::writeNoFixturesStops()
+{
+    QList<Universe*> ua;
+    ua.append(new Universe(0, new GrandMaster()));
+    MasterTimerStub timer(m_doc, ua);
+
+    EFX* e = new EFX(m_doc);
+    m_doc->addFunction(e);
+
+    e->start(&timer, FunctionParent::master());
+    QVERIFY(e->stopped() == false);
+
+    // Every (of zero) fixture is done: the EFX stops itself
+    e->write(&timer, ua);
+    QVERIFY(e->stopped() == true);
+    QCOMPARE(e->m_fadersMap.count(), 0);
+
+    e->postRun(&timer, ua);
+}
+
+void EFX_Test::writeSingleShotDone()
+{
+    QLCFixtureDef* def = m_doc->fixtureDefCache()->fixtureDef("Martin", "MAC250+");
+    QVERIFY(def != NULL);
+    QLCFixtureMode* mode = def->mode("Mode 4");
+    QVERIFY(mode != NULL);
+
+    Fixture* fxi = new Fixture(m_doc);
+    fxi->setFixtureDefinition(def, mode);
+    fxi->setAddress(0);
+    fxi->setUniverse(0);
+    m_doc->addFixture(fxi);
+
+    QList<Universe*> ua;
+    ua.append(new Universe(0, new GrandMaster()));
+    MasterTimerStub timer(m_doc, ua);
+
+    EFX* e = new EFX(m_doc);
+    m_doc->addFunction(e);
+    e->setDuration(1000);
+    e->setRunOrder(Function::SingleShot);
+    QVERIFY(e->addFixture(fxi->id(), 0));
+
+    e->start(&timer, FunctionParent::master());
+    QVERIFY(e->stopped() == false);
+
+    // A single shot EFX stops itself once its only fixture has run its cycle
+    int writes = 0;
+    while (e->stopped() == false && writes < 200)
+    {
+        e->write(&timer, ua);
+        writes++;
+    }
+    QVERIFY(e->stopped() == true);
+    QVERIFY(e->fixtures().at(0)->isDone());
+    QVERIFY(writes > 1);
+    QVERIFY(writes < 200);
+
+    e->postRun(&timer, ua);
+    QVERIFY(e->fixtures().at(0)->isDone() == false);
+}
+
+QTEST_MAIN(EFX_Test)

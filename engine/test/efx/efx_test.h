@@ -90,6 +90,19 @@ private slots:
     void preRunPostRun();
     void adjustIntensity();
 
+    void iconAndPropagationModeEnum();
+    void setSameAlgorithm();
+    void previewFixtures();
+    void previewLissajousZeroFrequency();
+    void addFixtureSameHead();
+    void removeAllFixtures();
+    void rotateAndScaleFadeIn();
+    void dimmerLevelNegativeAngle();
+    void loadExtraTags();
+    void writeFaders();
+    void writeNoFixturesStops();
+    void writeSingleShotDone();
+
 private:
     Doc* m_doc;
 };

@@ -455,4 +455,11 @@ void RGBText_Test::unused()
     QCOMPARE(text.rgbMapGetColors().isEmpty(), true);
 }
 
+void RGBText_Test::acceptColors()
+{
+    // A start and an end color
+    RGBText text(m_doc);
+    QCOMPARE(text.acceptColors(), 2);
+}
+
 QTEST_MAIN(RGBText_Test)

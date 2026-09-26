@@ -69,6 +69,29 @@ private slots:
     void adjustIntensity();
     void adjustMasterIntensityAcrossRunningCrossfadeSteps();
 
+    void startTimeOffset();
+    void stopStepAction();
+    void currentRunningStep();
+    void computeNextStepLoop();
+    void computeNextStepSingleShotPingPong();
+    void computeNextStepRandom();
+    void writeRandomForward();
+    void writeRandomBackward();
+    void writeRandomPrevious();
+    void writeRandomSetStepIndex();
+    void writePingPongPrevious();
+    void writeBackwardPrevious();
+    void writeBeats();
+    void speedChangeWhileRunning();
+    void pauseNoSteps();
+    void pauseWithUniverses();
+    void adjustRunningStepIntensity();
+    void adjustIntensityNonSceneStep();
+    void adjustIntensityEdgeCases();
+    void adjustIntensityFadeModes();
+    void adjustIntensityNullFunctionStep();
+    void sequenceSteps();
+
 private:
     Doc* m_doc;
     Scene* m_scene1;

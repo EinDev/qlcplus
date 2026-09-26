@@ -971,4 +971,140 @@ void CueStack_Test::write()
     cs.postRun(m_doc->masterTimer(), m_doc->inputOutputMap()->universes());
 }
 
+void CueStack_Test::perCueNameAndSpeeds()
+{
+    CueStack cs(m_doc);
+    cs.appendCue(Cue("One"));
+    cs.appendCue(Cue("Two"));
+    QSignalSpy spy(&cs, SIGNAL(changed(int)));
+
+    // An index >= 0 addresses a single cue instead of the stack
+    cs.setName("First", 0);
+    QCOMPARE(cs.name(0), QString("First"));
+    QCOMPARE(cs.name(1), QString("Two"));
+    QCOMPARE(cs.name(), QString());
+    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.at(0).at(0).toInt(), 0);
+
+    cs.setFadeInSpeed(100, 1);
+    QCOMPARE(cs.fadeInSpeed(1), uint(100));
+    QCOMPARE(cs.fadeInSpeed(0), cs.m_cues[0].fadeInSpeed());
+    QCOMPARE(cs.fadeInSpeed(), uint(0));
+
+    cs.setFadeOutSpeed(200, 1);
+    QCOMPARE(cs.fadeOutSpeed(1), uint(200));
+    QCOMPARE(cs.fadeOutSpeed(0), cs.m_cues[0].fadeOutSpeed());
+    QCOMPARE(cs.fadeOutSpeed(), uint(0));
+
+    cs.setDuration(300, 0);
+    QCOMPARE(cs.duration(0), uint(300));
+    QCOMPARE(cs.duration(1), cs.m_cues[1].duration());
+    QCOMPARE(cs.duration(), uint(UINT_MAX));
+
+    QCOMPARE(spy.count(), 4);
+    QCOMPARE(spy.at(1).at(0).toInt(), 1);
+    QCOMPARE(spy.at(3).at(0).toInt(), 0);
+}
+
+void CueStack_Test::loadWrongRoot()
+{
+    QBuffer buffer;
+    buffer.open(QIODevice::WriteOnly | QIODevice::Text);
+    QXmlStreamWriter xmlWriter(&buffer);
+    xmlWriter.writeStartElement("Foo");
+    xmlWriter.writeAttribute("ID", "3");
+    xmlWriter.writeEndElement();
+    xmlWriter.setDevice(NULL);
+    buffer.close();
+
+    buffer.open(QIODevice::ReadOnly | QIODevice::Text);
+    QXmlStreamReader xmlReader(&buffer);
+    xmlReader.readNextStartElement();
+
+    QCOMPARE(CueStack::loadXMLID(xmlReader), uint(UINT_MAX));
+
+    CueStack cs(m_doc);
+    cs.appendCue(Cue("One"));
+    QVERIFY(cs.loadXML(xmlReader) == false);
+    // The cues are cleared before the root is checked
+    QCOMPARE(cs.m_cues.count(), 0);
+}
+
+void CueStack_Test::writeNoCues()
+{
+    QList<Universe*> ua = m_doc->inputOutputMap()->universes();
+
+    CueStack cs(m_doc);
+    cs.preRun();
+    cs.writeDMX(m_doc->masterTimer(), ua);
+    QCOMPARE(cs.m_fadersMap.count(), 0);
+    cs.postRun(m_doc->masterTimer(), ua);
+}
+
+void CueStack_Test::intensityWithFaders()
+{
+    QList<Universe*> ua = m_doc->inputOutputMap()->universes();
+
+    CueStack cs(m_doc);
+    Cue cue("One");
+    cue.setValue(0, 255);
+    cs.appendCue(cue);
+
+    cs.preRun();
+    cs.switchCue(-1, 0, ua);
+    QCOMPARE(cs.m_fadersMap.count(), 1);
+    QSharedPointer<GenericFader> fader = cs.m_fadersMap.value(0);
+    QVERIFY(fader.isNull() == false);
+    QCOMPARE(fader->intensity(), qreal(1.0));
+
+    // The intensity reaches the faders that are already there
+    cs.adjustIntensity(0.25);
+    QCOMPARE(cs.intensity(), qreal(0.25));
+    QCOMPARE(fader->intensity(), qreal(0.25));
+
+    cs.postRun(m_doc->masterTimer(), ua);
+}
+
+void CueStack_Test::switchCueUniverseOutOfRange()
+{
+    // Only one universe is available
+    QList<Universe*> ua;
+    ua.append(new Universe(0, new GrandMaster()));
+
+    CueStack cs(m_doc);
+    Cue one("One");
+    one.setValue(0, 255);
+    one.setValue(512 * 3, 255);
+    cs.appendCue(one);
+    Cue two("Two");
+    two.setValue(1, 255);
+    two.setValue(512 * 3 + 1, 255);
+    cs.appendCue(two);
+
+    cs.preRun();
+
+    // Channels of universes that aren't there are skipped, both when
+    // fading in the new cue and when fading out the old one
+    cs.switchCue(-1, 0, ua);
+    QCOMPARE(cs.m_fadersMap.count(), 1);
+    QVERIFY(cs.m_fadersMap.contains(0));
+    QCOMPARE(cs.m_fadersMap.value(0)->channelsCount(), 1);
+
+    cs.switchCue(0, 1, ua);
+    QCOMPARE(cs.m_fadersMap.count(), 1);
+    QCOMPARE(cs.m_fadersMap.value(0)->channelsCount(), 2);
+
+    cs.postRun(m_doc->masterTimer(), ua);
+    delete ua.takeFirst();
+}
+
+void CueStack_Test::heapInstance()
+{
+    CueStack *cs = new CueStack(m_doc);
+    cs->appendCue(Cue("One"));
+    QCOMPARE(cs->m_cues.count(), 1);
+    QVERIFY(cs->isStarted() == false);
+    delete cs;
+}
+
 QTEST_APPLESS_MAIN(CueStack_Test)

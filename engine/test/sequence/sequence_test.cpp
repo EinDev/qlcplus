@@ -22,6 +22,7 @@
 #include <QXmlStreamWriter>
 
 #define protected public
+#define private public
 #include "mastertimer_stub.h"
 #include "sequence_test.h"
 #include "chaserstep.h"
@@ -620,4 +621,300 @@ void Sequence_Test::save()
     QCOMPARE(fstep, 3);
 }
 
-QTEST_APPLESS_MAIN(Sequence_Test)
+namespace
+{
+    void checkValue(const SceneValue &scv, quint32 fxi, quint32 channel, uchar value)
+    {
+        QCOMPARE(scv.fxi, fxi);
+        QCOMPARE(scv.channel, channel);
+        QCOMPARE(scv.value, value);
+    }
+}
+
+void Sequence_Test::iconAndCopyFromOtherType()
+{
+    Sequence s(m_doc);
+    // The icon resource lives in the UI, not in the engine: only check that
+    // asking for it is safe
+    QIcon icon = s.getIcon();
+    Q_UNUSED(icon);
+
+    // Only another Sequence can be copied
+    Scene scene(m_doc);
+    QVERIFY(s.copyFrom(&scene) == false);
+    Chaser chaser(m_doc);
+    QVERIFY(s.copyFrom(&chaser) == false);
+    QCOMPARE(s.type(), Function::SequenceType);
+}
+
+void Sequence_Test::components()
+{
+    Sequence s(m_doc);
+    QVERIFY(s.components().isEmpty());
+    s.setBoundSceneID(7);
+    QCOMPARE(s.components(), QList<quint32>() << 7);
+}
+
+void Sequence_Test::applyDumpValues()
+{
+    Fixture *fxi = new Fixture(m_doc);
+    fxi->setAddress(0);
+    fxi->setUniverse(0);
+    fxi->setChannels(3);
+    m_doc->addFixture(fxi);
+    quint32 id = fxi->id();
+
+    Scene *scene = new Scene(m_doc);
+    scene->setValue(id, 0, 10);
+    scene->setValue(id, 1, 20);
+    scene->setValue(id, 2, 30);
+    m_doc->addFunction(scene);
+
+    Sequence *seq = new Sequence(m_doc);
+    m_doc->addFunction(seq);
+
+    // Without a bound Scene there's nothing to apply the values to
+    seq->applyDumpValues(QList<SceneValue>() << SceneValue(id, 0, 255), -1);
+    QCOMPARE(seq->stepsCount(), 0);
+
+    seq->setBoundSceneID(scene->id());
+
+    // A step that only holds some of the Scene channels
+    ChaserStep step(scene->id());
+    step.values << SceneValue(id, 1, 99);
+    seq->addStep(step);
+
+    // Dumping to a new step aligns the existing steps to the Scene channels
+    // (the missing ones at zero) and appends the dump on top of zeros
+    seq->applyDumpValues(QList<SceneValue>() << SceneValue(id, 2, 200), -1);
+    QCOMPARE(seq->stepsCount(), 2);
+    QCOMPARE(seq->steps().at(0).values.count(), 3);
+    checkValue(seq->steps().at(0).values.at(0), id, 0, 0);
+    checkValue(seq->steps().at(0).values.at(1), id, 1, 99);
+    checkValue(seq->steps().at(0).values.at(2), id, 2, 0);
+    QCOMPARE(seq->steps().at(1).fid, scene->id());
+    QCOMPARE(seq->steps().at(1).values.count(), 3);
+    checkValue(seq->steps().at(1).values.at(0), id, 0, 0);
+    checkValue(seq->steps().at(1).values.at(1), id, 1, 0);
+    checkValue(seq->steps().at(1).values.at(2), id, 2, 200);
+
+    // Dumping onto an existing step replaces only the dumped channels
+    seq->applyDumpValues(QList<SceneValue>() << SceneValue(id, 0, 50), 0);
+    QCOMPARE(seq->stepsCount(), 2);
+    checkValue(seq->steps().at(0).values.at(0), id, 0, 50);
+    checkValue(seq->steps().at(0).values.at(1), id, 1, 99);
+    checkValue(seq->steps().at(0).values.at(2), id, 2, 0);
+
+    // A target step out of range means a new step
+    seq->applyDumpValues(QList<SceneValue>() << SceneValue(id, 1, 77), 5);
+    QCOMPARE(seq->stepsCount(), 3);
+    checkValue(seq->steps().at(2).values.at(0), id, 0, 0);
+    checkValue(seq->steps().at(2).values.at(1), id, 1, 77);
+    checkValue(seq->steps().at(2).values.at(2), id, 2, 0);
+}
+
+void Sequence_Test::fixtureRemoved()
+{
+    Sequence s(m_doc);
+    ChaserStep step(1);
+    step.values << SceneValue(1, 0, 10) << SceneValue(2, 0, 20) << SceneValue(1, 1, 30);
+    s.addStep(step);
+    s.addStep(step);
+
+    // An unknown fixture changes nothing
+    s.slotFixtureRemoved(5);
+    QCOMPARE(s.steps().at(0).values.count(), 3);
+    QCOMPARE(s.steps().at(1).values.count(), 3);
+
+    // The values of a removed fixture disappear from every step
+    s.slotFixtureRemoved(1);
+    QCOMPARE(s.steps().at(0).values.count(), 1);
+    checkValue(s.steps().at(0).values.at(0), 2, 0, 20);
+    QCOMPARE(s.steps().at(1).values.count(), 1);
+    checkValue(s.steps().at(1).values.at(0), 2, 0, 20);
+}
+
+void Sequence_Test::loadNoBoundScene()
+{
+    QBuffer buffer;
+    buffer.open(QIODevice::WriteOnly | QIODevice::Text);
+    QXmlStreamWriter xmlWriter(&buffer);
+
+    xmlWriter.writeStartElement("Function");
+    xmlWriter.writeAttribute("Type", "Sequence");
+    xmlWriter.writeAttribute("Name", "No scene");
+    xmlWriter.writeEndElement();
+
+    xmlWriter.setDevice(NULL);
+    buffer.close();
+
+    buffer.open(QIODevice::ReadOnly | QIODevice::Text);
+    QXmlStreamReader xmlReader(&buffer);
+    xmlReader.readNextStartElement();
+
+    Sequence s(m_doc);
+    QVERIFY(s.loadXML(xmlReader) == false);
+    QCOMPARE(s.boundSceneID(), Function::invalidId());
+}
+
+void Sequence_Test::loadTempoUnknownTagAndStepOrder()
+{
+    // Step values of fixtures unknown to the Doc are dropped on load
+    Fixture *fxi = new Fixture(m_doc);
+    fxi->setAddress(0);
+    fxi->setUniverse(0);
+    fxi->setChannels(2);
+    m_doc->addFixture(fxi);
+    quint32 id = fxi->id();
+
+    QBuffer buffer;
+    buffer.open(QIODevice::WriteOnly | QIODevice::Text);
+    QXmlStreamWriter xmlWriter(&buffer);
+
+    xmlWriter.writeStartElement("Function");
+    xmlWriter.writeAttribute("Type", "Sequence");
+    xmlWriter.writeAttribute("Name", "Beats");
+    xmlWriter.writeAttribute("BoundScene", "12");
+
+    xmlWriter.writeTextElement("Tempo", "Beats");
+    xmlWriter.writeTextElement("Foo", "Bar");
+
+    // Steps out of order: the second one loaded goes first
+    xmlWriter.writeStartElement("Step");
+    xmlWriter.writeAttribute("Number", "1");
+    xmlWriter.writeAttribute("Values", "2");
+    xmlWriter.writeCharacters(QString("%1:0,100").arg(id));
+    xmlWriter.writeEndElement();
+
+    xmlWriter.writeStartElement("Step");
+    xmlWriter.writeAttribute("Number", "0");
+    xmlWriter.writeAttribute("Values", "2");
+    xmlWriter.writeCharacters(QString("%1:0,7").arg(id));
+    xmlWriter.writeEndElement();
+
+    xmlWriter.writeEndElement();
+
+    xmlWriter.setDevice(NULL);
+    buffer.close();
+
+    buffer.open(QIODevice::ReadOnly | QIODevice::Text);
+    QXmlStreamReader xmlReader(&buffer);
+    xmlReader.readNextStartElement();
+
+    Sequence s(m_doc);
+    QVERIFY(s.loadXML(xmlReader) == true);
+    QCOMPARE(s.boundSceneID(), quint32(12));
+    QCOMPARE(s.tempoType(), Function::Beats);
+    QCOMPARE(s.stepsCount(), 2);
+    QCOMPARE(s.steps().at(0).fid, quint32(12));
+    QCOMPARE(s.steps().at(0).values.count(), 1);
+    checkValue(s.steps().at(0).values.at(0), id, 0, 7);
+    QCOMPARE(s.steps().at(1).fid, quint32(12));
+    QCOMPARE(s.steps().at(1).values.count(), 1);
+    checkValue(s.steps().at(1).values.at(0), id, 0, 100);
+    // The bound Scene doesn't exist (yet): the steps still need fixing
+    QCOMPARE(s.m_needFixup, true);
+}
+
+void Sequence_Test::postLoadNoFixup()
+{
+    Sequence s(m_doc);
+    ChaserStep step(1);
+    step.values << SceneValue(1, 0, 10);
+    s.addStep(step);
+
+    // Steps loaded with their Scene available are left alone
+    s.m_needFixup = false;
+    s.postLoad();
+    QCOMPARE(s.steps().at(0).values.count(), 1);
+    checkValue(s.steps().at(0).values.at(0), 1, 0, 10);
+}
+
+void Sequence_Test::postLoadEmptyBoundScene()
+{
+    Fixture *fxi = new Fixture(m_doc);
+    fxi->setAddress(0);
+    fxi->setUniverse(0);
+    fxi->setChannels(2);
+    m_doc->addFixture(fxi);
+    quint32 id = fxi->id();
+
+    Scene *scene = new Scene(m_doc);
+    m_doc->addFunction(scene);
+    QCOMPARE(scene->values().count(), 0);
+
+    // No steps: nothing to rebuild the Scene from
+    Sequence *empty = new Sequence(m_doc);
+    empty->setBoundSceneID(scene->id());
+    m_doc->addFunction(empty);
+    QCOMPARE(empty->m_needFixup, true);
+    empty->postLoad();
+    QCOMPARE(empty->m_needFixup, false);
+    QCOMPARE(scene->values().count(), 0);
+
+    // An empty bound Scene gets the channels of the first step, at zero,
+    // for the fixtures that exist
+    Sequence *seq = new Sequence(m_doc);
+    seq->setBoundSceneID(scene->id());
+    m_doc->addFunction(seq);
+    ChaserStep step(scene->id());
+    step.values << SceneValue(id, 0, 10) << SceneValue(id, 1, 20) << SceneValue(999, 0, 5);
+    seq->addStep(step);
+
+    seq->postLoad();
+    QCOMPARE(seq->m_needFixup, false);
+    QCOMPARE(scene->values().count(), 2);
+    checkValue(scene->values().at(0), id, 0, 0);
+    checkValue(scene->values().at(1), id, 1, 0);
+    // The step itself is left as it was
+    QCOMPARE(seq->steps().at(0).values.count(), 3);
+    checkValue(seq->steps().at(0).values.at(0), id, 0, 10);
+}
+
+void Sequence_Test::postLoadFixup()
+{
+    Fixture *fxi = new Fixture(m_doc);
+    fxi->setAddress(0);
+    fxi->setUniverse(0);
+    fxi->setChannels(8);
+    m_doc->addFixture(fxi);
+    quint32 id = fxi->id();
+
+    Scene *scene = new Scene(m_doc);
+    scene->setValue(id, 0, 10);
+    scene->setValue(id, 1, 20);
+    scene->setValue(id, 2, 30);
+    m_doc->addFunction(scene);
+
+    Sequence *seq = new Sequence(m_doc);
+    seq->setBoundSceneID(scene->id());
+    m_doc->addFunction(seq);
+
+    // A step with the same channels as the Scene is left alone
+    ChaserStep complete(scene->id());
+    complete.values << SceneValue(id, 0, 1) << SceneValue(id, 1, 2) << SceneValue(id, 2, 3);
+    seq->addStep(complete);
+
+    // A step missing channels, with one that the Scene doesn't have
+    ChaserStep partial(scene->id());
+    partial.values << SceneValue(id, 1, 55) << SceneValue(id, 7, 9);
+    seq->addStep(partial);
+
+    QCOMPARE(seq->m_needFixup, true);
+    seq->postLoad();
+    QCOMPARE(seq->m_needFixup, false);
+
+    QCOMPARE(seq->steps().at(0).values.count(), 3);
+    checkValue(seq->steps().at(0).values.at(0), id, 0, 1);
+    checkValue(seq->steps().at(0).values.at(1), id, 1, 2);
+    checkValue(seq->steps().at(0).values.at(2), id, 2, 3);
+
+    // The partial step now has the Scene channels, keeping its own value
+    // where it had one and dropping the channel unknown to the Scene
+    QCOMPARE(seq->steps().at(1).values.count(), 3);
+    checkValue(seq->steps().at(1).values.at(0), id, 0, 10);
+    checkValue(seq->steps().at(1).values.at(1), id, 1, 55);
+    checkValue(seq->steps().at(1).values.at(2), id, 2, 30);
+}
+
+QTEST_MAIN(Sequence_Test)

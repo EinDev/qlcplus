@@ -70,6 +70,10 @@ private slots:
     void attributes();
     void scriptPropertyAttributes();
     void blendMode();
+    void scriptColorsFromScript();
+    void propertyStepRescaleClamp();
+    void runAnimatedImageAlgorithm();
+    void attributeHelpersOutOfRange();
 
 private:
     /** Create a fixture group of $size, filled with fixtures using $def, starting

@@ -37,6 +37,11 @@ private slots:
     void load_legacy_sequence();
     void save();
     void save_sequence();
+
+    void values_insert_created();
+    void load_sequence_missing_fixture();
+    void load_infinite_hold_and_duration();
+    void save_note();
 };
 
 #endif
