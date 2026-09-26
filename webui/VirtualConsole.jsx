@@ -1,20 +1,32 @@
-const { ViewToolbar, ToolbarSpacer, IconButton, RobotoText, QLCPlusFader, GenericButton, ShortcutHint, CustomSpinBox, SectionBox, SidePanel, CustomComboBox, CustomCheckBox } = window.PatchDesignSystem_5432c9;
+/**
+ * Virtual Console screen: pages, widgets at their real geometry, live interaction (buttons,
+ * sliders, cue lists, XY pads, speed dials, multipage frames) and — in Design mode — layout editing
+ * (add / move / resize / configure / copy / paste / delete, page add / rename / delete).
+ *
+ * Structure: this file owns the data (pages, widgets, the live value store, edit state) and the
+ * layout; vc/vc-widgets.jsx draws each widget type; vc/vc-edit.jsx is the selection / drag / resize
+ * wrapper plus the palette and the properties panel; vc/vc-shared.jsx holds the context and the
+ * pointer-event fader. Everything reaches the screen state through VCContext.
+ *
+ * Wire notes (verified against this fork's server, see docs/agent-reports/2026-09-26-*):
+ *  - vc.widget.list returns full snapshots (typeConfig included) on this server.
+ *  - `page` on a widget is the top-level page only; children of a multipage frame are told apart
+ *    by isVisible, so a frame page change re-fetches the list.
+ *  - The live methods/events (press, setValue, cueList.*, xyPad, speedDial, frame.gotoPage,
+ *    *Changed) are a contract still being implemented server-side: every call degrades to a
+ *    notice + view-only via the client's NOT_FOUND tracking when the running server lacks it.
+ */
+const { ViewToolbar, ToolbarSpacer, IconButton, RobotoText, QLCPlusFader, GenericButton, ShortcutHint, CustomComboBox, SectionBox, SidePanel, MenuBarEntry, CustomPopupDialog, CustomTextInput, FaIcon } = window.PatchDesignSystem_5432c9;
 
-const WIDGET_ICONS = { Button: 'button', Slider: 'slider', Frame: 'frame', SoloFrame: 'soloframe', Label: 'label', CueList: 'cuelist',
-  XYPad: 'xypad', Speed: 'knob', SpeedDial: 'knob', Clock: 'clock', Animation: 'animation', AudioTriggers: 'audiotriggers' };
-const PRESS = 'vc.button.press', SET_VALUE = 'vc.slider.setValue';
+const WIDGET_REFRESH_TOPICS = ['vc.widget.created', 'vc.widget.deleted', 'vc.widget.updated', 'vc.widget.configChanged', 'vc.widget.bulkUpdated', 'vc.page.deleted', 'core.project.loaded'];
+const PAGE_REFRESH_TOPICS = ['vc.page.created', 'vc.page.deleted', 'vc.page.renamed', 'core.project.loaded'];
+const NO_FUNCTION_ID = '4294967295';
 
-function fontCss(style) {
-  const f = (style && style.font) || {};
-  return { fontFamily: f.family ? '"' + f.family + '", var(--font-roboto)' : 'var(--font-roboto)', fontSize: (f.pointSize || 12) * 1.33,
-    fontWeight: f.bold ? 700 : 400, fontStyle: f.italic ? 'italic' : 'normal', textDecoration: f.underline ? 'underline' : 'none' };
-}
-
-/* --- mock widgets (offline) ---------------------------------------------------------------- */
+/* --- mock widgets (offline preview) -------------------------------------------------------- */
 function VCSlider({ w, onChange }) {
   return (
     <div style={{ width: 74, background: 'var(--bg-strong)', border: 'var(--border-control)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: '6px 0' }}>
-      <QLCPlusFader value={w.value} onMoved={onChange} height={180} />
+      <VCFader value={w.value} onMoved={onChange} height={180} />
       <RobotoText label={String(w.value)} fontSize={14} labelColor="var(--fg-light)" height={18} textHAlign="center" style={{ width: '100%' }} />
       <RobotoText label={w.label} fontSize={14} height={20} textHAlign="center" style={{ width: '100%' }} />
     </div>
@@ -28,88 +40,36 @@ function VCButton({ w, onToggle }) {
   );
 }
 
-/* --- live widgets (server geometry) -------------------------------------------------------- */
-
-/** A widget as the server describes it, at its own geometry inside its parent. */
-function LiveWidget({ w, children, qlc, sliderValues, setSliderValue, pressedMap, onPress, canPress, canSlide, onUnsupported }) {
-  const D = window.QLCData;
-  const g = w.geometry || { x: 0, y: 0, width: 100, height: 40 };
-  const base = { position: 'absolute', left: g.x, top: g.y, width: g.width, height: g.height, boxSizing: 'border-box',
-    opacity: w.isDisabled ? 0.45 : 1, zIndex: w.zIndex || 0 };
-  const style = w.style || {};
-  const caption = style.caption || '';
-  const fg = style.foregroundColor || 'var(--fg-main)';
-  const bg = style.backgroundColor || 'var(--bg-control)';
-  const font = fontCss(style);
-
-  if (w.widgetType === 'Frame' || w.widgetType === 'SoloFrame') {
-    return (
-      <div style={Object.assign({}, base, { background: style.backgroundColor || 'var(--bg-strong)', border: '2px solid ' + (w.widgetType === 'SoloFrame' ? 'var(--override-red)' : 'var(--border-color-dark)'), overflow: 'hidden' })}>
-        <div style={{ position: 'absolute', left: 0, top: 0, right: 0, height: 24, background: 'var(--section-header)', display: 'flex', alignItems: 'center', gap: 6, padding: '0 6px', pointerEvents: 'none' }}>
-          <img src={D.icon(w.widgetType === 'SoloFrame' ? 'soloframe' : 'frame')} alt="" style={{ width: 16, height: 16 }} />
-          <span style={Object.assign({ color: fg, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }, font, { fontSize: 14 })}>{caption}</span>
-        </div>
-        {children}
-      </div>
-    );
-  }
-  if (w.widgetType === 'Button') {
-    const isOn = !!(pressedMap && pressedMap[w.id]);
-    const down = (e) => { e.preventDefault(); if (!canPress) { onUnsupported(PRESS); return; } onPress(w.id, true); };
-    const up = () => { if (canPress) onPress(w.id, false); };
-    return (
-      <div role="button" tabIndex={0} title={caption + (canPress ? '' : ' — press not supported by this server')}
-        onPointerDown={down} onPointerUp={up} onPointerLeave={up} onPointerCancel={up}
-        style={Object.assign({}, base, { background: isOn ? 'var(--highlight)' : bg, border: '2px solid ' + (isOn ? 'var(--check-lime)' : 'var(--border-color-dark)'),
-          borderRadius: 4, display: 'grid', placeItems: 'center', textAlign: 'center', padding: 4, cursor: canPress ? 'pointer' : 'not-allowed', userSelect: 'none', color: fg, overflow: 'hidden' }, font)}>
-        <span style={{ overflow: 'hidden', wordBreak: 'break-word', maxHeight: '100%' }}>{caption}</span>
-      </div>
-    );
-  }
-  if (w.widgetType === 'Slider') {
-    const cfg = w.typeConfig || {};
-    const v = sliderValues[w.id] != null ? sliderValues[w.id] : 0;
-    const knob = cfg.widgetStyle === 'Knob';
-    return (
-      <div title={caption + (canSlide ? '' : ' — setValue not supported by this server')}
-        style={Object.assign({}, base, { background: style.backgroundColor || 'var(--bg-strong)', border: '2px solid var(--border-color-dark)', borderRadius: 4, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: '6px 2px', color: fg, overflow: 'hidden' })}>
-        <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)' }}>{cfg.valueDisplayStyle === 'Percentage' ? Math.round(v / 2.55) + '%' : v}</span>
-        <div style={{ flex: 1, minHeight: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%' }} onPointerDown={() => { if (!canSlide) onUnsupported(SET_VALUE); }}>
-          <QLCPlusFader value={v} from={cfg.rangeLowLimit || 0} to={cfg.rangeHighLimit || 255} height={Math.max(40, g.height - 60)} width={knob ? 40 : 32}
-            disabled={!canSlide} onMoved={(nv) => setSliderValue(w.id, nv)} />
-        </div>
-        <span style={Object.assign({ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }, font, { fontSize: 13 })}>{caption}</span>
-      </div>
-    );
-  }
-  if (w.widgetType === 'Label') {
-    return (
-      <div style={Object.assign({}, base, { background: style.backgroundColor || 'transparent', color: fg, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', overflow: 'hidden', border: style.backgroundColor ? 'none' : '1px dashed var(--border-color-dark)' }, font)}>
-        {caption}
-      </div>
-    );
-  }
-  return (
-    <div title={w.widgetType + ' — not interactive in the web UI yet (no ' + w.widgetType + ' interaction methods on the server)'}
-      style={Object.assign({}, base, { background: bg, border: '2px dashed var(--fg-medium)', borderRadius: 4, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, color: fg, overflow: 'hidden', padding: 4 })}>
-      <img src={D.icon(WIDGET_ICONS[w.widgetType] || 'frame')} alt="" style={{ width: 24, height: 24, opacity: .7 }} />
-      <span style={Object.assign({ textAlign: 'center' }, font, { fontSize: 13 })}>{caption || w.widgetType}</span>
-      <span style={{ fontSize: 11, color: 'var(--fg-medium)' }}>{w.widgetType} · view only</span>
-    </div>
-  );
+/* --- live value store ---------------------------------------------------------------------- */
+function normalizeXY(v) { const n = Number(v) || 0; return vcClamp(n > 1 ? n / 256 : n, 0, 1); }
+function normalizePlayback(d) {
+  const out = {};
+  if (d.playbackIndex != null) out.playbackIndex = Number(d.playbackIndex);
+  if (d.running != null || d.paused != null) { out.running = !!d.running; out.paused = !!d.paused; }
+  else if (d.playbackStatus != null) { out.running = d.playbackStatus !== 'Stopped'; out.paused = d.playbackStatus === 'Paused'; }
+  if (d.steps) out.steps = d.steps;
+  return out;
 }
 
-/** Plain helper (no hooks — it is called conditionally): nests widgets by parentId and measures the page. */
-function buildLivePage(widgets, common) {
-  const byParent = {};
-  widgets.forEach(w => { const p = w.parentId || 'root'; (byParent[p] = byParent[p] || []).push(w); });
-  Object.keys(byParent).forEach(k => byParent[k].sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0)));
-  const render = (parentKey) => (byParent[parentKey] || []).filter(w => w.isVisible !== false).map(w => (
-    <LiveWidget key={w.id} w={w} {...common}>{render(w.id)}</LiveWidget>
-  ));
-  let bw = 400, bh = 300;
-  (byParent.root || []).forEach(x => { const g = x.geometry || {}; bw = Math.max(bw, (g.x || 0) + (g.width || 0)); bh = Math.max(bh, (g.y || 0) + (g.height || 0)); });
-  return { content: render('root'), bounds: { width: bw + 20, height: bh + 20 } };
+/** Seed the store from the fields vc.widget.list items carry (state, value, playbackIndex, x/y, ms, currentPage/pages). */
+function seedFromWidgets(store, widgets) {
+  const next = { buttons: Object.assign({}, store.buttons), sliders: Object.assign({}, store.sliders), cueLists: Object.assign({}, store.cueLists),
+    xy: Object.assign({}, store.xy), speed: Object.assign({}, store.speed), frames: Object.assign({}, store.frames) };
+  widgets.forEach(w => {
+    switch (w.widgetType) {
+      case 'Button': if (w.state != null) next.buttons[w.id] = w.state; break;
+      case 'Slider': if (w.value != null) next.sliders[w.id] = Number(w.value); break;
+      case 'CueList': next.cueLists[w.id] = Object.assign({}, next.cueLists[w.id], normalizePlayback(w)); break;
+      case 'XYPad': if (w.x != null && w.y != null) next.xy[w.id] = { x: normalizeXY(w.x), y: normalizeXY(w.y) }; break;
+      case 'Speed': case 'SpeedDial': if (w.ms != null) next.speed[w.id] = Number(w.ms); break;
+      case 'Frame': case 'SoloFrame':
+        if (w.currentPage != null || w.pages != null || w.multipage != null)
+          next.frames[w.id] = Object.assign({}, next.frames[w.id], { currentPage: w.currentPage, pages: w.pages, multipage: w.multipage });
+        break;
+      default: break;
+    }
+  });
+  return next;
 }
 
 /** Grand Master fader: io.grandMaster.get / setValue + io.grandMaster.changed. */
@@ -123,7 +83,7 @@ function GrandMaster({ qlc }) {
   const move = (v) => { setGm(g => Object.assign({}, g, { value: v })); qlc.client().setGrandMaster(v); };
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: 8 }}>
-      <QLCPlusFader value={gm ? gm.value : 255} onMoved={move} height={160} disabled={!gm} trackColor="var(--override-red)" />
+      <VCFader value={gm ? gm.value : 255} onMoved={move} height={160} disabled={!gm} trackColor="var(--override-red)" />
       <RobotoText label={gm ? String(gm.value) : '—'} fontSize={14} height={18} textHAlign="center" style={{ width: '100%' }} />
       <RobotoText label={gm ? gm.channelMode + ' · ' + gm.valueMode : 'connect first'} fontSize={12} labelColor="var(--fg-medium)" height="auto" wrapText textHAlign="center" style={{ width: '100%' }} />
     </div>
@@ -135,18 +95,53 @@ function VirtualConsole() {
   const qlc = useQLC();
   const live = qlc.online;
   const [mockWidgets, setMockWidgets] = React.useState(D.vcWidgets);
+  const [mode, setMode] = React.useState(null);
   const [edit, setEdit] = React.useState(false);
-  const [panel, setPanel] = React.useState(false);
+  const [snap, setSnap] = React.useState(true);
+  const [panel, setPanel] = React.useState(null);
   const [pages, setPages] = React.useState(null);
   const [page, setPage] = React.useState(0);
   const [widgets, setWidgets] = React.useState(null);
-  const [sliderValues, setSliderValues] = React.useState({});
-  const [pressed, setPressed] = React.useState({});
+  const [store, setStore] = React.useState({ buttons: {}, sliders: {}, cueLists: {}, xy: {}, speed: {}, frames: {} });
   const [zoom, setZoom] = React.useState('fit');
   const [notice, setNotice] = React.useState('');
+  const [selection, setSelection] = React.useState([]);
+  const [dragGeom, setDragGeom] = React.useState({});
+  const [placing, setPlacing] = React.useState(null);
+  const [clipboard, setClipboard] = React.useState([]);
+  const [functions, setFunctions] = React.useState([]);
+  const [dialog, setDialog] = React.useState(null);
   const areaRef = React.useRef(null);
+  const canvasRef = React.useRef(null);
   const [areaSize, setAreaSize] = React.useState({ w: 800, h: 600 });
-  const sendTimer = React.useRef({});
+  const throttled = useThrottledSender(33);
+  const dragging = React.useRef({});
+  const selectionRef = React.useRef([]);
+  const dragGeomRef = React.useRef({});
+  const widgetsRef = React.useRef([]);
+  const refreshRef = React.useRef(() => {});
+  selectionRef.current = selection;
+  dragGeomRef.current = dragGeom;
+  widgetsRef.current = widgets || [];
+
+  const patchStore = React.useCallback((section, id, value) => {
+    setStore(s => Object.assign({}, s, { [section]: Object.assign({}, s[section], { [id]: typeof value === 'function' ? value(s[section][id]) : value }) }));
+  }, []);
+  const say = React.useCallback((text) => setNotice(text), []);
+  const notFound = (method) => (e) => { if (e && e.code === 'NOT_FOUND') say('This server has no ' + method + ' yet'); else if (e && e.code !== 'NOT_CONNECTED') say(method + ': ' + (e.message || 'failed')); };
+
+  /* Engine mode gates editing (AC_VCEditing in the QML app = Design mode only). */
+  React.useEffect(() => {
+    if (!live) { setMode(null); setEdit(false); return; }
+    qlc.call('core.mode.get').then(r => setMode(r.mode)).catch(() => {});
+    return qlc.subscribeTo('core.mode.changed', (d) => setMode(d.mode));
+  }, [live]);
+  React.useEffect(() => { if (mode === 'operate' && edit) { setEdit(false); say('Engine switched to Operate mode — editing locked'); } }, [mode]);
+  React.useEffect(() => {
+    if (!edit) { setPlacing(null); setSelection([]); if (panel === 'palette' || panel === 'props') setPanel(null); return; }
+    if (panel == null) setPanel('palette');
+    if (live && !functions.length) qlc.call('functions.list').then(r => setFunctions(r.functions || [])).catch(() => {});
+  }, [edit]);
 
   /* Pages: list once per connection, follow page events. The page shown here is local — a
      remote should not flip the operator's screen, so vc.page.select is deliberately not called. */
@@ -155,7 +150,7 @@ function VirtualConsole() {
     let alive = true;
     const load = () => qlc.call('vc.page.list').then(r => { if (!alive) return; setPages(r.pages || []); setPage(p => (r.pages || []).some(x => x.index === p) ? p : (r.selectedPage || 0)); }).catch(() => {});
     load();
-    const offs = ['vc.page.created', 'vc.page.deleted', 'vc.page.renamed', 'core.project.loaded'].map(t => qlc.subscribeTo(t, load));
+    const offs = PAGE_REFRESH_TOPICS.map(t => qlc.subscribeTo(t, load));
     return () => { alive = false; offs.forEach(f => f()); };
   }, [live]);
 
@@ -163,17 +158,48 @@ function VirtualConsole() {
   React.useEffect(() => {
     if (!live) return;
     let alive = true, timer = null;
-    const load = () => qlc.call('vc.widget.list', { page }).then(r => { if (alive) setWidgets(r.widgets || []); }).catch(() => {});
+    const load = () => qlc.call('vc.widget.list', { page }).then(r => {
+      if (!alive) return;
+      const list = r.widgets || [];
+      setWidgets(list);
+      setDragGeom({});
+      setStore(s => seedFromWidgets(s, list));
+      setSelection(sel => sel.filter(id => list.some(w => w.id === id)));
+    }).catch(() => {});
     const debounced = () => { clearTimeout(timer); timer = setTimeout(load, 150); };
+    refreshRef.current = debounced;
     setWidgets(null);
     load();
-    const offs = ['vc.widget.created', 'vc.widget.deleted', 'vc.widget.updated', 'vc.widget.configChanged', 'vc.widget.repositioned', 'vc.page.deleted', 'core.project.loaded']
-      .map(t => qlc.subscribeTo(t, debounced));
-    /* Live value/state events per the spec — the server does not emit them yet, but if it starts, the UI follows. */
-    offs.push(qlc.subscribeTo('vc.slider.valueChanged', d => { if (d && d.widgetId != null) setSliderValues(s => Object.assign({}, s, { [d.widgetId]: d.value })); }));
-    offs.push(qlc.subscribeTo('vc.button.stateChanged', d => { if (d && d.widgetId != null) setPressed(s => Object.assign({}, s, { [d.widgetId]: d.state === 'Active' || d.active === true || d.pressed === true })); }));
+    const offs = WIDGET_REFRESH_TOPICS.map(t => qlc.subscribeTo(t, debounced));
+    offs.push(qlc.subscribeTo('vc.widget.repositioned', (d) => {
+      const moved = {};
+      ((d && d.widgets) || []).forEach(x => { moved[x.widgetId] = x.geometry; });
+      setWidgets(ws => ws ? ws.map(w => moved[w.id] ? Object.assign({}, w, { geometry: moved[w.id] }) : w) : ws);
+    }));
     return () => { alive = false; clearTimeout(timer); offs.forEach(f => f()); };
   }, [live, page]);
+
+  /* Live value events, once per connection (whatever page is shown). */
+  React.useEffect(() => {
+    if (!live) return;
+    const offs = [
+      qlc.subscribeTo('vc.button.stateChanged', d => { if (d && d.widgetId != null) patchStore('buttons', d.widgetId, d.state != null ? d.state : (d.active || d.pressed ? 'active' : 'inactive')); }),
+      qlc.subscribeTo('vc.slider.valueChanged', d => { if (d && d.widgetId != null && !dragging.current[d.widgetId]) patchStore('sliders', d.widgetId, Number(d.value)); }),
+      qlc.subscribeTo('vc.cueList.playbackChanged', d => { if (d && d.widgetId != null) patchStore('cueLists', d.widgetId, (c) => Object.assign({}, c, normalizePlayback(d))); }),
+      qlc.subscribeTo('vc.xyPad.positionChanged', d => { if (d && d.widgetId != null && !dragging.current['xy:' + d.widgetId]) patchStore('xy', d.widgetId, { x: normalizeXY(d.x), y: normalizeXY(d.y) }); }),
+      qlc.subscribeTo('vc.speedDial.valueChanged', d => { if (d && d.widgetId != null) patchStore('speed', d.widgetId, Number(d.ms)); }),
+      qlc.subscribeTo('vc.speedDial.currentTimeChanged', d => { if (d && d.widgetId != null) patchStore('speed', d.widgetId, Number(d.currentTimeMs != null ? d.currentTimeMs : d.ms)); }),
+      qlc.subscribeTo('functions.chaser.stepsChanged', () => { widgetsRef.current.filter(w => w.widgetType === 'CueList').forEach(w => act.cueGet(w.id)); })
+    ];
+    const framePage = d => {
+      if (!d || d.widgetId == null) return;
+      const p = d.page != null ? d.page : (d.pageIndex != null ? d.pageIndex : d.currentPage);
+      patchStore('frames', d.widgetId, (f) => Object.assign({}, f, { currentPage: Number(p) }));
+      refreshRef.current();
+    };
+    offs.push(qlc.subscribeTo('vc.frame.pageChanged', framePage), qlc.subscribeTo('vc.frame.currentPageChanged', framePage));
+    return () => offs.forEach(f => f());
+  }, [live]);
 
   React.useEffect(() => {
     const el = areaRef.current;
@@ -185,117 +211,268 @@ function VirtualConsole() {
     return () => ro.disconnect();
   }, [live]);
 
-  const canPress = live && !qlc.isUnsupported(PRESS);
-  const canSlide = live && !qlc.isUnsupported(SET_VALUE);
-  const onUnsupported = (m) => setNotice('This server has no ' + m + ' yet — Virtual Console widgets are view-only until the Control API grows live interaction.');
-  const onPress = (id, down) => {
-    setPressed(p => Object.assign({}, p, { [id]: down }));
-    qlc.client().pressButton(id, down).catch(e => { if (e.code === 'NOT_FOUND') onUnsupported(PRESS); });
-  };
-  const setSliderValue = (id, v) => {
-    setSliderValues(s => Object.assign({}, s, { [id]: v }));
-    /* Throttle a drag to ~30 updates/s per slider; last value always wins. */
-    const t = sendTimer.current[id];
-    if (t) { t.value = v; return; }
-    sendTimer.current[id] = { value: v };
-    qlc.client().setSliderValue(id, v).catch(e => { if (e.code === 'NOT_FOUND') onUnsupported(SET_VALUE); });
-    setTimeout(() => {
-      const last = sendTimer.current[id];
-      delete sendTimer.current[id];
-      if (last && last.value !== v) qlc.client().setSliderValue(id, last.value).catch(() => {});
-    }, 33);
-  };
-  const common = { qlc, sliderValues, setSliderValue, pressedMap: pressed, onPress, canPress, canSlide, onUnsupported };
+  /* --- live actions ------------------------------------------------------------------------ */
+  const act = React.useMemo(() => ({
+    press: (id, down) => qlc.call(VC_METHODS.PRESS, { widgetId: String(id), pressed: !!down }).catch(notFound(VC_METHODS.PRESS)),
+    slide: (id, v) => { patchStore('sliders', id, v); throttled('s:' + id, () => qlc.call(VC_METHODS.SET_VALUE, { widgetId: String(id), value: Math.round(v) }).catch(notFound(VC_METHODS.SET_VALUE))); },
+    sliderPress: (id, on) => { if (on) dragging.current[id] = true; else delete dragging.current[id]; },
+    cueGet: (id) => { if (qlc.isUnsupported(VC_METHODS.CUE_GET)) return; qlc.call(VC_METHODS.CUE_GET, { widgetId: String(id) }).then(r => patchStore('cueLists', id, (c) => Object.assign({}, c, normalizePlayback(r || {}), { steps: (r && r.steps) || [] }))).catch(() => {}); },
+    cuePlay: (id) => qlc.call('vc.cueList.play', { widgetId: String(id) }).catch(notFound('vc.cueList.play')),
+    cueStop: (id) => qlc.call('vc.cueList.stop', { widgetId: String(id) }).catch(notFound('vc.cueList.stop')),
+    cueNext: (id) => qlc.call('vc.cueList.next', { widgetId: String(id) }).catch(notFound('vc.cueList.next')),
+    cuePrev: (id) => qlc.call('vc.cueList.previous', { widgetId: String(id) }).catch(notFound('vc.cueList.previous')),
+    cueJump: (id, index) => qlc.call('vc.cueList.setPlaybackIndex', { widgetId: String(id), index: index, playbackIndex: index }).catch(notFound('vc.cueList.setPlaybackIndex')),
+    xySet: (id, x, y) => { dragging.current['xy:' + id] = true; patchStore('xy', id, { x, y }); throttled('xy:' + id, () => qlc.call(VC_METHODS.XY_SET, { widgetId: String(id), x: Math.round(x * 10000) / 10000, y: Math.round(y * 10000) / 10000 }).catch(notFound(VC_METHODS.XY_SET))); },
+    xyRelease: (id) => { delete dragging.current['xy:' + id]; },
+    speedSet: (id, ms) => { patchStore('speed', id, ms); qlc.call(VC_METHODS.SPEED_SET, { widgetId: String(id), ms: ms }).catch(notFound(VC_METHODS.SPEED_SET)); },
+    speedTap: (id) => qlc.call(VC_METHODS.SPEED_TAP, { widgetId: String(id) }).catch(notFound(VC_METHODS.SPEED_TAP)),
+    frameGoto: (id, p) => { patchStore('frames', id, (f) => Object.assign({}, f, { currentPage: p })); qlc.client().vc.frame.gotoPage(String(id), p).then(() => refreshRef.current()).catch(notFound(VC_METHODS.FRAME_GOTO)); }
+  }), [qlc, throttled]);
 
+  /* --- edit actions ------------------------------------------------------------------------ */
+  const byId = React.useMemo(() => { const m = {}; (widgets || []).forEach(w => { m[w.id] = w; }); return m; }, [widgets]);
+  const geometryOf = (id) => dragGeomRef.current[id] || (byId[id] && byId[id].geometry) || { x: 0, y: 0, width: 50, height: 50 };
+  const structural = (method, params) => vcStructural(qlc, method, params).catch(e => { say(method + ': ' + ((e && e.message) || 'failed')); throw e; });
+  const editApi = React.useMemo(() => ({
+    snap,
+    geometryOf,
+    selectFor: (id, additive, forResize) => {
+      let sel = selectionRef.current;
+      if (forResize) sel = [id];
+      else if (additive) sel = sel.indexOf(id) !== -1 ? sel.filter(x => x !== id) : sel.concat([id]);
+      else if (sel.indexOf(id) === -1) sel = [id];
+      selectionRef.current = sel;
+      setSelection(sel);
+      setPlacing(null);
+      if (sel.length && panel !== 'props') setPanel('props');
+      return sel.indexOf(id) !== -1 ? sel : [];
+    },
+    setDragGeom: (map) => { dragGeomRef.current = Object.assign({}, dragGeomRef.current, map); setDragGeom(dragGeomRef.current); },
+    commitDrag: () => {
+      const moved = dragGeomRef.current;
+      const ids = Object.keys(moved);
+      if (!ids.length) return;
+      editApi.reposition(ids.map(id => ({ widgetId: id, geometry: vcRoundGeom(moved[id]) })));
+    },
+    reposition: (list) => {
+      const groups = {};
+      list.forEach(x => { const p = (byId[x.widgetId] && byId[x.widgetId].parentId) || 'root'; (groups[p] = groups[p] || []).push(x); });
+      return Promise.all(Object.values(groups).map(g => structural('vc.widget.reposition', { widgets: g })))
+        .then(() => {
+          const map = {}; list.forEach(x => { map[x.widgetId] = x.geometry; });
+          setWidgets(ws => ws ? ws.map(w => map[w.id] ? Object.assign({}, w, { geometry: map[w.id] }) : w) : ws);
+          dragGeomRef.current = {}; setDragGeom({});
+        })
+        .catch(() => { dragGeomRef.current = {}; setDragGeom({}); });
+    },
+    updateWidget: (id, patch) => structural('vc.widget.update', Object.assign({ widgetId: String(id) }, patch)).then(() => {
+      if (patch.style) setWidgets(ws => ws ? ws.map(w => w.id === id ? Object.assign({}, w, { style: Object.assign({}, w.style, patch.style) }) : w) : ws);
+    }).catch(() => {}),
+    setConfig: (id, config) => structural('vc.widget.setConfig', { widgetId: String(id), config }).then(() => {
+      setWidgets(ws => ws ? ws.map(w => w.id === id ? Object.assign({}, w, { typeConfig: Object.assign({}, w.typeConfig, config) }) : w) : ws);
+    }).catch(() => {}),
+    deleteWidgets: (ids) => structural('vc.widget.delete', { widgetIds: ids.map(String) }).then(() => { setSelection([]); refreshRef.current(); }).catch(() => {}),
+    create: (params) => structural('vc.widget.create', Object.assign({ page }, params)).then(r => { refreshRef.current(); if (r && r.widgetId != null) { setSelection([String(r.widgetId)]); setPanel('props'); } return r; })
+  }), [snap, byId, page, panel, qlc]);
+
+  /** Absolute page position of a widget (geometry is parent-relative). */
+  const absoluteOf = (w) => { let x = 0, y = 0, cur = w; while (cur) { const g = dragGeom[cur.id] || cur.geometry || {}; x += g.x || 0; y += g.y || 0; cur = cur.parentId ? byId[cur.parentId] : null; } return { x, y }; };
+  const scale = React.useRef(1);
+
+  const placeAt = (e) => {
+    if (!placing || !canvasRef.current) return;
+    const r = canvasRef.current.getBoundingClientRect();
+    const px = (e.clientX - r.left) / scale.current, py = (e.clientY - r.top) / scale.current;
+    /* Deepest visible frame under the pointer becomes the parent. */
+    let parent = null, depth = -1;
+    (widgets || []).forEach(w => {
+      if ((w.widgetType !== 'Frame' && w.widgetType !== 'SoloFrame') || w.isVisible === false) return;
+      const a = absoluteOf(w), g = dragGeom[w.id] || w.geometry;
+      if (px >= a.x && py >= a.y && px <= a.x + g.width && py <= a.y + g.height) {
+        let d = 0, cur = w; while (cur && cur.parentId) { d++; cur = byId[cur.parentId]; }
+        if (d > depth) { depth = d; parent = w; }
+      }
+    });
+    const origin = parent ? absoluteOf(parent) : { x: 0, y: 0 };
+    const geometry = vcRoundGeom({ x: Math.max(0, vcSnapTo(px - origin.x, snap)), y: Math.max(0, vcSnapTo(py - origin.y, snap)), width: placing.size.width, height: placing.size.height });
+    const params = { widgetType: placing.create, geometry, style: { caption: placing.name } };
+    if (parent) params.parentId = String(parent.id);
+    if (placing.typeConfig) params.typeConfig = placing.typeConfig;
+    const item = placing;
+    setPlacing(null);
+    editApi.create(params).then(() => say(item.name + ' added')).catch(() => {});
+  };
+
+  const copySelection = () => { const items = selection.map(id => byId[id]).filter(Boolean); if (items.length) { setClipboard(items.map(w => JSON.parse(JSON.stringify(w)))); say(items.length + ' widget' + (items.length > 1 ? 's' : '') + ' copied'); } };
+  const paste = () => {
+    if (!clipboard.length) return;
+    const offset = VC_SNAP * 2;
+    Promise.all(clipboard.map(w => {
+      const params = { widgetType: w.widgetType, geometry: vcRoundGeom({ x: (w.geometry.x || 0) + offset, y: (w.geometry.y || 0) + offset, width: w.geometry.width, height: w.geometry.height }),
+        style: { caption: w.style && w.style.caption, backgroundColor: w.style && w.style.backgroundColor, foregroundColor: w.style && w.style.foregroundColor, font: w.style && w.style.font } };
+      if (w.parentId && byId[w.parentId]) params.parentId = String(w.parentId);
+      if ((w.widgetType === 'Button' || w.widgetType === 'Slider') && w.typeConfig) params.typeConfig = w.typeConfig;
+      return editApi.create(params);
+    })).then(rs => { setSelection(rs.map(r => String(r.widgetId))); say('Pasted ' + rs.length + ' widget' + (rs.length > 1 ? 's' : '') + (clipboard.some(w => w.widgetType === 'Frame' || w.widgetType === 'SoloFrame') ? ' (frame contents are not copied)' : '')); }).catch(() => {});
+  };
+
+  /* Keyboard: Delete removes, Ctrl+C / Ctrl+V copy / paste, Escape clears — edit mode only, never while typing. */
+  React.useEffect(() => {
+    const typing = () => { const el = document.activeElement; return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable); };
+    const k = (e) => {
+      if (e.ctrlKey && e.key.toLowerCase() === 'l' && live) { e.preventDefault(); if (mode === 'design') setEdit(v => !v); else say('Switch the engine to Design mode to edit the Virtual Console'); return; }
+      if (!edit || typing()) return;
+      if (e.key === 'Escape') { setPlacing(null); setSelection([]); }
+      else if (e.key === 'Delete' && selection.length) { setDialog({ kind: 'deleteWidgets' }); }
+      else if (e.ctrlKey && e.key.toLowerCase() === 'c') { e.preventDefault(); copySelection(); }
+      else if (e.ctrlKey && e.key.toLowerCase() === 'v') { e.preventDefault(); paste(); }
+    };
+    window.addEventListener('keydown', k);
+    return () => window.removeEventListener('keydown', k);
+  }, [edit, live, mode, selection, clipboard, byId]);
+
+  /* --- render ------------------------------------------------------------------------------ */
   const setMock = (id, patch) => setMockWidgets(p => p.map(w => w.id === id ? Object.assign({}, w, patch) : w));
-  const livePage = live && widgets ? buildLivePage(widgets, common) : null;
-  const scale = livePage ? (zoom === 'fit' ? Math.min(1, (areaSize.w - 24) / livePage.bounds.width, (areaSize.h - 24) / livePage.bounds.height) : Number(zoom)) : 1;
-  const interaction = live ? (qlc.isUnsupported(PRESS) || qlc.isUnsupported(SET_VALUE) ? 'view-only: server lacks ' + [qlc.isUnsupported(PRESS) ? PRESS : null, qlc.isUnsupported(SET_VALUE) ? SET_VALUE : null].filter(Boolean).join(', ') : 'buttons/sliders send vc.button.press / vc.slider.setValue') : '';
+  const canEdit = live && mode === 'design';
+  const currentPage = pages ? pages.find(p => p.index === page) : null;
+
+  let content = null, bounds = { width: 400, height: 300 };
+  if (live && widgets) {
+    const byParent = {};
+    widgets.forEach(w => { const p = w.parentId || 'root'; (byParent[p] = byParent[p] || []).push(w); });
+    Object.keys(byParent).forEach(k => byParent[k].sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0)));
+    const render = (parentKey) => (byParent[parentKey] || []).filter(w => w.isVisible !== false).map(w => {
+      const g = dragGeom[w.id] || w.geometry || { x: 0, y: 0, width: 100, height: 40 };
+      const box = { position: 'absolute', left: g.x, top: g.y, width: g.width, height: g.height, boxSizing: 'border-box', zIndex: w.zIndex || 0 };
+      /* A frame whose children start inside the 26px header band runs headerless in the desktop app. */
+      const header = !(byParent[w.id] || []).some(c => c.geometry && c.geometry.y < 26);
+      const body = <VCWidgetBody w={w} header={header}>{render(w.id)}</VCWidgetBody>;
+      return edit
+        ? <VCEditable key={w.id} w={w} box={box} selected={selection.indexOf(w.id) !== -1}>{body}</VCEditable>
+        : <div key={w.id} style={box} data-vc-widget={w.id} data-vc-type={w.widgetType}>{body}</div>;
+    });
+    content = render('root');
+    let bw = 400, bh = 300;
+    (byParent.root || []).forEach(x => { const g = dragGeom[x.id] || x.geometry || {}; bw = Math.max(bw, (g.x || 0) + (g.width || 0)); bh = Math.max(bh, (g.y || 0) + (g.height || 0)); });
+    bounds = { width: bw + 20, height: bh + 20 };
+  }
+  scale.current = live && widgets ? (zoom === 'fit' ? Math.min(1, (areaSize.w - 24) / bounds.width, (areaSize.h - 24) / bounds.height) : Number(zoom)) : 1;
+  const canvas = { width: Math.max(bounds.width, (areaSize.w - 24) / scale.current), height: Math.max(bounds.height, (areaSize.h - 24) / scale.current) };
+  const selected = selection.map(id => byId[id]).filter(Boolean);
+
+  const ctx = { qlc, live: store, act, edit, scale: scale.current, unsupported: (m) => qlc.isUnsupported(m), notice: say, editApi };
+
+  const pageEntries = live && pages ? pages.map(p => (
+    <MenuBarEntry key={p.index} entryText={p.name || 'Page ' + (p.index + 1)} checked={p.index === page} checkedColor="var(--toolbar-selection-sub)" height="100%"
+      faSource={p.hasPin ? 'fa_lock' : undefined} onClick={() => { setPage(p.index); setSelection([]); }} style={{ padding: '0 10px', fontSize: 'var(--text-size-small)', flex: 'none' }}
+      onDoubleClick={() => { if (edit) setDialog({ kind: 'renamePage', name: p.name || '' }); }}
+      title={'Page ' + (p.index + 1) + (p.hasPin ? ' (PIN protected in the desktop app)' : '') + (edit ? ' — double-click to rename' : '')} />
+  )) : null;
+
+  const glyphButton = (glyph, tooltip, disabled, onClick) => (
+    <IconButton faSource={glyph} size={26} tooltip={tooltip} disabled={disabled} onClick={onClick} />
+  );
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
-      <ViewToolbar variant="sub">
-        <ShortcutHint keys="Ctrl L" placement="corner">
-          <IconButton imgSource={edit ? D.icon('unlock') : D.icon('lock')} size={26} checked={edit}
-            onClick={() => setEdit(!edit)} tooltip={edit ? 'Lock editing' : 'Unlock editing (layout editing is not available in the web UI yet)'} />
-        </ShortcutHint>
-        <IconButton imgSource={D.icon('frame')} size={26} tooltip="Add frame — not available in the web UI yet" disabled />
-        <IconButton imgSource={D.icon('button')} size={26} tooltip="Add button — not available in the web UI yet" disabled />
-        <IconButton imgSource={D.icon('slider')} size={26} tooltip="Add slider — not available in the web UI yet" disabled />
-        <IconButton imgSource={D.icon('xypad')} size={26} tooltip="Add XY pad — not available in the web UI yet" disabled />
-        <IconButton imgSource={D.icon('network')} size={26} disabled={!live}
-          tooltip={live ? 'Reload pages and widgets from the desk' : 'Not connected'}
-          onClick={() => { qlc.call('vc.page.list').then(r => setPages(r.pages || [])).catch(() => {}); qlc.call('vc.widget.list', { page }).then(r => setWidgets(r.widgets || [])).catch(() => {}); }} />
-        {live ? (
-          <CustomComboBox width={90} height={26} currValue={zoom} onValueChanged={setZoom}
-            model={[{ mLabel: 'Fit', mValue: 'fit' }, { mLabel: '50%', mValue: '0.5' }, { mLabel: '75%', mValue: '0.75' }, { mLabel: '100%', mValue: '1' }]} />
-        ) : null}
-        <ToolbarSpacer />
-        <RobotoText label={live ? (widgets ? widgets.length + ' widgets on this page · ' + interaction : 'Loading…') : 'Offline — local preview'} fontSize={14}
-          labelColor={live ? (qlc.isUnsupported(PRESS) ? 'var(--selection)' : 'var(--check-lime)') : 'var(--fg-medium)'} />
-      </ViewToolbar>
-
-      {live && pages ? (
-        <div style={{ display: 'flex', gap: 2, padding: '4px 6px 0', background: 'var(--bg-strong)', borderBottom: 'var(--border-dark)', overflowX: 'auto', flex: 'none' }}>
-          {pages.map(p => (
-            <button key={p.index} type="button" onClick={() => setPage(p.index)} title={'Page ' + (p.index + 1) + (p.hasPin ? ' (PIN protected in the desktop app)' : '')}
-              style={{ flex: 'none', height: 26, padding: '0 10px', cursor: 'pointer', border: 'var(--border-control)', borderBottom: 'none',
-                background: p.index === page ? 'var(--highlight)' : 'var(--bg-control)', color: 'var(--fg-main)', font: '400 13px var(--font-roboto)', whiteSpace: 'nowrap' }}>
-              {p.hasPin ? '🔒 ' : ''}{p.name || 'Page ' + (p.index + 1)}
-            </button>
-          ))}
-        </div>
-      ) : null}
-      {notice ? (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px', background: 'var(--bg-strong)', borderBottom: '2px solid var(--selection)', flex: 'none' }}>
-          <RobotoText label={notice} fontSize={13} labelColor="var(--selection)" wrapText height="auto" style={{ flex: 1 }} />
-          <GenericButton label="Dismiss" width={80} height={22} fontSize={12} onClick={() => setNotice('')} />
-        </div>
-      ) : null}
-
-      <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-        <div ref={areaRef} style={{ flex: 1, minWidth: 0, overflow: 'auto', padding: 12, background: 'var(--bg-medium)', position: 'relative' }}>
-          {live ? (
-            livePage ? (
-              <div style={{ width: livePage.bounds.width * scale, height: livePage.bounds.height * scale, position: 'relative' }}>
-                <div style={{ position: 'absolute', left: 0, top: 0, width: livePage.bounds.width, height: livePage.bounds.height, transform: 'scale(' + scale + ')', transformOrigin: '0 0',
-                  background: 'var(--bg-stronger)', border: edit ? '2px dashed var(--bg-light)' : 'var(--border-control)' }}>
-                  {livePage.content}
-                  {!widgets.length ? <div style={{ padding: 20 }}><RobotoText label="This page has no widgets." fontSize={14} labelColor="var(--fg-medium)" /></div> : null}
-                </div>
-              </div>
-            ) : <RobotoText label="Loading widgets…" fontSize={14} labelColor="var(--fg-medium)" />
-          ) : (
-            <div style={{ display: 'inline-flex', flexDirection: 'column', gap: 10, padding: 10, border: edit ? '2px dashed var(--bg-light)' : 'var(--border-control)', background: 'var(--bg-stronger)' }}>
-              <RobotoText label="Main frame (mock)" fontSize={14} labelColor="var(--fg-medium)" height={20} />
-              <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                {mockWidgets.filter(w => w.kind === 'slider').map(w => (
-                  <VCSlider key={w.id} w={w} onChange={v => setMock(w.id, { value: v })} />
-                ))}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,auto)', gap: 6, alignContent: 'start' }}>
-                  {mockWidgets.filter(w => w.kind === 'button').map(w => (
-                    <VCButton key={w.id} w={w} onToggle={() => setMock(w.id, { on: !w.on })} />
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <SidePanel isOpen={panel} alignment="right" rail={
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: 4 }}>
-            <IconButton imgSource={D.icon('sliders')} checked={panel} onClick={() => setPanel(!panel)} tooltip="Grand Master" />
-            <IconButton imgSource={D.icon('configure')} disabled tooltip="Widget properties — not available in the web UI yet" />
-            <IconButton imgSource={D.icon('keybinding')} disabled tooltip="Key bindings — not available in the web UI yet" />
-          </div>}>
-          <div>
-            <SectionBox sectionLabel="Grand Master" isExpanded>
-              <GrandMaster qlc={qlc} />
-            </SectionBox>
+    <VCContext.Provider value={ctx}>
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, position: 'relative' }}>
+        <ViewToolbar variant="sub">
+          <div style={{ display: 'flex', alignItems: 'stretch', height: '100%', flex: '1 1 auto', minWidth: 0, overflowX: 'auto', overflowY: 'hidden', scrollbarWidth: 'none' }}>
+            {pageEntries}
+            {live && pages && !pages.length ? <RobotoText label="No pages" fontSize="var(--text-size-small)" labelColor="var(--fg-medium)" leftMargin={6} /> : null}
           </div>
-        </SidePanel>
+          {edit ? (
+            <>
+              {glyphButton('fa_plus', 'Add page', !live, () => structural('vc.page.create', { index: pages ? pages.length : 0 }).catch(() => {}))}
+              <IconButton imgSource={D.icon('rename')} size={26} tooltip="Rename page" disabled={!currentPage} onClick={() => setDialog({ kind: 'renamePage', name: currentPage ? currentPage.name || '' : '' })} />
+              {glyphButton('fa_trash_can', 'Delete page', !currentPage || (pages && pages.length < 2), () => setDialog({ kind: 'deletePage' }))}
+              <span style={{ width: 1, alignSelf: 'stretch', margin: '6px 2px', background: 'var(--border-color-dark)' }} />
+              {glyphButton(VC_GLYPH.copy, 'Copy the selected widgets to clipboard', !selection.length, copySelection)}
+              {glyphButton(VC_GLYPH.paste, 'Paste widgets from clipboard', !clipboard.length, paste)}
+              {glyphButton('fa_trash_can', 'Remove the selected widgets', !selection.length, () => setDialog({ kind: 'deleteWidgets' }))}
+              <IconButton imgSource={D.icon('grid')} size={26} checked={snap} tooltip="Enable/Disable widgets snapping" onClick={() => setSnap(!snap)} />
+            </>
+          ) : null}
+          <ShortcutHint keys="Ctrl L" placement="corner">
+            <IconButton imgSource={D.icon('edit')} size={26} checked={edit} disabled={!canEdit}
+              onClick={() => setEdit(!edit)} tooltip={!live ? 'Enable/Disable the widgets edit mode — connect first' : mode !== 'design' ? 'Enable/Disable the widgets edit mode — Design mode only' : 'Enable/Disable the widgets edit mode'} />
+          </ShortcutHint>
+          {live ? (
+            <CustomComboBox width={84} height={26} currValue={zoom} onValueChanged={setZoom}
+              model={[{ mLabel: 'Fit', mValue: 'fit' }, { mLabel: '50%', mValue: '0.5' }, { mLabel: '75%', mValue: '0.75' }, { mLabel: '100%', mValue: '1' }, { mLabel: '150%', mValue: '1.5' }]} />
+          ) : null}
+          <IconButton imgSource={D.icon('network')} size={26} disabled={!live} tooltip={live ? 'Reload pages and widgets from the desk' : 'Not connected'}
+            onClick={() => { qlc.call('vc.page.list').then(r => setPages(r.pages || [])).catch(() => {}); refreshRef.current(); }} />
+        </ViewToolbar>
+
+        <VCNotice text={notice} onDismiss={() => setNotice('')} />
+
+        <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+          <div ref={areaRef} style={{ flex: 1, minWidth: 0, overflow: 'auto', padding: 12, background: 'var(--bg-medium)', position: 'relative' }}>
+            {live ? (
+              widgets ? (
+                <div style={{ width: canvas.width * scale.current, height: canvas.height * scale.current, position: 'relative' }}>
+                  <div ref={canvasRef} onClick={placing ? placeAt : undefined}
+                    onPointerDown={(e) => { if (edit && !placing && e.target === e.currentTarget) setSelection([]); }}
+                    style={{ position: 'absolute', left: 0, top: 0, width: canvas.width, height: canvas.height, transform: 'scale(' + scale.current + ')', transformOrigin: '0 0',
+                      background: 'var(--bg-stronger)', border: edit ? '2px dashed var(--bg-light)' : 'var(--border-control)', cursor: placing ? 'crosshair' : 'default',
+                      backgroundImage: edit && snap ? 'linear-gradient(to right, var(--bg-strong) 1px, transparent 1px), linear-gradient(to bottom, var(--bg-strong) 1px, transparent 1px)' : 'none',
+                      backgroundSize: VC_SNAP * 4 + 'px ' + VC_SNAP * 4 + 'px' }}>
+                    {content}
+                    {!widgets.length && !placing ? <div style={{ padding: 20, pointerEvents: 'none' }}><RobotoText label={edit ? 'This page has no widgets — pick one from the palette' : 'This page has no widgets'} fontSize={14} labelColor="var(--fg-medium)" /></div> : null}
+                  </div>
+                </div>
+              ) : <RobotoText label="Loading widgets…" fontSize={14} labelColor="var(--fg-medium)" />
+            ) : (
+              <div style={{ display: 'inline-flex', flexDirection: 'column', gap: 10, padding: 10, border: 'var(--border-control)', background: 'var(--bg-stronger)' }}>
+                <RobotoText label="Main frame (mock)" fontSize={14} labelColor="var(--fg-medium)" height={20} />
+                <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                  {mockWidgets.filter(w => w.kind === 'slider').map(w => (
+                    <VCSlider key={w.id} w={w} onChange={v => setMock(w.id, { value: v })} />
+                  ))}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,auto)', gap: 6, alignContent: 'start' }}>
+                    {mockWidgets.filter(w => w.kind === 'button').map(w => (
+                      <VCButton key={w.id} w={w} onToggle={() => setMock(w.id, { on: !w.on })} />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <SidePanel isOpen={panel != null} alignment="right" expandedWidth={panel === 'props' ? 300 : 'var(--side-panel-width)'} rail={
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: 4 }}>
+              <IconButton imgSource={D.icon('sliders')} checked={panel === 'gm'} onClick={() => setPanel(panel === 'gm' ? null : 'gm')} tooltip="Grand Master" />
+              <IconButton faSource="fa_plus" checked={panel === 'palette'} disabled={!edit} onClick={() => setPanel(panel === 'palette' ? null : 'palette')} tooltip={edit ? 'Add a new widget to the console' : 'Add a new widget to the console — enable edit mode first'} />
+              <IconButton imgSource={D.icon('configure')} checked={panel === 'props'} disabled={!edit} onClick={() => setPanel(panel === 'props' ? null : 'props')} tooltip={edit ? 'Widget properties' : 'Widget properties — enable edit mode first'} />
+            </div>}>
+            <div>
+              {panel === 'gm' ? <SectionBox sectionLabel="Grand Master" isExpanded><GrandMaster qlc={qlc} /></SectionBox> : null}
+              {panel === 'palette' ? <SectionBox sectionLabel="Widgets" isExpanded><VCWidgetPalette placing={placing} onPick={(p) => { setPlacing(p); if (p) setSelection([]); }} /></SectionBox> : null}
+              {panel === 'props' ? <SectionBox sectionLabel="Widget properties" isExpanded><VCWidgetProperties widgets={selected} functions={functions} /></SectionBox> : null}
+            </div>
+          </SidePanel>
+        </div>
+
+        <CustomPopupDialog open={!!dialog && dialog.kind === 'renamePage'} title="Rename page" width={360} standardButtons={['Cancel', 'Rename']}
+          onClose={() => setDialog(null)}
+          onClicked={(b) => { if (b === 'Rename' && currentPage && dialog.name.trim()) structural('vc.page.rename', { index: currentPage.index, name: dialog.name.trim() }).catch(() => {}); setDialog(null); }}>
+          <span style={{ display: 'flex', alignItems: 'center', height: 26, background: 'var(--bg-control)', border: '1px solid var(--spin-border)', borderRadius: 'var(--radius-spin)', padding: '0 5px' }}>
+            <CustomTextInput text={dialog ? dialog.name : ''} editing autoFocus width="100%" height={22} onChange={(e) => setDialog(d => Object.assign({}, d, { name: e.target.value }))}
+              onTextConfirmed={(t) => setDialog(d => d ? Object.assign({}, d, { name: t }) : d)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && currentPage && e.target.value.trim()) { structural('vc.page.rename', { index: currentPage.index, name: e.target.value.trim() }).catch(() => {}); setDialog(null); } }} />
+          </span>
+        </CustomPopupDialog>
+        <CustomPopupDialog open={!!dialog && dialog.kind === 'deletePage'} title="Delete page" width={380} standardButtons={['Cancel', 'Delete']}
+          message={currentPage ? 'Are you sure you want to delete the page "' + (currentPage.name || 'Page ' + (currentPage.index + 1)) + '" and every widget on it?' : ''}
+          onClose={() => setDialog(null)}
+          onClicked={(b) => { if (b === 'Delete' && currentPage) structural('vc.page.delete', { index: currentPage.index }).then(() => setPage(0)).catch(() => {}); setDialog(null); }} />
+        <CustomPopupDialog open={!!dialog && dialog.kind === 'deleteWidgets'} title="Remove widgets" width={380} standardButtons={['Cancel', 'Remove']}
+          message={'Are you sure you want to remove the selected widget' + (selection.length > 1 ? 's' : '') + '? Frames are removed with their contents.'}
+          onClose={() => setDialog(null)}
+          onClicked={(b) => { if (b === 'Remove' && selection.length) editApi.deleteWidgets(selection); setDialog(null); }} />
       </div>
-    </div>
+    </VCContext.Provider>
   );
 }
 Object.assign(window, { VirtualConsole, VCSlider, VCButton });
