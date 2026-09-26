@@ -338,6 +338,20 @@ bool applySliderConfig(VCSlider *s, const QJsonObject &patch, QString *error)
     }
     if (patch.contains(QStringLiteral("catchValues")))
         s->setCatchValues(patch.value(QStringLiteral("catchValues")).toBool());
+    // The limits are DMX values: the on-screen editor's spin boxes confine them to 0..255, and
+    // vcSliderSetValue() below rounds them to int (undefined behaviour for something like 1e300),
+    // so refuse anything the UI itself could not have produced instead of storing it.
+    for (const QString &key : { QStringLiteral("rangeLowLimit"), QStringLiteral("rangeHighLimit") })
+    {
+        if (patch.contains(key) == false)
+            continue;
+        QJsonValue v = patch.value(key);
+        if (v.isDouble() == false || v.toDouble() < 0.0 || v.toDouble() > 255.0)
+        {
+            if (error) *error = QStringLiteral("%1 must be a number 0..255").arg(key);
+            return false;
+        }
+    }
     if (patch.contains(QStringLiteral("rangeLowLimit")))
         s->setRangeLowLimit(patch.value(QStringLiteral("rangeLowLimit")).toDouble());
     if (patch.contains(QStringLiteral("rangeHighLimit")))
