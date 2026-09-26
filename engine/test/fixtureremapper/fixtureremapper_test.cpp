@@ -23,6 +23,7 @@
 #define private public
 #include "mastertimer_stub.h"
 #include "fixtureremapper.h"
+#include "qlcfixturedefcache.h"
 #include "monitorproperties.h"
 #include "channelmodifier.h"
 #include "qlcfixturemode.h"
@@ -454,11 +455,13 @@ void FixtureRemapper_Test::testAutoConnectNullAndUntyped()
     QVERIFY(remapper.targetList().isEmpty());
 
     // Two fixtures without any definition: a bare channel count is all they
-    // have, which still qualifies for a direct index mapping
+    // have, which still qualifies for a direct index mapping. setChannels()
+    // would build a generic dimmer definition, so poke the count in directly.
     Fixture src(this);
-    src.setChannels(3);
+    src.m_channels = 3;
     Fixture tgt(this);
-    tgt.setChannels(2);
+    tgt.m_channels = 2;
+    QVERIFY(src.fixtureDef() == nullptr && src.fixtureMode() == nullptr);
 
     src.setChannelCanFade(1, false);
     ChannelModifier mod;
@@ -483,7 +486,8 @@ void FixtureRemapper_Test::testAutoConnectMixedTyped()
     Fixture *typed = buildMovingHead(&srcDoc, 0, "MH", "M1");
 
     Fixture bare(this);
-    bare.setChannels(3);
+    bare.m_channels = 3;
+    QVERIFY(bare.fixtureDef() == nullptr);
 
     // Without a definition on one side there is nothing to match against:
     // neither direction produces a single pair
@@ -587,6 +591,12 @@ void FixtureRemapper_Test::testApplyRemapEFX()
     Fixture *tgt = buildMovingHead(&targetDoc, 20, "MH", "M1");
     quint32 tgtId = tgt->id();
     QVERIFY(tgtId != tgtDimmer->id());
+
+    // Doc::replaceFixtures() re-resolves every non-generic definition through
+    // the doc's fixture cache: without this the remapped moving head would
+    // end up with no definition, and therefore no pan/tilt channels
+    QVERIFY(m_doc->fixtureDefCache()->addFixtureDef(
+                const_cast<QLCFixtureDef*>(tgt->fixtureDef())) == true);
 
     EFX *efx = new EFX(m_doc);
     EFXFixture *ef = new EFXFixture(efx);
