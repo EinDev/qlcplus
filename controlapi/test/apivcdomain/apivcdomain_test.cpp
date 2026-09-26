@@ -1148,6 +1148,15 @@ void ApiVcDomain_Test::liveCueListSetPlaybackIndexValidatesRange()
     QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.cueList.setPlaybackIndex"), widgetParams(cueListId, str), QStringLiteral("t-sps"))), QStringLiteral("INVALID_PARAMS"));
     QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.cueList.setPlaybackIndex"), widgetParams(cueListId), QStringLiteral("t-spm"))), QStringLiteral("INVALID_PARAMS"));
 
+    // Unknown widget / wrong widget type, for the transport methods not covered in liveCueListTransportAndGet
+    QString buttonId = createWidget(QStringLiteral("Button"));
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.cueList.setPlaybackIndex"), widgetParams(QStringLiteral("777"), idx), QStringLiteral("t-spnf"))), QStringLiteral("NOT_FOUND"));
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.cueList.setPlaybackIndex"), widgetParams(buttonId, idx), QStringLiteral("t-spwt"))), QStringLiteral("INVALID_PARAMS"));
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.cueList.next"), widgetParams(QStringLiteral("777")), QStringLiteral("t-nxnf"))), QStringLiteral("NOT_FOUND"));
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.cueList.next"), widgetParams(buttonId), QStringLiteral("t-nxwt"))), QStringLiteral("INVALID_PARAMS"));
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.cueList.previous"), widgetParams(QStringLiteral("777")), QStringLiteral("t-pvnf"))), QStringLiteral("NOT_FOUND"));
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.cueList.previous"), widgetParams(buttonId), QStringLiteral("t-pvwt"))), QStringLiteral("INVALID_PARAMS"));
+
     // The spec's original "playbackIndex" spelling is accepted as an alias
     QJsonObject alias; alias.insert(QStringLiteral("playbackIndex"), 1);
     QCOMPARE(sendAndWaitForReply(QStringLiteral("vc.cueList.setPlaybackIndex"), widgetParams(cueListId, alias), QStringLiteral("t-spa")).value(QStringLiteral("ok")).toBool(), true);
