@@ -482,7 +482,11 @@ void ApiCoreDomain::registerMethods()
         if (hasBpm)
         {
             QJsonValue bpmValue = params.value(QStringLiteral("bpm"));
-            bpm = bpmValue.isDouble() ? qRound(bpmValue.toDouble()) : -1;
+            // Range-check the double itself before rounding: qRound() on a
+            // value outside int's range (1e300) is undefined behaviour, so
+            // the int comparison below could not be relied on to catch it.
+            double bpmDouble = bpmValue.isDouble() ? bpmValue.toDouble() : -1.0;
+            bpm = (bpmDouble >= 0.0 && bpmDouble <= double(BPM_MAX)) ? qRound(bpmDouble) : -1;
             if (bpm < 0 || bpm > BPM_MAX)
             {
                 session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams,

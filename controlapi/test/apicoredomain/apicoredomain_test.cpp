@@ -261,6 +261,18 @@ void ApiCoreDomain_Test::bpmSetRejectsOutOfRangeAndEmptyParams()
     // Nothing was touched by the rejected call
     QCOMPARE(m_doc->inputOutputMap()->beatGeneratorType(), InputOutputMap::Disabled);
 
+    // Values outside int's range must be rejected the same way, not rounded
+    // first (qRound on 1e300 is undefined behaviour).
+    for (double bad : { 1e300, -1e300, -5.0 })
+    {
+        QJsonObject huge;
+        huge.insert(QStringLiteral("bpm"), bad);
+        reply = sendAndWaitForReply(QStringLiteral("core.bpm.set"), huge);
+        QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+        QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("INVALID_PARAMS"));
+        QCOMPARE(m_doc->inputOutputMap()->beatGeneratorType(), InputOutputMap::Disabled);
+    }
+
     reply = sendAndWaitForReply(QStringLiteral("core.bpm.set"), QJsonObject());
     QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
     QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("INVALID_PARAMS"));
