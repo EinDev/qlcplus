@@ -1612,14 +1612,14 @@ void Fixture_Test::saveLoadOptionalParts()
     fxi.setAddress(508);
     fxi.setCrossUniverse(true);
     fxi.setExcludeFadeChannels(QList<int>() << 0 << 2);
-    fxi.setForcedHTPChannels(QList<int>() << 1);
+    fxi.setForcedHTPChannels(QList<int>() << 1 << 2);
     fxi.setForcedLTPChannels(QList<int>() << 3 << 4);
     fxi.setChannelModifier(5, mod);
 
     QByteArray xml = writeFixture(fxi);
     QVERIFY(xml.contains("<CrossUniverse>True</CrossUniverse>"));
     QVERIFY(xml.contains("<ExcludeFade>0,2</ExcludeFade>"));
-    QVERIFY(xml.contains("<ForcedHTP>1</ForcedHTP>"));
+    QVERIFY(xml.contains("<ForcedHTP>1,2</ForcedHTP>"));
     QVERIFY(xml.contains("<ForcedLTP>3,4</ForcedLTP>"));
     QVERIFY(xml.contains("<Modifier Channel=\"5\" Name=\"SaveMod\"/>"));
 
@@ -1636,7 +1636,7 @@ void Fixture_Test::saveLoadOptionalParts()
     QCOMPARE(loaded.fixtureDef()->manufacturer(), QString(KXMLFixtureGeneric));
     QCOMPARE(loaded.fixtureDef()->model(), QString(KXMLFixtureGeneric));
     QCOMPARE(loaded.excludeFadeChannels(), QList<int>() << 0 << 2);
-    QCOMPARE(loaded.forcedHTPChannels(), QList<int>() << 1);
+    QCOMPARE(loaded.forcedHTPChannels(), QList<int>() << 1 << 2);
     QCOMPARE(loaded.forcedLTPChannels(), QList<int>() << 3 << 4);
     QCOMPARE(loaded.channelModifier(5), mod);
     QVERIFY(loaded.channelModifier(0) == NULL);
