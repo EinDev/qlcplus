@@ -27,6 +27,9 @@
 #include "doc.h"
 #include "apiprojecthost.h"
 #include "apivchost.h"
+// Full definition, not a forward declaration: moc registers the VCWidget* parameter of the
+// slotVcWidgetRegistered() slot, which needs a complete type (same trap as apidispatcher.h).
+#include "virtualconsole/vcwidget.h"
 
 class MainView2D;
 class ShowManager;
@@ -38,7 +41,6 @@ class FixtureManager;
 class PaletteManager;
 class ContextManager;
 class VirtualConsole;
-class VCWidget;
 class FunctionManager;
 class QXmlStreamReader;
 class FixtureGroupEditor;
@@ -47,6 +49,7 @@ class InputOutputManager;
 class ImportManager;
 class NetworkManager;
 class ApiServer;
+class WebServer;
 class VideoProvider;
 class FixtureEditor;
 class StageWizard;
@@ -280,6 +283,7 @@ private:
     VideoProvider *m_videoProvider;
     NetworkManager *m_networkManager;
     ApiServer *m_apiServer;
+    WebServer *m_webServer;
     UiManager *m_uiManager;
     StageWizard *m_stageWizard;
     Tardis *m_tardis;
@@ -302,6 +306,10 @@ public:
 
     /** Return the WebSocket control API server instance (docs/api-spec/) */
     ApiServer *apiServer() const;
+
+    /** Return the HTTP server that serves the browser-based web UI
+     *  (docs/webui.md); started by main.cpp behind --webui */
+    WebServer *webServer() const;
 
     /** Return if the current Doc instance has been loaded */
     bool docLoaded();
@@ -562,9 +570,42 @@ public:
     bool vcReparentWidget(quint32 id, quint32 newParentId, QPointF newTopLeft, QString *error) override;
     void vcRepositionWidgets(const QList<QPair<quint32, QJsonObject> > &updates) override;
 
+    // Live interaction (vc.button.press, vc.slider.setValue, vc.cueList.*, vc.xyPad.setPosition,
+    // vc.speedDial.*, vc.frame.gotoPage/get) - see apivchost.h for each method's contract.
+    void vcSetLiveListener(ApiVcLiveListener *listener) override;
+    bool vcButtonPress(quint32 id, bool pressed, QString *error) override;
+    bool vcSliderSetValue(quint32 id, int value, QString *error) override;
+    bool vcCueListAction(quint32 id, CueListAction action, QString *error) override;
+    bool vcCueListSetPlaybackIndex(quint32 id, int index, QString *error) override;
+    QJsonObject vcCueListSnapshot(quint32 id) const override;
+    bool vcXyPadSetPosition(quint32 id, double x, double y, QString *error) override;
+    bool vcSpeedDialSetValue(quint32 id, int ms, QString *error) override;
+    bool vcSpeedDialTap(quint32 id, QString *error) override;
+    bool vcFrameGotoPage(quint32 id, int page, QString *error) override;
+    QJsonObject vcFrameSnapshot(quint32 id) const override;
+
+protected slots:
+    /** VirtualConsole::widgetRegistered() - hooks the per-type live-state signals of every widget
+     *  that enters the VC (created, loaded, pasted) to the slotVc*Changed() slots below. */
+    void slotVcWidgetRegistered(VCWidget *widget);
+
+    // Per-widget live-state relays: each reads sender() to identify the widget and forwards the new
+    // state to m_vcLiveListener (if any). Always run on the GUI thread - engine-thread emitters reach
+    // the widgets through queued connections already.
+    void slotVcButtonStateChanged(int state);
+    void slotVcSliderValueChanged(int value);
+    void slotVcCueListPlaybackChanged();
+    void slotVcXyPadPositionChanged();
+    void slotVcSpeedDialTimeChanged();
+    void slotVcFramePageChanged(int page);
+
 private:
     /** Resolve a VC widget id to its live VCWidget instance via m_virtualConsole->widget(id), or
      *  nullptr if not found - used by every ApiVcHost widget method above. */
     VCWidget *vcFindWidget(quint32 id) const;
+
+    /** The control API's live-event receiver (ApiVcDomain), or nullptr while none is attached. Not
+     *  owned. */
+    ApiVcLiveListener *m_vcLiveListener = nullptr;
 };
 #endif // APP_H

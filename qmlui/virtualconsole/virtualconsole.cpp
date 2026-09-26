@@ -545,6 +545,7 @@ void VirtualConsole::addWidgetToMap(VCWidget* widget)
         if (!m_widgetsMap.contains(widget->id()))
         {
             m_widgetsMap.insert(widget->id(), widget);
+            emit widgetRegistered(widget);
             return;
         }
 
@@ -564,6 +565,7 @@ void VirtualConsole::addWidgetToMap(VCWidget* widget)
     qDebug() << Q_FUNC_INFO << "id=" << wid;
     widget->setID(wid);
     m_widgetsMap.insert(wid, widget);
+    emit widgetRegistered(widget);
 }
 
 void VirtualConsole::removeWidgetFromMap(VCWidget *widget)
@@ -1577,6 +1579,12 @@ bool VirtualConsole::handleKeyEvent(QKeyEvent *e, bool pressed)
                                            Q_ARG(QVariant, collidingAction));
             }
         }
+
+        /** Unmap the previous key sequence of this control (if any) from the
+         *  VC pages first, otherwise the old entry would be left behind and
+         *  the widget would receive the key event once per stale copy */
+        for (VCPage *page : m_pages) // C++11
+            page->unMapKeySequence(m_autoDetectionKey, m_autoDetectionKeyId, m_autoDetectionWidget, true);
 
         m_autoDetectionWidget->updateKeySequence(m_autoDetectionKey, seq, m_autoDetectionKeyId);
 

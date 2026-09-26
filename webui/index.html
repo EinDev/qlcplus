@@ -1,0 +1,36 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>QLC+ 5 — Workspace</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="assets/icons/qlcplus.svg" type="image/svg+xml">
+<link rel="stylesheet" href="styles.css">
+<!-- Fully offline: React, ReactDOM and Babel standalone are vendored, no CDN. Babel compiles the
+     type="text/babel" screens below in the browser; there is deliberately no Node build step. -->
+<script src="vendor/react.production.min.js"></script>
+<script src="vendor/react-dom.production.min.js"></script>
+<script src="vendor/babel.min.js"></script>
+<!-- Compiled design-system component bundle (window.PatchDesignSystem_5432c9). It also carries stale
+     compiled copies of the screens below; those get overwritten by the real files that load after it,
+     so keep this load order. -->
+<script src="_ds_bundle.js"></script>
+<!-- Control API client: transport first, then one namespace per spec domain (qlc.core, qlc.io, ...). -->
+<script src="api/qlcplus-api.js"></script>
+<script src="api/domains/core.js"></script>
+<script src="api/domains/fixtures.js"></script>
+<script src="api/domains/fixturedefs.js"></script>
+<script src="api/domains/functions-core.js"></script>
+<script src="api/domains/functions-advanced.js"></script>
+<script src="api/domains/io.js"></script>
+<script src="api/domains/palette.js"></script>
+<script src="api/domains/virtualconsole.js"></script>
+<script src="data.js"></script>
+<style>html,body{height:100%;margin:0;overflow:hidden}#root{height:100vh}</style>
+</head><body>
+<div id="root"></div>
+<script type="text/babel" src="Connection.jsx"></script>
+<script type="text/babel" src="FixturesFunctions.jsx"></script>
+<script type="text/babel" src="SimpleDesk.jsx"></script>
+<script src="io/keypad-parser.js"></script>
+<script type="text/babel" src="VirtualConsole.jsx"></script>
+<script type="text/babel" src="InputOutput.jsx"></script>
+<script type="text/babel" src="App.jsx"></script>
+<script type="text/babel" data-presets="react">ReactDOM.createRoot(document.getElementById('root')).render(<AppRoot />);</script>
+</body></html>

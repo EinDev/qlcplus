@@ -15,6 +15,7 @@
   limitations under the License.
 */
 
+#include <QDateTime>
 #include <QJsonArray>
 #include <QJsonValue>
 #include <QSet>
@@ -22,11 +23,13 @@
 #include "fakevchost.h"
 
 const QStringList FakeVcHost::ContainerWidgetTypes = { QStringLiteral("Frame"), QStringLiteral("SoloFrame") };
+const int FakeVcHost::FakeCueListStepCount = 3;
 
 FakeVcHost::FakeVcHost(QObject *parent)
     : QObject(parent)
     , m_selectedPage(0)
     , m_nextWidgetId(0)
+    , m_liveListener(nullptr)
 {
     // At least one page always exists - mirrors VirtualConsole's own invariant (see
     // VirtualConsole::deletePage()'s refusal to go below one).
@@ -106,7 +109,53 @@ QJsonObject FakeVcHost::widgetSummaryToJson(const VcWidgetState &w) const
     obj.insert(QStringLiteral("isDisabled"), w.isDisabled);
     obj.insert(QStringLiteral("isVisible"), w.isVisible);
     obj.insert(QStringLiteral("style"), styleToJson(w));
+    appendLiveStateToJson(w, obj);
     return obj;
+}
+
+void FakeVcHost::appendLiveStateToJson(const VcWidgetState &w, QJsonObject &obj) const
+{
+    // Same additive, type-dependent live fields qmlui's App::vcWidgetSnapshot() exposes - see
+    // VcWidgetSummary in docs/api-spec/fragments/virtualconsole.yaml.
+    const QString &t = w.widgetType;
+    if (t == QStringLiteral("Button"))
+    {
+        obj.insert(QStringLiteral("state"), w.buttonState);
+    }
+    else if (t == QStringLiteral("Slider"))
+    {
+        obj.insert(QStringLiteral("value"), w.sliderValue);
+        obj.insert(QStringLiteral("min"), w.typeConfig.value(QStringLiteral("rangeLowLimit")).toDouble(0.0));
+        obj.insert(QStringLiteral("max"), w.typeConfig.value(QStringLiteral("rangeHighLimit")).toDouble(255.0));
+    }
+    else if (t == QStringLiteral("CueList"))
+    {
+        obj.insert(QStringLiteral("playbackIndex"), w.playbackIndex);
+        obj.insert(QStringLiteral("running"), w.running);
+        obj.insert(QStringLiteral("paused"), w.paused);
+    }
+    else if (t == QStringLiteral("XYPad"))
+    {
+        obj.insert(QStringLiteral("x"), w.x);
+        obj.insert(QStringLiteral("y"), w.y);
+    }
+    else if (t == QStringLiteral("Speed"))
+    {
+        obj.insert(QStringLiteral("ms"), w.speedMs);
+    }
+    else if (ContainerWidgetTypes.contains(t))
+    {
+        obj.insert(QStringLiteral("currentPage"), w.currentPage);
+        obj.insert(QStringLiteral("pages"), frameTotalPages(w));
+        obj.insert(QStringLiteral("multipage"), w.typeConfig.value(QStringLiteral("multiPageMode")).toBool(false));
+    }
+}
+
+int FakeVcHost::frameTotalPages(const VcWidgetState &w)
+{
+    // VCFrame::totalPagesNumber() defaults to 1 and is what gotoPage() range-checks against, whether
+    // or not multiPageMode is on.
+    return qMax(1, w.typeConfig.value(QStringLiteral("totalPagesNumber")).toInt(1));
 }
 
 QJsonObject FakeVcHost::widgetDetailToJson(const VcWidgetState &w) const
@@ -422,4 +471,327 @@ void FakeVcHost::vcRepositionWidgets(const QList<QPair<quint32, QJsonObject> > &
         if (it != m_widgets.end())
             it.value().geometry = geometryFromJson(pair.second);
     }
+}
+
+/*****************************************************************************
+ * Widgets - live interaction
+ *****************************************************************************/
+
+void FakeVcHost::vcSetLiveListener(ApiVcLiveListener *listener)
+{
+    m_liveListener = listener;
+}
+
+void FakeVcHost::notifyCueListPlayback(const VcWidgetState &w) const
+{
+    if (m_liveListener != nullptr)
+        m_liveListener->vcCueListPlaybackChanged(w.id, w.playbackIndex, w.running, w.paused);
+}
+
+bool FakeVcHost::vcButtonPress(quint32 id, bool pressed, QString *error)
+{
+    auto it = m_widgets.find(id);
+    if (it == m_widgets.end())
+        return false;
+    VcWidgetState &w = it.value();
+
+    // Mirrors App::vcButtonPress() / VCButton::requestStateChange(): Flash follows both edges, every
+    // other action type acts on the down-edge only.
+    QString action = w.typeConfig.value(QStringLiteral("actionType")).toString(QStringLiteral("Toggle"));
+    QString newState = w.buttonState;
+
+    if (action == QStringLiteral("Flash"))
+    {
+        if (w.typeConfig.value(QStringLiteral("functionID")).toString().isEmpty())
+        {
+            if (error) *error = QStringLiteral("No function attached to button");
+            return false;
+        }
+        newState = pressed ? QStringLiteral("active") : QStringLiteral("inactive");
+    }
+    else if (pressed == false)
+    {
+        return true; // release edge: nothing to do for Toggle/Blackout/StopAll
+    }
+    else if (action == QStringLiteral("StopAll"))
+    {
+        return true; // fires, but has no observable button state of its own
+    }
+    else // Toggle, Blackout
+    {
+        if (action == QStringLiteral("Toggle") && w.typeConfig.value(QStringLiteral("functionID")).toString().isEmpty())
+        {
+            if (error) *error = QStringLiteral("No function attached to button");
+            return false;
+        }
+        newState = w.buttonState == QStringLiteral("active") ? QStringLiteral("inactive") : QStringLiteral("active");
+    }
+
+    if (newState != w.buttonState)
+    {
+        w.buttonState = newState;
+        if (m_liveListener != nullptr)
+            m_liveListener->vcButtonStateChanged(id, newState);
+    }
+    return true;
+}
+
+bool FakeVcHost::vcSliderSetValue(quint32 id, int value, QString *error)
+{
+    Q_UNUSED(error)
+    auto it = m_widgets.find(id);
+    if (it == m_widgets.end())
+        return false;
+    VcWidgetState &w = it.value();
+
+    // Confine to the slider's own range like the on-screen fader (and App::vcSliderSetValue()) do.
+    int lo = qRound(w.typeConfig.value(QStringLiteral("rangeLowLimit")).toDouble(0.0));
+    int hi = qRound(w.typeConfig.value(QStringLiteral("rangeHighLimit")).toDouble(255.0));
+    value = qBound(qMin(lo, hi), value, qMax(lo, hi));
+
+    if (value != w.sliderValue)
+    {
+        w.sliderValue = value;
+        if (m_liveListener != nullptr)
+            m_liveListener->vcSliderValueChanged(id, value);
+    }
+    return true;
+}
+
+bool FakeVcHost::vcCueListAction(quint32 id, CueListAction action, QString *error)
+{
+    auto it = m_widgets.find(id);
+    if (it == m_widgets.end())
+        return false;
+    VcWidgetState &w = it.value();
+
+    if (w.typeConfig.value(QStringLiteral("chaserID")).toString().isEmpty())
+    {
+        if (error) *error = QStringLiteral("No Chaser attached to cue list");
+        return false;
+    }
+
+    // A simplified VCCueList in its default PlayPauseStop layout with DefaultRunFirst next/prev.
+    switch (action)
+    {
+        case CueListPlay:
+            if (w.running == false)
+            {
+                w.running = true;
+                w.paused = false;
+                if (w.playbackIndex < 0)
+                    w.playbackIndex = 0;
+            }
+            else
+            {
+                w.paused = !w.paused;
+            }
+        break;
+        case CueListStop:
+            if (w.running)
+            {
+                w.running = false;
+                w.paused = false;
+            }
+            else
+            {
+                w.playbackIndex = -1;
+            }
+        break;
+        case CueListNext:
+            w.playbackIndex = (w.playbackIndex + 1) % FakeCueListStepCount;
+            w.running = true;
+            w.paused = false;
+        break;
+        case CueListPrevious:
+            w.playbackIndex = w.playbackIndex <= 0 ? FakeCueListStepCount - 1 : w.playbackIndex - 1;
+            w.running = true;
+            w.paused = false;
+        break;
+    }
+
+    notifyCueListPlayback(w);
+    return true;
+}
+
+bool FakeVcHost::vcCueListSetPlaybackIndex(quint32 id, int index, QString *error)
+{
+    auto it = m_widgets.find(id);
+    if (it == m_widgets.end())
+        return false;
+    VcWidgetState &w = it.value();
+
+    if (w.typeConfig.value(QStringLiteral("chaserID")).toString().isEmpty())
+    {
+        if (error) *error = QStringLiteral("No Chaser attached to cue list");
+        return false;
+    }
+
+    w.playbackIndex = index;
+    if (index >= 0)
+    {
+        w.running = true;
+        w.paused = false;
+    }
+    notifyCueListPlayback(w);
+    return true;
+}
+
+QJsonObject FakeVcHost::vcCueListSnapshot(quint32 id) const
+{
+    auto it = m_widgets.constFind(id);
+    if (it == m_widgets.constEnd())
+        return QJsonObject();
+    const VcWidgetState &w = it.value();
+
+    QJsonArray steps;
+    if (w.typeConfig.value(QStringLiteral("chaserID")).toString().isEmpty() == false)
+    {
+        for (int i = 0; i < FakeCueListStepCount; i++)
+        {
+            QJsonObject step;
+            step.insert(QStringLiteral("index"), i);
+            step.insert(QStringLiteral("name"), QStringLiteral("Step %1").arg(i + 1));
+            step.insert(QStringLiteral("functionId"), QString::number(100 + i));
+            step.insert(QStringLiteral("fadeIn"), 0);
+            step.insert(QStringLiteral("fadeOut"), 0);
+            step.insert(QStringLiteral("hold"), 1000);
+            step.insert(QStringLiteral("notes"), QString());
+            steps.append(step);
+        }
+    }
+
+    QJsonObject obj;
+    obj.insert(QStringLiteral("steps"), steps);
+    obj.insert(QStringLiteral("playbackIndex"), w.playbackIndex);
+    obj.insert(QStringLiteral("running"), w.running);
+    obj.insert(QStringLiteral("paused"), w.paused);
+    return obj;
+}
+
+bool FakeVcHost::vcXyPadSetPosition(quint32 id, double x, double y, QString *error)
+{
+    Q_UNUSED(error)
+    auto it = m_widgets.find(id);
+    if (it == m_widgets.end())
+        return false;
+    VcWidgetState &w = it.value();
+
+    if (x != w.x || y != w.y)
+    {
+        w.x = x;
+        w.y = y;
+        if (m_liveListener != nullptr)
+            m_liveListener->vcXyPadPositionChanged(id, x, y);
+    }
+    return true;
+}
+
+bool FakeVcHost::vcSpeedDialSetValue(quint32 id, int ms, QString *error)
+{
+    Q_UNUSED(error)
+    auto it = m_widgets.find(id);
+    if (it == m_widgets.end())
+        return false;
+    VcWidgetState &w = it.value();
+
+    if (ms != w.speedMs)
+    {
+        w.speedMs = ms;
+        if (m_liveListener != nullptr)
+            m_liveListener->vcSpeedDialValueChanged(id, ms);
+    }
+    return true;
+}
+
+bool FakeVcHost::vcSpeedDialTap(quint32 id, QString *error)
+{
+    auto it = m_widgets.find(id);
+    if (it == m_widgets.end())
+        return false;
+    VcWidgetState &w = it.value();
+
+    // VCSpeedDial::tap(): the first tap only arms; a second tap within 1.5 s sets the interval.
+    qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (w.lastTapMs != 0 && now - w.lastTapMs < 1500)
+    {
+        int interval = int(now - w.lastTapMs);
+        if (interval < 1)
+            interval = 1;
+        w.lastTapMs = now;
+        return vcSpeedDialSetValue(id, interval, error);
+    }
+    w.lastTapMs = now;
+    return true;
+}
+
+bool FakeVcHost::vcFrameGotoPage(quint32 id, int page, QString *error)
+{
+    auto it = m_widgets.find(id);
+    if (it == m_widgets.end())
+        return false;
+    VcWidgetState &w = it.value();
+
+    int pages = frameTotalPages(w);
+    if (page < 0 || page >= pages)
+    {
+        if (error) *error = QStringLiteral("page must be 0..%1").arg(pages - 1);
+        return false;
+    }
+    if (page == w.currentPage)
+        return true;
+
+    w.currentPage = page;
+    if (m_liveListener != nullptr)
+        m_liveListener->vcFramePageChanged(id, page);
+    return true;
+}
+
+QJsonObject FakeVcHost::vcFrameSnapshot(quint32 id) const
+{
+    auto it = m_widgets.constFind(id);
+    if (it == m_widgets.constEnd())
+        return QJsonObject();
+    const VcWidgetState &w = it.value();
+
+    QJsonObject obj;
+    obj.insert(QStringLiteral("pages"), frameTotalPages(w));
+    obj.insert(QStringLiteral("currentPage"), w.currentPage);
+    obj.insert(QStringLiteral("multipage"), w.typeConfig.value(QStringLiteral("multiPageMode")).toBool(false));
+    return obj;
+}
+
+/*****************************************************************************
+ * Test hooks
+ *****************************************************************************/
+
+void FakeVcHost::simulateButtonState(quint32 id, const QString &state)
+{
+    auto it = m_widgets.find(id);
+    if (it == m_widgets.end())
+        return;
+    it.value().buttonState = state;
+    if (m_liveListener != nullptr)
+        m_liveListener->vcButtonStateChanged(id, state);
+}
+
+void FakeVcHost::simulateSliderValue(quint32 id, int value)
+{
+    auto it = m_widgets.find(id);
+    if (it == m_widgets.end())
+        return;
+    it.value().sliderValue = value;
+    if (m_liveListener != nullptr)
+        m_liveListener->vcSliderValueChanged(id, value);
+}
+
+void FakeVcHost::simulateCueListAdvance(quint32 id, int playbackIndex)
+{
+    auto it = m_widgets.find(id);
+    if (it == m_widgets.end())
+        return;
+    it.value().playbackIndex = playbackIndex;
+    it.value().running = true;
+    it.value().paused = false;
+    notifyCueListPlayback(it.value());
 }

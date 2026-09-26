@@ -131,6 +131,15 @@ Suggested order (not fixed — reorder if priorities change):
       then per-widget-type live interaction in batches. `vc.widget.preset.*`
       is already unified in the spec (MERGE-PLAN.md #2) — implement it once,
       not per widget type.
+      *Progress (2026-09-26):* `vc.page.*`/`vc.widget.*` CRUD plus the first
+      live batch (`vc.button.press`, `vc.slider.setValue`, `vc.cueList.{play,
+      stop,next,previous,setPlaybackIndex,get}`, `vc.xyPad.setPosition`,
+      `vc.speedDial.{setValue,tap}`, `vc.frame.{gotoPage,get}` and their six
+      `*Changed` events) are registered — see "Live interaction - implemented"
+      in `fragments/virtualconsole-notes.md` for the contract-driven renames.
+      Still open: presets, input sources/key sequences, `vc.slider.flash`/
+      `setLevelChannels`, xyPad floor/fixtures, speedDial factor/apply/
+      resetTap, frame PIN/cloneFirstPage, clock/animation/audioTriggers.
 - [ ] **1.5 Rest of `io.*`** (plugin config, input profiles, Simple Desk —
       only universes/patches/Grand Master/Blackout/live DMX are implemented
       so far). `io.plugin.configure` needs 2.3 resolved first or it'll ship

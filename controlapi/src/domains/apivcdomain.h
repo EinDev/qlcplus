@@ -21,43 +21,77 @@
 #include <QJsonObject>
 #include <QObject>
 #include <QString>
+#include <QStringList>
+
+#include "apivchost.h"
 
 class ApiDispatcher;
 class ApiServer;
 class ApiSession;
-class ApiVcHost;
 class Doc;
 
 /**
- * Implementation of the "vc.page.*"/"vc.widget.*" domain (docs/api-spec/fragments/virtualconsole.yaml),
- * scoped to: vc.page.{list,create,delete,rename,setPin,validatePin,select} and
- * vc.widget.{list,get,create,update,setConfig,delete,reparent,reposition}. Every other vc.* method in
- * the spec (usage, createMatrix, createFromFunctions, align, distribute, bulkStyle, inputSource.*,
- * keySequence.*, inputDetect.*, preset.*, vc.button.press, vc.slider.*, vc.xyPad.*, vc.frame.*,
- * vc.clock.*, ...) is deliberately NOT registered here - left for a future pass. An unregistered
- * method name is not a crash: ApiDispatcher::dispatch() already responds NOT_FOUND for any method
- * nobody registered.
+ * Implementation of the "vc.*" domain (docs/api-spec/fragments/virtualconsole.yaml), scoped to:
+ *  - structural (§4a): vc.page.{list,create,delete,rename,setPin,validatePin,select} and
+ *    vc.widget.{list,get,create,update,setConfig,delete,reparent,reposition}
+ *  - live interaction (§4b): vc.button.press, vc.slider.setValue, vc.cueList.{play,stop,next,
+ *    previous,setPlaybackIndex,get}, vc.xyPad.setPosition, vc.speedDial.{setValue,tap},
+ *    vc.frame.{gotoPage,get}, plus the matching vc.button.stateChanged / vc.slider.valueChanged /
+ *    vc.cueList.playbackChanged / vc.xyPad.positionChanged / vc.speedDial.valueChanged /
+ *    vc.frame.pageChanged events (broadcast to every session, not subscribe-gated).
+ * Every other vc.* method in the spec (usage, createMatrix, createFromFunctions, align, distribute,
+ * bulkStyle, inputSource.*, keySequence.*, inputDetect.*, preset.*, vc.slider.flash, vc.xyPad.floor/
+ * fixture/preset.*, vc.frame.setPin/cloneFirstPage, vc.clock.*, vc.animation.*, vc.audioTriggers.*,
+ * ...) is deliberately NOT registered here - left for a future pass. An unregistered method name is
+ * not a crash: ApiDispatcher::dispatch() already responds NOT_FOUND for any method nobody registered.
  *
  * All request-shape validation (baseRevision/docRevision checks, "is this a known widget type",
- * "does this parent exist and accept children", cycle detection on reparent) lives here. The actual
- * page/widget object graph is owned by whatever ApiVcHost implementation is running the process -
- * qmlui's App in production, a headless FakeVcHost in controlapi/test/apivcdomain - obtained via
- * dynamic_cast on ApiServer's parent, exactly like ApiCoreDomain::projectHost() does for
- * ApiProjectHost. See apivchost.h for why this seam exists (controlapi must build without qmlui) and
- * exactly what each side of it assumes.
+ * "does this parent exist and accept children", cycle detection on reparent, "is this widget really
+ * a Button") lives here. The actual page/widget object graph is owned by whatever ApiVcHost
+ * implementation is running the process - qmlui's App in production, a headless FakeVcHost in
+ * controlapi/test/apivcdomain - obtained via dynamic_cast on ApiServer's parent, exactly like
+ * ApiCoreDomain::projectHost() does for ApiProjectHost. See apivchost.h for why this seam exists
+ * (controlapi must build without qmlui) and exactly what each side of it assumes.
+ *
+ * Live events: this class is also the host's ApiVcLiveListener (registered in the constructor,
+ * detached in the destructor). The host calls back for every live-state change regardless of cause;
+ * m_liveOriginClientId is set for the duration of a live request's host call so a change caused by
+ * that request is broadcast with the requester's clientId as originClientId, while a change caused by
+ * anything else (QML UI, external input, a Function stopping) goes out with a null origin. That works
+ * because everything here runs synchronously on the host's GUI thread (see apiserver.h).
  */
-class ApiVcDomain : public QObject
+class ApiVcDomain : public QObject, public ApiVcLiveListener
 {
     Q_OBJECT
 
 public:
     ApiVcDomain(Doc *doc, ApiServer *server, QObject *parent = nullptr);
+    ~ApiVcDomain() override;
+
+    /** @reimp ApiVcLiveListener */
+    void vcButtonStateChanged(quint32 widgetId, const QString &state) override;
+    void vcSliderValueChanged(quint32 widgetId, int value) override;
+    void vcCueListPlaybackChanged(quint32 widgetId, int playbackIndex, bool running, bool paused) override;
+    void vcXyPadPositionChanged(quint32 widgetId, double x, double y) override;
+    void vcSpeedDialValueChanged(quint32 widgetId, int ms) override;
+    void vcFramePageChanged(quint32 widgetId, int page) override;
 
 private:
     void registerPageMethods(ApiDispatcher *d);
     void registerWidgetMethods(ApiDispatcher *d);
+    void registerLiveMethods(ApiDispatcher *d);
 
     ApiVcHost *vcHost() const;
+
+    /** Shared front half of every live method: resolves params.widgetId, answers NOT_FOUND (unknown
+     *  id), INVALID_PARAMS (widget exists but its wire type is not in $allowedTypes) or INVALID_STATE
+     *  (widget is disabled - the on-screen widget refuses input then too) itself and returns false;
+     *  on true, $outHost and $outId are set and nothing has been sent yet. */
+    bool resolveLiveWidget(ApiSession *session, const QString &id, const QJsonObject &params,
+                           const QStringList &allowedTypes, ApiVcHost **outHost, quint32 *outId);
+
+    /** Broadcasts a live event ($data plus widgetId) with m_liveOriginClientId as its origin. */
+    void broadcastLive(const QString &topic, quint32 widgetId, QJsonObject data);
 
     /** True if $ancestorCandidate is $id itself or anywhere in $id's ancestor chain (queried live via
      *  vcHost()->vcWidgetParentId()) - used to reject a reparent that would make a widget its own
@@ -68,6 +102,9 @@ private:
 
     Doc *m_doc;
     ApiServer *m_server;
+
+    /** Non-null only while a live method's host call is on the stack - see class comment. */
+    QString m_liveOriginClientId;
 };
 
 #endif

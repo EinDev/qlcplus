@@ -31,6 +31,14 @@
  * for a future pass, same spirit as ApiVcDomain's own header comment about deliberately-unregistered
  * vc.* methods - vcSetWidgetConfig() reports an explicit "not yet supported" error for them rather
  * than silently accepting and discarding the request.
+ *
+ * Live interaction (the "Widgets - live interaction" section at the bottom) is a separate, wider
+ * slice: it drives VCButton/VCSlider/VCCueList/VCXYPad/VCSpeedDial/VCFrame exactly the way their QML
+ * items do (VCButtonItem.qml's requestStateChange() calls, VCSliderItem.qml's `sliderObj.value = ...`,
+ * VCCueListItem.qml's playClicked()/stopClicked()/..., VCXYPadItem.qml's `currentPosition = ...`,
+ * VCSpeedDialItem.qml's `currentTime = ...`/tap(), VCFrame::gotoPage()) and relays the widgets' own
+ * change signals to the control API's ApiVcLiveListener, so a change made from ANY source (API, QML,
+ * external input, a Function stopping) reaches every connected client the same way.
  */
 
 #include <QColor>
@@ -43,11 +51,17 @@
 #include <QSet>
 
 #include "app.h"
+#include "chaser.h"
+#include "chaserstep.h"
+#include "function.h"
 #include "virtualconsole/virtualconsole.h"
 #include "virtualconsole/vcpage.h"
 #include "virtualconsole/vcframe.h"
 #include "virtualconsole/vcbutton.h"
 #include "virtualconsole/vcslider.h"
+#include "virtualconsole/vccuelist.h"
+#include "virtualconsole/vcxypad.h"
+#include "virtualconsole/vcspeeddial.h"
 
 namespace {
 
@@ -358,6 +372,156 @@ QJsonObject widgetTypeConfigToJson(VCWidget *w)
     return QJsonObject();
 }
 
+// --- Live state (vc.widget.get/list's additive per-type fields, and the vc.*Changed events) ---
+
+QString buttonStateString(int state)
+{
+    switch (state)
+    {
+        case VCButton::Active: return QStringLiteral("active");
+        case VCButton::Monitoring: return QStringLiteral("monitoring");
+        default: return QStringLiteral("inactive");
+    }
+}
+
+// VCXYPad::currentPosition() lives in a 0..(255 + 255/256) domain (vcxypad.cpp's kPosMax: DMX MSB with
+// the LSB as a fraction, i.e. 65535/256 at full scale). The API exposes it normalized 0..1 so 1.0 is
+// the full 16-bit span in both directions.
+constexpr double kXyPadPositionScale = 65535.0 / 256.0;
+
+double xyPadPosToNormalized(qreal pos)
+{
+    return qBound(0.0, double(pos) / kXyPadPositionScale, 1.0);
+}
+
+qreal normalizedToXyPadPos(double n)
+{
+    return qreal(qBound(0.0, n, 1.0) * kXyPadPositionScale);
+}
+
+void cueListPlaybackState(VCCueList *cl, int &playbackIndex, bool &running, bool &paused)
+{
+    // "running" = the Chaser is active at all (Playing or Paused) - a paused Chaser is still
+    // Function::isRunning(); "paused" narrows that down. Both false = Stopped.
+    VCCueList::PlaybackStatus status = cl->playbackStatus();
+    playbackIndex = cl->playbackIndex();
+    running = status != VCCueList::Stopped;
+    paused = status == VCCueList::Paused;
+}
+
+// Speeds are uint milliseconds with Function::infiniteSpeed() (0xFFFFFFFF) meaning "infinite" - keep
+// that sentinel intact as a positive number instead of letting an int cast turn it into -1.
+QJsonValue speedToJson(uint ms)
+{
+    return QJsonValue(qint64(ms));
+}
+
+// Same value resolution VCCueListItem.qml's step rows show (ChaserEditor::stepDataMap(): the Chaser's
+// Common/PerStep/Default speed modes decide whether a step's own value, the Chaser's, or the step
+// Function's applies) - minus that helper's side effect of writing the resolved values back into the
+// ChaserStep, which a read-only API call must not do.
+QJsonArray cueListStepsToJson(Doc *doc, Chaser *chaser)
+{
+    QJsonArray steps;
+    if (chaser == nullptr)
+        return steps;
+
+    for (int i = 0; i < chaser->stepsCount(); i++)
+    {
+        ChaserStep *step = chaser->stepAt(i);
+        if (step == nullptr)
+            continue;
+        Function *func = doc->function(step->fid);
+
+        uint fadeIn = 0, fadeOut = 0, hold = 0;
+        switch (chaser->fadeInMode())
+        {
+            case Chaser::Common: fadeIn = chaser->fadeInSpeed(); break;
+            case Chaser::PerStep: fadeIn = step->fadeIn; break;
+            default: fadeIn = func != nullptr ? func->fadeInSpeed() : 0; break;
+        }
+        switch (chaser->fadeOutMode())
+        {
+            case Chaser::Common: fadeOut = chaser->fadeOutSpeed(); break;
+            case Chaser::PerStep: fadeOut = step->fadeOut; break;
+            default: fadeOut = func != nullptr ? func->fadeOutSpeed() : 0; break;
+        }
+        switch (chaser->durationMode())
+        {
+            case Chaser::Common: hold = Function::speedSubtract(chaser->duration(), step->fadeIn); break;
+            case Chaser::PerStep: hold = step->hold; break;
+            default:
+                hold = func != nullptr ? Function::speedSubtract(func->totalDuration(), func->fadeInSpeed()) : 0;
+            break;
+        }
+
+        QJsonObject obj;
+        obj.insert(QStringLiteral("index"), i);
+        obj.insert(QStringLiteral("name"), func != nullptr ? func->name() : QString());
+        obj.insert(QStringLiteral("functionId"), QString::number(step->fid));
+        obj.insert(QStringLiteral("fadeIn"), speedToJson(fadeIn));
+        obj.insert(QStringLiteral("fadeOut"), speedToJson(fadeOut));
+        obj.insert(QStringLiteral("hold"), speedToJson(hold));
+        obj.insert(QStringLiteral("notes"), step->note);
+        steps.append(obj);
+    }
+    return steps;
+}
+
+void appendLiveStateToJson(VCWidget *w, QJsonObject &obj)
+{
+    switch (w->type())
+    {
+        case VCWidget::ButtonWidget:
+        {
+            VCButton *b = qobject_cast<VCButton *>(w);
+            obj.insert(QStringLiteral("state"), buttonStateString(b->state()));
+        }
+        break;
+        case VCWidget::SliderWidget:
+        {
+            VCSlider *s = qobject_cast<VCSlider *>(w);
+            obj.insert(QStringLiteral("value"), s->value());
+            obj.insert(QStringLiteral("min"), s->rangeLowLimit());
+            obj.insert(QStringLiteral("max"), s->rangeHighLimit());
+        }
+        break;
+        case VCWidget::CueListWidget:
+        {
+            int playbackIndex = -1;
+            bool running = false, paused = false;
+            cueListPlaybackState(qobject_cast<VCCueList *>(w), playbackIndex, running, paused);
+            obj.insert(QStringLiteral("playbackIndex"), playbackIndex);
+            obj.insert(QStringLiteral("running"), running);
+            obj.insert(QStringLiteral("paused"), paused);
+        }
+        break;
+        case VCWidget::XYPadWidget:
+        {
+            QPointF pos = qobject_cast<VCXYPad *>(w)->currentPosition();
+            obj.insert(QStringLiteral("x"), xyPadPosToNormalized(pos.x()));
+            obj.insert(QStringLiteral("y"), xyPadPosToNormalized(pos.y()));
+        }
+        break;
+        case VCWidget::SpeedWidget:
+        {
+            obj.insert(QStringLiteral("ms"), int(qobject_cast<VCSpeedDial *>(w)->currentTime()));
+        }
+        break;
+        case VCWidget::FrameWidget:
+        case VCWidget::SoloFrameWidget:
+        {
+            VCFrame *f = qobject_cast<VCFrame *>(w);
+            obj.insert(QStringLiteral("currentPage"), f->currentPage());
+            obj.insert(QStringLiteral("pages"), f->totalPagesNumber());
+            obj.insert(QStringLiteral("multipage"), f->multiPageMode());
+        }
+        break;
+        default:
+        break;
+    }
+}
+
 } // namespace
 
 VCWidget *App::vcFindWidget(quint32 id) const
@@ -556,6 +720,7 @@ QJsonObject App::vcWidgetSnapshot(quint32 id) const
     obj.insert(QStringLiteral("inputSources"), QJsonArray());
     obj.insert(QStringLiteral("keySequences"), QJsonArray());
     obj.insert(QStringLiteral("externalControls"), QJsonArray());
+    appendLiveStateToJson(w, obj);
     return obj;
 }
 
@@ -721,4 +886,321 @@ void App::vcRepositionWidgets(const QList<QPair<quint32, QJsonObject> > &updates
         if (w != nullptr)
             w->setGeometry(rectFromJson(pair.second));
     }
+}
+
+/*****************************************************************************
+ * Widgets - live interaction
+ *****************************************************************************/
+
+void App::vcSetLiveListener(ApiVcLiveListener *listener)
+{
+    m_vcLiveListener = listener;
+}
+
+void App::slotVcWidgetRegistered(VCWidget *widget)
+{
+    // Pages are VCFrames registered in the same map, but they are not widgets in API terms (see
+    // vcFindWidget()) - their currentPageChanged would otherwise surface as a bogus vc.frame.pageChanged.
+    if (widget == nullptr || qobject_cast<VCPage *>(widget) != nullptr)
+        return;
+
+    // Pointer-to-member connects: these are qmlui classes living in this same binary (not the engine
+    // DLL, where only the string-based form is reliable on this MinGW build - see CLAUDE.md), so the
+    // compile-time checked form is safe here and preferable, since a silently mistyped SIGNAL() string
+    // could only be caught by running the GUI. UniqueConnection guards against addWidgetToMap() seeing
+    // the same widget twice (id clash re-registration).
+    switch (widget->type())
+    {
+        case VCWidget::ButtonWidget:
+            connect(qobject_cast<VCButton *>(widget), &VCButton::stateChanged,
+                    this, &App::slotVcButtonStateChanged, Qt::UniqueConnection);
+        break;
+        case VCWidget::SliderWidget:
+            connect(qobject_cast<VCSlider *>(widget), &VCSlider::valueChanged,
+                    this, &App::slotVcSliderValueChanged, Qt::UniqueConnection);
+        break;
+        case VCWidget::CueListWidget:
+        {
+            VCCueList *cl = qobject_cast<VCCueList *>(widget);
+            // Both feed one event: the status signal covers play/pause/stop, the index signal covers
+            // the Chaser advancing on its own (slotCurrentStepChanged -> setPlaybackIndex).
+            connect(cl, &VCCueList::playbackStatusChanged, this, &App::slotVcCueListPlaybackChanged, Qt::UniqueConnection);
+            connect(cl, &VCCueList::playbackIndexChanged, this, &App::slotVcCueListPlaybackChanged, Qt::UniqueConnection);
+        }
+        break;
+        case VCWidget::XYPadWidget:
+            connect(qobject_cast<VCXYPad *>(widget), &VCXYPad::currentPositionChanged,
+                    this, &App::slotVcXyPadPositionChanged, Qt::UniqueConnection);
+        break;
+        case VCWidget::SpeedWidget:
+            connect(qobject_cast<VCSpeedDial *>(widget), &VCSpeedDial::currentTimeChanged,
+                    this, &App::slotVcSpeedDialTimeChanged, Qt::UniqueConnection);
+        break;
+        case VCWidget::FrameWidget:
+        case VCWidget::SoloFrameWidget:
+            connect(qobject_cast<VCFrame *>(widget), &VCFrame::currentPageChanged,
+                    this, &App::slotVcFramePageChanged, Qt::UniqueConnection);
+        break;
+        default:
+        break;
+    }
+}
+
+void App::slotVcButtonStateChanged(int state)
+{
+    VCButton *b = qobject_cast<VCButton *>(sender());
+    if (b == nullptr || m_vcLiveListener == nullptr)
+        return;
+    m_vcLiveListener->vcButtonStateChanged(b->id(), buttonStateString(state));
+}
+
+void App::slotVcSliderValueChanged(int value)
+{
+    VCSlider *s = qobject_cast<VCSlider *>(sender());
+    if (s == nullptr || m_vcLiveListener == nullptr)
+        return;
+    m_vcLiveListener->vcSliderValueChanged(s->id(), value);
+}
+
+void App::slotVcCueListPlaybackChanged()
+{
+    VCCueList *cl = qobject_cast<VCCueList *>(sender());
+    if (cl == nullptr || m_vcLiveListener == nullptr)
+        return;
+    int playbackIndex = -1;
+    bool running = false, paused = false;
+    cueListPlaybackState(cl, playbackIndex, running, paused);
+    m_vcLiveListener->vcCueListPlaybackChanged(cl->id(), playbackIndex, running, paused);
+}
+
+void App::slotVcXyPadPositionChanged()
+{
+    VCXYPad *pad = qobject_cast<VCXYPad *>(sender());
+    if (pad == nullptr || m_vcLiveListener == nullptr)
+        return;
+    QPointF pos = pad->currentPosition();
+    m_vcLiveListener->vcXyPadPositionChanged(pad->id(), xyPadPosToNormalized(pos.x()), xyPadPosToNormalized(pos.y()));
+}
+
+void App::slotVcSpeedDialTimeChanged()
+{
+    VCSpeedDial *sd = qobject_cast<VCSpeedDial *>(sender());
+    if (sd == nullptr || m_vcLiveListener == nullptr)
+        return;
+    m_vcLiveListener->vcSpeedDialValueChanged(sd->id(), int(sd->currentTime()));
+}
+
+void App::slotVcFramePageChanged(int page)
+{
+    VCFrame *f = qobject_cast<VCFrame *>(sender());
+    if (f == nullptr || m_vcLiveListener == nullptr)
+        return;
+    m_vcLiveListener->vcFramePageChanged(f->id(), page);
+}
+
+bool App::vcButtonPress(quint32 id, bool pressed, QString *error)
+{
+    VCButton *b = qobject_cast<VCButton *>(vcFindWidget(id));
+    if (b == nullptr)
+    {
+        if (error) *error = QStringLiteral("No such widget");
+        return false;
+    }
+
+    // Same calls VCButtonItem.qml makes, with the contract's edge semantics: Toggle/Blackout/StopAll on
+    // the down-edge only, Flash on both. requestStateChange()'s $pressed argument is NOT "toggle when
+    // true" - for Toggle it is ignored (the engine flips based on its own state), for Blackout it is
+    // the target state (setState(pressed ? Active : Inactive)) - so pass the button's new target state
+    // exactly like the QML does, never the raw pointer state.
+    switch (b->actionType())
+    {
+        case VCButton::Flash:
+            if (m_doc->function(b->functionID()) == nullptr)
+            {
+                if (error) *error = QStringLiteral("No function attached to button");
+                return false;
+            }
+            b->requestStateChange(pressed);
+        break;
+        case VCButton::Toggle:
+            if (pressed == false)
+                return true;
+            if (m_doc->function(b->functionID()) == nullptr)
+            {
+                if (error) *error = QStringLiteral("No function attached to button");
+                return false;
+            }
+            b->requestStateChange(b->state() == VCButton::Active ? false : true);
+        break;
+        case VCButton::Blackout:
+            if (pressed == false)
+                return true;
+            b->requestStateChange(b->state() == VCButton::Active ? false : true);
+        break;
+        case VCButton::StopAll:
+            if (pressed == false)
+                return true;
+            b->requestStateChange(true);
+        break;
+        default:
+        break;
+    }
+    return true;
+}
+
+bool App::vcSliderSetValue(quint32 id, int value, QString *error)
+{
+    VCSlider *s = qobject_cast<VCSlider *>(vcFindWidget(id));
+    if (s == nullptr)
+    {
+        if (error) *error = QStringLiteral("No such widget");
+        return false;
+    }
+
+    // VCSlider::setValue() itself doesn't clamp; the on-screen fader/knob is physically confined to
+    // [rangeLowLimit, rangeHighLimit] (VCSliderItem.qml's from/to), so confine the remote value too.
+    int lo = qRound(s->rangeLowLimit());
+    int hi = qRound(s->rangeHighLimit());
+    value = qBound(qMin(lo, hi), value, qMax(lo, hi));
+
+    s->setValue(value); // setDMX=true, updateFeedback=true - identical to `sliderObj.value = v` from QML
+    return true;
+}
+
+bool App::vcCueListAction(quint32 id, CueListAction action, QString *error)
+{
+    VCCueList *cl = qobject_cast<VCCueList *>(vcFindWidget(id));
+    if (cl == nullptr)
+    {
+        if (error) *error = QStringLiteral("No such widget");
+        return false;
+    }
+    if (cl->chaser() == nullptr)
+    {
+        // Every *Clicked() below silently returns in this case - say so instead.
+        if (error) *error = QStringLiteral("No Chaser attached to cue list");
+        return false;
+    }
+
+    switch (action)
+    {
+        case CueListPlay: cl->playClicked(); break;
+        case CueListStop: cl->stopClicked(); break;
+        case CueListNext: cl->nextClicked(); break;
+        case CueListPrevious: cl->previousClicked(); break;
+    }
+    return true;
+}
+
+bool App::vcCueListSetPlaybackIndex(quint32 id, int index, QString *error)
+{
+    VCCueList *cl = qobject_cast<VCCueList *>(vcFindWidget(id));
+    if (cl == nullptr)
+    {
+        if (error) *error = QStringLiteral("No such widget");
+        return false;
+    }
+    if (cl->chaser() == nullptr)
+    {
+        if (error) *error = QStringLiteral("No Chaser attached to cue list");
+        return false;
+    }
+
+    // VCCueListItem.qml: selecting a row sets playbackIndex, Enter then calls playCurrentStep(). The
+    // API folds both into one "jump to step" for index >= 0; -1 only clears the selection.
+    cl->setPlaybackIndex(index);
+    if (index >= 0)
+        cl->playCurrentStep();
+    return true;
+}
+
+QJsonObject App::vcCueListSnapshot(quint32 id) const
+{
+    VCCueList *cl = qobject_cast<VCCueList *>(vcFindWidget(id));
+    if (cl == nullptr)
+        return QJsonObject();
+
+    int playbackIndex = -1;
+    bool running = false, paused = false;
+    cueListPlaybackState(cl, playbackIndex, running, paused);
+
+    QJsonObject obj;
+    obj.insert(QStringLiteral("steps"), cueListStepsToJson(m_doc, cl->chaser()));
+    obj.insert(QStringLiteral("playbackIndex"), playbackIndex);
+    obj.insert(QStringLiteral("running"), running);
+    obj.insert(QStringLiteral("paused"), paused);
+    return obj;
+}
+
+bool App::vcXyPadSetPosition(quint32 id, double x, double y, QString *error)
+{
+    VCXYPad *pad = qobject_cast<VCXYPad *>(vcFindWidget(id));
+    if (pad == nullptr)
+    {
+        if (error) *error = QStringLiteral("No such widget");
+        return false;
+    }
+    pad->setCurrentPosition(QPointF(normalizedToXyPadPos(x), normalizedToXyPadPos(y)));
+    return true;
+}
+
+bool App::vcSpeedDialSetValue(quint32 id, int ms, QString *error)
+{
+    VCSpeedDial *sd = qobject_cast<VCSpeedDial *>(vcFindWidget(id));
+    if (sd == nullptr)
+    {
+        if (error) *error = QStringLiteral("No such widget");
+        return false;
+    }
+    sd->setCurrentTime(uint(qMax(0, ms)));
+    return true;
+}
+
+bool App::vcSpeedDialTap(quint32 id, QString *error)
+{
+    VCSpeedDial *sd = qobject_cast<VCSpeedDial *>(vcFindWidget(id));
+    if (sd == nullptr)
+    {
+        if (error) *error = QStringLiteral("No such widget");
+        return false;
+    }
+    sd->tap();
+    return true;
+}
+
+bool App::vcFrameGotoPage(quint32 id, int page, QString *error)
+{
+    VCFrame *f = qobject_cast<VCFrame *>(vcFindWidget(id));
+    if (f == nullptr)
+    {
+        if (error) *error = QStringLiteral("No such widget");
+        return false;
+    }
+
+    int pages = f->totalPagesNumber();
+    if (page < 0 || page >= pages)
+    {
+        if (error) *error = QStringLiteral("page must be 0..%1").arg(pages - 1);
+        return false;
+    }
+    // VCFrame::setCurrentPage() has no same-page early return: it would re-show every child, call
+    // setDocModified() (bumping docRevision) and emit currentPageChanged() for a no-op request.
+    if (page == f->currentPage())
+        return true;
+
+    f->gotoPage(page);
+    return true;
+}
+
+QJsonObject App::vcFrameSnapshot(quint32 id) const
+{
+    VCFrame *f = qobject_cast<VCFrame *>(vcFindWidget(id));
+    if (f == nullptr)
+        return QJsonObject();
+
+    QJsonObject obj;
+    obj.insert(QStringLiteral("pages"), f->totalPagesNumber());
+    obj.insert(QStringLiteral("currentPage"), f->currentPage());
+    obj.insert(QStringLiteral("multipage"), f->multiPageMode());
+    return obj;
 }

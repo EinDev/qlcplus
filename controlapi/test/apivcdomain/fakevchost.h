@@ -73,6 +73,31 @@ public:
     bool vcReparentWidget(quint32 id, quint32 newParentId, QPointF newTopLeft, QString *error) override;
     void vcRepositionWidgets(const QList<QPair<quint32, QJsonObject> > &updates) override;
 
+    // --- Widgets: live interaction ---
+    void vcSetLiveListener(ApiVcLiveListener *listener) override;
+    bool vcButtonPress(quint32 id, bool pressed, QString *error) override;
+    bool vcSliderSetValue(quint32 id, int value, QString *error) override;
+    bool vcCueListAction(quint32 id, CueListAction action, QString *error) override;
+    bool vcCueListSetPlaybackIndex(quint32 id, int index, QString *error) override;
+    QJsonObject vcCueListSnapshot(quint32 id) const override;
+    bool vcXyPadSetPosition(quint32 id, double x, double y, QString *error) override;
+    bool vcSpeedDialSetValue(quint32 id, int ms, QString *error) override;
+    bool vcSpeedDialTap(quint32 id, QString *error) override;
+    bool vcFrameGotoPage(quint32 id, int page, QString *error) override;
+    QJsonObject vcFrameSnapshot(quint32 id) const override;
+
+    /** Every fake CueList pretends its Chaser has exactly this many steps (named "Step 1".."Step N"),
+     *  so index-range validation in the domain has something real to check against. */
+    static const int FakeCueListStepCount;
+
+    // --- Test hooks: engine-side changes nobody requested over the API ---
+    // Mimic what the real host does when the QML UI / external input / a Function stopping changes a
+    // widget's live state: update the model and notify the listener. The domain must broadcast these
+    // with a null originClientId.
+    void simulateButtonState(quint32 id, const QString &state);
+    void simulateSliderValue(quint32 id, int value);
+    void simulateCueListAdvance(quint32 id, int playbackIndex);
+
 private:
     struct VcPageState
     {
@@ -97,6 +122,18 @@ private:
         QString foregroundColor;
         QJsonObject font;
         QJsonObject typeConfig;
+
+        // Live (§4b) state, per widget type - only the fields matching widgetType are meaningful.
+        QString buttonState = QStringLiteral("inactive"); // Button: "inactive"|"active"|"monitoring"
+        int sliderValue = 0;                              // Slider
+        int playbackIndex = -1;                           // CueList
+        bool running = false;                             // CueList
+        bool paused = false;                              // CueList
+        double x = 0.0;                                   // XYPad, normalized 0..1
+        double y = 0.0;                                   // XYPad, normalized 0..1
+        int speedMs = 0;                                  // Speed
+        qint64 lastTapMs = 0;                             // Speed: tap-tempo bookkeeping
+        int currentPage = 0;                              // Frame/SoloFrame
     };
 
     static const QStringList ContainerWidgetTypes; // Frame, SoloFrame
@@ -112,11 +149,19 @@ private:
     QList<quint32> collectDescendants(quint32 id) const;
     void setWidgetPageRecursive(quint32 id, int newPage);
 
+    /** Adds the widgetType-specific live fields (state/value/playbackIndex/x/y/ms/currentPage/...)
+     *  that vc.widget.get/list expose so a UI can seed itself. */
+    void appendLiveStateToJson(const VcWidgetState &w, QJsonObject &obj) const;
+    void notifyCueListPlayback(const VcWidgetState &w) const;
+    static int frameTotalPages(const VcWidgetState &w);
+
     QVector<VcPageState> m_pages;
     int m_selectedPage;
 
     QHash<quint32, VcWidgetState> m_widgets;
     quint32 m_nextWidgetId;
+
+    ApiVcLiveListener *m_liveListener;
 };
 
 #endif

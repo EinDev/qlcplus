@@ -30,6 +30,7 @@
 #include "freezewatchdog.h"
 #include "networkmanager.h"
 #include "apiserver.h"
+#include "webserver.h"
 #include "qlcconfig.h"
 #include "qlcfile.h"
 #include "slowclickapplication.h"
@@ -178,6 +179,23 @@ int main(int argc, char *argv[])
                                       "port", "");
     parser.addOption(apiPortOption);
 
+    // Browser-based web UI (docs/webui.md). Named "webui", not "web": -w/--web
+    // and -wp/--web-port above already belong to the legacy webaccess remote.
+    QCommandLineOption webUiOption(QStringList() << "webui",
+                                   "Serve the browser-based web UI over HTTP (docs/webui.md). Implies --api.");
+    parser.addOption(webUiOption);
+
+    QCommandLineOption webUiPortOption(QStringList() << "webui-port",
+                                       "Set the port for the web UI's HTTP server (default 9011). Implies --webui.",
+                                       "port", "");
+    parser.addOption(webUiPortOption);
+
+    QCommandLineOption webUiRootOption(QStringList() << "webui-root",
+                                       "Serve the web UI from this directory instead of the installed one "
+                                       "(development: point it at the repository's webui/). Implies --webui.",
+                                       "dir", "");
+    parser.addOption(webUiRootOption);
+
     parser.process(app);
 
     bool enableWebAccess = parser.isSet(webAccessOption)
@@ -189,7 +207,13 @@ int main(int argc, char *argv[])
     QString webAccessPasswordFile = parser.value(webAuthFileOption);
     bool allowAllNative = parser.isSet(allowAllNativeOption);
     bool enableNativeServer = parser.isSet(remoteOption) || allowAllNative;
-    bool enableApi = parser.isSet(apiOption) || parser.isSet(apiPortOption);
+    bool enableWebUi = parser.isSet(webUiOption)
+        || parser.isSet(webUiPortOption)
+        || parser.isSet(webUiRootOption);
+    int webUiPort = parser.value(webUiPortOption).toInt();
+    QString webUiRoot = parser.value(webUiRootOption);
+    // The web UI is a client of the WebSocket control API - useless without it
+    bool enableApi = parser.isSet(apiOption) || parser.isSet(apiPortOption) || enableWebUi;
     int apiPort = parser.value(apiPortOption).toInt();
 
 #if !defined Q_OS_ANDROID
@@ -303,6 +327,34 @@ int main(int argc, char *argv[])
             qCritical().noquote() << "Could not start the WebSocket control API:" << apiSrv->errorString();
         else
             qInfo().noquote() << "WebSocket control API listening on port" << port;
+    }
+
+    if (enableWebUi && qlcplusApp.webServer() != nullptr)
+    {
+        WebServer *webSrv = qlcplusApp.webServer();
+
+        // Default root: the installed WebUI directory, resolved the same way
+        // every other data directory is (Meshes, Gobos, ...) - next to the
+        // executable on Windows/macOS, the share/ data dir on Linux.
+        QString root = webUiRoot.isEmpty() ? QLCFile::systemDirectory(WEBUIDIR).path() : webUiRoot;
+        webSrv->setRootDirectory(root);
+
+        // Tell the UI the port the API *actually* listens on (after listen(),
+        // so an OS-assigned/fallback port is what it reads), not the flag value
+        ApiServer *apiSrv = qlcplusApp.apiServer();
+        if (apiSrv != nullptr && apiSrv->serverPort() != 0)
+            webSrv->setApiPort(apiSrv->serverPort());
+        else
+            qCritical().noquote() << "Web UI: the WebSocket control API is not listening - "
+                                     "the UI will load but cannot connect to QLC+";
+
+        // Same bind address as the API server (all interfaces)
+        quint16 port = webUiPort > 0 ? quint16(webUiPort) : quint16(WEB_SERVER_DEFAULT_PORT);
+        if (webSrv->listen(port) == false)
+            qCritical().noquote() << "Could not start the web UI HTTP server on port" << port
+                                  << "(already in use? try --webui-port):" << webSrv->errorString();
+        else
+            qInfo().noquote() << "Web UI available at http://localhost:" + QString::number(webSrv->serverPort()) + "/";
     }
 
     // fullscreen mode

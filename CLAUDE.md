@@ -355,6 +355,61 @@ assertions:
   reloaded definition from the cache by manufacturer/model afterwards, the same
   pattern `qmlui/fixtureeditor/fixtureeditor.cpp`'s real callers already use.
 
+## Test coverage reporting (dev-test-coverage.ps1)
+
+`.\dev-test-coverage.ps1` measures unit-test coverage for `engine/src`,
+`controlapi/src` and `qmlui/` on this Windows/MSYS2 checkout and writes
+`coverage/html/index.html` (per-file, per-line), `coverage/coverage.xml`
+(Cobertura, for IDE/CI tooling) and `coverage/summary.txt` (the per-area
+table it also prints). `coverage/` is git-ignored. Same thing in CI: the
+Linux job's `coverage-v5` matrix task in `.github/workflows/build.yml`
+writes the table to the run's job summary and uploads `coverage/html` as the
+`coverage-v5-report` artifact (added 2026-09-26, not yet seen running).
+
+How it works, and the traps already hit while building it:
+
+- It uses upstream's existing `-Dcoverage=ON` switch (`coverage.cmake`:
+  `-fprofile-arcs -ftest-coverage -lgcov`), but in a **separate build
+  directory, `build-coverage/`**, never `build/` — `dev-build-run.ps1`
+  deploys `build/` into `C:\qlcplus`, and instrumented objects there would
+  make the shipped app write `.gcda` files on every exit. Upstream's
+  `coverage.sh`/`make lcov` are Linux-only (lcov + `unittest.sh`'s layout);
+  the root `coverage` CMake target on Windows now calls this script instead.
+- Report generation is `gcovr` (pip-installed into the Windows Python,
+  `C:\Python311`) driving MSYS2's `gcov.exe`, which **must** be the one
+  matching the `g++` that compiled the objects (`C:\msys64\mingw64\bin`, both
+  16.2.0 at the time of writing). The script resolves the Windows `python`
+  *before* it prepends `C:\msys64\mingw64\bin` to `PATH` for the test run —
+  MSYS2 ships its own `python.exe` there, without gcovr, and the first
+  attempt silently picked that one up.
+- It builds only `engine_tests`, `controlapi_tests` and `qmlui_tests` (new
+  aggregate target in `qmlui/test/CMakeLists.txt`), not the app, so it must
+  stage `resources/` into `build-coverage/resources` itself, exactly like
+  `dev-test-run.ps1` (the automatic copies only run on an `ALL` build).
+  Building only the test targets also exposed that `engine_tests` never
+  built `iopluginstub`, which `inputpatch_test`/`outputpatch_test`/
+  `inputoutputmap_test` load at run time from `../iopluginstub`; a full
+  build had always hidden that. `engine_tests` now depends on it.
+- Tests run serially (`ctest -j1`, see `dev-test-run.ps1` for the
+  heap-corruption reason) and with a longer `--timeout`; instrumented `-O0`
+  binaries are slower. Unlike `coverage.sh`, a failing suite does not abort
+  the report — it is listed at the end and the exit code is non-zero.
+- One gcovr JSON tracefile is collected (`coverage/coverage.json`), then the
+  HTML/XML reports and the per-area numbers are derived from it via
+  `--add-tracefile` (gcovr's `--filter` still applies when re-reading a
+  tracefile, so each area is a cheap re-summarise, no second gcov run).
+  Passing `NUL` as an output path to suppress gcovr's text report does not
+  work — gcovr resolves it to a file under the root — hence `--json-summary`
+  per area instead.
+- Timings on this machine (24 cores): fresh instrumented configure ~10 s,
+  build of all test targets ~90 s, test run ~65 s, gcovr ~30 s.
+- What the numbers mean: every line hit by *any* test binary, so the engine
+  figure includes engine code exercised by controlapi/qmlui tests. Header
+  files (`*.h` inline code) are counted, unlike upstream's lcov script which
+  stripped them; test sources, autogen/moc output and the build tree are
+  excluded. Throw/unreachable branches are excluded, or Qt's implicit
+  exception edges swamp the branch percentage.
+
 ## Git workflow for this project
 
 **Commit before every build**, even for a fix you're not certain worked yet —

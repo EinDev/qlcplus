@@ -159,5 +159,8 @@ endforeach()
 
 # Convenience aggregate target: `cmake --build build --target engine_tests`
 # builds just the test binaries (and whatever engine/plugin code they need),
-# without doing a full project build.
-add_custom_target(engine_tests DEPENDS ${QLCPLUS_ENGINE_TESTS})
+# without doing a full project build. iopluginstub is a runtime dependency,
+# not a link dependency: inputpatch_test, outputpatch_test and
+# inputoutputmap_test load it from ../iopluginstub at run time and fail in
+# initTestCase() when it was never built (a full build hides that).
+add_custom_target(engine_tests DEPENDS ${QLCPLUS_ENGINE_TESTS} iopluginstub)

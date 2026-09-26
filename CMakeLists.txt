@@ -82,6 +82,9 @@ add_subdirectory(controlapi)
 if(qmlui)
     message("Building QLC+ 5 QML UI")
     add_subdirectory(qmlui)
+    # Browser-based web UI served by qlcplus5 --webui (docs/webui.md); plain
+    # data files, so qmlui-only like resources/meshes and colorfilters
+    add_subdirectory(webui)
 else()
     message("Building QLC+ 4 QtWidget UI")
     add_subdirectory(ui)
@@ -125,8 +128,10 @@ add_custom_target(check
 
 # Unit test coverage measurement
 if(WIN32)
+    # MSYS2/MinGW checkout: lcov/coverage.sh don't apply, dev-test-coverage.ps1
+    # (gcovr + gcov) does the same job and writes coverage/ under the source dir.
     add_custom_target(coverage
-        COMMAND @echo Get a better OS.
+        COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File dev-test-coverage.ps1
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     )
 else()

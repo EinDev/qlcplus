@@ -1,0 +1,19 @@
+/* QLC+ borders are chunky: 2px is the default control border, not 1px. */
+:root{
+--bw-hairline:1px; /* @kind spacing */
+--bw-control:2px; /* @kind spacing */
+
+--radius-none:0px;
+--radius-spin:3px;    /* CustomSpinBox / CustomComboBox background */
+--radius-fader:2px;   /* QLCPlusFader track */
+--radius-handle:4px;  /* QLCPlusFader handle */
+--radius-control:5px; /* IconButton, CustomCheckBox, DMXPercentageButton */
+--radius-bubble:3px;  /* counter bubbles */
+
+--border-control:var(--bw-control) solid var(--bg-strong);
+--border-icon:var(--bw-control) solid var(--icon-border);
+--border-dialog:var(--bw-control) solid var(--bg-light);
+--border-menu:var(--bw-hairline) solid var(--bg-light);
+--border-dark:var(--bw-hairline) solid var(--border-color-dark);
+--focus-border:var(--bw-control) solid var(--highlight);
+}
