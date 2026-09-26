@@ -1707,26 +1707,23 @@ messages:
           required:
           - widgetId
           - pressed
-          description: 'VCButton::requestStateChange() - the single gesture backing press-and-release
-            (Flash), a full click (Toggle/Blackout), and "panic" (StopAll, $pressed ignored). Live (§4b):
-            no baseRevision. Behaviour branches on the widget''s actionType (document-state, see VcButtonConfig):
-            Toggle starts/stops functionID; Flash keeps it running only while pressed=true; Blackout toggles
-            global blackout (mirrors io.blackout.toggle - see notes.md); StopAll fades/stops every running
-            Function.
+          description: 'Pointer edge on a VCButton - send pressed=true on pointer-down and pressed=false
+            on pointer-up, for EVERY actionType; the server applies the widget''s own actionType
+            (document-state, see VcButtonConfig) with the same semantics the on-screen button has on
+            touch: Toggle starts/stops functionID on the DOWN edge (pressed=false is a no-op); Blackout
+            toggles global blackout on the down edge (mirrors io.blackout.toggle - see notes.md;
+            pressed=false is a no-op); StopAll fades/stops every running Function on the down edge
+            (pressed=false is a no-op); Flash keeps functionID flashing exactly while pressed
+            (pressed=true starts, pressed=false stops). Live (§4b): no baseRevision, bare {} ack; the
+            resulting visual state arrives as vc.button.stateChanged (also when nothing changed, no
+            event is sent). Server-side this is VCButton::requestStateChange(), called the way
+            VCButtonItem.qml calls it - the edge filtering above happens in the server, so a client
+            never has to know that requestStateChange() itself toggles unconditionally.
 
-            IMPORTANT - one message per click, NOT a press/release pair, for every actionType except
-            Flash: for Toggle and Blackout, the engine flips its own current state on every single
-            invocation of this method regardless of the $pressed value (Toggle reads its own
-            Function::isRunning-equivalent state; Blackout calls toggleBlackout() unconditionally
-            every call) - sending a press(pressed=true) then a release(pressed=false) for one physical
-            click, the way a naive client modeling "press" and "release" as two edges would, toggles
-            twice and is a net no-op (a Blackout button would visibly not blackout). StopAll likewise
-            fires unconditionally on every call and ignores $pressed entirely. The real qmlui client
-            (VCButtonItem.qml) sends exactly one requestStateChange call per click for these three
-            actionTypes (from the mouse/touch "released" handler, with $pressed set to the button''s
-            *new* target state purely for the state()-bookkeeping side effect, not as a toggle trigger).
-            Flash is the sole exception and is genuinely edge-triggered: send pressed=true on
-            press-down and pressed=false on release, mirroring vc.slider.flash''s "on" param.
+            Errors: NOT_FOUND (no such widget), INVALID_PARAMS (widget is not a Button, or pressed is
+            not a JSON boolean), INVALID_STATE (widget isDisabled - the on-screen button ignores input
+            then too - or a Toggle/Flash button with no Function attached, where the engine would
+            silently do nothing).
 
             '
           properties:
@@ -1771,10 +1768,12 @@ messages:
               type: string
             state:
               type: string
+              description: VCButton::ButtonState, lowercased on the wire. Same spelling as the
+                VcWidgetSummary.state seed field.
               enum:
-              - Inactive
-              - Monitoring
-              - Active
+              - inactive
+              - monitoring
+              - active
   VcSliderSetValueRequest:
     payload:
       type: object
@@ -1801,7 +1800,12 @@ messages:
             configured levelChannel; Adjust maps it to the controlledFunction''s controlledAttribute fraction;
             Submaster cascades it as an intensity multiplier to every sibling widget in the containing
             Frame; GrandMaster forwards it verbatim to io.grandMaster.setValue (same engine call, InputOutputMap::setGrandMasterValue()
-            - see notes.md for the cross-domain duplication).
+            - see notes.md for the cross-domain duplication). The server confines $value to the
+            slider''s [rangeLowLimit, rangeHighLimit] (VcSliderConfig) the same way the on-screen fader
+            is physically confined to them - VcWidgetSummary.min/max expose those limits. Bare {} ack;
+            the new value arrives as vc.slider.valueChanged (nothing is sent if it did not change).
+            Errors: NOT_FOUND, INVALID_PARAMS (not a Slider, or value not an integer 0..255),
+            INVALID_STATE (widget isDisabled).
 
             '
           properties:
@@ -1980,24 +1984,27 @@ messages:
           - widgetId
           - x
           - y
-          description: VCXYPad::setCurrentPosition() - live (§4b). x/y are in the engine's native
-            0..255.996 DMX-with-fraction domain (VCXYPad's internal m_currentPosition units, MSB.LSB
-            expanded to 16-bit internally), the SAME units used by VcXyPadPositionChangedEvent.data,
-            VcXyPadConfig.horizontalRange/verticalRange, and VcXyPadPreset.position - NOT normalized
-            0.0-1.0. displayMode (Percentage/Degrees/DMX, see VcXyPadConfig) only affects how the
-            engine's own UI *labels* the axes; it does not change these wire units. A client must
-            convert to/from Percentage or Degrees itself if it wants to render those labels.
+          description: VCXYPad::setCurrentPosition() - live (§4b). x/y are NORMALIZED 0.0..1.0 of the
+            pad's full travel (0 = left/top, 1 = right/bottom, matching the on-screen pad), the same
+            units as VcXyPadPositionChangedEvent.data and VcWidgetSummary.x/y. The server scales them
+            onto VCXYPad's native 0..(255 + 255/256) MSB.LSB position domain (1.0 = the full 16-bit
+            span, 65535); VcXyPadConfig.horizontalRange/verticalRange and VcXyPadPreset.position stay in
+            that native 0..255.996 domain, so divide those by 255.99609375 to compare. displayMode
+            (Percentage/Degrees/DMX, see VcXyPadConfig) only affects how the engine's own UI *labels*
+            the axes. Bare {} ack; nothing is sent if the position did not change. Errors NOT_FOUND,
+            INVALID_PARAMS (not an XYPad, or x/y missing, non-numeric or outside 0..1), INVALID_STATE
+            (widget isDisabled).
           properties:
             widgetId:
               type: string
             x:
               type: number
               minimum: 0
-              maximum: 255.99609375
+              maximum: 1
             y:
               type: number
               minimum: 0
-              maximum: 255.99609375
+              maximum: 1
   VcXyPadSetPositionResponse:
     payload:
       oneOf:
@@ -2031,7 +2038,7 @@ messages:
               type: string
             x:
               type: number
-              description: Same 0..255.996 units as VcXyPadSetPositionRequest.params.x - see there.
+              description: Normalized 0.0..1.0, same units as VcXyPadSetPositionRequest.params.x - see there.
             y:
               type: number
               description: Same units as x above.
@@ -2445,34 +2452,54 @@ messages:
           type: object
           required:
           - widgetId
-          - pageIndex
-          description: 'VCFrame::gotoPage()/gotoNextPage()/gotoPreviousPage() - a multi-page Frame''s
-            *internal* page cursor (distinct from vc.page.select, which switches the top-level VC page).
-            Live (§4b), matching vc.page.select''s ephemeral treatment.
+          - page
+          description: 'VCFrame::gotoPage() - a multi-page Frame''s (or SoloFrame''s) *internal* page
+            cursor (distinct from vc.page.select, which switches the top-level VC page). $page must be
+            0..pages-1 (see vc.frame.get; a frame that is not in multiPageMode has exactly 1 page, so
+            only page 0 is valid) - anything else is INVALID_PARAMS. Modelled as live (§4b: no
+            baseRevision, bare {} ack, change arrives as vc.frame.pageChanged) like vc.page.select,
+            BUT WITH ONE ENGINE-SIDE CAVEAT: VCFrame::setCurrentPage() persists the current page into
+            the show file and therefore calls Doc::setModified(), which bumps the global docRevision.
+            Every successful page flip (one that actually changes the page - requesting the current
+            page again is a no-op with no event and no bump) stales every client''s baseRevision, so
+            their next structural (§4a) request answers CONFLICT until they pick up the new docRevision
+            (from any subsequent response/event carrying it). Clients should treat vc.frame.pageChanged
+            as a hint to refresh docRevision. Not worked around server-side because it is the
+            engine''s deliberate persistence behaviour, not an API choice. Errors: NOT_FOUND,
+            INVALID_PARAMS (not a Frame/SoloFrame, page not an integer or out of range),
+            INVALID_STATE (widget isDisabled).
 
             '
           properties:
             widgetId:
               type: string
+            page:
+              type: integer
             pageIndex:
               type: integer
+              deprecated: true
+              description: Pre-implementation spelling of $page, still accepted when $page is absent.
   VcFrameGotoPageResponse:
     payload:
       oneOf:
       - $ref: '#/components/messages/GenericAckResponse/payload'
       - $ref: '#/components/messages/ErrorResponse/payload'
-  VcFrameCurrentPageChangedEvent:
+  VcFramePageChangedEvent:
     payload:
       type: object
       required:
       - type
       - topic
       - data
+      description: Broadcast whenever a Frame/SoloFrame's internal current page changes for any reason
+        (vc.frame.gotoPage from any client, the QML page arrows, an external input source bound to
+        the frame's next/previous page controls). Also the moment docRevision was bumped as a side
+        effect - see VcFrameGotoPageRequest.
       properties:
         type:
           const: event
         topic:
-          const: vc.frame.currentPageChanged
+          const: vc.frame.pageChanged
         originClientId:
           type:
           - string
@@ -2481,12 +2508,58 @@ messages:
           type: object
           required:
           - widgetId
-          - currentPage
+          - page
           properties:
             widgetId:
               type: string
-            currentPage:
+            page:
               type: integer
+  VcFrameGetRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.frame.get
+        params:
+          type: object
+          required:
+          - widgetId
+          description: Live paging state of a Frame/SoloFrame (read-only, works on a disabled frame
+            too). Errors NOT_FOUND, INVALID_PARAMS (not a Frame/SoloFrame).
+          properties:
+            widgetId:
+              type: string
+  VcFrameGetResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcFrameGetOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcFrameGetOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          $ref: '#/components/schemas/VcFrameLiveState'
   VcFrameCloneFirstPageRequest:
     payload:
       type: object
@@ -2852,7 +2925,15 @@ messages:
           type: object
           required:
           - widgetId
-          description: VCCueList::playClicked()/playCurrentStep() - start, or resume from Paused.
+          description: 'VCCueList::playClicked() - exactly the on-screen Play button. Stopped -> starts
+            the Chaser at playbackIndex (or step 0 if none is selected); running -> in the default
+            PlayPauseStop layout toggles pause, in PlayStopPause layout stops (VcCueListConfig.playbackLayout).
+            Live (§4b), bare {} ack; state arrives as vc.cueList.playbackChanged. Errors, shared by
+            play/stop/next/previous/setPlaybackIndex: NOT_FOUND, INVALID_PARAMS (not a CueList),
+            INVALID_STATE (widget isDisabled, or no Chaser attached - the engine''s *Clicked() methods
+            silently return in that case).
+
+            '
           properties:
             widgetId:
               type: string
@@ -2880,6 +2961,11 @@ messages:
           type: object
           required:
           - widgetId
+          description: 'VCCueList::stopClicked() - the on-screen Stop button (PlayPauseStop layout: stops
+            a running Chaser, or clears the selection to -1 when already stopped; PlayStopPause
+            layout: toggles pause). Errors as vc.cueList.play.
+
+            '
           properties:
             widgetId:
               type: string
@@ -2907,6 +2993,8 @@ messages:
           type: object
           required:
           - widgetId
+          description: VCCueList::previousClicked() - honours VcCueListConfig.nextPrevBehavior. Errors
+            as vc.cueList.play.
           properties:
             widgetId:
               type: string
@@ -2934,6 +3022,8 @@ messages:
           type: object
           required:
           - widgetId
+          description: VCCueList::nextClicked() - honours VcCueListConfig.nextPrevBehavior. Errors as
+            vc.cueList.play.
           properties:
             widgetId:
               type: string
@@ -2961,13 +3051,22 @@ messages:
           type: object
           required:
           - widgetId
-          - playbackIndex
-          description: Jump directly to a step (e.g. double-click a row in the steps list). -1 stops.
+          - index
+          description: Jump directly to a step (e.g. double-click a row in the steps list) -
+            VCCueList::setPlaybackIndex($index) followed by playCurrentStep(), i.e. starts the Chaser
+            at that step if stopped, or switches a running Chaser to it. $index must be -1 or
+            0..steps.length-1 (see vc.cueList.get; INVALID_PARAMS otherwise, with error.details.stepCount);
+            -1 only clears the selection and does NOT stop a running Chaser (use vc.cueList.stop).
+            Errors as vc.cueList.play.
           properties:
             widgetId:
               type: string
+            index:
+              type: integer
             playbackIndex:
               type: integer
+              deprecated: true
+              description: Pre-implementation spelling of $index, still accepted when $index is absent.
   VcCueListSetPlaybackIndexResponse:
     payload:
       oneOf:
@@ -2981,8 +3080,11 @@ messages:
       - topic
       - data
       description: 'Broadcast whenever playback state changes for ANY reason: a client request above,
-        or the engine naturally advancing/finishing a step (m_runner) - i.e. this is how every connected
-        client''s cue list UI stays in sync with a chase that is simply running on its own.
+        the QML transport buttons, external input, or the engine naturally advancing/finishing a
+        step - i.e. this is how every connected client''s cue list UI stays in sync with a chase that
+        is simply running on its own. Fed by two engine signals (playbackStatusChanged and
+        playbackIndexChanged), so a single transport action can legitimately produce two consecutive
+        events carrying the full state each time - always apply the latest one wholesale.
 
         '
       properties:
@@ -2995,29 +3097,63 @@ messages:
           - string
           - 'null'
         data:
+          $ref: '#/components/schemas/VcCueListPlaybackState'
+  VcCueListGetRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.cueList.get
+        params:
           type: object
           required:
           - widgetId
-          - playbackStatus
-          - playbackIndex
-          - nextStepIndex
-          - primaryTop
+          description: The attached Chaser's steps as the on-screen cue list shows them, plus the live
+            playback state (read-only, works on a disabled cue list too). steps is empty when no Chaser
+            is attached. Errors NOT_FOUND, INVALID_PARAMS (not a CueList).
           properties:
             widgetId:
               type: string
-            playbackStatus:
-              type: string
-              enum:
-              - Stopped
-              - Playing
-              - Paused
-            playbackIndex:
-              type: integer
-            nextStepIndex:
-              type: integer
-            primaryTop:
-              type: boolean
-              description: Side-fader crossfade orientation, see VcCueListConfig.sideFaderMode.
+  VcCueListGetResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcCueListGetOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcCueListGetOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          allOf:
+          - $ref: '#/components/schemas/VcCueListPlaybackState'
+          - type: object
+            required:
+            - steps
+            properties:
+              steps:
+                type: array
+                items:
+                  $ref: '#/components/schemas/VcCueListStep'
   VcCueListSetSideFaderLevelRequest:
     payload:
       type: object
@@ -3078,7 +3214,7 @@ messages:
               type: string
             level:
               type: integer
-  VcSpeedDialSetCurrentTimeRequest:
+  VcSpeedDialSetValueRequest:
     payload:
       type: object
       required:
@@ -3092,36 +3228,49 @@ messages:
         id:
           type: string
         method:
-          const: vc.speedDial.setCurrentTime
+          const: vc.speedDial.setValue
         params:
           type: object
           required:
           - widgetId
-          - valueMs
-          description: VCSpeedDial::setCurrentTime() - dial/absolute-value editing. Live (§4b).
+          - ms
+          description: VCSpeedDial::setCurrentTime($ms) - dial/absolute-value editing, exactly what the
+            on-screen dial, +/- buttons and preset buttons do. Live (§4b), bare {} ack; the new value
+            arrives as vc.speedDial.valueChanged (nothing is sent if unchanged). Engine caveat - a
+            non-zero value is immediately applied to every attached Function's fadeIn/fadeOut/duration
+            (VcSpeedDialConfig.functions), but 0 is stored without being applied. Errors NOT_FOUND,
+            INVALID_PARAMS (not a Speed widget, or ms not a non-negative integer), INVALID_STATE
+            (widget isDisabled).
           properties:
             widgetId:
               type: string
-            valueMs:
+            ms:
               type: integer
               minimum: 0
-  VcSpeedDialSetCurrentTimeResponse:
+            valueMs:
+              type: integer
+              deprecated: true
+              description: Pre-implementation spelling of $ms (from the former vc.speedDial.setCurrentTime),
+                still accepted when $ms is absent.
+  VcSpeedDialSetValueResponse:
     payload:
       oneOf:
       - $ref: '#/components/messages/GenericAckResponse/payload'
       - $ref: '#/components/messages/ErrorResponse/payload'
-  VcSpeedDialCurrentTimeChangedEvent:
+  VcSpeedDialValueChangedEvent:
     payload:
       type: object
       required:
       - type
       - topic
       - data
+      description: Broadcast whenever a speed dial's currentTime changes for any reason (vc.speedDial.setValue,
+        vc.speedDial.tap computing a new interval, the QML dial, external input).
       properties:
         type:
           const: event
         topic:
-          const: vc.speedDial.currentTimeChanged
+          const: vc.speedDial.valueChanged
         originClientId:
           type:
           - string
@@ -3130,11 +3279,11 @@ messages:
           type: object
           required:
           - widgetId
-          - valueMs
+          - ms
           properties:
             widgetId:
               type: string
-            valueMs:
+            ms:
               type: integer
   VcSpeedDialSetFactorRequest:
     payload:
@@ -3248,11 +3397,13 @@ messages:
           type: object
           required:
           - widgetId
-          description: 'VCSpeedDial::tap() - tap-tempo. Successive taps within 1.5s compute a new currentTime
-            from the tap interval average. If controlBPM is enabled (VcSpeedDialConfig), this ALSO sets
-            the engine''s global BPM number (InputOutputMap::setBpmNumber()) - there is currently no dedicated
-            io.bpm.* message in io.yaml/core.yaml to broadcast that global value; flagged for the merge
-            pass, see notes.md.
+          description: 'VCSpeedDial::tap() - tap-tempo. The first tap of a series only arms the timer and
+            changes nothing observable (bare {} ack, no event); each further tap within 1.5 s computes a
+            new currentTime from the tap interval average and reports it as vc.speedDial.valueChanged.
+            If controlBPM is enabled (VcSpeedDialConfig), this ALSO sets the engine''s global BPM number
+            (InputOutputMap::setBpmNumber()) - there is currently no dedicated io.bpm.* message in
+            io.yaml/core.yaml to broadcast that global value; flagged for the merge pass, see notes.md.
+            Errors NOT_FOUND, INVALID_PARAMS (not a Speed widget), INVALID_STATE (widget isDisabled).
 
             '
           properties:
@@ -3854,7 +4005,7 @@ messages:
             - SpeedDial: NOT SUPPORTED. VCSpeedDial has no applyPreset counterpart in the engine at
             all (only add/remove/rename/setValue on the preset list itself). "Applying" a SpeedDial
             preset is purely a client-side gesture: look up the preset''s stored value in
-            VcSpeedDialPreset and send that value via vc.speedDial.setCurrentTime - do not send
+            VcSpeedDialPreset and send that value via vc.speedDial.setValue - do not send
             vc.widget.preset.apply for a SpeedDial widgetId, it has no defined effect.
 
             '
@@ -4004,7 +4155,6 @@ schemas:
         $ref: '#/components/schemas/VcFont'
   VcWidgetSummary:
     type: object
-    description: Compact form used in list/usage results and as the base of VcWidgetDetail.
     required:
     - id
     - widgetType
@@ -4037,6 +4187,125 @@ schemas:
         type: boolean
       style:
         $ref: '#/components/schemas/VcWidgetStyle'
+      state:
+        type: string
+        enum:
+        - inactive
+        - monitoring
+        - active
+        description: 'Button only: live VCButton::ButtonState (lowercased), seed for vc.button.stateChanged.'
+      value:
+        type: integer
+        description: 'Slider only: live VCSlider::value(), seed for vc.slider.valueChanged.'
+      min:
+        type: number
+        description: 'Slider only: VcSliderConfig.rangeLowLimit - the lower bound vc.slider.setValue is confined to.'
+      max:
+        type: number
+        description: 'Slider only: VcSliderConfig.rangeHighLimit - the upper bound vc.slider.setValue is confined to.'
+      playbackIndex:
+        type: integer
+        description: 'CueList only: live current step (-1 = none), seed for vc.cueList.playbackChanged.'
+      running:
+        type: boolean
+        description: 'CueList only: see VcCueListPlaybackState.running.'
+      paused:
+        type: boolean
+        description: 'CueList only: see VcCueListPlaybackState.paused.'
+      x:
+        type: number
+        description: 'XYPad only: live normalized 0..1 position, seed for vc.xyPad.positionChanged.'
+      y:
+        type: number
+        description: 'XYPad only: live normalized 0..1 position.'
+      ms:
+        type: integer
+        description: 'Speed only: live VCSpeedDial::currentTime() in ms, seed for vc.speedDial.valueChanged.'
+      currentPage:
+        type: integer
+        description: 'Frame/SoloFrame only: live internal page, seed for vc.frame.pageChanged.'
+      pages:
+        type: integer
+        description: 'Frame/SoloFrame only: VCFrame::totalPagesNumber() (1 when not multipage).'
+      multipage:
+        type: boolean
+        description: 'Frame/SoloFrame only: VCFrame::multiPageMode().'
+    description: Compact form used in list/usage results and as the base of VcWidgetDetail. The
+      per-type live (§4b) fields at the end (state / value+min+max / playbackIndex+running+paused /
+      x+y / ms / currentPage+pages+multipage) are present ONLY on widgets of the matching widgetType
+      (a Label carries none) and let a client seed its live view straight from vc.widget.list/get
+      instead of waiting for the first vc.*Changed event. Added additively (2026-09-26) - no
+      pre-existing field was removed or renamed.
+  VcCueListPlaybackState:
+    type: object
+    description: Live playback state of a CueList, as carried by vc.cueList.playbackChanged and
+      vc.cueList.get.
+    required:
+    - widgetId
+    - playbackIndex
+    - running
+    - paused
+    properties:
+      widgetId:
+        type: string
+      playbackIndex:
+        type: integer
+        description: VCCueList::playbackIndex() - the current/selected step, -1 = none.
+      running:
+        type: boolean
+        description: The attached Chaser is active at all (VCCueList::PlaybackStatus Playing OR Paused
+          - a paused Chaser is still Function::isRunning()). false = Stopped.
+      paused:
+        type: boolean
+        description: PlaybackStatus == Paused (implies running=true).
+  VcCueListStep:
+    type: object
+    description: One Chaser step as the on-screen cue list displays it - fadeIn/fadeOut/hold are the
+      RESOLVED values (the Chaser's Common/PerStep/Default speed modes decide whether the step's own
+      value, the Chaser's, or the step Function's applies - same logic as ChaserEditor::stepDataMap()).
+      Speeds are milliseconds; 4294967295 (Function::infiniteSpeed(), kept as a positive number) means
+      infinite.
+    required:
+    - index
+    - name
+    - functionId
+    - fadeIn
+    - fadeOut
+    - hold
+    - notes
+    properties:
+      index:
+        type: integer
+      name:
+        type: string
+        description: The step Function's name (empty if that Function no longer exists).
+      functionId:
+        type: string
+      fadeIn:
+        type: integer
+      fadeOut:
+        type: integer
+      hold:
+        type: integer
+      notes:
+        type: string
+        description: ChaserStep::note.
+  VcFrameLiveState:
+    type: object
+    description: Result of vc.frame.get.
+    required:
+    - pages
+    - currentPage
+    - multipage
+    properties:
+      pages:
+        type: integer
+        description: VCFrame::totalPagesNumber() - 1 when not in multipage mode.
+      currentPage:
+        type: integer
+      multipage:
+        type: boolean
+        description: VCFrame::multiPageMode().
   VcWidgetDetail:
     allOf:
     - $ref: '#/components/schemas/VcWidgetSummary'
@@ -4270,7 +4539,8 @@ schemas:
       horizontalRange:
         type: object
         description: Bounds of the pad's X axis, in the same 0..255.996 units as
-          VcXyPadSetPositionRequest.params.x (default 0..255 - see VCXYPad's m_horizontalRange).
+          VCXYPad's native 0..255.996 position domain (default 0..255 - see VCXYPad's m_horizontalRange);
+          NOT the normalized 0..1 of VcXyPadSetPositionRequest.params.x - divide by 255.99609375 to compare.
         required:
         - min
         - max
@@ -4346,7 +4616,8 @@ schemas:
         type: string
       position:
         type: object
-        description: presetType=position only. Same 0..255.996 units as VcXyPadSetPositionRequest.params.x/y.
+        description: presetType=position only. VCXYPad's native 0..255.996 position units (NOT the
+          normalized 0..1 of VcXyPadSetPositionRequest.params.x/y - divide by 255.99609375 to compare).
         properties:
           x:
             type: number
@@ -5362,12 +5633,24 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/vcFrameGotoPageResponse'
-  receiveVcFrameCurrentPageChanged:
+  receiveVcFramePageChanged:
     action: receive
     channel:
       $ref: '#/channels/qlcplus'
     messages:
-    - $ref: '#/channels/qlcplus/messages/vcFrameCurrentPageChangedEvent'
+    - $ref: '#/channels/qlcplus/messages/vcFramePageChangedEvent'
+  sendVcFrameGet:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcFrameGetRequest'
+  receiveVcFrameGetResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcFrameGetResponse'
   sendVcFrameCloneFirstPage:
     action: send
     channel:
@@ -5542,6 +5825,18 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/vcCueListPlaybackChangedEvent'
+  sendVcCueListGet:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcCueListGetRequest'
+  receiveVcCueListGetResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcCueListGetResponse'
   sendVcCueListSetSideFaderLevel:
     action: send
     channel:
@@ -5560,24 +5855,24 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/vcCueListSideFaderChangedEvent'
-  sendVcSpeedDialSetCurrentTime:
+  sendVcSpeedDialSetValue:
     action: send
     channel:
       $ref: '#/channels/qlcplus'
     messages:
-    - $ref: '#/channels/qlcplus/messages/vcSpeedDialSetCurrentTimeRequest'
-  receiveVcSpeedDialSetCurrentTimeResponse:
+    - $ref: '#/channels/qlcplus/messages/vcSpeedDialSetValueRequest'
+  receiveVcSpeedDialSetValueResponse:
     action: receive
     channel:
       $ref: '#/channels/qlcplus'
     messages:
-    - $ref: '#/channels/qlcplus/messages/vcSpeedDialSetCurrentTimeResponse'
-  receiveVcSpeedDialCurrentTimeChanged:
+    - $ref: '#/channels/qlcplus/messages/vcSpeedDialSetValueResponse'
+  receiveVcSpeedDialValueChanged:
     action: receive
     channel:
       $ref: '#/channels/qlcplus'
     messages:
-    - $ref: '#/channels/qlcplus/messages/vcSpeedDialCurrentTimeChangedEvent'
+    - $ref: '#/channels/qlcplus/messages/vcSpeedDialValueChangedEvent'
   sendVcSpeedDialSetFactor:
     action: send
     channel:
