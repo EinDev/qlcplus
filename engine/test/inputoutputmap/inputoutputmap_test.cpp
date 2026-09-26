@@ -914,34 +914,39 @@ void InputOutputMap_Test::pluginCacheHotplugSetting()
     // connected and no monitor is instantiated. The setting is read from
     // a scratch INI file, never from the user's real settings, and a
     // renamed copy of the stub library is loaded so that this is a new
-    // plugin for the cache rather than the shared instance.
-    QTemporaryDir tmpDir;
-    QVERIFY(tmpDir.isValid());
+    // plugin for the cache rather than the shared instance. A loaded
+    // library stays mapped until the process exits, so the copy lives in a
+    // fixed directory next to the binary that the next run clears first
+    // (a QTemporaryDir could not remove it on Windows).
+    QDir scratch(QDir::current().absoluteFilePath("hotplugstub"));
+    if (scratch.exists())
+        scratch.removeRecursively();
+    QVERIFY(QDir().mkpath(scratch.absolutePath()));
 
     QStringList libs = testPluginDir().entryList();
     QVERIFY(libs.isEmpty() == false);
     const QString original = testPluginDir().absoluteFilePath(libs.first());
-    const QString copy = tmpDir.filePath("hotplugstub" + KExtPlugin);
+    const QString copy = scratch.absoluteFilePath("hotplugstub" + KExtPlugin);
     QVERIFY2(QFile::copy(original, copy), qPrintable(original));
 
     const QString orgBefore = QCoreApplication::organizationName();
     const QString appBefore = QCoreApplication::applicationName();
     QCoreApplication::setOrganizationName("qlcplus-test");
     QCoreApplication::setApplicationName("ioplugincache_test");
-    QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, tmpDir.path());
+    QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, scratch.absolutePath());
     QSettings::setDefaultFormat(QSettings::IniFormat);
     {
         QSettings settings;
         settings.setValue(SETTINGS_HOTPLUG, true);
         settings.sync();
         QCOMPARE(settings.status(), QSettings::NoError);
-        QVERIFY(settings.fileName().startsWith(QDir::cleanPath(tmpDir.path())));
+        QVERIFY(settings.fileName().startsWith(scratch.absolutePath()));
     }
 
     {
         IOPluginCache cache(this);
         QSignalSpy loadedSpy(&cache, SIGNAL(pluginLoaded(QString)));
-        QDir dir(tmpDir.path());
+        QDir dir(scratch.absolutePath());
         dir.setFilter(QDir::Files);
         dir.setNameFilters(QStringList() << QString("*%1").arg(KExtPlugin));
         cache.load(dir);
