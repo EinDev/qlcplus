@@ -103,29 +103,36 @@ function useHistory(qlc) {
     const off = qlc.subscribeTo('core.history.changed', (d) => { if (d && d.canUndo != null) apply(d); else refresh(); });
     return () => { alive = false; off(); };
   }, [qlc.online]);
-  const undo = React.useCallback(() => { if (qlc.online && h.supported !== false) qlc.call('core.undo', {}).catch(() => {}); }, [qlc.online, h.supported]);
-  const redo = React.useCallback(() => { if (qlc.online && h.supported !== false) qlc.call('core.redo', {}).catch(() => {}); }, [qlc.online, h.supported]);
+  /* The result already carries the new canUndo/canRedo/texts (the coalesced core.history.changed follows). */
+  const applyResult = (r) => { if (r && r.canUndo != null) setH({ supported: true, canUndo: !!r.canUndo, canRedo: !!r.canRedo, undoText: r.undoText || '', redoText: r.redoText || '' }); };
+  const undo = React.useCallback(() => { if (qlc.online && h.supported !== false) qlc.call('core.undo', {}).then(applyResult).catch(() => {}); }, [qlc.online, h.supported]);
+  const redo = React.useCallback(() => { if (qlc.online && h.supported !== false) qlc.call('core.redo', {}).then(applyResult).catch(() => {}); }, [qlc.online, h.supported]);
   return Object.assign({}, h, { undo, redo });
 }
 
 /** Global BPM (core.bpm.get/set/tap + core.bpm.changed) and the beat pulse (core.beat). */
 function useBpm(qlc) {
-  const [bpm, setBpm] = React.useState({ supported: null, bpm: 0, generator: '' });
+  const empty = { supported: null, bpm: 0, generator: '', error: '' };
+  const [bpm, setBpm] = React.useState(empty);
   const [beat, setBeat] = React.useState(0);
   React.useEffect(() => {
-    if (!qlc.online) { setBpm({ supported: null, bpm: 0, generator: '' }); return; }
+    if (!qlc.online) { setBpm(empty); return; }
     let alive = true;
-    qlc.call('core.bpm.get', {}).then(r => { if (alive && r) setBpm({ supported: true, bpm: Number(r.bpm) || 0, generator: r.generator || '' }); })
+    qlc.call('core.bpm.get', {}).then(r => { if (alive && r) setBpm({ supported: true, bpm: Number(r.bpm) || 0, generator: r.generator || '', error: '' }); })
       .catch(e => { if (alive && e && e.code === 'NOT_FOUND') setBpm(s => Object.assign({}, s, { supported: false })); });
     const offs = [
-      qlc.subscribeTo('core.bpm.changed', (d) => { if (d) setBpm(s => ({ supported: true, bpm: Number(d.bpm) || 0, generator: d.generator != null ? d.generator : s.generator })); }),
+      qlc.subscribeTo('core.bpm.changed', (d) => { if (d) setBpm(s => ({ supported: true, bpm: Number(d.bpm) || 0, generator: d.generator != null ? d.generator : s.generator, error: '' })); }),
       qlc.subscribeTo('core.beat', () => setBeat(b => b + 1))
     ];
     return () => { alive = false; offs.forEach(f => f()); };
   }, [qlc.online]);
-  const set = React.useCallback((v) => { if (qlc.online) qlc.call('core.bpm.set', { bpm: Math.max(0, Math.round(v)) }).catch(() => {}); }, [qlc.online]);
-  const tap = React.useCallback(() => { if (qlc.online && bpm.supported !== false) qlc.call('core.bpm.tap', {}).catch(() => {}); }, [qlc.online, bpm.supported]);
-  return Object.assign({}, bpm, { beat, set, tap });
+  /* set/tap answer INVALID_STATE while a plugin/audio generator owns the tempo — shown, not swallowed. */
+  const onError = (e) => { if (e && e.code === 'INVALID_STATE') setBpm(s => Object.assign({}, s, { error: 'Tempo owned by ' + ((e.details && e.details.generator) || s.generator || 'another source'), generator: (e.details && e.details.generator) || s.generator })); };
+  const set = React.useCallback((v) => { if (qlc.online) qlc.call('core.bpm.set', { bpm: Math.max(0, Math.min(1000, Math.round(v))) }).catch(onError); }, [qlc.online]);
+  const tap = React.useCallback(() => { if (qlc.online && bpm.supported !== false) qlc.call('core.bpm.tap', {}).catch(onError); }, [qlc.online, bpm.supported]);
+  /* "plugin"/"audio" generators own the tempo: the API may only read it. */
+  const owned = bpm.generator === 'plugin' || bpm.generator === 'audio';
+  return Object.assign({}, bpm, { beat, set, tap, owned });
 }
 
 /**
@@ -146,8 +153,9 @@ function useRunningFunctions(qlc) {
     load();
     const offs = [
       qlc.subscribeTo('functions.status.changed', (d) => {
-        if (!d || d.id == null) return;
-        setRunning(s => { const n = new Set(s || []); if (d.running) n.add(String(d.id)); else n.delete(String(d.id)); return n; });
+        const fid = d ? (d.functionId != null ? d.functionId : d.id) : null;
+        if (fid == null) return;
+        setRunning(s => { const n = new Set(s || []); if (d.running) n.add(String(fid)); else n.delete(String(fid)); return n; });
       }),
       qlc.subscribeTo('core.project.loaded', load)
     ];
@@ -184,26 +192,31 @@ function BpmControl({ bpmState, disabled }) {
     document.addEventListener('mousedown', onDown, true);
     return () => { window.removeEventListener('keydown', onKey); document.removeEventListener('mousedown', onDown, true); };
   }, [open]);
-  const label = 'BPM: ' + (bpmState.supported === false ? 'n/a' : bpmState.bpm > 0 ? bpmState.bpm : 'Off');
+  const label = 'BPM: ' + (bpmState.supported === false ? 'n/a' : bpmState.bpm > 0 && bpmState.generator !== 'disabled' ? bpmState.bpm : 'Off');
+  const locked = bpmState.supported === false || bpmState.owned;
   return (
     <span ref={anchor} style={{ position: 'relative', display: 'inline-flex', alignSelf: 'stretch', alignItems: 'center', flex: 'none' }}>
       <button type="button" disabled={disabled} onClick={() => { if (!open) place(); setOpen(!open); }}
-        title={disabled ? 'BPM — connect first' : bpmState.supported === false ? 'BPM — not exposed by this server' : 'BPM — click to tap or set'}
+        title={disabled ? 'BPM — connect first' : bpmState.supported === false ? 'BPM — not exposed by this server' : bpmState.owned ? 'BPM — tempo owned by the ' + bpmState.generator + ' beat source' : 'BPM — click to tap or set'}
         style={{ height: '100%', padding: '0 6px', background: open ? 'var(--bg-light)' : 'transparent', border: 'none', color: 'var(--fg-main)', cursor: disabled ? 'default' : 'pointer',
           font: '400 var(--text-size-default) var(--font-roboto)', whiteSpace: 'nowrap' }}>{label}</button>
       {open ? (
         <span style={{ position: 'fixed', top: box.top, left: box.left, zIndex: 400, display: 'flex', flexDirection: 'column', gap: 6, padding: 8, width: 200, background: 'var(--bg-medium)', border: 'var(--border-dialog)' }}>
           <RobotoText label={'Beat generator: ' + (bpmState.generator || 'unknown')} fontSize="var(--text-size-menubar)" labelColor="var(--fg-light)" wrapText height="auto" />
+          {bpmState.owned || bpmState.error ? (
+            <RobotoText label={bpmState.error || 'Tempo owned by ' + bpmState.generator + ' — set the generator to internal in the desktop app to edit it here'}
+              fontSize="var(--text-size-menubar)" labelColor="var(--selection)" wrapText height="auto" />
+          ) : null}
           <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            <CustomSpinBox value={draft} from={0} to={400} width={80} height={26} onValueModified={setDraft} onKeyDown={(e) => { if (e.key === 'Enter') { bpmState.set(draft); setOpen(false); } }} />
-            <GenericButton label="Set" width={60} height={26} fontSize="var(--text-size-menubar)" onClick={() => { bpmState.set(draft); setOpen(false); }} disabled={bpmState.supported === false} />
+            <CustomSpinBox value={draft} from={0} to={1000} width={80} height={26} disabled={locked} onValueModified={setDraft} onKeyDown={(e) => { if (e.key === 'Enter' && !locked) { bpmState.set(draft); setOpen(false); } }} />
+            <GenericButton label="Set" width={60} height={26} fontSize="var(--text-size-menubar)" onClick={() => { bpmState.set(draft); setOpen(false); }} disabled={locked} />
           </span>
           <ShortcutHint keys="Space" placement="corner">
-            <GenericButton label="TAP" width="100%" height={34} fontSize="var(--text-size-default)" disabled={bpmState.supported === false}
+            <GenericButton label="TAP" width="100%" height={34} fontSize="var(--text-size-default)" disabled={locked}
               bgColor="var(--keypad-enter)" hoverColor="var(--keypad-enter-hover)" pressedColor="var(--keypad-enter-pressed)"
-              onPointerDown={(e) => { e.preventDefault(); bpmState.tap(); }} />
+              onPointerDown={(e) => { e.preventDefault(); if (!locked) bpmState.tap(); }} />
           </ShortcutHint>
-          <GenericButton label="Off" width="100%" height={24} fontSize="var(--text-size-menubar)" disabled={bpmState.supported === false || !bpmState.bpm} onClick={() => { bpmState.set(0); setOpen(false); }} />
+          <GenericButton label="Off" width="100%" height={24} fontSize="var(--text-size-menubar)" disabled={locked || !bpmState.bpm || bpmState.generator === 'disabled'} onClick={() => { bpmState.set(0); setOpen(false); }} />
         </span>
       ) : null}
     </span>
@@ -351,7 +364,7 @@ function App() {
       /* Space = tap tempo, unless a button (VC button, any <button>) has focus and Space is its press. */
       const ae = document.activeElement;
       const onButton = !!ae && (ae.tagName === 'BUTTON' || ae.getAttribute('role') === 'button');
-      if (e.key === ' ' && !e.ctrlKey && !isTyping() && !onButton && qlc.online && bpm.supported) { e.preventDefault(); bpm.tap(); return; }
+      if (e.key === ' ' && !e.ctrlKey && !isTyping() && !onButton && qlc.online && bpm.supported && !bpm.owned) { e.preventDefault(); bpm.tap(); return; }
       if (!e.ctrlKey) return;
       const map = { '1': 'fx', '2': 'vc', '3': 'sd', '4': 'io' };
       if (map[e.key]) { e.preventDefault(); setCtx(map[e.key]); }
@@ -377,8 +390,9 @@ function App() {
     ? (project ? (project.fileName || 'Untitled') + (project.isModified ? ' *' : '') : '…')
     : 'Winter Tour.qxw (mock)';
   const online = qlc.online;
-  const undoTip = history.supported === false ? 'Undo — not available on this server' : 'Undo' + (history.undoText ? ' ' + history.undoText : '');
-  const redoTip = history.supported === false ? 'Redo — not available on this server' : 'Redo' + (history.redoText ? ' ' + history.redoText : '');
+  /* Only edits made in the desktop app are on the undo stack; edits made through the API are not. */
+  const undoTip = history.supported === false ? 'Undo — not available on this server' : 'Undo' + (history.undoText ? ' ' + history.undoText : '') + ' (desktop-made edits only)';
+  const redoTip = history.supported === false ? 'Redo — not available on this server' : 'Redo' + (history.redoText ? ' ' + history.redoText : '') + ' (desktop-made edits only)';
   const stopAllUnsupported = qlc.isUnsupported('functions.stopAll');
 
   const menuItems = [

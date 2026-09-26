@@ -86,14 +86,19 @@ function useThrottledSender(interval) {
   const timers = React.useRef({});
   React.useEffect(() => () => { Object.values(timers.current).forEach(t => clearTimeout(t.handle)); }, []);
   return React.useCallback((key, fn) => {
+    const ms = interval || 33;
+    /* A cool-down window per key; a trailing send re-arms it so two sends are never closer than `ms`. */
+    const arm = () => {
+      timers.current[key] = { fn: null, handle: setTimeout(() => {
+        const last = timers.current[key];
+        delete timers.current[key];
+        if (last && last.fn) { last.fn(); arm(); }
+      }, ms) };
+    };
     const t = timers.current[key];
     if (t) { t.fn = fn; return; }
     fn();
-    timers.current[key] = { fn: null, handle: setTimeout(() => {
-      const last = timers.current[key];
-      delete timers.current[key];
-      if (last && last.fn) last.fn();
-    }, interval || 33) };
+    arm();
   }, [interval]);
 }
 
