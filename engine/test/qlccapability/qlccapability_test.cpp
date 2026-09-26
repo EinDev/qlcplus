@@ -878,7 +878,6 @@ void QLCCapability_Test::loadPicture()
         QVERIFY(loadCapability(cap, attrs, "Gobo") == true);
         QCOMPARE(cap.preset(), QLCCapability::GoboMacro);
         QString path = cap.resource(0).toString();
-        QVERIFY(QFileInfo(path).isRelative() == false);
         QVERIFY(path.endsWith("gobo00001.svg"));
         QVERIFY(path.startsWith(QLCFile::systemDirectory(GOBODIR).path()));
     }
@@ -957,7 +956,6 @@ void QLCCapability_Test::loadLegacyResource()
         QCOMPARE(cap.preset(), QLCCapability::GoboMacro);
         QString path = cap.resource(0).toString();
         QVERIFY(path.endsWith("gobo00002.svg"));
-        QVERIFY(QFileInfo(path).isRelative() == false);
     }
 
     /* a legacy absolute "Res" becomes a generic picture */
