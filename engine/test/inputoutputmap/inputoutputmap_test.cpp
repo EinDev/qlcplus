@@ -1226,7 +1226,8 @@ void InputOutputMap_Test::beatGenerator()
     QTest::qSleep(60);
     im.slotPluginBeat(0, 0, 255, "beat");
     QCOMPARE(beatSpy.size(), 2);
-    QVERIFY(im.bpmNumber() >= 100);
+    // derived from the >= 60 ms spacing; only the upper bound is deterministic
+    QVERIFY(im.bpmNumber() > 0);
     QVERIFY(im.bpmNumber() <= 1100);
     int derived = im.bpmNumber();
 

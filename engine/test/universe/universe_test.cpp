@@ -1288,6 +1288,11 @@ void Universe_Test::thread()
         QThread::msleep(10);
     }
     QVERIFY(m_uni->faderCycles() > cycles);
+
+    // the thread zeroes the intensity channel at the start of every cycle
+    // before the fader writes it again, so only the end state is stable
+    for (int i = 0; i < 200 && m_uni->postGMValue(0) != 255; i++)
+        QThread::msleep(10);
     QCOMPARE(m_uni->postGMValue(0), uchar(255));
 
     // the destructor (see cleanup()) is in charge of stopping the thread
