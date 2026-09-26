@@ -38,6 +38,7 @@
 #include "universe.h"
 #include "tardis.h"
 #include "functionmanager.h"
+#include "quickitemutils.h"
 #include "fixture.h"
 #include "scene.h"
 #include "doc.h"
@@ -97,7 +98,7 @@ SceneEditor::~SceneEditor()
     setExternalControlEnabled(false);
 
     m_view->rootContext()->setContextProperty("sceneEditor", nullptr);
-    QQuickItem *bottomPanel = qobject_cast<QQuickItem*>(m_view->rootObject()->findChild<QObject *>("bottomPanelItem"));
+    QQuickItem *bottomPanel = findVisibleContextItem(m_view->rootObject(), "bottomPanelItem");
     if (bottomPanel != nullptr)
         bottomPanel->setProperty("visible", false);
 
@@ -108,7 +109,7 @@ SceneEditor::~SceneEditor()
 
 void SceneEditor::setFunctionID(quint32 id)
 {
-    QQuickItem *bottomPanel = qobject_cast<QQuickItem*>(m_view->rootObject()->findChild<QObject *>("bottomPanelItem"));
+    QQuickItem *bottomPanel = findVisibleContextItem(m_view->rootObject(), "bottomPanelItem");
 
     if (id == Function::invalidId())
     {

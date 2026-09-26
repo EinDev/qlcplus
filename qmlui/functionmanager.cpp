@@ -26,6 +26,7 @@
 #include "collectioneditor.h"
 #include "functionmanager.h"
 #include "functionpathutils.h"
+#include "quickitemutils.h"
 #include "rgbmatrixeditor.h"
 #include "treemodelitem.h"
 #include "chasereditor.h"
@@ -697,7 +698,15 @@ void FunctionManager::setEditorFunction(quint32 fID, bool requestUI, bool back)
     if (m_currentEditor != nullptr)
     {
         if (m_currentEditor->functionID() == fID && !back)
+        {
+            // the editor is already open: nothing to rebuild, but the
+            // request may come from a different tab than the one showing
+            // it (a Show item double-clicked while its function is still
+            // open in Fixtures & Functions), so the UI is still requested
+            if (requestUI)
+                requestEditorUI(fID);
             return;
+        }
 
         if (!back)
             previousID = m_currentEditor->functionID();
@@ -721,7 +730,7 @@ void FunctionManager::setEditorFunction(quint32 fID, bool requestUI, bool back)
 
         if (requestUI == true)
         {
-            QQuickItem *rightPanel = qobject_cast<QQuickItem*>(m_view->rootObject()->findChild<QObject *>("funcRightPanel"));
+            QQuickItem *rightPanel = findVisibleContextItem(m_view->rootObject(), "funcRightPanel");
             if (rightPanel != nullptr)
                 QMetaObject::invokeMethod(rightPanel, "requestEditor", Q_ARG(QVariant, -1), Q_ARG(QVariant, 0));
         }
@@ -801,16 +810,23 @@ void FunctionManager::setEditorFunction(quint32 fID, bool requestUI, bool back)
     }
 
     if (requestUI == true)
-    {
-        QQuickItem *rightPanel = qobject_cast<QQuickItem*>(m_view->rootObject()->findChild<QObject *>("funcRightPanel"));
-        if (rightPanel != nullptr)
-        {
-            QMetaObject::invokeMethod(rightPanel, "requestEditor",
-                Q_ARG(QVariant, f->id()), Q_ARG(QVariant, f->type()));
-        }
-    }
+        requestEditorUI(f->id());
 
     emit isEditingChanged(true);
+}
+
+void FunctionManager::requestEditorUI(quint32 fID)
+{
+    Function *f = m_doc->function(fID);
+    if (f == nullptr)
+        return;
+
+    QQuickItem *rightPanel = findVisibleContextItem(m_view->rootObject(), "funcRightPanel");
+    if (rightPanel != nullptr)
+    {
+        QMetaObject::invokeMethod(rightPanel, "requestEditor",
+            Q_ARG(QVariant, f->id()), Q_ARG(QVariant, f->type()));
+    }
 }
 
 static void collectExpandedPaths(TreeModel *model, const QString &parentPath, QStringList &paths)
@@ -891,7 +907,7 @@ void FunctionManager::deleteFunction(quint32 fid)
     {
         setEditorFunction(-1, false, false);
 
-        QQuickItem *rightPanel = qobject_cast<QQuickItem*>(m_view->rootObject()->findChild<QObject *>("funcRightPanel"));
+        QQuickItem *rightPanel = findVisibleContextItem(m_view->rootObject(), "funcRightPanel");
         if (rightPanel != nullptr)
             QMetaObject::invokeMethod(rightPanel, "closeEditor");
     }

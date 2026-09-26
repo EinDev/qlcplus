@@ -153,6 +153,10 @@ public:
     /** Set $fID as the current Function ID being edited */
     Q_INVOKABLE void setEditorFunction(quint32 fID, bool requestUI, bool back);
 
+    /** Ask the right panel of the tab currently shown to load the editor
+     *  of function $fID (the editor object itself must already exist) */
+    void requestEditorUI(quint32 fID);
+
     /** Return a reference of the currently open Function editor */
     FunctionEditor *currentEditor() const;
 
