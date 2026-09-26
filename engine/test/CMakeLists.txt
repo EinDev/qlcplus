@@ -48,6 +48,7 @@ add_subdirectory(qlcpalette)
 add_subdirectory(qlcphysical)
 add_subdirectory(qlcpoint)
 add_subdirectory(rgbalgorithm)
+add_subdirectory(rgbaudio)
 add_subdirectory(rgbimage)
 add_subdirectory(rgbmatrix)
 add_subdirectory(rgbplain)
@@ -131,6 +132,7 @@ set(QLCPLUS_ENGINE_TESTS
     qlcphysical_test
     qlcpoint_test
     rgbalgorithm_test
+    rgbaudio_test
     rgbimage_test
     rgbmatrix_test
     rgbplain_test

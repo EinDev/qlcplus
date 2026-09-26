@@ -47,6 +47,17 @@ private slots:
     void wavesCircularOption();
     void wavesInOutDirections();
 
+    void loadMissingFile();
+    void evaluateMissingSetColors();
+    void evaluateMissingProperties();
+    void assignmentAndEquality();
+    void runtimeErrors();
+    void propertyAccessors();
+    void propertiesAsStrings();
+    void colorArrayRoundTrip();
+    void loadSaveXML();
+    void unusualPropertyDeclarations();
+
 private:
     Doc * m_doc;
 };

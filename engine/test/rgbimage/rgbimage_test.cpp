@@ -18,6 +18,7 @@
 #include <QtTest>
 #include <QXmlStreamReader>
 #include <QXmlStreamWriter>
+#include <QImageReader>
 #include <QFileInfo>
 #include <QBuffer>
 #include <QDir>
@@ -391,6 +392,62 @@ void RGBImage_Test::copyAndClone()
     RGBImage emptyCopy(empty);
     QCOMPARE(emptyCopy.filename(), QString());
     QCOMPARE(emptyCopy.m_image.width(), 0);
+}
+
+void RGBImage_Test::animatedGif()
+{
+    if (QImageReader::supportedImageFormats().contains("gif") == false)
+        QSKIP("No GIF image format support in this Qt build");
+
+    /* A hand-made 2x1 GIF89a with two frames (all red, then all blue),
+     * a 4-entry global color table and an infinite NETSCAPE loop */
+    static const unsigned char gifData[] = {
+        'G', 'I', 'F', '8', '9', 'a',
+        0x02, 0x00, 0x01, 0x00, 0x91, 0x00, 0x00,
+        0xFF, 0x00, 0x00,  0x00, 0x00, 0xFF,  0x00, 0xFF, 0x00,  0x00, 0x00, 0x00,
+        0x21, 0xFF, 0x0B, 'N', 'E', 'T', 'S', 'C', 'A', 'P', 'E', '2', '.', '0',
+        0x03, 0x01, 0x00, 0x00, 0x00,
+        0x21, 0xF9, 0x04, 0x00, 0x0A, 0x00, 0x00, 0x00,
+        0x2C, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x01, 0x00, 0x00,
+        0x02, 0x02, 0x04, 0x0A, 0x00,
+        0x21, 0xF9, 0x04, 0x00, 0x0A, 0x00, 0x00, 0x00,
+        0x2C, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x01, 0x00, 0x00,
+        0x02, 0x02, 0x4C, 0x0A, 0x00,
+        0x3B
+    };
+
+    QString gifPath = QDir(m_dir.path()).absoluteFilePath("anim.gif");
+    QFile gif(gifPath);
+    QVERIFY(gif.open(QIODevice::WriteOnly));
+    gif.write(reinterpret_cast<const char*>(gifData), sizeof(gifData));
+    gif.close();
+
+    RGBImage image(m_doc);
+    image.setFilename(gifPath);
+    QVERIFY(image.animatedSource());
+
+    // Every rgbMap() call shows the next frame, scaled to the map size
+    RGBMap map;
+    image.rgbMap(QSize(2, 1), 0, 0, map);
+    QCOMPARE(map.size(), 1);
+    QCOMPARE(map[0].size(), 2);
+    QCOMPARE(map[0][0], uint(qRgb(255, 0, 0)));
+    QCOMPARE(map[0][1], uint(qRgb(255, 0, 0)));
+
+    image.rgbMap(QSize(2, 1), 0, 0, map);
+    QCOMPARE(map[0][0], uint(qRgb(0, 0, 255)));
+    QCOMPARE(map[0][1], uint(qRgb(0, 0, 255)));
+
+    // Rewinding restarts from the first frame
+    image.rewindAnimation();
+    image.rgbMap(QSize(2, 1), 0, 0, map);
+    QCOMPARE(map[0][0], uint(qRgb(255, 0, 0)));
+
+    // A copy picks the animation up too
+    RGBImage copy(image);
+    QVERIFY(copy.animatedSource());
+    copy.rgbMap(QSize(2, 1), 0, 0, map);
+    QCOMPARE(map[0][0], uint(qRgb(255, 0, 0)));
 }
 
 void RGBImage_Test::saveXML()
