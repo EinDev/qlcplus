@@ -454,10 +454,10 @@ function FixturesFunctions() {
     if (!live) return;
     FF.mutate(qlc, 'functions.create', { type, path: targetPath }).then(r => {
       if (r && r.functionId != null) {
-        /* Select it once the list refresh has produced its node. */
-        const id = 'fn' + r.functionId;
-        setTimeout(() => { setSelected([id]); setExpanded(p => p.concat(['root-functions'].concat(targetPath ? targetPath.split('/').map((s, i, a) => 'dir:' + a.slice(0, i + 1).join('/')) : []))); }, 250);
-        setTimeout(() => setDetail(d => d), 400);
+        /* Select it and open its folder; the effect below shows its detail once the refreshed
+           list has produced the node. */
+        setSelected(['fn' + r.functionId]);
+        setExpanded(p => p.concat(['root-functions'].concat(targetPath ? targetPath.split('/').map((s, i, a) => 'dir:' + a.slice(0, i + 1).join('/')) : [])));
       }
     }).catch(() => {});
   };
