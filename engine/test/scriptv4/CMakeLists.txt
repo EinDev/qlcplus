@@ -1,9 +1,11 @@
 add_executable(scriptv4_test WIN32
+    ../mastertimer/mastertimer_stub.cpp ../mastertimer/mastertimer_stub.h
     scriptv4_test.cpp scriptv4_test.h
 )
 target_include_directories(scriptv4_test PRIVATE
     ../../../plugins/interfaces
     ../../src
+    ../mastertimer
 )
 
 target_link_libraries(scriptv4_test PRIVATE
