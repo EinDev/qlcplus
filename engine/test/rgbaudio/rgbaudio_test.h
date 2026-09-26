@@ -1,8 +1,6 @@
 /*
-  Q Light Controller Plus - Test Unit
-  rgbplain_test.h
-
-  Copyright (c) Massimo Callegari
+  Q Light Controller Plus - Unit test
+  rgbaudio_test.h
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -17,26 +15,29 @@
   limitations under the License.
 */
 
-#ifndef RGBPLAIN_TEST_H
-#define RGBPLAIN_TEST_H
+#ifndef RGBAUDIO_TEST_H
+#define RGBAUDIO_TEST_H
 
 #include <QObject>
 
 class Doc;
 
-class RGBPlain_Test final : public QObject
+class RGBAudio_Test final : public QObject
 {
     Q_OBJECT
 
 private slots:
     void initTestCase();
     void cleanupTestCase();
+
     void defaults();
-    void mapping();
-    void colors();
     void copyAndClone();
-    void saveXML();
-    void loadXML();
+    void barColors();
+    void spectrumData();
+    void rgbMapBars();
+    void rgbMapNoSignal();
+    void postRun();
+    void loadSaveXML();
 
 private:
     Doc *m_doc;

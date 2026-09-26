@@ -169,8 +169,11 @@ void RGBScript_Test::evaluateException()
     // Should be    function()
     QString code("( function { return 5; } )()");
     RGBScript s(m_doc);
+    s.m_fileName = "exception_test.js";
     s.m_contents = code;
     QCOMPARE(s.evaluate(), false);
+    QCOMPARE(s.apiVersion(), 0);
+    QVERIFY(s.m_rgbMap.isUndefined());
 }
 
 void RGBScript_Test::evaluateNoRgbMapFunction()
@@ -179,10 +182,20 @@ void RGBScript_Test::evaluateNoRgbMapFunction()
     QString code("( function() { return 5; } )()");
     RGBScript s(m_doc);
     RGBMap map;
+    s.m_fileName = "nomap_test.js";
     s.m_contents = code;
     QCOMPARE(s.evaluate(), false);
     s.rgbMap(QSize(5, 5), 1, 0, map);
     QCOMPARE(map, RGBMap());
+    QCOMPARE(s.rgbMapStepCount(QSize(5, 5)), -1);
+    QCOMPARE(s.rgbMapGetColors(), QVector<uint>());
+    s.rgbMapSetColors(QVector<uint>() << 1);
+
+    // Without a script filename or contents nothing is parsed at all
+    RGBScript empty(m_doc);
+    QCOMPARE(empty.evaluate(), false);
+    empty.m_fileName = "empty_test.js";
+    QCOMPARE(empty.evaluate(), false);
 }
 
 void RGBScript_Test::evaluateNoRgbMapStepCountFunction()
@@ -190,6 +203,7 @@ void RGBScript_Test::evaluateNoRgbMapStepCountFunction()
     // No rgbMapStepCount() function present
     QString code("( function() { var foo = new Object; foo.rgbMap = function() { return 0; }; return foo; } )()");
     RGBScript s(m_doc);
+    s.m_fileName = "nostepcount_test.js";
     s.m_contents = code;
     QCOMPARE(s.evaluate(), false);
     QCOMPARE(s.rgbMapStepCount(QSize(5, 5)), -1);
@@ -200,8 +214,24 @@ void RGBScript_Test::evaluateInvalidApiVersion()
     // No apiVersion property
     QString code("( function() { var foo = new Object; foo.rgbMap = function() { return 0; }; foo.rgbMapStepCount = function(width, height) { return 0; }; return foo; } )()");
     RGBScript s(m_doc);
+    s.m_fileName = "noapi_test.js";
     s.m_contents = code;
     QCOMPARE(s.evaluate(), false);
+    QCOMPARE(s.apiVersion(), 0);
+
+    // An apiVersion 1 script needs nothing else
+    RGBScript v1(m_doc);
+    v1.m_fileName = "api1_test.js";
+    v1.m_contents = "( function() { var foo = new Object; foo.apiVersion = 1; foo.rgbMap = function() { return 0; }; foo.rgbMapStepCount = function(width, height) { return 0; }; return foo; } )()";
+    QCOMPARE(v1.evaluate(), true);
+    QCOMPARE(v1.apiVersion(), 1);
+    QCOMPARE(v1.acceptColors(), 2); // default when the script doesn't say
+    QCOMPARE(v1.name(), QString());
+    QCOMPARE(v1.author(), QString());
+    // rgbMap() must return an array within an array
+    RGBMap map;
+    v1.rgbMap(QSize(2, 2), 0, 0, map);
+    QCOMPARE(map, RGBMap());
 }
 
 void RGBScript_Test::rgbMapStepCount()
@@ -744,6 +774,364 @@ void RGBScript_Test::wavesInOutDirections()
     }
 
     delete s;
+}
+
+/****************************************************************************
+ * Additional coverage
+ ****************************************************************************/
+
+namespace
+{
+    /* A minimal apiVersion 3 script with one list property, whose functions
+     * can be made to throw or misbehave through $extra */
+    QString scriptCode(const QString &extra = QString())
+    {
+        return QString(
+            "(function() {"
+            "  var algo = new Object;"
+            "  algo.apiVersion = 3;"
+            "  algo.name = 'CoverageTest';"
+            "  algo.author = 'test';"
+            "  algo.acceptColors = 2;"
+            "  algo.colors = [];"
+            "  algo.mode = 'A';"
+            "  algo.properties = new Array();"
+            "  algo.properties.push('name:mode|type:list|display:Mode|values:A,B|write:setMode|read:getMode');"
+            "  algo.setMode = function(v) { algo.mode = v; };"
+            "  algo.getMode = function() { return algo.mode; };"
+            "  algo.rgbMapSetColors = function(rawColors) { algo.colors = rawColors; };"
+            "  algo.rgbMapGetColors = function() { return algo.colors; };"
+            "  algo.rgbMap = function(width, height, rgb, step) {"
+            "    var map = new Array(); for (var y = 0; y < height; y++) { map[y] = new Array();"
+            "    for (var x = 0; x < width; x++) map[y][x] = rgb; } return map; };"
+            "  algo.rgbMapStepCount = function(width, height) { return width; };"
+            "  %1"
+            "  return algo;"
+            "})()").arg(extra);
+    }
+}
+
+void RGBScript_Test::loadMissingFile()
+{
+    RGBScript s(m_doc);
+    QVERIFY(s.load(QDir(INTERNAL_SCRIPTDIR).absoluteFilePath("no_such_script.js")) == false);
+    QVERIFY(s.fileName().endsWith("no_such_script.js"));
+    QCOMPARE(s.m_contents, QString());
+    QCOMPARE(s.apiVersion(), 0);
+
+    // A real file loads and evaluates
+    QVERIFY(s.load(QDir(INTERNAL_SCRIPTDIR).absoluteFilePath("stripes.js")) == true);
+    QCOMPARE(s.name(), QString("Stripes"));
+    QVERIFY(s.apiVersion() > 0);
+}
+
+void RGBScript_Test::evaluateMissingSetColors()
+{
+    // apiVersion 3 requires rgbMapSetColors()
+    RGBScript s(m_doc);
+    s.m_fileName = "nosetcolors_test.js";
+    s.m_contents = scriptCode("algo.rgbMapSetColors = undefined;");
+    QCOMPARE(s.evaluate(), false);
+    // rgbMap() was bound before the check failed, but rgbMapSetColors()
+    // isn't callable, so pushing colors is a no-op
+    QVERIFY(s.m_rgbMap.isUndefined() == false);
+    QVERIFY(s.m_rgbMapSetColors.isCallable() == false);
+    s.rgbMapSetColors(QVector<uint>() << 1 << 2);
+    QCOMPARE(s.name(), QString("CoverageTest")); // flushes the queued call
+
+    // A fresh script that claims apiVersion 3 without a parsed rgbMap()
+    RGBScript fresh(m_doc);
+    fresh.m_apiVersion = 3;
+    fresh.rgbMapSetColors(QVector<uint>() << 1 << 2);
+    QCOMPARE(fresh.name(), QString()); // flushes the queued call
+    QVERIFY(fresh.m_rgbMap.isUndefined());
+}
+
+void RGBScript_Test::evaluateMissingProperties()
+{
+    // apiVersion 2+ requires a "properties" array
+    RGBScript s(m_doc);
+    s.m_fileName = "noprops_test.js";
+    s.m_contents = "( function() { var foo = new Object; foo.apiVersion = 2; foo.rgbMap = function() { return [[0]]; }; foo.rgbMapStepCount = function(width, height) { return 1; }; return foo; } )()";
+    QCOMPARE(s.evaluate(), false);
+    QCOMPARE(s.properties().count(), 0);
+}
+
+void RGBScript_Test::assignmentAndEquality()
+{
+    RGBScript a(m_doc);
+    a.m_fileName = "assign_a.js";
+    a.m_contents = scriptCode();
+    QVERIFY(a.evaluate());
+    QVERIFY(a.setProperty("mode", "B"));
+
+    // Assignment re-evaluates the script and carries the property values over
+    RGBScript b(m_doc);
+    b = a;
+    QCOMPARE(b.fileName(), QString("assign_a.js"));
+    QCOMPARE(b.m_contents, a.m_contents);
+    QCOMPARE(b.apiVersion(), 3);
+    QCOMPARE(b.name(), QString("CoverageTest"));
+    QCOMPARE(b.property("mode"), QString("B"));
+    QVERIFY(b.m_rgbMap.isCallable());
+
+    // Self assignment is harmless
+    b = b;
+    QCOMPARE(b.property("mode"), QString("B"));
+
+    // Equality is based on the file name only
+    QVERIFY(a == b);
+    RGBScript c(m_doc);
+    c.m_fileName = "assign_c.js";
+    c.m_contents = a.m_contents;
+    QVERIFY(c.evaluate());
+    QVERIFY(!(a == c));
+    // Two scripts without a file name are never equal
+    RGBScript d(m_doc);
+    RGBScript e(m_doc);
+    QVERIFY(!(d == e));
+
+    // The copy constructor does the same as the assignment
+    RGBScript f(a);
+    QCOMPARE(f.fileName(), a.fileName());
+    QCOMPARE(f.property("mode"), QString("B"));
+    QVERIFY(f == a);
+
+    // And so does clone()
+    RGBAlgorithm *clone = a.clone();
+    QVERIFY(clone != NULL);
+    QCOMPARE(clone->type(), RGBAlgorithm::Script);
+    QCOMPARE(clone->name(), QString("CoverageTest"));
+    QCOMPARE(static_cast<RGBScript*>(clone)->property("mode"), QString("B"));
+    QVERIFY(*static_cast<RGBScript*>(clone) == a);
+    delete clone;
+}
+
+void RGBScript_Test::runtimeErrors()
+{
+    // Errors thrown while the script runs are reported, never propagated
+    RGBScript s(m_doc);
+    s.m_fileName = "throwing_test.js";
+    s.m_contents = scriptCode(
+        "algo.rgbMap = function() { throw new Error('rgbMap failed'); };"
+        "algo.rgbMapStepCount = function() { throw new Error('steps failed'); };"
+        "algo.rgbMapSetColors = function() { throw new Error('set failed'); };"
+        "algo.setMode = function(v) { throw new Error('write failed'); };"
+        "algo.getMode = function() { throw new Error('read failed'); };");
+    QVERIFY(s.evaluate());
+
+    RGBMap map;
+    s.rgbMap(QSize(2, 2), 0, 0, map);
+    QCOMPARE(map, RGBMap());
+    QCOMPARE(s.rgbMapStepCount(QSize(2, 2)), -1);
+    s.rgbMapSetColors(QVector<uint>() << 1 << 2);
+    QVERIFY(s.setProperty("mode", "B") == false);
+    QCOMPARE(s.property("mode"), QString());
+
+    // A step count that isn't a number is invalid, a map that isn't an
+    // array of arrays is ignored
+    RGBScript t(m_doc);
+    t.m_fileName = "badreturn_test.js";
+    t.m_contents = scriptCode(
+        "algo.rgbMap = function() { return 'not an array'; };"
+        "algo.rgbMapStepCount = function() { return 'five'; };");
+    QVERIFY(t.evaluate());
+    t.rgbMap(QSize(2, 2), 0, 0, map);
+    QCOMPARE(map, RGBMap());
+    QCOMPARE(t.rgbMapStepCount(QSize(2, 2)), -1);
+}
+
+void RGBScript_Test::propertyAccessors()
+{
+    RGBScript s(m_doc);
+    s.m_fileName = "accessors_test.js";
+    s.m_contents = scriptCode(
+        // read function that returns nothing, write function that is not a function
+        "algo.properties.push('name:silent|type:string|display:Silent|write:setSilent|read:getSilent');"
+        "algo.getSilent = function() { };"
+        "algo.setSilent = 'not callable';"
+        // property whose read function doesn't exist at all
+        "algo.properties.push('name:unread|type:string|display:Unread|write:setUnread|read:noSuchRead');"
+        "algo.setUnread = function(v) { };");
+    QVERIFY(s.evaluate());
+    QCOMPARE(s.properties().count(), 3);
+
+    // Regular list property
+    QCOMPARE(s.property("mode"), QString("A"));
+    QVERIFY(s.setProperty("mode", "B"));
+    QCOMPARE(s.property("mode"), QString("B"));
+
+    // Unknown property
+    QVERIFY(s.setProperty("nope", "1") == false);
+    QCOMPARE(s.property("nope"), QString());
+
+    // Read returning undefined, write that isn't callable
+    QCOMPARE(s.property("silent"), QString());
+    QVERIFY(s.setProperty("silent", "x") == false);
+
+    // Read function that doesn't exist
+    QCOMPARE(s.property("unread"), QString());
+    QVERIFY(s.setProperty("unread", "x"));
+}
+
+void RGBScript_Test::propertiesAsStrings()
+{
+    RGBScript s(m_doc);
+    s.m_fileName = "asstrings_test.js";
+    s.m_contents = scriptCode(
+        "algo.speed = 7;"
+        "algo.properties.push('name:speed|type:range|display:Speed|values:1,10|write:setSpeed|read:getSpeed');"
+        "algo.setSpeed = function(v) { algo.speed = parseInt(v); };"
+        "algo.getSpeed = function() { return algo.speed; };"
+        // read returning undefined: not listed
+        "algo.properties.push('name:silent|type:string|display:Silent|write:setSilent|read:getSilent');"
+        "algo.getSilent = function() { };"
+        "algo.setSilent = function(v) { };"
+        // read that throws: not listed
+        "algo.properties.push('name:broken|type:string|display:Broken|write:setBroken|read:getBroken');"
+        "algo.getBroken = function() { throw new Error('read failed'); };"
+        "algo.setBroken = function(v) { };"
+        // read that doesn't exist: not listed
+        "algo.properties.push('name:unread|type:string|display:Unread|write:setUnread|read:noSuchRead');"
+        "algo.setUnread = function(v) { };");
+    QVERIFY(s.evaluate());
+    QCOMPARE(s.properties().count(), 5);
+
+    QHash<QString, QString> values = s.propertiesAsStrings();
+    QCOMPARE(values.count(), 2);
+    QCOMPARE(values.value("mode"), QString("A"));
+    QCOMPARE(values.value("speed"), QString("7"));
+
+    QVERIFY(s.setProperty("mode", "B"));
+    QVERIFY(s.setProperty("speed", "3"));
+    values = s.propertiesAsStrings();
+    QCOMPARE(values.value("mode"), QString("B"));
+    QCOMPARE(values.value("speed"), QString("3"));
+
+    // No properties at all
+    RGBScript empty(m_doc);
+    QCOMPARE(empty.propertiesAsStrings().count(), 0);
+}
+
+void RGBScript_Test::colorArrayRoundTrip()
+{
+    RGBScript s(m_doc);
+    s.m_fileName = "colors_test.js";
+    s.m_contents = scriptCode();
+    QVERIFY(s.evaluate());
+    QCOMPARE(s.acceptColors(), 2);
+
+    // Only acceptColors() entries are passed to the script
+    s.rgbMapSetColors(QVector<uint>() << 0xFF0000 << 0x00FF00 << 0x0000FF);
+    RGBMap map;
+    s.rgbMap(QSize(1, 1), 0x123456, 0, map); // flushes the queued call
+    QCOMPARE(map[0][0], uint(0x123456));
+
+    /* NOTE: evaluate() never binds m_rgbMapGetColors to the script's
+     * rgbMapGetColors() function (only rgbMapSetColors() is looked up), so
+     * rgbMapGetColors() always comes back empty for a freshly evaluated
+     * script - see the report accompanying this test. Bind it by hand to
+     * exercise the conversion of the returned array. */
+    s.m_rgbMapGetColors = s.m_script.property("rgbMapGetColors");
+    QVERIFY(s.m_rgbMapGetColors.isCallable());
+    QCOMPARE(s.rgbMapGetColors(), QVector<uint>() << 0xFF0000 << 0x00FF00);
+
+    // A getter that doesn't return an array yields nothing
+    RGBScript t(m_doc);
+    t.m_fileName = "colors_bad_test.js";
+    t.m_contents = scriptCode("algo.rgbMapGetColors = function() { return 42; };");
+    QVERIFY(t.evaluate());
+    t.m_rgbMapGetColors = t.m_script.property("rgbMapGetColors");
+    QCOMPARE(t.rgbMapGetColors(), QVector<uint>());
+}
+
+void RGBScript_Test::loadSaveXML()
+{
+    RGBScript s(m_doc);
+    s.m_fileName = "xml_test.js";
+    s.m_contents = scriptCode();
+    QVERIFY(s.evaluate());
+
+    QBuffer buffer;
+    buffer.open(QIODevice::WriteOnly | QIODevice::Text);
+    QXmlStreamWriter xmlWriter(&buffer);
+    QVERIFY(s.saveXML(&xmlWriter) == true);
+    xmlWriter.setDevice(NULL);
+    buffer.close();
+
+    buffer.open(QIODevice::ReadOnly | QIODevice::Text);
+    QXmlStreamReader xmlReader(&buffer);
+    xmlReader.readNextStartElement();
+    QCOMPARE(xmlReader.name().toString(), QString("Algorithm"));
+    QCOMPARE(xmlReader.attributes().value("Type").toString(), QString("Script"));
+    QCOMPARE(xmlReader.readElementText(), QString("CoverageTest"));
+    buffer.close();
+
+    // Scripts are not loaded from XML directly (RGBAlgorithm::loader() does
+    // it through the scripts cache)
+    buffer.open(QIODevice::ReadOnly | QIODevice::Text);
+    xmlReader.setDevice(&buffer);
+    xmlReader.readNextStartElement();
+    RGBScript loaded(m_doc);
+    QVERIFY(loaded.loadXML(xmlReader) == false);
+    buffer.close();
+
+    // An invalid script has nothing to save
+    RGBScript invalid(m_doc);
+    QBuffer buffer2;
+    buffer2.open(QIODevice::WriteOnly | QIODevice::Text);
+    xmlWriter.setDevice(&buffer2);
+    QVERIFY(invalid.saveXML(&xmlWriter) == false);
+    xmlWriter.setDevice(NULL);
+    buffer2.close();
+    QVERIFY(buffer2.data().isEmpty());
+
+    // ...and so does a valid script without a name
+    RGBScript nameless(m_doc);
+    nameless.m_fileName = "nameless_test.js";
+    nameless.m_contents = scriptCode("algo.name = undefined;");
+    QVERIFY(nameless.evaluate());
+    QCOMPARE(nameless.name(), QString());
+    buffer2.open(QIODevice::WriteOnly | QIODevice::Text);
+    xmlWriter.setDevice(&buffer2);
+    QVERIFY(nameless.saveXML(&xmlWriter) == false);
+    xmlWriter.setDevice(NULL);
+    buffer2.close();
+}
+
+void RGBScript_Test::unusualPropertyDeclarations()
+{
+    RGBScript s(m_doc);
+    s.m_fileName = "unusual_props_test.js";
+    s.m_contents = scriptCode(
+        // values before the type: cannot be applied, the property is still kept
+        "algo.properties.push('name:early|values:1,2|type:list|display:Early|write:setMode|read:getMode');"
+        // unknown key: ignored
+        "algo.properties.push('name:extra|type:float|display:Extra|color:red|write:setMode|read:getMode');"
+        // a range and a string
+        "algo.properties.push('name:span|type:range|values:2,8|write:setMode|read:getMode');"
+        "algo.properties.push('name:text|type:string|values:ignored|write:setMode|read:getMode');");
+    QVERIFY(s.evaluate());
+
+    QList<RGBScriptProperty> props = s.properties();
+    QCOMPARE(props.count(), 5);
+
+    QCOMPARE(props.at(1).m_name, QString("early"));
+    QCOMPARE(props.at(1).m_type, RGBScriptProperty::List);
+    QCOMPARE(props.at(1).m_listValues, QStringList());
+
+    QCOMPARE(props.at(2).m_name, QString("extra"));
+    QCOMPARE(props.at(2).m_type, RGBScriptProperty::Float);
+    QCOMPARE(props.at(2).m_displayName, QString("Extra"));
+
+    QCOMPARE(props.at(3).m_name, QString("span"));
+    QCOMPARE(props.at(3).m_type, RGBScriptProperty::Range);
+    QCOMPARE(props.at(3).m_rangeMinValue, 2);
+    QCOMPARE(props.at(3).m_rangeMaxValue, 8);
+    QCOMPARE(props.at(3).m_displayName, QString());
+
+    QCOMPARE(props.at(4).m_name, QString("text"));
+    QCOMPARE(props.at(4).m_type, RGBScriptProperty::String);
 }
 
 QTEST_MAIN(RGBScript_Test)
