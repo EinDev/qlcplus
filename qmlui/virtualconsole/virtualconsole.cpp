@@ -1578,6 +1578,12 @@ bool VirtualConsole::handleKeyEvent(QKeyEvent *e, bool pressed)
             }
         }
 
+        /** Unmap the previous key sequence of this control (if any) from the
+         *  VC pages first, otherwise the old entry would be left behind and
+         *  the widget would receive the key event once per stale copy */
+        for (VCPage *page : m_pages) // C++11
+            page->unMapKeySequence(m_autoDetectionKey, m_autoDetectionKeyId, m_autoDetectionWidget, true);
+
         m_autoDetectionWidget->updateKeySequence(m_autoDetectionKey, seq, m_autoDetectionKeyId);
 
         for (VCPage *page : m_pages) // C++11
