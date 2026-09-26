@@ -31,6 +31,9 @@ private slots:
     void nameType();
     void modifierMap();
     void saveLoad();
+    void saveErrors();
+    void loadErrors();
+    void loadUnknownTag();
 };
 
 #endif // CHANNELMODIFIER_TEST_H

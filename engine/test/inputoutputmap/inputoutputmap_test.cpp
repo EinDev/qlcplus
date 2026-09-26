@@ -18,11 +18,14 @@
 */
 #include <QSignalSpy>
 #include <QtTest>
+#include <QTemporaryDir>
+#include <QSettings>
 
 #define private public
 #include "iopluginstub.h"
 #include "inputoutputmap_test.h"
 #include "inputoutputmap.h"
+#include "ioplugincache.h"
 #include "qlcinputsource.h"
 #include "grandmaster.h"
 #include "outputpatch.h"
@@ -869,6 +872,88 @@ void InputOutputMap_Test::grandMaster()
 
     iom.setGrandMasterValueMode(GrandMaster::Limit);
     QVERIFY(iom.grandMasterValueMode() == GrandMaster::Limit);
+}
+
+void InputOutputMap_Test::pluginCacheEdgeCases()
+{
+    // a directory that does not exist loads nothing
+    IOPluginCache cache(this);
+    cache.load(QDir("this/path/does/not/exist_qlcplus_ioplugincache_test"));
+    QCOMPARE(cache.plugins().count(), 0);
+
+    // a library-looking file that is not a plugin is reported and skipped
+    QTemporaryDir tmpDir;
+    QVERIFY(tmpDir.isValid());
+    QFile junk(tmpDir.filePath("notaplugin" + KExtPlugin));
+    QVERIFY(junk.open(QIODevice::WriteOnly));
+    junk.write("this is not a shared library");
+    junk.close();
+    QDir junkDir(tmpDir.path());
+    junkDir.setFilter(QDir::Files);
+    cache.load(junkDir);
+    QCOMPARE(cache.plugins().count(), 0);
+    QVERIFY(cache.plugin("Stub") == NULL);
+
+    // loading the stub directory again finds the same plugin already
+    // registered: the duplicate is discarded, the original stays usable
+    int before = m_doc->ioPluginCache()->plugins().count();
+    QVERIFY(before > 0);
+    QLCIOPlugin *stub = m_doc->ioPluginCache()->plugins().at(0);
+    QSignalSpy loadedSpy(m_doc->ioPluginCache(), SIGNAL(pluginLoaded(QString)));
+    m_doc->ioPluginCache()->load(testPluginDir());
+    QCOMPARE(m_doc->ioPluginCache()->plugins().count(), before);
+    QCOMPARE(loadedSpy.count(), 0);
+    QVERIFY(m_doc->ioPluginCache()->plugins().at(0) == stub);
+    QCOMPARE(stub->name(), QString("I/O Plugin Stub"));
+}
+
+void InputOutputMap_Test::pluginCacheHotplugSetting()
+{
+    // With the hotplug setting on, a freshly loaded plugin is offered to
+    // the HotPlugMonitor. The stub has no device slots, so nothing is
+    // connected and no monitor is instantiated. The setting is read from
+    // a scratch INI file, never from the user's real settings, and a
+    // renamed copy of the stub library is loaded so that this is a new
+    // plugin for the cache rather than the shared instance.
+    QTemporaryDir tmpDir;
+    QVERIFY(tmpDir.isValid());
+
+    QStringList libs = testPluginDir().entryList();
+    QVERIFY(libs.isEmpty() == false);
+    const QString original = testPluginDir().absoluteFilePath(libs.first());
+    const QString copy = tmpDir.filePath("hotplugstub" + KExtPlugin);
+    QVERIFY2(QFile::copy(original, copy), qPrintable(original));
+
+    const QString orgBefore = QCoreApplication::organizationName();
+    const QString appBefore = QCoreApplication::applicationName();
+    QCoreApplication::setOrganizationName("qlcplus-test");
+    QCoreApplication::setApplicationName("ioplugincache_test");
+    QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, tmpDir.path());
+    QSettings::setDefaultFormat(QSettings::IniFormat);
+    {
+        QSettings settings;
+        settings.setValue(SETTINGS_HOTPLUG, true);
+        settings.sync();
+        QCOMPARE(settings.status(), QSettings::NoError);
+        QVERIFY(settings.fileName().startsWith(QDir::cleanPath(tmpDir.path())));
+    }
+
+    {
+        IOPluginCache cache(this);
+        QSignalSpy loadedSpy(&cache, SIGNAL(pluginLoaded(QString)));
+        QDir dir(tmpDir.path());
+        dir.setFilter(QDir::Files);
+        dir.setNameFilters(QStringList() << QString("*%1").arg(KExtPlugin));
+        cache.load(dir);
+        QCOMPARE(cache.plugins().count(), 1);
+        QCOMPARE(loadedSpy.count(), 1);
+        QCOMPARE(cache.plugins().first()->name(), QString("I/O Plugin Stub"));
+        QVERIFY(cache.plugins().first() != m_doc->ioPluginCache()->plugins().at(0));
+    }
+
+    QSettings::setDefaultFormat(QSettings::NativeFormat);
+    QCoreApplication::setOrganizationName(orgBefore);
+    QCoreApplication::setApplicationName(appBefore);
 }
 
 // InputOutputMap_Test::profileDirectories() exercises InputOutputMap::

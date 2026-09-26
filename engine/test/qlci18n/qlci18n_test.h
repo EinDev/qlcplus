@@ -30,6 +30,8 @@ private slots:
     void defaultLocale();
     void translationFilePath();
     void loadTranslation();
+    void loadQtTranslation();
+    void init();
 };
 
 #endif

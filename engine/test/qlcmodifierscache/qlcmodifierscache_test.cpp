@@ -26,6 +26,8 @@
 #undef private
 #include "channelmodifier.h"
 #include "qlcmodifierscache_test.h"
+#include "qlcconfig.h"
+#include "qlcfile.h"
 
 void QLCModifiersCache_Test::addAndRetrieve()
 {
@@ -119,4 +121,80 @@ void QLCModifiersCache_Test::loadIgnoresDuplicateNamedModifier()
     QVERIFY(cache.modifier("Dup") != nullptr);
 }
 
-QTEST_APPLESS_MAIN(QLCModifiersCache_Test)
+void QLCModifiersCache_Test::loadSystemTemplatesSkipsBrokenFile()
+{
+    QTemporaryDir tmpDir;
+    QVERIFY(tmpDir.isValid());
+
+    QList<QPair<uchar,uchar> > map;
+    map << QPair<uchar,uchar>(0,0) << QPair<uchar,uchar>(255,255);
+
+    ChannelModifier good;
+    good.setName("Good");
+    good.setModifierMap(map);
+    QCOMPARE(good.saveXML(tmpDir.filePath("good.qxmt")), QFile::NoError);
+
+    // right extension, unreadable content: reported and skipped
+    QFile broken(tmpDir.filePath("broken.qxmt"));
+    QVERIFY(broken.open(QIODevice::WriteOnly));
+    broken.write("<?xml version=\"1.0\"?><Nope");
+    broken.close();
+
+    QLCModifiersCache cache;
+    QCOMPARE(cache.load(QDir(tmpDir.path()), true), true);
+    QCOMPARE(cache.templateNames(), QList<QString>() << "Good");
+    QCOMPARE(cache.modifier("Good")->type(), ChannelModifier::SystemTemplate);
+}
+
+/** Point the process' home directory at a scratch location for a scope */
+struct ScopedHomeEnv
+{
+    QByteArray name;
+    QByteArray previous;
+    bool wasSet;
+
+    explicit ScopedHomeEnv(const QString &home)
+    {
+#if defined(WIN32) || defined(Q_OS_WIN)
+        name = "USERPROFILE";
+#else
+        name = "HOME";
+#endif
+        wasSet = qEnvironmentVariableIsSet(name.constData());
+        previous = qgetenv(name.constData());
+        qputenv(name.constData(), QDir::toNativeSeparators(home).toLocal8Bit());
+    }
+
+    ~ScopedHomeEnv()
+    {
+        if (wasSet)
+            qputenv(name.constData(), previous);
+        else
+            qunsetenv(name.constData());
+    }
+};
+
+void QLCModifiersCache_Test::templateDirectories()
+{
+    QDir system = QLCModifiersCache::systemTemplateDirectory();
+    QVERIFY(system.filter() & QDir::Files);
+    QCOMPARE(system.nameFilters(), QStringList() << QString("*%1").arg(KExtModifierTemplate));
+    QVERIFY(system.path().contains(MODIFIERSTEMPLATEDIR));
+
+    // the user directory is created under the home directory on demand
+    QTemporaryDir home;
+    QVERIFY(home.isValid());
+    const QString homePath = QDir::cleanPath(home.path());
+    ScopedHomeEnv env(homePath);
+
+    QDir user = QLCModifiersCache::userTemplateDirectory();
+    const QString expected = homePath + "/" + USERMODIFIERSTEMPLATEDIR;
+    QVERIFY2(QDir::cleanPath(user.absolutePath()).compare(expected, Qt::CaseInsensitive) == 0,
+             qPrintable(user.absolutePath()));
+    QVERIFY(QDir(expected).exists());
+    QCOMPARE(user.nameFilters(), QStringList() << QString("*%1").arg(KExtModifierTemplate));
+}
+
+// systemTemplateDirectory() builds its path from QCoreApplication::
+// applicationDirPath() on Windows/macOS, which needs an application instance
+QTEST_GUILESS_MAIN(QLCModifiersCache_Test)

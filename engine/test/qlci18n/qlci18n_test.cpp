@@ -19,8 +19,12 @@
 
 #include <QtTest>
 
+#include <QLibraryInfo>
+
 #include "qlci18n.h"
 #include "qlci18n_test.h"
+#include "qlcconfig.h"
+#include "qlcfile.h"
 
 void QLCi18n_Test::defaultLocale()
 {
@@ -57,6 +61,34 @@ void QLCi18n_Test::loadTranslation()
     // qlci18n_fi_FI.qm SHOULD be there.
     QLCi18n::setDefaultLocale("fi_FI");
     QCOMPARE(QLCi18n::loadTranslation("qlci18n"), true);
+}
+
+void QLCi18n_Test::loadQtTranslation()
+{
+    // Qt's own catalogues live wherever this Qt was installed; a component
+    // that does not exist there never loads, whatever the locale
+    QLCi18n::setDefaultLocale("fi");
+    QCOMPARE(QLCi18n::loadQtTranslation("qlcplus_no_such_qt_component"), false);
+
+    QLCi18n::setDefaultLocale(QString());   // falls back to the system locale
+    QCOMPARE(QLCi18n::loadQtTranslation("qlcplus_no_such_qt_component"), false);
+
+    // qtbase_fi.qm is only there when the Qt translations are installed
+    QLCi18n::setDefaultLocale("fi");
+    const QString qtTranslations = QLibraryInfo::path(QLibraryInfo::TranslationsPath);
+    const bool available = QFile::exists(qtTranslations + "/qtbase_fi.qm") ||
+                           QFile::exists(qtTranslations + "/qtbase.qm");
+    QCOMPARE(QLCi18n::loadQtTranslation("qtbase"), available);
+}
+
+void QLCi18n_Test::init()
+{
+    // the default path is the installed translations directory
+    QLCi18n::setTranslationFilePath(QString());
+    QLCi18n::init();
+    QVERIFY(QLCi18n::translationFilePath().isEmpty() == false);
+    QCOMPARE(QLCi18n::translationFilePath(),
+             QLCFile::systemDirectory(TRANSLATIONDIR).absolutePath());
 }
 
 QTEST_MAIN(QLCi18n_Test)

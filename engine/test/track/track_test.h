@@ -46,6 +46,7 @@ private slots:
     void loadLegacyFunctions();
     void postLoadBoundSequence();
     void containsMissingFunction();
+    void containsViaMember();
 
 private:
     Doc *m_doc;

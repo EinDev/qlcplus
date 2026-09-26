@@ -22,7 +22,9 @@
 #include <QXmlStreamWriter>
 
 #include "track_test.h"
+#include "chaserstep.h"
 #include "sequence.h"
+#include "chaser.h"
 #include "track.h"
 
 void Track_Test::initTestCase()
@@ -452,6 +454,22 @@ void Track_Test::containsMissingFunction()
     t.createShowFunction(31337);
     QVERIFY(t.contains(m_doc, 31337) == false);
     QVERIFY(t.contains(m_doc, 1) == false);
+}
+
+void Track_Test::containsViaMember()
+{
+    // a function used by one of the track's clips counts as contained
+    Scene *s = new Scene(m_doc);
+    m_doc->addFunction(s);
+    Chaser *c = new Chaser(m_doc);
+    c->addStep(ChaserStep(s->id()));
+    m_doc->addFunction(c);
+
+    Track t;
+    t.setId(1);
+    t.createShowFunction(c->id());
+    QVERIFY(t.contains(m_doc, c->id()) == true);
+    QVERIFY(t.contains(m_doc, s->id()) == true);
 }
 
 

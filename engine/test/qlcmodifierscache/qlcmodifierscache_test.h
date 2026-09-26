@@ -32,6 +32,8 @@ private slots:
     void loadFromNonExistentDirectoryFails();
     void loadDirectoryPopulatesCache();
     void loadIgnoresDuplicateNamedModifier();
+    void loadSystemTemplatesSkipsBrokenFile();
+    void templateDirectories();
 };
 
 #endif

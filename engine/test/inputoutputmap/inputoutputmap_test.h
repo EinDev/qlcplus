@@ -54,6 +54,8 @@ private slots:
     void claimReleaseDumpReset();
     void blackout();
     void grandMaster();
+    void pluginCacheEdgeCases();
+    void pluginCacheHotplugSetting();
 
 private:
     Doc* m_doc;
