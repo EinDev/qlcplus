@@ -24,6 +24,9 @@
 #include "apisession.h"
 #include "apienvelope.h"
 #include "inputoutputmap.h"
+#include "ioplugincache.h"
+#include "qlcioplugin.h"
+#include "qlcinputprofile.h"
 #include "grandmaster.h"
 #include "outputpatch.h"
 #include "inputpatch.h"
@@ -159,6 +162,123 @@ QJsonObject grandMasterStateToJson(InputOutputMap *ioMap)
     return obj;
 }
 
+/*********************************************************************
+ * Plugins / patches (io.plugin.list, io.patch.set/remove)
+ *********************************************************************/
+
+// QLCIOPlugin::Capability bitmask -> io.yaml IoPluginSummary.capabilities
+QJsonArray pluginCapabilitiesToJson(int capabilities)
+{
+    QJsonArray arr;
+    if (capabilities & QLCIOPlugin::Output)   arr.append(QStringLiteral("Output"));
+    if (capabilities & QLCIOPlugin::Input)    arr.append(QStringLiteral("Input"));
+    if (capabilities & QLCIOPlugin::Feedback) arr.append(QStringLiteral("Feedback"));
+    if (capabilities & QLCIOPlugin::Infinite) arr.append(QStringLiteral("Infinite"));
+    if (capabilities & QLCIOPlugin::RDM)      arr.append(QStringLiteral("RDM"));
+    if (capabilities & QLCIOPlugin::Beats)    arr.append(QStringLiteral("Beats"));
+    return arr;
+}
+
+// One plugin line list. "index" is the web UI contract's spelling, "line"
+// io.yaml IoPluginLine's - both carry the same 0-based plugin line number
+// that io.patch.set takes as "line".
+QJsonArray pluginLinesToJson(const QStringList &names, const QStringList &uids)
+{
+    QJsonArray arr;
+    for (int i = 0; i < names.count(); i++)
+    {
+        QJsonObject line;
+        line.insert(QStringLiteral("index"), i);
+        line.insert(QStringLiteral("line"), i);
+        line.insert(QStringLiteral("name"), names.at(i));
+        line.insert(QStringLiteral("uid"), i < uids.count() ? uids.at(i) : QString());
+        arr.append(line);
+    }
+    return arr;
+}
+
+// IoPluginSummary + the contract's inline inputLines/outputLines (so a
+// patch dialog needs one round-trip, not one per plugin).
+QJsonObject pluginToJson(QLCIOPlugin *plugin)
+{
+    QJsonObject obj;
+    obj.insert(QStringLiteral("name"), plugin->name());
+    obj.insert(QStringLiteral("capabilities"), pluginCapabilitiesToJson(plugin->capabilities()));
+    obj.insert(QStringLiteral("description"), plugin->pluginInfo());
+    obj.insert(QStringLiteral("canConfigure"), plugin->canConfigure());
+    obj.insert(QStringLiteral("supportsFeedback"), (plugin->capabilities() & QLCIOPlugin::Feedback) != 0);
+    obj.insert(QStringLiteral("inputLines"), pluginLinesToJson(plugin->inputs(), plugin->inputsUID()));
+    obj.insert(QStringLiteral("outputLines"), pluginLinesToJson(plugin->outputs(), plugin->outputsUID()));
+    return obj;
+}
+
+QJsonObject inputProfileSummaryToJson(QLCInputProfile *profile)
+{
+    QJsonObject obj;
+    obj.insert(QStringLiteral("name"), profile->name());
+    obj.insert(QStringLiteral("manufacturer"), profile->manufacturer());
+    obj.insert(QStringLiteral("model"), profile->model());
+    obj.insert(QStringLiteral("type"), QLCInputProfile::typeToString(profile->type()));
+    return obj;
+}
+
+enum PatchDirection { PatchInput, PatchOutput, PatchFeedback };
+
+// io.patch.set/remove's "direction" (web UI contract) / "patchType"
+// (io.yaml) - either spelling, same three values.
+bool parsePatchDirection(const QJsonObject &params, PatchDirection &direction)
+{
+    QString str = params.value(QStringLiteral("direction")).toString();
+    if (str.isEmpty())
+        str = params.value(QStringLiteral("patchType")).toString();
+    if (str == QStringLiteral("input"))         direction = PatchInput;
+    else if (str == QStringLiteral("output"))   direction = PatchOutput;
+    else if (str == QStringLiteral("feedback")) direction = PatchFeedback;
+    else return false;
+    return true;
+}
+
+// First present of several alias spellings (contract vs io.yaml), as string.
+QString stringParam(const QJsonObject &params, const char *primary, const char *alias)
+{
+    QJsonValue value = params.value(QLatin1String(primary));
+    if (value.isUndefined())
+        value = params.value(QLatin1String(alias));
+    return value.toString();
+}
+
+// §4a check for the io.universe.update/delete and io.patch.* methods added
+// for the web UI. Unlike io.universe.create (which requires it), these
+// enforce baseRevision only when the client sends one: the web UI contract
+// lists none for them, and rejecting every such call with CONFLICT would
+// make the methods unusable for a client written to that contract.
+// Documented as a deliberate deviation in io-notes.md.
+bool baseRevisionAccepted(Doc *doc, ApiSession *session, const QString &id, const QJsonObject &params)
+{
+    if (params.contains(QStringLiteral("baseRevision")) == false)
+        return true;
+    quint32 baseRevision = quint32(params.value(QStringLiteral("baseRevision")).toInt());
+    if (baseRevision == doc->docRevision())
+        return true;
+    QJsonObject details;
+    details.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
+    session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrConflict,
+                                                    QStringLiteral("baseRevision is stale"), details));
+    return false;
+}
+
+// Shared universeId lookup for the same methods: NOT_FOUND (matching
+// io.universe.get) for a missing/invalid id.
+Universe *findUniverseParam(Doc *doc, ApiSession *session, const QString &id, const QJsonObject &params)
+{
+    int universeId = params.value(QStringLiteral("universeId")).toInt(-1);
+    Universe *universe = universeId >= 0 ? doc->inputOutputMap()->universe(quint32(universeId)) : nullptr;
+    if (universe == nullptr)
+        session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrNotFound,
+                                                        QStringLiteral("No such universe")));
+    return universe;
+}
+
 } // namespace
 
 ApiIoDomain::ApiIoDomain(Doc *doc, ApiServer *server, QObject *parent)
@@ -185,6 +305,7 @@ ApiIoDomain::ApiIoDomain(Doc *doc, ApiServer *server, QObject *parent)
     // found" runtime warning with pointer syntax and it disappearing here.
     InputOutputMap *ioMap = m_doc->inputOutputMap();
     connect(ioMap, SIGNAL(universeAdded(quint32)), this, SLOT(slotUniverseAdded(quint32)));
+    connect(ioMap, SIGNAL(universeRemoved(quint32)), this, SLOT(slotUniverseRemoved(quint32)));
     connect(ioMap, SIGNAL(grandMasterValueChanged(uchar)), this, SLOT(slotGrandMasterValueChanged(uchar)));
     connect(ioMap, SIGNAL(blackoutChanged(bool)), this, SLOT(slotBlackoutChanged(bool)));
 
@@ -222,6 +343,40 @@ void ApiIoDomain::slotUniverseAdded(quint32 id)
     data.insert(QStringLiteral("docRevision"), int(m_doc->docRevision()));
     // Structural (§4a): always delivered, not subscribe-gated.
     m_server->broadcast(QStringLiteral("io.universe.created"), data, m_pendingOriginClientId, false);
+}
+
+void ApiIoDomain::slotUniverseRemoved(quint32 id)
+{
+    m_lastUniverseSnapshot.remove(id);
+    {
+        // The Universe (and with it the GenericFader our shared pointer
+        // co-owns) is gone - drop our side too, plus any held Simple Desk
+        // values addressed into it, so a later universe with the same id
+        // starts clean. writeDMX() already bounds-checks universe ids
+        // against the live list, so this is hygiene, not a crash fix.
+        QMutexLocker locker(&m_simpleDeskMutex);
+        m_simpleDeskFaders.remove(id);
+        QMutableHashIterator<quint32, uchar> it(m_simpleDeskValues);
+        while (it.hasNext())
+        {
+            it.next();
+            if ((it.key() >> 9) == id)
+                it.remove();
+        }
+    }
+
+    QJsonObject data;
+    data.insert(QStringLiteral("universeId"), int(id));
+    data.insert(QStringLiteral("docRevision"), int(m_doc->docRevision()));
+    m_server->broadcast(QStringLiteral("io.universe.deleted"), data, m_pendingOriginClientId, false);
+}
+
+void ApiIoDomain::broadcastUniverseUpdated(Universe *universe, const QString &originClientId)
+{
+    QJsonObject data;
+    data.insert(QStringLiteral("universe"), universeDetailToJson(universe));
+    data.insert(QStringLiteral("docRevision"), int(m_doc->docRevision()));
+    m_server->broadcast(QStringLiteral("io.universe.updated"), data, originClientId, false);
 }
 
 void ApiIoDomain::slotUniverseWritten(quint32 id, const QByteArray &postGMValues)
@@ -348,6 +503,346 @@ void ApiIoDomain::registerMethods()
         result.insert(QStringLiteral("universeId"), int(newUniverseId));
         result.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
         session->send(ApiEnvelope::buildOkResponse(id, result));
+    });
+
+    // io.universe.update {universeId, name?, passthrough?, baseRevision?} -> {docRevision}
+    dispatcher->registerMethod(QStringLiteral("io.universe.update"), [doc, this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        if (baseRevisionAccepted(doc, session, id, params) == false)
+            return;
+        Universe *universe = findUniverseParam(doc, session, id, params);
+        if (universe == nullptr)
+            return;
+
+        QJsonValue name = params.value(QStringLiteral("name"));
+        QJsonValue passthrough = params.value(QStringLiteral("passthrough"));
+        bool hasName = name.isString();
+        bool hasPassthrough = passthrough.isBool();
+        if (hasName == false && hasPassthrough == false)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams,
+                QStringLiteral("At least one of name (string) or passthrough (boolean) is required")));
+            return;
+        }
+
+        int index = int(universe->id());
+        if (hasName)
+            doc->inputOutputMap()->setUniverseName(index, name.toString());
+        if (hasPassthrough)
+            doc->inputOutputMap()->setUniversePassthrough(index, passthrough.toBool());
+        // Neither setter touches Doc (qmlui's InputOutputManager calls
+        // setModified() itself after them) - both are saved to the .qxw.
+        doc->setModified();
+
+        QJsonObject result;
+        result.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
+        session->send(ApiEnvelope::buildOkResponse(id, result));
+        broadcastUniverseUpdated(universe, session->clientId());
+    });
+
+    // io.universe.delete {universeId, force?, baseRevision?} -> {docRevision}
+    dispatcher->registerMethod(QStringLiteral("io.universe.delete"), [doc, this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        if (baseRevisionAccepted(doc, session, id, params) == false)
+            return;
+        Universe *universe = findUniverseParam(doc, session, id, params);
+        if (universe == nullptr)
+            return;
+
+        InputOutputMap *ioMap = doc->inputOutputMap();
+        quint32 universeId = universe->id();
+        if (ioMap->universesCount() <= 1)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidState,
+                                                            QStringLiteral("The last universe cannot be deleted")));
+            return;
+        }
+        // InputOutputMap::removeUniverse() refuses anything that would leave
+        // a gap in the (index == id) universe list - surface that as a
+        // parameter problem rather than the engine's silent false.
+        if (universeId != ioMap->universesCount() - 1)
+        {
+            QJsonObject details;
+            details.insert(QStringLiteral("deletableUniverseId"), int(ioMap->universesCount() - 1));
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams,
+                QStringLiteral("Only the highest-numbered universe can be deleted (universe ids must stay contiguous)"),
+                details));
+            return;
+        }
+
+        // Fixtures patched into it: qmlui deletes them silently along with
+        // the universe (InputOutputManager::removeLastUniverse()). Over the
+        // API that is too destructive to be implicit - refuse unless the
+        // client says force:true, in which case they are unpatched first
+        // (with the fixtures domain's own event, so every client learns).
+        QList<quint32> fixtureIds;
+        for (Fixture *fixture : doc->fixtures())
+            if (fixture->universe() == universeId)
+                fixtureIds.append(fixture->id());
+        if (fixtureIds.isEmpty() == false && params.value(QStringLiteral("force")).toBool(false) == false)
+        {
+            QJsonArray idsJson;
+            for (quint32 fxId : std::as_const(fixtureIds))
+                idsJson.append(QString::number(fxId));
+            QJsonObject details;
+            details.insert(QStringLiteral("fixtureIds"), idsJson);
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidState,
+                QStringLiteral("Universe still has %1 fixture(s) patched into it; unpatch them or pass force:true")
+                    .arg(fixtureIds.count()),
+                details));
+            return;
+        }
+
+        if (fixtureIds.isEmpty() == false)
+        {
+            QJsonArray deletedIdsJson;
+            for (quint32 fxId : std::as_const(fixtureIds))
+            {
+                doc->deleteFixture(fxId);
+                deletedIdsJson.append(QString::number(fxId));
+            }
+            QJsonObject data;
+            data.insert(QStringLiteral("fixtureIds"), deletedIdsJson);
+            data.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
+            m_server->broadcast(QStringLiteral("fixtures.unpatched"), data, session->clientId(), false);
+        }
+
+        // universeRemoved fires synchronously inside removeUniverse():
+        // Doc::setModified() (connected first, in Doc's ctor) bumps the
+        // revision, then slotUniverseRemoved() broadcasts io.universe.deleted.
+        m_pendingOriginClientId = session->clientId();
+        bool removed = ioMap->removeUniverse(int(universeId));
+        m_pendingOriginClientId.clear();
+        if (removed == false)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInternal,
+                                                            QStringLiteral("The engine refused to remove the universe")));
+            return;
+        }
+
+        QJsonObject result;
+        result.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
+        session->send(ApiEnvelope::buildOkResponse(id, result));
+    });
+
+    // io.plugin.list {} -> {plugins: [IoPluginSummary + inputLines/outputLines]}
+    dispatcher->registerMethod(QStringLiteral("io.plugin.list"), [doc](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        Q_UNUSED(params)
+        QJsonArray plugins;
+        for (QLCIOPlugin *plugin : doc->ioPluginCache()->plugins())
+            plugins.append(pluginToJson(plugin));
+        QJsonObject result;
+        result.insert(QStringLiteral("plugins"), plugins);
+        session->send(ApiEnvelope::buildOkResponse(id, result));
+    });
+
+    // io.inputProfile.list {} -> {profiles: [{name, manufacturer, model, type}], profilesRevision}
+    dispatcher->registerMethod(QStringLiteral("io.inputProfile.list"), [doc](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        Q_UNUSED(params)
+        InputOutputMap *ioMap = doc->inputOutputMap();
+        QJsonArray profiles;
+        for (const QString &name : ioMap->profileNames())
+        {
+            QLCInputProfile *profile = ioMap->profile(name);
+            if (profile != nullptr)
+                profiles.append(inputProfileSummaryToJson(profile));
+        }
+        QJsonObject result;
+        result.insert(QStringLiteral("profiles"), profiles);
+        // No profile library mutations exist in this server yet, so the
+        // §4c library counter never moves - reported as 0 for spec parity.
+        result.insert(QStringLiteral("profilesRevision"), 0);
+        session->send(ApiEnvelope::buildOkResponse(id, result));
+    });
+
+    // io.patch.set {universeId, direction|patchType, plugin|pluginName, line,
+    //               profile|profileName?, index?, baseRevision?} -> {docRevision}
+    dispatcher->registerMethod(QStringLiteral("io.patch.set"), [doc, this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        if (baseRevisionAccepted(doc, session, id, params) == false)
+            return;
+        Universe *universe = findUniverseParam(doc, session, id, params);
+        if (universe == nullptr)
+            return;
+
+        PatchDirection direction;
+        if (parsePatchDirection(params, direction) == false)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams,
+                QStringLiteral("direction must be one of input, output, feedback")));
+            return;
+        }
+
+        QString pluginName = stringParam(params, "plugin", "pluginName");
+        QLCIOPlugin *plugin = doc->ioPluginCache()->plugin(pluginName);
+        if (plugin == nullptr)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrNotFound,
+                                                            QStringLiteral("No such plugin")));
+            return;
+        }
+
+        int requiredCapability = direction == PatchInput ? QLCIOPlugin::Input
+                               : direction == PatchOutput ? QLCIOPlugin::Output
+                               : QLCIOPlugin::Feedback;
+        if ((plugin->capabilities() & requiredCapability) == 0)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrUnsupported,
+                QStringLiteral("Plugin \"%1\" does not support %2 lines").arg(pluginName,
+                    direction == PatchInput ? QStringLiteral("input")
+                    : direction == PatchOutput ? QStringLiteral("output") : QStringLiteral("feedback"))));
+            return;
+        }
+
+        QJsonValue lineValue = params.value(QStringLiteral("line"));
+        int line = lineValue.isDouble() ? lineValue.toInt(-1) : -1;
+        // Plugins advertising Infinite (e.g. loopback-style ones) accept any
+        // line number; everything else must name a line it actually lists.
+        int lineCount = direction == PatchInput ? plugin->inputs().count() : plugin->outputs().count();
+        if (line < 0 || ((plugin->capabilities() & QLCIOPlugin::Infinite) == 0 && line >= lineCount))
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams,
+                QStringLiteral("line must be a plugin line index in 0..%1").arg(qMax(0, lineCount - 1))));
+            return;
+        }
+
+        QString profileName = stringParam(params, "profile", "profileName");
+        if (direction == PatchInput && profileName.isEmpty() == false &&
+            doc->inputOutputMap()->profile(profileName) == nullptr)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrNotFound,
+                                                            QStringLiteral("No such input profile")));
+            return;
+        }
+
+        // Output patch slot. The contract has no index (one output per
+        // universe in mind), so the default is 0 = replace/create the
+        // primary patch; io.yaml's "omit to append" is reachable by passing
+        // index == outputPatchesCount explicitly.
+        int outputIndex = params.value(QStringLiteral("index")).toInt(0);
+        if (direction == PatchOutput && (outputIndex < 0 || outputIndex > universe->outputPatchesCount()))
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams,
+                QStringLiteral("index must be in 0..%1").arg(universe->outputPatchesCount())));
+            return;
+        }
+
+        InputOutputMap *ioMap = doc->inputOutputMap();
+        quint32 universeId = universe->id();
+        bool ok = false;
+        switch (direction)
+        {
+        case PatchInput:
+            ok = ioMap->setInputPatch(universeId, pluginName, QString(), QString(), quint32(line), profileName);
+            break;
+        case PatchOutput:
+            ok = ioMap->setOutputPatch(universeId, pluginName, QString(), QString(), quint32(line), false, outputIndex);
+            break;
+        case PatchFeedback:
+            ok = ioMap->setOutputPatch(universeId, pluginName, QString(), QString(), quint32(line), true);
+            break;
+        }
+        if (ok == false)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrUnsupported,
+                QStringLiteral("The plugin refused to open the line (see the engine log)")));
+            return;
+        }
+
+        doc->setModified(); // patches are saved to the .qxw; the engine doesn't flag this itself
+
+        QJsonObject result;
+        result.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
+        session->send(ApiEnvelope::buildOkResponse(id, result));
+        broadcastUniverseUpdated(universe, session->clientId());
+    });
+
+    // io.patch.remove {universeId, direction|patchType, index?, baseRevision?} -> {docRevision}
+    dispatcher->registerMethod(QStringLiteral("io.patch.remove"), [doc, this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        if (baseRevisionAccepted(doc, session, id, params) == false)
+            return;
+        Universe *universe = findUniverseParam(doc, session, id, params);
+        if (universe == nullptr)
+            return;
+
+        PatchDirection direction;
+        if (parsePatchDirection(params, direction) == false)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams,
+                QStringLiteral("direction must be one of input, output, feedback")));
+            return;
+        }
+
+        InputOutputMap *ioMap = doc->inputOutputMap();
+        quint32 universeId = universe->id();
+        // An unknown/empty plugin name resolves to a null plugin, which
+        // together with invalidLine() is the engine's own "remove" spelling
+        // (Universe::setInputPatch/setOutputPatch/setFeedbackPatch).
+        const QString none;
+        switch (direction)
+        {
+        case PatchInput:
+            if (universe->inputPatch() == nullptr)
+            {
+                session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrNotFound,
+                                                                QStringLiteral("Universe has no input patch")));
+                return;
+            }
+            ioMap->setInputPatch(universeId, none, QString(), QString(), QLCIOPlugin::invalidLine());
+            // A feedback line is meaningless without its input - drop it
+            // too, as InputOutputManager::removeInputPatch() does.
+            if (universe->feedbackPatch() != nullptr)
+                ioMap->setOutputPatch(universeId, none, QString(), QString(), QLCIOPlugin::invalidLine(), true);
+            break;
+        case PatchOutput:
+        {
+            int count = universe->outputPatchesCount();
+            if (count == 0)
+            {
+                session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrNotFound,
+                                                                QStringLiteral("Universe has no output patch")));
+                return;
+            }
+            if (params.contains(QStringLiteral("index")))
+            {
+                int index = params.value(QStringLiteral("index")).toInt(-1);
+                if (index < 0 || index >= count)
+                {
+                    session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrNotFound,
+                        QStringLiteral("No output patch at index %1").arg(index)));
+                    return;
+                }
+                ioMap->setOutputPatch(universeId, none, QString(), QString(), QLCIOPlugin::invalidLine(), false, index);
+            }
+            else
+            {
+                // No index (contract form): remove every output patch,
+                // highest first so indices stay valid while removing.
+                for (int index = count - 1; index >= 0; index--)
+                    ioMap->setOutputPatch(universeId, none, QString(), QString(), QLCIOPlugin::invalidLine(), false, index);
+            }
+            break;
+        }
+        case PatchFeedback:
+            if (universe->feedbackPatch() == nullptr)
+            {
+                session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrNotFound,
+                                                                QStringLiteral("Universe has no feedback patch")));
+                return;
+            }
+            ioMap->setOutputPatch(universeId, none, QString(), QString(), QLCIOPlugin::invalidLine(), true);
+            break;
+        }
+
+        doc->setModified();
+
+        QJsonObject result;
+        result.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
+        session->send(ApiEnvelope::buildOkResponse(id, result));
+        broadcastUniverseUpdated(universe, session->clientId());
     });
 
     dispatcher->registerMethod(QStringLiteral("io.grandMaster.get"), [doc](ApiSession *session, const QString &id, const QJsonObject &params)
