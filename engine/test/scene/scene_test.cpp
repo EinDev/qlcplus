@@ -1247,6 +1247,9 @@ void Scene_Test::flashForceLTP()
 
     Scene *s1 = new Scene(doc);
     s1->setValue(fxi->id(), 0, 123);
+    // A value of a fixture that no longer exists is treated as an absolute
+    // address; this one maps beyond every universe the timer hands over
+    s1->setValue(4242, UNIVERSE_SIZE * doc->inputOutputMap()->universesCount(), 77);
     doc->addFunction(s1);
 
     s1->flash(&timer, false, true);
@@ -1258,7 +1261,8 @@ void Scene_Test::flashForceLTP()
     s1->writeDMX(&timer, ua);
     QSharedPointer<GenericFader> fader = s1->m_fadersMap.value(0);
     QVERIFY(!fader.isNull());
-    QCOMPARE(fader->channelsCount(), 1);
+    QCOMPARE(s1->m_fadersMap.count(), 1);
+    QCOMPARE(fader->channelsCount(), 1); // the out-of-range value is skipped
     FadeChannel fc = fader->channels().values().first();
     QVERIFY(fc.flags() & FadeChannel::ForceLTP);
     QVERIFY(fc.flags() & FadeChannel::Flashing);
