@@ -22,11 +22,19 @@
 
 #include <QObject>
 
+class Doc;
+class Fixture;
+class Scene;
+
 class ScriptV4_Test final : public QObject
 {
     Q_OBJECT
 
 private slots:
+    void init();
+    void cleanup();
+
+    /* Static conversion helpers */
     void convertLegacyMethodMapsKnownKeywords();
 
     void convertLineWaitPlainNumber();
@@ -35,10 +43,51 @@ private slots:
     void convertLineQuotedValueConvertsToSingleQuotes();
     void convertLineRandomValueConvertsToEngineRandomCall();
     void convertLineMissingColonIsSyntaxError();
+    void convertLineCommentsUrlsAndUnbalancedQuotes();
+    void convertLineSystemCommandAndUnknownKeyword();
 
     void getValueFromStringPlainAndRandomRange();
 
     void functionAndFixtureListParseConvertedSyntax();
+    void functionAndFixtureListSkipMalformedLines();
+
+    /* Script data / copying / XML */
+    void initialAndIcon();
+    void setDataAndDataLines();
+    void copyFromAndCreateCopy();
+    void loadXMLRejectsWrongNodes();
+    void loadXMLLegacyVersionConvertsCommands();
+    void loadXMLVersion2KeepsCommandsVerbatim();
+    void saveXMLRoundTrip();
+    void syntaxErrorsLines();
+    void totalDuration();
+
+    /* ScriptRunner, driven directly (no thread) */
+    void runnerInactiveMethodsRefuse();
+    void runnerCollectScriptDataRunsAllEngineMethods();
+    void runnerSetFixtureValidation();
+    void runnerWriteAppliesFixtureValues();
+    void runnerFunctionQueueOperations();
+    void runnerWaitFunctionStart();
+    void runnerWaitFunctionStop();
+    void runnerWriteDropsDeletedFunction();
+    void runnerAttributesBlackoutBpm();
+    void runnerRandomAndChannelValue();
+    void runnerSystemCommandTokenizer();
+    void runnerStopReleasesFunctionsAndFaders();
+
+    /* ScriptRunner / Script, threaded JS execution */
+    void runnerThreadedStopWhileWaiting();
+    void runnerThreadedRunsToCompletion();
+    void scriptRunLifecycle();
+    void scriptRunPausedAndSelfStops();
+
+private:
+    Doc *m_doc;
+    Fixture *m_fixture;
+    Fixture *m_edgeFixture;
+    Scene *m_scene1;
+    Scene *m_scene2;
 };
 
 #endif // SCRIPTV4_TEST_H
