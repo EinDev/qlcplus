@@ -21,8 +21,11 @@
 #define EFXFIXTURE_TEST_H
 
 #include <QObject>
+#include <QStringList>
 
 class Doc;
+class Fixture;
+class QLCFixtureDef;
 class EFXFixture_Test final : public QObject
 {
     Q_OBJECT
@@ -57,8 +60,33 @@ private slots:
     void nextStepLoopZeroDuration();
     void nextStepSingleShot();
 
+    void modeStrings();
+    void modeList();
+    void isValidModes();
+    void loadModeAndLegacyTags();
+    void timeOffsetPropagation();
+    void durationChanged();
+    void setPoint16bitSecondary();
+    void setPointNonContiguousLsb();
+    void setPointDimmer();
+    void setPointDimmerMaster();
+    void setPointIntensity();
+    void setPointRGB();
+    void setPointNullFader();
+    void nextStepPingPong();
+    void nextStepSerial();
+    void nextStepModes();
+
 private:
+    /** Build a Fixture from a programmatic definition. $channels is a list of
+     *  tokens: PanMSB, PanLSB, TiltMSB, TiltLSB, DimMSB, DimLSB, Red, Green,
+     *  Blue, Colour. If $headChannels is not empty, a head with exactly those
+     *  channel indices is inserted (channels outside it are fixture-wide). */
+    Fixture* createFixture(const QString& model, const QStringList& channels,
+                           quint32 address, const QList<int>& headChannels = QList<int>());
+
     Doc* m_doc;
+    QList<QLCFixtureDef*> m_customDefs;
 
     int m_fixture8bit;
     int m_fixture8bitAddress;
