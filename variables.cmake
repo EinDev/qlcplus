@@ -442,6 +442,24 @@ elseif (IOS)
     set(WEBFILESDIR "Web")
 endif ()
 
+# Browser-based web UI (webui/, served by controlapi's WebServer behind the
+# qmlui --webui flag). Deliberately NOT "web"/"Web": that is WEBFILESDIR, the
+# legacy webaccess remote's files, and on case-insensitive filesystems
+# (Windows, macOS default) "web" and "Web" are the same directory.
+if (WIN32)
+    set(WEBUIDIR "WebUI")
+elseif (APPLE)
+    set(WEBUIDIR "${DATADIR}/WebUI")
+else ()
+    set(WEBUIDIR "${DATADIR}/webui")
+endif ()
+
+if (ANDROID)
+    set(WEBUIDIR "${DATADIR}/webui")
+elseif (IOS)
+    set(WEBUIDIR "WebUI")
+endif ()
+
 # Samples
 if (WIN32)
     set(SAMPLESDIR "${INSTALLROOT}")

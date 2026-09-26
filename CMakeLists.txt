@@ -82,6 +82,9 @@ add_subdirectory(controlapi)
 if(qmlui)
     message("Building QLC+ 5 QML UI")
     add_subdirectory(qmlui)
+    # Browser-based web UI served by qlcplus5 --webui (docs/webui.md); plain
+    # data files, so qmlui-only like resources/meshes and colorfilters
+    add_subdirectory(webui)
 else()
     message("Building QLC+ 4 QtWidget UI")
     add_subdirectory(ui)

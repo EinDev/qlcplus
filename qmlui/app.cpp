@@ -73,6 +73,7 @@
 #include "networkmanager.h"
 #include "stagewizard.h"
 #include "apiserver.h"
+#include "webserver.h"
 
 #include "qlcfixturedefcache.h"
 #include "audioplugincache.h"
@@ -112,6 +113,7 @@ App::App()
     , m_videoProvider(nullptr)
     , m_networkManager(nullptr)
     , m_apiServer(nullptr)
+    , m_webServer(nullptr)
     , m_uiManager(nullptr)
     , m_stageWizard(nullptr)
     , m_doc(nullptr)
@@ -257,6 +259,12 @@ void App::startup()
     // is called (from main.cpp, gated behind --api/--api-port, mirroring how
     // WebAccessQml is only lazily started via NetworkManager::startServer()).
     m_apiServer = new ApiServer(this, m_doc);
+
+    // Static-file HTTP server for the browser-based web UI (docs/webui.md),
+    // same lazy pattern: only listens once main.cpp sees --webui. Unlike
+    // m_apiServer it touches neither m_doc nor the engine, so plain
+    // QObject-child cleanup is fine for it (no explicit delete in ~App()).
+    m_webServer = new WebServer(this);
 
     m_tardis = new Tardis(this, m_doc, m_networkManager, m_fixtureManager, m_functionManager,
                           m_contextManager, m_simpleDesk, m_showManager, m_virtualConsole);
@@ -1150,6 +1158,11 @@ NetworkManager *App::networkManager() const
 ApiServer *App::apiServer() const
 {
     return m_apiServer;
+}
+
+WebServer *App::webServer() const
+{
+    return m_webServer;
 }
 
 bool App::docLoaded()

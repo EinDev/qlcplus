@@ -126,6 +126,7 @@ Section
 	File /r RGBScripts
 	File /r translations
 	File /r Web
+	File /r WebUI
 
 	WriteRegStr HKCU "SOFTWARE\qlcplus" "Install_Dir" "$INSTDIR"
 
@@ -162,6 +163,7 @@ Section "Uninstall"
 	RMDir /r $INSTDIR\RGBScripts
 	RMDir /r $INSTDIR\translations
 	RMDir /r $INSTDIR\Web
+	RMDir /r $INSTDIR\WebUI
 
 	RMDir $INSTDIR
 
