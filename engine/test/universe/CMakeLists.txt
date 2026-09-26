@@ -1,9 +1,11 @@
 add_executable(universe_test WIN32
     universe_test.cpp universe_test.h
+    ../iopluginstub/iopluginstub.cpp
 )
 target_include_directories(universe_test PRIVATE
     ../../../plugins/interfaces
     ../../src
+    ../iopluginstub
 )
 
 target_link_libraries(universe_test PRIVATE
