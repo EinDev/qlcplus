@@ -144,4 +144,72 @@ void OutputPatch_Test::dump()
     delete op;
 }
 
+void OutputPatch_Test::uidPausedAndParameters()
+{
+    IOPluginStub* stub = static_cast<IOPluginStub*>
+                                (m_doc->ioPluginCache()->plugins().at(0));
+    QVERIFY(stub != NULL);
+
+    OutputPatch op(0, this);
+
+    // nothing patched yet
+    QVERIFY(op.isPatched() == false);
+    QVERIFY(op.outputUID() == KOutputNone);
+    QVERIFY(op.reconnect() == false);
+    QVERIFY(op.getPluginParameters().isEmpty());
+    QVERIFY(op.paused() == false);
+    QVERIFY(op.blackout() == false);
+
+    // a plugin without a line is not a patch
+    QVERIFY(op.set(stub, QLCIOPlugin::invalidLine()) == false);
+    QVERIFY(op.plugin() == stub);
+    QVERIFY(op.isPatched() == false);
+    QVERIFY(op.outputUID() == KOutputNone);
+    QVERIFY(op.outputName() == KOutputNone);
+    QVERIFY(op.reconnect() == false);
+    QVERIFY(op.getPluginParameters().isEmpty());
+
+    QVERIFY(op.set(stub, 2) == true);
+    QVERIFY(op.isPatched() == true);
+    QCOMPARE(op.outputUID(), stub->outputsUID().at(2));
+    QCOMPARE(op.outputName(), stub->outputs().at(2));
+
+    // cached parameters survive a reconnect
+    op.setPluginParameter("Foo", 7);
+    QCOMPARE(op.getPluginParameters().value("Foo").toInt(), 7);
+    QVERIFY(op.reconnect() == true);
+    QCOMPARE(stub->m_openOutputs.size(), 1);
+    QCOMPARE(stub->m_openOutputs.at(0), quint32(2));
+    QCOMPARE(op.getPluginParameters().value("Foo").toInt(), 7);
+
+    // pause toggling is idempotent
+    QSignalSpy pauseSpy(&op, SIGNAL(pausedChanged(bool)));
+    op.setPaused(true);
+    QVERIFY(op.paused() == true);
+    QCOMPARE(pauseSpy.size(), 1);
+    QCOMPARE(pauseSpy.at(0).at(0).toBool(), true);
+    op.setPaused(true);
+    QCOMPARE(pauseSpy.size(), 1);
+    op.setPaused(false);
+    QVERIFY(op.paused() == false);
+    QCOMPARE(pauseSpy.size(), 2);
+
+    // and so is blackout
+    QSignalSpy blackoutSpy(&op, SIGNAL(blackoutChanged(bool)));
+    op.setBlackout(true);
+    QVERIFY(op.blackout() == true);
+    QCOMPARE(blackoutSpy.size(), 1);
+    op.setBlackout(true);
+    QCOMPARE(blackoutSpy.size(), 1);
+    op.setBlackout(false);
+    QVERIFY(op.blackout() == false);
+    QCOMPARE(blackoutSpy.size(), 2);
+
+    // a line beyond the plugin's outputs has no UID/name
+    QVERIFY(op.set(stub, 42) == true);
+    QVERIFY(op.isPatched() == true);
+    QVERIFY(op.outputUID() == KOutputNone);
+    QVERIFY(op.outputName() == KOutputNone);
+}
+
 QTEST_APPLESS_MAIN(OutputPatch_Test)

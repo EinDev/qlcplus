@@ -22,6 +22,8 @@
 #define private public
 #include "iopluginstub.h"
 #include "inputpatch_test.h"
+#include "qlcinputprofile.h"
+#include "qlcinputchannel.h"
 #include "qlcioplugin.h"
 #include "inputpatch.h"
 #include "qlcfile.h"
@@ -156,6 +158,99 @@ void InputPatch_Test::parameters()
     QVERIFY(ip->getPluginParameters().value("Foo") == 42);
 
     delete ip;
+}
+
+void InputPatch_Test::uidAndReconnect()
+{
+    IOPluginStub* stub = static_cast<IOPluginStub*> (m_doc->ioPluginCache()->plugins().at(0));
+    QVERIFY(stub != NULL);
+
+    InputPatch ip(0, this);
+
+    // nothing patched yet
+    QVERIFY(ip.inputUID() == KInputNone);
+    QVERIFY(ip.reconnect() == false);
+    QVERIFY(ip.getPluginParameters().isEmpty());
+
+    QVERIFY(ip.set(stub, 1, NULL) == true);
+    QCOMPARE(ip.inputUID(), stub->inputsUID().at(1));
+    QCOMPARE(ip.inputName(), stub->inputs().at(1));
+    QVERIFY(ip.isPatched() == true);
+
+    // cached parameters are pushed to the plugin again after a reconnect
+    ip.setPluginParameter("Foo", 42);
+    ip.setPluginParameter("Bar", "baz");
+    QCOMPARE(ip.getPluginParameters().value("Foo").toInt(), 42);
+    QCOMPARE(ip.getPluginParameters().value("Bar").toString(), QString("baz"));
+    QVERIFY(ip.reconnect() == true);
+    QCOMPARE(stub->m_openInputs.size(), 1);
+    QCOMPARE(stub->m_openInputs.at(0), quint32(1));
+    QCOMPARE(ip.getPluginParameters().value("Foo").toInt(), 42);
+    QCOMPARE(ip.getPluginParameters().value("Bar").toString(), QString("baz"));
+
+    // an invalid line reports no UID/name and cannot reconnect
+    QVERIFY(ip.set(stub, QLCIOPlugin::invalidLine(), NULL) == false);
+    QVERIFY(ip.inputUID() == KInputNone);
+    QVERIFY(ip.inputName() == KInputNone);
+    QVERIFY(ip.isPatched() == false);
+    QVERIFY(ip.reconnect() == false);
+    QCOMPARE(stub->m_openInputs.size(), 0);
+
+    // a line beyond the plugin's inputs has no UID/name either
+    QVERIFY(ip.set(stub, 42, NULL) == true);
+    QVERIFY(ip.inputUID() == KInputNone);
+    QVERIFY(ip.inputName() == KInputNone);
+    QVERIFY(ip.isPatched() == true);
+}
+
+void InputPatch_Test::profilePageControls()
+{
+    IOPluginStub* stub = static_cast<IOPluginStub*> (m_doc->ioPluginCache()->plugins().at(0));
+    QVERIFY(stub != NULL);
+
+    QLCInputProfile prof;
+    prof.setManufacturer("Page");
+    prof.setModel("Controls");
+    // a non-empty global settings map is pushed to the plugin as parameters
+    prof.setMidiSendNoteOff(false);
+
+    QLCInputChannel *slider = new QLCInputChannel();
+    slider->setType(QLCInputChannel::Slider);
+    QVERIFY(prof.insertChannel(0, slider) == true);
+    QLCInputChannel *next = new QLCInputChannel();
+    next->setType(QLCInputChannel::NextPage);
+    QVERIFY(prof.insertChannel(10, next) == true);
+    QLCInputChannel *prev = new QLCInputChannel();
+    prev->setType(QLCInputChannel::PrevPage);
+    QVERIFY(prof.insertChannel(11, prev) == true);
+    QLCInputChannel *pageSet = new QLCInputChannel();
+    pageSet->setType(QLCInputChannel::PageSet);
+    QVERIFY(prof.insertChannel(12, pageSet) == true);
+    // a second next-page control does not override the first one found
+    QLCInputChannel *next2 = new QLCInputChannel();
+    next2->setType(QLCInputChannel::NextPage);
+    QVERIFY(prof.insertChannel(20, next2) == true);
+
+    InputPatch ip(0, this);
+    QCOMPARE(ip.m_nextPageCh, ushort(USHRT_MAX));
+    QVERIFY(ip.set(stub, 2, &prof) == true);
+    QCOMPARE(ip.m_nextPageCh, ushort(10));
+    QCOMPARE(ip.m_prevPageCh, ushort(11));
+    QCOMPARE(ip.m_pageSetCh, ushort(12));
+    QVERIFY(ip.getPluginParameters().contains("MIDISendNoteOff"));
+    QCOMPARE(ip.getPluginParameters().value("MIDISendNoteOff").toBool(), false);
+
+    // assigning the profile to an already patched line takes the same path
+    InputPatch ip2(1, this);
+    QVERIFY(ip2.set(stub, 3, NULL) == true);
+    QCOMPARE(ip2.m_nextPageCh, ushort(USHRT_MAX));
+    QVERIFY(ip2.getPluginParameters().contains("MIDISendNoteOff") == false);
+    QVERIFY(ip2.set(&prof) == true);
+    QCOMPARE(ip2.m_nextPageCh, ushort(10));
+    QCOMPARE(ip2.m_prevPageCh, ushort(11));
+    QCOMPARE(ip2.m_pageSetCh, ushort(12));
+    QVERIFY(ip2.getPluginParameters().contains("MIDISendNoteOff"));
+    QCOMPARE(ip2.profileName(), prof.name());
 }
 
 QTEST_APPLESS_MAIN(InputPatch_Test)

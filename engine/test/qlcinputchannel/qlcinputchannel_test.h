@@ -36,6 +36,9 @@ private slots:
     void load();
     void loadWrongType();
     void save();
+    void typeStringAndIcons();
+    void loadExtras();
+    void saveVariants();
 };
 
 #endif
