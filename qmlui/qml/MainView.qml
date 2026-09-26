@@ -368,6 +368,7 @@ Rectangle
                 //visible: qlcplus.accessMask & App.AC_FunctionEditing
                 imgSource: "qrc:/editor.svg"
                 entryText: qsTr("Fixtures & Functions")
+                shortcutActionId: "context.switchFixturesAndFunctions"
                 checked: false
                 ButtonGroup.group: menuBarGroup
                 onCheckedChanged:
@@ -386,6 +387,7 @@ Rectangle
                 visible: qlcplus.accessMask & App.AC_VCControl
                 imgSource: "qrc:/virtualconsole.svg"
                 entryText: qsTr("Virtual Console")
+                shortcutActionId: "context.switchVirtualConsole"
                 ButtonGroup.group: menuBarGroup
                 onCheckedChanged:
                 {
@@ -408,6 +410,7 @@ Rectangle
                 visible: qlcplus.accessMask & App.AC_SimpleDesk
                 imgSource: "qrc:/simpledesk.svg"
                 entryText: qsTr("Simple Desk")
+                shortcutActionId: "context.switchSimpleDesk"
                 ButtonGroup.group: menuBarGroup
                 onCheckedChanged:
                 {
@@ -430,6 +433,7 @@ Rectangle
                 visible: qlcplus.accessMask & App.AC_ShowManager
                 imgSource: "qrc:/showmanager.svg"
                 entryText: qsTr("Show Manager")
+                shortcutActionId: "context.switchShowManager"
                 ButtonGroup.group: menuBarGroup
                 onCheckedChanged:
                 {
@@ -452,6 +456,7 @@ Rectangle
                 visible: qlcplus.accessMask & App.AC_InputOutput
                 imgSource: "qrc:/inputoutput.svg"
                 entryText: qsTr("Input/Output")
+                shortcutActionId: "context.switchIOManager"
                 ButtonGroup.group: menuBarGroup
                 onCheckedChanged:
                 {
@@ -484,6 +489,7 @@ Rectangle
                 imgSource: "qrc:/dmxdump.svg"
                 imgMargins: 10
                 tooltip: qsTr("Dump DMX values on a Scene")
+                shortcutActionId: "app.dmxDump"
                 counter: (qlcplus.accessMask & App.AC_FunctionEditing)
 
                 property string bubbleLabel: {
@@ -539,6 +545,9 @@ Rectangle
 
                     onClicked: (mouse) =>
                     {
+                        // this drag area swallows the click, so the
+                        // button's own clicked() (and its hint) never fires
+                        sceneDump.notifyShortcutClick()
                         sceneDump.updateDumpVariables()
                         dmxDumpDialog.open()
                         dmxDumpDialog.focusEditItem()
@@ -719,6 +728,7 @@ Rectangle
                 faSource: FontAwesome.fa_octagon
                 faColor: "red"
                 tooltip: qsTr("Stop all the running functions")
+                shortcutActionId: "app.panic"
 
                 onClicked: qlcplus.stopAllFunctions()
 
@@ -1153,6 +1163,40 @@ Rectangle
             text: qsTr("Drop a project or fixture file to open it")
             font.pixelSize: UISettings.textSizeDefault * 1.4
             color: "white"
+        }
+    }
+
+    // The one feedback strip of the app - a generic component (see
+    // FeedbackToast.qml) so a future global command line can reuse it.
+    // Today it carries the shortcut learning aids: a key-cast of every
+    // shortcut that fires, and a hint when a button that has a shortcut
+    // equivalent is clicked with the mouse. Sits above dimScreen and the
+    // Show Wizard overlay; it never takes input so that's harmless.
+    FeedbackToast
+    {
+        id: feedbackToast
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: UISettings.iconSizeDefault * 1.5
+        z: 200
+    }
+
+    Connections
+    {
+        target: shortcutManager
+
+        function onShortcutFired(actionId, sequenceText, description)
+        {
+            if (shortcutManager.hintsEnabled)
+                feedbackToast.show(sequenceText, description)
+        }
+
+        function onClickHintRequested(actionId, sequenceText, description)
+        {
+            // notifyButtonClicked() already checks hintsEnabled; a button
+            // click never goes through handleKeyEvent(), so this and the
+            // key-cast above can't both fire for one user gesture
+            feedbackToast.show(sequenceText, qsTr("Tip: shortcut for \"%1\"").arg(description))
         }
     }
 

@@ -211,6 +211,7 @@ Rectangle
                     id: uniView
                     imgSource: "uniview.svg"
                     entryText: qsTr("Universe View")
+                    shortcutActionId: "fixture.switchToUniverseGrid"
                     checked: contextManager.currentSubContext === "UNIGRID"
                     checkedColor: UISettings.toolbarSelectionSub
                     bgGradient: ffMenuGradient
@@ -231,6 +232,7 @@ Rectangle
                     visible: !ViewDMX.detached
                     imgSource: "dmxview.svg"
                     entryText: qsTr("DMX View")
+                    shortcutActionId: "fixture.switchToDmxView"
                     checked: contextManager.currentSubContext === "DMX"
                     checkedColor: UISettings.toolbarSelectionSub
                     bgGradient: ffMenuGradient
@@ -251,6 +253,7 @@ Rectangle
                     visible: !View2D.detached
                     imgSource: "2dview.svg"
                     entryText: qsTr("2D View")
+                    shortcutActionId: "fixture.switchTo2DView"
                     checked: contextManager.currentSubContext === "2D"
                     checkedColor: UISettings.toolbarSelectionSub
                     bgGradient: ffMenuGradient
@@ -271,6 +274,7 @@ Rectangle
                     visible: !View3D.detached
                     imgSource: "3dview.svg"
                     entryText: qsTr("3D View")
+                    shortcutActionId: "fixture.switchTo3DView"
                     checked: contextManager.currentSubContext === "3D"
                     checkedColor: UISettings.toolbarSelectionSub
                     bgGradient: ffMenuGradient
@@ -339,6 +343,7 @@ Rectangle
                     id: evenFixturesButton
                     implicitHeight: viewToolbar.height - 2
                     tooltip: qsTr("Select every even fixture of the current selection")
+                    shortcutActionId: "fixture.selectEven"
                     faColor: "white"
                     faSource: FontAwesome.fa_list_ol
                     onClicked: contextManager.selectEvenOdd(true)
@@ -349,6 +354,7 @@ Rectangle
                     id: oddFixturesButton
                     implicitHeight: viewToolbar.height - 2
                     tooltip: qsTr("Select every odd fixture of the current selection")
+                    shortcutActionId: "fixture.selectOdd"
                     faColor: "white"
                     faSource: FontAwesome.fa_list_ul
                     onClicked: contextManager.selectEvenOdd(false)

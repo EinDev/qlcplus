@@ -464,6 +464,7 @@ SidePanel
                 height: iconSize
                 imgSource: "qrc:/rename.svg"
                 tooltip: qsTr("Rename the selected items")
+                shortcutActionId: "item.renameSelected"
                 counter: selectedItemsCount && !functionManager.isEditing
                 onClicked:
                 {
@@ -502,6 +503,7 @@ SidePanel
                 faSource: FontAwesome.fa_clone
                 faColor: UISettings.fgMain
                 tooltip: qsTr("Clone the selected functions")
+                shortcutActionId: "function.clone"
                 counter: functionManager.selectedFunctionCount && !functionManager.isEditing
                 onClicked: functionManager.cloneFunctions()
             }
@@ -548,6 +550,7 @@ SidePanel
                 faSource: FontAwesome.fa_play
                 faColor: UISettings.fgMain
                 tooltip: qsTr("Function Preview")
+                shortcutActionId: "function.togglePreview"
                 checkable: true
                 checked: functionManager.previewEnabled
                 counter: functionManager.selectedFunctionCount
@@ -584,7 +587,8 @@ SidePanel
                 width: iconSize
                 height: iconSize
                 faSource: FontAwesome.fa_xmark
-                tooltip: qsTr("Reset dump channels") + " (CTRL+R)"
+                tooltip: qsTr("Reset dump channels")
+                shortcutActionId: "fixture.resetDumpValues"
                 onClicked: contextManager.resetDumpValues()
             }
         }

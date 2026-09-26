@@ -525,6 +525,7 @@ SidePanel
                 height: iconSize
                 faSource: FontAwesome.fa_bolt
                 tooltip: qsTr("Highlight")
+                shortcutActionId: "fixture.highlightSelection"
                 counter: contextManager.selectedFixturesCount
                 onClicked: contextManager.highlightFixtureSelection()
             }
@@ -541,7 +542,8 @@ SidePanel
                 checkable: true
                 checked: contextManager ? contextManager.positionPicking : false
                 faSource: FontAwesome.fa_crosshairs
-                tooltip: qsTr("Pick a 3D point") + " (CTRL+P)"
+                tooltip: qsTr("Pick a 3D point")
+                shortcutActionId: "fixture.positionPicking"
                 onToggled: contextManager.positionPicking = checked
             }
 
@@ -561,7 +563,8 @@ SidePanel
                 width: iconSize
                 height: iconSize
                 imgSource: "qrc:/selectall.svg"
-                tooltip: qsTr("Select/Deselect all fixtures") + " (CTRL+A)"
+                tooltip: qsTr("Select/Deselect all fixtures")
+                shortcutActionId: "fixture.selectAll"
                 onClicked: contextManager.toggleFixturesSelection()
             }
         } // ColumnLayout
