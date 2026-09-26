@@ -678,6 +678,11 @@ int VCWidget::externalControlsCount() const
     return m_externalControlList.count();
 }
 
+QString VCWidget::externalControlName(quint8 id) const
+{
+    return m_externalControlList.value(id).name;
+}
+
 QVariant VCWidget::externalControlsList() const
 {
     QVariantList controlsList;

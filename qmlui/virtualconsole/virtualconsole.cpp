@@ -1522,18 +1522,34 @@ bool VirtualConsole::handleKeyEvent(QKeyEvent *e, bool pressed)
                 return false;
 
             QMetaObject::invokeMethod(vcItem, "activatePage", Q_ARG(QVariant, pageIndex));
+
+            if (pressed && pageIndex >= 0 && pageIndex < m_pages.count())
+                emit keyBindingFired(seq.toString(QKeySequence::NativeText), m_pages.at(pageIndex)->caption());
+
             return true;
         }
 
         /** otherwise forward it to the currently selected page */
         bool handled = false;
+        QStringList descriptions;
         for (int pageIndex = 0; pageIndex < m_pages.count(); pageIndex++)
         {
             VCPage *page = m_pages.at(pageIndex);
 
             if (pageIndex == selectedPage())
-                handled = page->handleKeyEvent(seq, pressed);
+                handled = page->handleKeyEvent(seq, pressed, &descriptions);
         }
+
+        // Key-cast feedback: only for a press that at least one widget
+        // actually accepted (a bound-but-hidden widget shows nothing).
+        // Two widgets sharing caption and control (e.g. twin "Flash"
+        // buttons) collapse into one entry to keep the strip readable
+        if (handled && pressed && !descriptions.isEmpty())
+        {
+            descriptions.removeDuplicates();
+            emit keyBindingFired(seq.toString(QKeySequence::NativeText), descriptions.join(", "));
+        }
+
         return handled;
     }
     else

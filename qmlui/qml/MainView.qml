@@ -1200,6 +1200,20 @@ Rectangle
         }
     }
 
+    Connections
+    {
+        target: virtualConsole
+
+        // Per-show VC key bindings are dispatched before the ShortcutManager
+        // registry (see App::keyPressEvent) and never reach onShortcutFired
+        // above, so they get their own key-cast here, same gate, same strip
+        function onKeyBindingFired(sequenceText, description)
+        {
+            if (shortcutManager.hintsEnabled)
+                feedbackToast.show(sequenceText, description)
+        }
+    }
+
     /* Rectangle covering the whole window to
      * have a dimmered background for popups */
     Rectangle
