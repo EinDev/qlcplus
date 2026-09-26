@@ -281,8 +281,12 @@ void WebServer::handleRequest(QTcpSocket *socket, const QByteArray &requestHead)
 
     // Whole file in memory: web UI assets are small, and this keeps the
     // response path a single write with a Content-Length known up front.
+    // For GET the length must describe the bytes actually read - the UI is
+    // edited live, and a file rewritten between open() and readAll() would
+    // otherwise be announced with a stale size and the browser left waiting
+    // for bytes that never come (or handed a truncated body).
     QByteArray body = headOnly ? QByteArray() : file.readAll();
-    sendResponse(socket, 200, contentTypeForPath(filePath), body, file.size(), headOnly);
+    sendResponse(socket, 200, contentTypeForPath(filePath), body, headOnly ? file.size() : body.size(), headOnly);
 }
 
 WebServer::PathStatus WebServer::resolvePath(const QString &requestPath, QString &filePath) const
