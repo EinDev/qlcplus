@@ -110,4 +110,9 @@ working on its built-in mock data (`data.js`), clearly labelled as such.
 The source design system (component sources, guidelines, templates) lives outside this repo;
 only runtime files are vendored here. When re-importing from it, keep the load order in
 `index.html`: `_ds_bundle.js` contains stale compiled copies of the screens that the real files
-loaded afterwards overwrite.
+loaded afterwards overwrite. Three components were patched locally in `_ds_bundle.js` after the
+live pass and must be carried over (or fixed at the source) on a re-import, or the bugs come
+back: `CustomSlider` (handle drifted past the track end at high values), `CustomSpinBox` (a
+controlled input that snapped back on every non-numeric keystroke, so typing a value was
+impossible) and `CustomPopupDialog` (new `disabledButtons` prop, used to block Add Fixtures while
+the address range overlaps).
