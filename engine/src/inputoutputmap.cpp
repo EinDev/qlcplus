@@ -414,7 +414,10 @@ bool InputOutputMap::setInputPatch(quint32 universe, const QString &pluginName,
         currProfile = currInPatch->profile();
         disconnect(currInPatch, SIGNAL(inputValueChanged(quint32,quint32,uchar,const QString&)),
                 this, SIGNAL(inputValueChanged(quint32,quint32,uchar,const QString&)));
-        if (currInPatch->plugin()->capabilities() & QLCIOPlugin::Beats)
+        // A patch can be left without a plugin when a previous re-patch named
+        // a plugin that isn't loaded (InputPatch::set(NULL, ...)).
+        if (currInPatch->plugin() != NULL &&
+            (currInPatch->plugin()->capabilities() & QLCIOPlugin::Beats))
         {
             disconnect(currInPatch, SIGNAL(inputValueChanged(quint32,quint32,uchar,const QString&)),
                        this, SLOT(slotPluginBeat(quint32,quint32,uchar,const QString&)));
