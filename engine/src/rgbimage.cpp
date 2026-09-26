@@ -283,6 +283,10 @@ void RGBImage::rgbMap(const QSize& size, uint rgb, int step, RGBMap &map)
     {
         m_animatedPlayer.jumpToNextFrame();
         m_image = m_animatedPlayer.currentImage().scaled(size);
+        // A frame that could not be decoded yields a null image: the
+        // modulo below would then divide by zero
+        if (m_image.width() == 0 || m_image.height() == 0)
+            return;
     }
 
     map.resize(size.height());
