@@ -233,7 +233,10 @@ function VirtualConsole() {
     xyRelease: (id) => { delete dragging.current['xy:' + id]; },
     speedSet: (id, ms) => { patchStore('speed', id, ms); qlc.call(VC_METHODS.SPEED_SET, { widgetId: String(id), ms: ms }).catch(notFound(VC_METHODS.SPEED_SET)); },
     speedTap: (id) => qlc.call(VC_METHODS.SPEED_TAP, { widgetId: String(id) }).catch(notFound(VC_METHODS.SPEED_TAP)),
-    frameGoto: (id, p) => { patchStore('frames', id, (f) => Object.assign({}, f, { currentPage: p })); qlc.client().vc.frame.gotoPage(String(id), p).then(() => refreshRef.current()).catch(notFound(VC_METHODS.FRAME_GOTO)); }
+    /* A frame page flip is persisted by the engine and bumps docRevision, but neither the ack nor
+       vc.frame.pageChanged carries the new value — re-read it via core.project.get so the next
+       structural edit does not start with a CONFLICT (vcStructural would retry once anyway). */
+    frameGoto: (id, p) => { patchStore('frames', id, (f) => Object.assign({}, f, { currentPage: p })); qlc.client().vc.frame.gotoPage(String(id), p).then(() => { refreshRef.current(); qlc.call('core.project.get').catch(() => {}); }).catch(notFound(VC_METHODS.FRAME_GOTO)); }
   }), [qlc, throttled]);
 
   /* --- edit actions ------------------------------------------------------------------------ */
