@@ -765,7 +765,12 @@ function CustomSlider({
     const el = ref.current;
     if (!el || !onMoved) return;
     const r = el.getBoundingClientRect();
-    const p = horizontal ? (clientX - r.left) / r.width : 1 - (clientY - r.top) / r.height;
+    /* The handle's centre travels from handle/2 to length - handle/2 (it stays inside the
+       control), so the pointer maps over that same span: the handle follows the cursor
+       exactly, and the extremes are reached at the handle's own end positions. The handle
+       is square, so its size is the control's thickness. */
+    const hs = horizontal ? r.height : r.width;
+    const p = horizontal ? (clientX - r.left - hs / 2) / Math.max(1, r.width - hs) : 1 - (clientY - r.top - hs / 2) / Math.max(1, r.height - hs);
     onMoved(Math.round(from + Math.max(0, Math.min(1, p)) * (to - from)));
   };
   const start = e => {
@@ -813,8 +818,9 @@ function CustomSlider({
       borderRadius: 999,
       left: 0,
       bottom: 0,
-      width: horizontal ? pos * 100 + '%' : '100%',
-      height: horizontal ? '100%' : pos * 100 + '%'
+      /* fill ends under the handle's centre: handle/2 + pos * (track - handle) */
+      width: horizontal ? 'calc(' + handle + ' / 2 + ' + pos + ' * (100% - ' + handle + '))' : '100%',
+      height: horizontal ? '100%' : 'calc(' + handle + ' / 2 + ' + pos + ' * (100% - ' + handle + '))'
     }
   })), React.createElement('div', {
     style: {
@@ -823,9 +829,12 @@ function CustomSlider({
       height: handle,
       background: 'var(--fg-main)',
       borderRadius: 'calc(var(--list-item-height) * 0.16)',
-      left: horizontal ? 'calc(' + pos * 100 + '% - ' + pos * 100 + '% * 0 )' : undefined,
-      transform: horizontal ? 'translateX(calc(' + pos * (length - 21) + 'px - 50% + 10px))' : 'none',
-      bottom: horizontal ? undefined : 'calc(' + pos * 100 + '% - ' + pos * 21 + 'px)'
+      /* The handle stays fully inside the control at both extremes: its leading edge moves
+         over (100% - handle). The previous version added pos * 100% AND a pos * (length - 21)px
+         translate, so at high values the handle sat past the end of the track (at 255 it was
+         almost a full track length too far right and overlapped the value box). */
+      left: horizontal ? 'calc(' + pos + ' * (100% - ' + handle + '))' : undefined,
+      bottom: horizontal ? undefined : 'calc(' + pos + ' * (100% - ' + handle + '))'
     }
   }));
 }
