@@ -67,13 +67,14 @@ void ScriptV4_Test::init()
 
     // Generic 4-channel dimmer whose last channels fall past the end of the
     // universe (address 510 + channel 2 == 512) - for setFixture()'s
-    // address-range check
+    // address-range check. Doc only accepts such a fixture when told it may
+    // span into the next universe
     m_edgeFixture = new Fixture(m_doc);
     m_edgeFixture->setName("Edge");
     m_edgeFixture->setChannels(4);
     m_edgeFixture->setAddress(510);
     m_edgeFixture->setUniverse(0);
-    QVERIFY(m_doc->addFixture(m_edgeFixture));
+    QVERIFY(m_doc->addFixture(m_edgeFixture, Fixture::invalidId(), true));
 
     m_scene1 = new Scene(m_doc);
     m_scene1->setName("S1");
