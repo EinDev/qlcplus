@@ -1,6 +1,7 @@
 project(test)
 
 add_subdirectory(audio)
+add_subdirectory(avolitesd4parser)
 add_subdirectory(beattracker)
 add_subdirectory(beattrackerbench)
 add_subdirectory(bus)
@@ -84,6 +85,7 @@ add_subdirectory(iopluginstub)
 # (see common/resource_paths.h), hence WORKING_DIRECTORY per test.
 set(QLCPLUS_ENGINE_TESTS
     audio_test
+    avolitesd4parser_test
     beattracker_test
     bus_test
     channelmodifier_test
