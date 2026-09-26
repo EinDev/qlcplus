@@ -571,11 +571,11 @@ void MasterTimer_Test::nextBeatTimeOffsetLateToBeat()
     // Right after a beat the next one is far away: wait for the whole remaining time
     QVERIFY(timer.nextBeatTimeOffset() < 0);
 
-    // Move the timer into the last 10% of the beat: a Function starting now is
+    // Move the timer into the last 20% of the beat: a Function starting now is
     // "late to beat" and only waits for the short remaining time
     QTest::qSleep(200);
     int elapsed = int(timer.m_beatTimer.elapsed());
-    timer.m_beatTimeDuration = elapsed + elapsed / 10;
+    timer.m_beatTimeDuration = elapsed + elapsed / 4; // 20% of the beat left: late to beat, with slack
     int toNext = timer.timeToNextBeat();
     QVERIFY(toNext > 0);
     int offset = timer.nextBeatTimeOffset();
