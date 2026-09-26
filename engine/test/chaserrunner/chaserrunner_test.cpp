@@ -103,6 +103,13 @@ void ChaserRunner_Test::init()
 
 void ChaserRunner_Test::cleanup()
 {
+    // Functions a test left running on the Doc's master timer would be
+    // deleted by clearContents() but stay in the timer's list, crashing the
+    // next test that ticks it: stop them and let the timer drop them first.
+    foreach (Function *function, m_doc->functions())
+        function->stop(FunctionParent::master());
+    m_doc->masterTimer()->timerTick();
+
     m_doc->clearContents();
 }
 
