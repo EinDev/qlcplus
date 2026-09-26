@@ -79,6 +79,9 @@ void QLCPalette_Test::type()
     QVERIFY(QLCPalette::stringToType("Gobo") == QLCPalette::Gobo);
     QVERIFY(QLCPalette::stringToType("Zoom") == QLCPalette::Zoom);
     QVERIFY(QLCPalette::stringToType("Position3D") == QLCPalette::Position3D);
+
+    /* values outside the enum have no textual form */
+    QVERIFY(QLCPalette::typeToString(QLCPalette::PaletteType(1 << 12)) == QString());
 }
 
 void QLCPalette_Test::icon()
@@ -101,6 +104,11 @@ void QLCPalette_Test::icon()
     QCOMPARE(p8.iconResource(), QString(":/beam.png"));
     QLCPalette p9(QLCPalette::Position3D);
     QCOMPARE(p9.iconResource(true), QString("qrc:/3dpoint.svg"));
+
+    /* an undefined palette has no icon */
+    QLCPalette p0(QLCPalette::Undefined);
+    QCOMPARE(p0.iconResource(), QString());
+    QCOMPARE(p0.iconResource(true), QString());
 }
 
 void QLCPalette_Test::value()
@@ -169,6 +177,10 @@ void QLCPalette_Test::fanning()
     QVERIFY(QLCPalette::stringToFanningLayout("ZAscending") == QLCPalette::ZAscending);
     QVERIFY(QLCPalette::stringToFanningLayout("ZDescending") == QLCPalette::ZDescending);
     QVERIFY(QLCPalette::stringToFanningLayout("ZCentered") == QLCPalette::ZCentered);
+
+    /* values outside the enums have no textual form */
+    QVERIFY(QLCPalette::fanningTypeToString(QLCPalette::FanningType(99)) == QString());
+    QVERIFY(QLCPalette::fanningLayoutToString(QLCPalette::FanningLayout(99)) == QString());
 
     QLCPalette p(QLCPalette::Dimmer);
     p.setFanningAmount(75);

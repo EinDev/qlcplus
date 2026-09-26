@@ -818,6 +818,15 @@ void QLCChannel_Test::presetMapping()
     QCOMPARE(ch6.name(), QString("Hue fine"));
     QCOMPARE(ch6.colour(), QLCChannel::NoColour);
     QCOMPARE(ch6.controlByte(), QLCChannel::LSB);
+
+    /* a value outside the preset table is stored but classifies as nothing */
+    QLCChannel ch7;
+    ch7.setPreset(QLCChannel::LastPreset);
+    QCOMPARE(ch7.preset(), QLCChannel::LastPreset);
+    QVERIFY(ch7.name().isEmpty());
+    QCOMPARE(ch7.group(), QLCChannel::Intensity);
+    QCOMPARE(ch7.colour(), QLCChannel::NoColour);
+    QCOMPARE(ch7.controlByte(), QLCChannel::MSB);
 }
 
 void QLCChannel_Test::presetSameValue()
