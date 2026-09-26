@@ -655,14 +655,83 @@ messages:
         params:
           type: object
           required:
-          - functionId
           - paused
+          description: >
+            Function::setPause(). "id" is accepted as an alias of functionId
+            here and in every other functions.* method. paused must be a JSON
+            boolean (INVALID_PARAMS otherwise). The resulting
+            functions.status.changed is only broadcast when the flag actually
+            changed (pausing a stopped function is a no-op in the engine).
           properties:
             functionId:
               type: string
+            id:
+              type: string
+              description: Alias of functionId.
             paused:
               type: boolean
   FunctionsSetPauseResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/GenericAckResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsPauseRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.pause
+        params:
+          type: object
+          required:
+          - id
+          - paused
+          description: Alias of functions.setPause with the web UI contract's parameter spelling - identical handler.
+          properties:
+            id:
+              type: string
+            paused:
+              type: boolean
+  FunctionsPauseResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/GenericAckResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsStopAllRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.stopAll
+        params:
+          type: object
+          description: >
+            The main toolbar's "stop all functions": App::stopAllFunctions()
+            when the server is hosted by qmlui (also disables the Function
+            Manager preview and closes fullscreen video), bare
+            MasterTimer::stopAllFunctions() otherwise. Stops every running
+            function regardless of who started it (VC widgets included). The
+            call returns once MasterTimer has flushed its running list; one
+            functions.status.changed {running:false} follows per stopped
+            function. No parameters.
+  FunctionsStopAllResponse:
     payload:
       oneOf:
       - $ref: '#/components/messages/GenericAckResponse/payload'
@@ -2792,6 +2861,8 @@ schemas:
     - type
     - path
     - hidden
+    - running
+    - paused
     properties:
       id:
         type: string
@@ -2808,6 +2879,12 @@ schemas:
       hidden:
         type: boolean
         description: Function::isVisible() negated.
+      running:
+        type: boolean
+        description: Function::isRunning() at the time of the reply - §4b live state, also pushed via functions.status.changed.
+      paused:
+        type: boolean
+        description: Function::isPaused() at the time of the reply - §4b live state, also pushed via functions.status.changed.
   FunctionsDetail:
     type: object
     required:
@@ -2826,12 +2903,20 @@ schemas:
     - blendMode
     - attributes
     - typeDetail
+    - running
+    - paused
     description: Generic Function base detail, valid for all 10 types. Type-specific detail (values/steps/geometry/members)
       is always present as typeDetail below (the old per-type functions.<type>.get calls were consolidated
       away on the premise that it's never absent).
     properties:
       id:
         type: string
+      running:
+        type: boolean
+        description: See FunctionsSummary.running.
+      paused:
+        type: boolean
+        description: See FunctionsSummary.paused.
       name:
         type: string
       type:
@@ -2894,12 +2979,24 @@ schemas:
   FunctionsStatusData:
     type: object
     required:
+    - id
     - functionId
     - running
     - paused
     - elapsed
-    description: 4b live/runtime status - see 00-conventions.md §4b, not revision-gated.
+    description: >
+      4b live/runtime status - see 00-conventions.md §4b, not revision-gated.
+      Broadcast (to every client, not subscribe-gated) on every
+      MasterTimer::functionStarted/functionStopped - whatever started or
+      stopped the function (this API, a VC widget, the QML UI, a Collection)
+      - and on every Function::pauseChanged. Implemented fields today: id,
+      functionId, running, paused, elapsed (elapsed is 0 on a stop event).
+      elapsedBeats/attributes/currentStepIndex/runningStepsNumber below are
+      still spec-only.
     properties:
+      id:
+        type: string
+        description: Same value as functionId - the web UI contract's spelling.
       functionId:
         type: string
       running:
@@ -3422,6 +3519,30 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/functionsSetPauseResponse'
+  sendFunctionsPause:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsPauseRequest'
+  receiveFunctionsPauseResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsPauseResponse'
+  sendFunctionsStopAll:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsStopAllRequest'
+  receiveFunctionsStopAllResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsStopAllResponse'
   sendFunctionsTap:
     action: send
     channel:

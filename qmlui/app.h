@@ -426,6 +426,17 @@ public:
     QString workingPath() const override;
     void setWorkingPath(QString workingPath) override;
 
+    /** ApiProjectHost undo/redo hooks, delegating to m_tardis (which is
+     *  constructed AFTER m_apiServer in App::App() - hence the null checks
+     *  in app.cpp). historyChanged() below is the relay of
+     *  Tardis::historyChanged() that ApiCoreDomain connects to by name. */
+    bool canUndo() const override;
+    bool canRedo() const override;
+    QString undoText() const override;
+    QString redoText() const override;
+    bool undo() override;
+    bool redo() override;
+
     /** Reset everything and start a new workspace */
     Q_INVOKABLE bool newWorkspace() override;
 
@@ -470,6 +481,8 @@ private:
 signals:
     void recentFilesChanged();
     void workingPathChanged(QString workingPath);
+    /** Relay of Tardis::historyChanged() - see canUndo() above */
+    void historyChanged();
 
 public slots:
     void slotLoadDocFromMemory(QByteArray &xmlData) override;

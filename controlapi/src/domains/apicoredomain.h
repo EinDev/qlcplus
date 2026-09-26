@@ -18,15 +18,29 @@
 #ifndef APICOREDOMAIN_H
 #define APICOREDOMAIN_H
 
+#include <QElapsedTimer>
+#include <QList>
 #include <QObject>
 #include "doc.h"
 #include "apiprojecthost.h"
 
 class ApiServer;
+class ApiSession;
+class QTimer;
 
 /**
- * Implementation of the "core.*" domain (project lifecycle, mode, settings).
- * Deferring undo/redo per Phase 1.1 / 2.5 instructions in TODO.md.
+ * Implementation of the "core.*" domain: project lifecycle, mode, settings,
+ * the beat generator (core.bpm.get/set/tap, core.bpm.changed, core.beat -
+ * all §4b live state on InputOutputMap's beat generator, no baseRevision)
+ * and undo/redo (core.undo/redo/history.get, core.history.changed) through
+ * the ApiProjectHost undo hooks qmlui's App implements on top of Tardis.
+ *
+ * Undo/redo caveats (documented in core-notes.md too): Tardis only records
+ * edits made through the qmlui UI, so changes made via this API's own
+ * structural methods are not undoable; and an undo re-invokes engine
+ * setters directly, so the affected domain's normal change event does NOT
+ * fire - clients must treat core.history.changed's docRevision bump as
+ * "something changed, refetch".
  */
 class ApiCoreDomain : public QObject
 {
@@ -44,11 +58,44 @@ private:
      *  from - see core.project.new/open/close handlers, the only callers. */
     void broadcastProjectLoaded(const QString &reason, const QString &originClientId);
 
+    /** Whether host's undo/redo hooks may be used at all: a host is
+     *  present (see projectHost()). Sends UNSUPPORTED and returns false
+     *  otherwise - shared by core.undo/redo/history.get. */
+    bool requireUndoHost(ApiSession *session, const QString &id, ApiProjectHost **host) const;
+
+    /** {canUndo, canRedo, undoText?, redoText?, docRevision} - the shared
+     *  part of core.history.get's result, core.undo/redo's result and
+     *  core.history.changed's data. */
+    QJsonObject historyStateToJson() const;
+
+    /** Switch the beat generator to Internal if it is currently Disabled
+     *  (InputOutputMap::setBpmNumber() is a silent no-op while Disabled) -
+     *  shared by core.bpm.set/tap. Returns false (after sending an
+     *  INVALID_STATE error) when a Plugin/Audio source owns the tempo. */
+    bool ensureInternalBeatGenerator(ApiSession *session, const QString &id);
+
 private slots:
     void slotModeChanged(Doc::Mode mode);
     void slotDocRevisionChanged(quint32 revision);
     void slotRecentFilesChanged();
     void slotWorkingPathChanged(QString path);
+
+    /** InputOutputMap::bpmNumberChanged / beatGeneratorTypeChanged relays -
+     *  both broadcast the full core.bpm.changed {bpm, generator} state */
+    void slotBpmNumberChanged(int bpm);
+    void slotBeatGeneratorTypeChanged();
+
+    /** InputOutputMap::beat relay - broadcasts core.beat. Only ever fires
+     *  while a generator is active (Internal ticks, or a Plugin/Audio
+     *  source's processed beats), which is the "rate-limited to actual
+     *  beats" the web UI contract asks for. */
+    void slotBeat();
+
+    /** Host historyChanged() relay: arms m_historyTimer so a burst of
+     *  recorded actions (a drag records dozens within Tardis's 150ms
+     *  batching window) collapses into one core.history.changed. */
+    void slotHistoryChanged();
+    void slotBroadcastHistoryChanged();
 
 private:
     Doc *m_doc;
@@ -64,6 +111,18 @@ private:
      *  same "set before, clear after" pattern as ApiIoDomain's
      *  m_pendingOriginClientId, see its longer comment there. */
     QString m_pendingOriginClientId;
+
+    /** core.bpm.tap state: process-uptime clock plus the timestamps of the
+     *  recent taps in the current run. A gap longer than
+     *  TAP_RESET_INTERVAL_MS starts a fresh run (first tap of a run sets no
+     *  tempo, like any tap-tempo button). Global engine state, not
+     *  per-session - two operators tapping alternately do fight, exactly
+     *  like on a physical console. */
+    QElapsedTimer m_tapClock;
+    QList<qint64> m_tapTimesMs;
+
+    /** Coalescing single-shot for core.history.changed, see slotHistoryChanged() */
+    QTimer *m_historyTimer;
 };
 
 #endif

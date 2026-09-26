@@ -65,7 +65,20 @@ private slots:
     void findAvailableAddressReturnsRequestedWhenFree();
     void findAvailableAddressScansWhenRequestedTaken();
 
+    void defsListManufacturersIncludesRegisteredDefinition();
+    void defsListModelsReturnsNamesAndDetails();
+    void defsListModelsUnknownManufacturerIsNotFound();
+    void defsGetModelReturnsModesWithChannels();
+    void defsGetModelUnknownIsNotFound();
+    void defsGetModeReturnsChannelDetail();
+    void patchAcceptsFlatManufacturerModelMode();
+
 private:
+    /** Register a synthetic "Acme" / "TestPar" definition (Dimmer, one
+     *  "2-channel" mode: Intensity MSB + Colour) in m_doc's definition
+     *  cache, the way patchNamedDefinitionUsesRealFixtureDef() does inline. */
+    void addAcmeTestParDefinition();
+
     /** Send a request and scan every frame received so far for the matching
      *  "response" (a mutation's response/event can arrive in either order -
      *  see apiiodomain_test.cpp's own sendAndWaitForReply() for why). */

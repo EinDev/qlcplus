@@ -151,86 +151,129 @@ void Tardis::undoAction()
     // truncate/append history out from under it mid-walk. processAction()
     // itself never touches m_history/m_historyIndex, so this can't recurse
     // back into m_historyMutex.
-    QMutexLocker historyLocker(&m_historyMutex);
-
-    if (m_historyIndex == -1 || m_history.isEmpty())
-        return;
-
-    m_busy = true;
-
-    quint64 refTimestamp = m_history.at(m_historyIndex).m_timestamp;
-
-    while (1)
     {
-        TardisAction action = m_history.at(m_historyIndex);
+        QMutexLocker historyLocker(&m_historyMutex);
 
-        if (refTimestamp - action.m_timestamp > TARDIS_ACTION_INTERTIME)
-            break;
+        if (m_historyIndex == -1 || m_history.isEmpty())
+            return;
 
-        qDebug() << "Undo action" << actionToString(action.m_action);
+        m_busy = true;
 
-        m_historyIndex--;
+        quint64 refTimestamp = m_history.at(m_historyIndex).m_timestamp;
 
-        int code = processAction(action, true);
+        while (1)
+        {
+            TardisAction action = m_history.at(m_historyIndex);
 
-        /* If there are active network connections, send the action there too */
-        forwardActionToNetwork(code, action, true);
+            if (refTimestamp - action.m_timestamp > TARDIS_ACTION_INTERTIME)
+                break;
 
-        if (m_historyIndex == -1)
-            break;
+            qDebug() << "Undo action" << actionToString(action.m_action);
+
+            m_historyIndex--;
+
+            int code = processAction(action, true);
+
+            /* If there are active network connections, send the action there too */
+            forwardActionToNetwork(code, action, true);
+
+            if (m_historyIndex == -1)
+                break;
+        }
+
+        qDebug() << "History index:" << m_historyIndex;
+
+        m_busy = false;
     }
 
-    qDebug() << "History index:" << m_historyIndex;
-
-    m_busy = false;
+    // Deliberately outside the locked scope above: a directly connected
+    // slot may call canUndo()/canRedo(), which take the same (non-recursive)
+    // mutex.
+    emit historyChanged();
 }
 
 void Tardis::redoAction()
 {
-    // See undoAction() above for why this lock spans the whole method.
-    QMutexLocker historyLocker(&m_historyMutex);
-
-    if (m_history.isEmpty() || m_historyIndex == m_history.count() - 1)
-        return;
-
-    bool done = false;
-
-    m_busy = true;
-
-    quint64 refTimestamp = m_history.at(m_historyIndex + 1).m_timestamp;
-
-    while (!done)
     {
-        m_historyIndex++;
+        // See undoAction() above for why this lock spans the whole walk.
+        QMutexLocker historyLocker(&m_historyMutex);
 
-        TardisAction action = m_history.at(m_historyIndex);
-        qDebug() << "Redo action" << actionToString(action.m_action);
+        if (m_history.isEmpty() || m_historyIndex == m_history.count() - 1)
+            return;
 
-        int code = processAction(action, false);
+        bool done = false;
 
-        /* If there are active network connections, send the action there too */
-        forwardActionToNetwork(code, action);
+        m_busy = true;
 
-        /* Check if I am processing a batch of actions or a single one */
-        if (m_historyIndex == m_history.count() - 1 ||
-            action.m_timestamp - refTimestamp > TARDIS_ACTION_INTERTIME)
+        quint64 refTimestamp = m_history.at(m_historyIndex + 1).m_timestamp;
+
+        while (!done)
         {
-            done = true;
+            m_historyIndex++;
+
+            TardisAction action = m_history.at(m_historyIndex);
+            qDebug() << "Redo action" << actionToString(action.m_action);
+
+            int code = processAction(action, false);
+
+            /* If there are active network connections, send the action there too */
+            forwardActionToNetwork(code, action);
+
+            /* Check if I am processing a batch of actions or a single one */
+            if (m_historyIndex == m_history.count() - 1 ||
+                action.m_timestamp - refTimestamp > TARDIS_ACTION_INTERTIME)
+            {
+                done = true;
+            }
         }
+
+        qDebug() << "History index:" << m_historyIndex;
+
+        m_busy = false;
     }
 
-    qDebug() << "History index:" << m_historyIndex;
-
-    m_busy = false;
+    emit historyChanged(); // outside the lock, see undoAction()
 }
 
 void Tardis::resetHistory()
 {
+    {
+        QMutexLocker historyLocker(&m_historyMutex);
+        m_history.clear();
+        m_historyIndex = -1;
+        m_historyCount = 0;
+        m_busy = false;
+    }
+
+    emit historyChanged(); // outside the lock, see undoAction()
+}
+
+bool Tardis::canUndo() const
+{
     QMutexLocker historyLocker(&m_historyMutex);
-    m_history.clear();
-    m_historyIndex = -1;
-    m_historyCount = 0;
-    m_busy = false;
+    return m_historyIndex >= 0 && m_history.isEmpty() == false;
+}
+
+bool Tardis::canRedo() const
+{
+    QMutexLocker historyLocker(&m_historyMutex);
+    return m_history.isEmpty() == false && m_historyIndex < m_history.count() - 1;
+}
+
+QString Tardis::undoActionName() const
+{
+    QMutexLocker historyLocker(&m_historyMutex);
+    if (m_historyIndex < 0 || m_historyIndex >= m_history.count())
+        return QString();
+    return actionToString(m_history.at(m_historyIndex).m_action);
+}
+
+QString Tardis::redoActionName() const
+{
+    QMutexLocker historyLocker(&m_historyMutex);
+    if (m_history.isEmpty() || m_historyIndex + 1 >= m_history.count())
+        return QString();
+    return actionToString(m_history.at(m_historyIndex + 1).m_action);
 }
 
 void Tardis::forwardActionToNetwork(int code, TardisAction &action, bool undo)
@@ -354,6 +397,11 @@ void Tardis::run()
 
             m_historyIndex = m_history.count() - 1;
         }
+
+        // Worker thread: receivers on the GUI thread get this queued. Emitted
+        // per recorded action (a drag can produce dozens within the 150ms
+        // batching window) - listeners are expected to coalesce.
+        emit historyChanged();
 
         //qDebug("Got action: 0x%02X, history length: %d (%d)", action.m_action, m_historyCount, int(m_history.count()));
 

@@ -84,11 +84,20 @@ messages:
         ok: { const: true }
         result:
           type: object
-          required: [models]
+          required: [manufacturer, models, modelDetails]
+          description: >
+            Unknown manufacturer -> NOT_FOUND (never an empty list). Answered
+            from QLCFixtureDefCache::fixtureCache(), i.e. FixturesMap.xml's
+            index - no definition file is loaded by this call.
           properties:
+            manufacturer: { type: string }
             models:
               type: array
-              description: QLCFixtureDefCache::fixtureCache()[manufacturer], as a list.
+              description: Plain model names, sorted (the web UI contract's shape).
+              items: { type: string }
+            modelDetails:
+              type: array
+              description: QLCFixtureDefCache::fixtureCache()[manufacturer], as a list - same models with their isUser flag.
               items:
                 type: object
                 required: [model, isUser]
@@ -132,10 +141,17 @@ messages:
         ok: { const: true }
         result:
           type: object
-          required: [manufacturer, model, fixtureType, author, isUser, modes]
+          required: [manufacturer, model, type, fixtureType, author, isUser, physical, modes]
+          description: >
+            Unknown manufacturer/model -> NOT_FOUND. This call lazily loads
+            the definition file (QLCFixtureDefCache::fixtureDef() ->
+            QLCFixtureDef::checkLoaded()), so modes/channels are complete.
           properties:
             manufacturer: { type: string }
             model: { type: string }
+            type:
+              type: string
+              description: Same value as fixtureType (web UI contract spelling).
             fixtureType:
               type: string
               description: >
@@ -143,15 +159,26 @@ messages:
                 (e.g. "Moving Head", "Dimmer", "Color Changer", "Scanner"...).
             author: { type: string }
             isUser: { type: boolean }
+            physical:
+              $ref: '#/components/schemas/FixturesPhysical'
+              description: The definition's global physical block (QLCFixtureDef::physical()).
             modes:
               type: array
-              description: Browsing-level mode list; use fixtures.defs.getMode for full detail.
+              description: >
+                Every mode with its channel list inline (so an Add Fixture
+                dialog can show a mode's channels without a round-trip per
+                mode); fixtures.defs.getMode adds heads, physical and the
+                master intensity channel.
               items:
                 type: object
-                required: [name, channelCount]
+                required: [name, channelCount, channels]
                 properties:
                   name: { type: string }
                   channelCount: { type: integer }
+                  channels:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FixturesModeChannel'
 
   FixturesDefsGetModeRequest:
     payload:
@@ -353,12 +380,21 @@ messages:
         method: { const: fixtures.patch }
         params:
           type: object
-          required: [universe, address, definition, baseRevision]
+          required: [universe, address, baseRevision]
+          description: >
+            The definition may be given either as the nested `definition`
+            object below or - the web UI contract's spelling - as flat
+            top-level manufacturer/model/mode (or generic) params, which are
+            used whenever `definition` is absent. One of the two forms is
+            required.
           properties:
             universe: { type: integer, description: "0-based universe index." }
             address: { type: integer, description: "0-based DMX address (0-511) for the first fixture." }
             definition:
               $ref: '#/components/schemas/FixturesDefinitionRef'
+            manufacturer: { type: string, description: "Flat alias of definition.manufacturer." }
+            model: { type: string, description: "Flat alias of definition.model." }
+            mode: { type: string, description: "Flat alias of definition.mode." }
             name:
               type: string
               description: >

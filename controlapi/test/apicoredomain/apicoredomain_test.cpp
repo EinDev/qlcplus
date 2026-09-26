@@ -25,6 +25,8 @@
 
 #include "apicoredomain_test.h"
 #include "apiserver.h"
+#include "inputoutputmap.h"
+#include "mastertimer.h"
 #include "doc.h"
 #include "qlcconfig.h"
 
@@ -169,6 +171,164 @@ void ApiCoreDomain_Test::settingsGetSetBroadcastsEvent()
     QJsonObject event = QJsonDocument::fromJson(spy.at(0).at(0).toString().toUtf8()).object();
     QCOMPARE(event.value(QStringLiteral("topic")).toString(), QStringLiteral("core.settings.changed"));
     QCOMPARE(event.value(QStringLiteral("data")).toObject().value(QStringLiteral("masterTimerFrequencyHz")).toInt(), 44);
+}
+
+QList<QJsonObject> ApiCoreDomain_Test::eventsWithTopic(QSignalSpy &spy, const QString &topic)
+{
+    QList<QJsonObject> events;
+    for (const QList<QVariant> &frame : spy)
+    {
+        QJsonObject obj = QJsonDocument::fromJson(frame.at(0).toString().toUtf8()).object();
+        if (obj.value(QStringLiteral("type")).toString() == QStringLiteral("event") &&
+            obj.value(QStringLiteral("topic")).toString() == topic)
+            events.append(obj);
+    }
+    return events;
+}
+
+/*********************************************************************
+ * Beat generator (core.bpm.*, core.beat)
+ *********************************************************************/
+
+void ApiCoreDomain_Test::bpmGetReportsDisabledGeneratorOnFreshDoc()
+{
+    helloAndGetClientId();
+    // A bare Doc never enables a generator (qmlui's App::initDoc() is what
+    // switches it to Internal at startup) - so "off", bpm 0.
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("core.bpm.get"), QJsonObject());
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QJsonObject result = reply.value(QStringLiteral("result")).toObject();
+    QCOMPARE(result.value(QStringLiteral("generator")).toString(), QStringLiteral("disabled"));
+    QCOMPARE(result.value(QStringLiteral("bpm")).toInt(), 0);
+}
+
+void ApiCoreDomain_Test::bpmSetEnablesInternalGeneratorAndBroadcasts()
+{
+    QString clientId = helloAndGetClientId();
+    QSignalSpy spy(m_client, &QWebSocket::textMessageReceived);
+
+    QJsonObject params;
+    params.insert(QStringLiteral("bpm"), 128);
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("core.bpm.set"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+
+    // Disabled -> Internal happened implicitly, and the tempo took
+    QCOMPARE(m_doc->inputOutputMap()->beatGeneratorType(), InputOutputMap::Internal);
+    QCOMPARE(m_doc->inputOutputMap()->bpmNumber(), 128);
+    QJsonObject get = sendAndWaitForReply(QStringLiteral("core.bpm.get"), QJsonObject()).value(QStringLiteral("result")).toObject();
+    QCOMPARE(get.value(QStringLiteral("generator")).toString(), QStringLiteral("internal"));
+    QCOMPARE(get.value(QStringLiteral("bpm")).toInt(), 128);
+
+    // core.bpm.changed carries the final state and is attributed to the requester
+    QVERIFY(QTest::qWaitFor([&]() { return eventsWithTopic(spy, QStringLiteral("core.bpm.changed")).isEmpty() == false; }, 2000));
+    QJsonObject last = eventsWithTopic(spy, QStringLiteral("core.bpm.changed")).last();
+    QCOMPARE(last.value(QStringLiteral("data")).toObject().value(QStringLiteral("bpm")).toInt(), 128);
+    QCOMPARE(last.value(QStringLiteral("data")).toObject().value(QStringLiteral("generator")).toString(), QStringLiteral("internal"));
+    QCOMPARE(last.value(QStringLiteral("originClientId")).toString(), clientId);
+}
+
+void ApiCoreDomain_Test::bpmSetZeroDisablesGenerator()
+{
+    helloAndGetClientId();
+    QJsonObject params;
+    params.insert(QStringLiteral("bpm"), 120);
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("core.bpm.set"), params).value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(m_doc->inputOutputMap()->beatGeneratorType(), InputOutputMap::Internal);
+
+    params.insert(QStringLiteral("bpm"), 0);
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("core.bpm.set"), params).value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(m_doc->inputOutputMap()->beatGeneratorType(), InputOutputMap::Disabled);
+    QJsonObject get = sendAndWaitForReply(QStringLiteral("core.bpm.get"), QJsonObject()).value(QStringLiteral("result")).toObject();
+    QCOMPARE(get.value(QStringLiteral("generator")).toString(), QStringLiteral("disabled"));
+    QCOMPARE(get.value(QStringLiteral("bpm")).toInt(), 0);
+
+    // ...and the explicit generator param works the other way round too
+    QJsonObject genParams;
+    genParams.insert(QStringLiteral("generator"), QStringLiteral("internal"));
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("core.bpm.set"), genParams).value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(m_doc->inputOutputMap()->beatGeneratorType(), InputOutputMap::Internal);
+}
+
+void ApiCoreDomain_Test::bpmSetRejectsOutOfRangeAndEmptyParams()
+{
+    helloAndGetClientId();
+
+    QJsonObject tooHigh;
+    tooHigh.insert(QStringLiteral("bpm"), 5000);
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("core.bpm.set"), tooHigh);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("INVALID_PARAMS"));
+    // Nothing was touched by the rejected call
+    QCOMPARE(m_doc->inputOutputMap()->beatGeneratorType(), InputOutputMap::Disabled);
+
+    reply = sendAndWaitForReply(QStringLiteral("core.bpm.set"), QJsonObject());
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("INVALID_PARAMS"));
+
+    QJsonObject badGenerator;
+    badGenerator.insert(QStringLiteral("generator"), QStringLiteral("midi"));
+    reply = sendAndWaitForReply(QStringLiteral("core.bpm.set"), badGenerator);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("INVALID_PARAMS"));
+}
+
+void ApiCoreDomain_Test::bpmTapDerivesTempoFromTapSpacing()
+{
+    helloAndGetClientId();
+
+    // First tap of a run: enables the generator, sets no tempo yet
+    QJsonObject first = sendAndWaitForReply(QStringLiteral("core.bpm.tap"), QJsonObject());
+    QCOMPARE(first.value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(first.value(QStringLiteral("result")).toObject().value(QStringLiteral("tapCount")).toInt(), 1);
+    QCOMPARE(m_doc->inputOutputMap()->beatGeneratorType(), InputOutputMap::Internal);
+
+    QTest::qWait(500);
+    QJsonObject second = sendAndWaitForReply(QStringLiteral("core.bpm.tap"), QJsonObject());
+    QCOMPARE(second.value(QStringLiteral("ok")).toBool(), true);
+    int bpm = second.value(QStringLiteral("result")).toObject().value(QStringLiteral("bpm")).toInt();
+    // ~120 BPM from a 500ms gap; generous bounds for event-loop jitter
+    QVERIFY2(bpm >= 95 && bpm <= 140, qPrintable(QStringLiteral("unexpected tap tempo %1").arg(bpm)));
+    QCOMPARE(m_doc->inputOutputMap()->bpmNumber(), bpm);
+    QCOMPARE(second.value(QStringLiteral("result")).toObject().value(QStringLiteral("tapCount")).toInt(), 2);
+}
+
+void ApiCoreDomain_Test::beatEventFollowsInternalGeneratorTicks()
+{
+    helloAndGetClientId();
+    // Internal beats are generated by MasterTimer's tick - needs the timer
+    // thread, which the other cases in this suite deliberately leave off.
+    m_doc->masterTimer()->start();
+
+    QSignalSpy spy(m_client, &QWebSocket::textMessageReceived);
+    QJsonObject params;
+    params.insert(QStringLiteral("bpm"), 600); // one beat every 100ms
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("core.bpm.set"), params).value(QStringLiteral("ok")).toBool(), true);
+
+    QVERIFY2(QTest::qWaitFor([&]() { return eventsWithTopic(spy, QStringLiteral("core.beat")).count() >= 2; }, 3000),
+             "no core.beat events from the internal generator");
+    QJsonObject beat = eventsWithTopic(spy, QStringLiteral("core.beat")).first();
+    QCOMPARE(beat.value(QStringLiteral("data")).toObject().value(QStringLiteral("bpm")).toInt(), 600);
+    QVERIFY(beat.value(QStringLiteral("originClientId")).isNull());
+
+    m_doc->masterTimer()->stop();
+}
+
+/*********************************************************************
+ * Undo / redo - only the no-host path is reachable here: the real
+ * implementation lives in qmlui's App/Tardis, which controlapi/test
+ * deliberately doesn't link (see apiserver.h).
+ *********************************************************************/
+
+void ApiCoreDomain_Test::undoRedoHistoryWithoutHostIsUnsupported()
+{
+    helloAndGetClientId();
+    for (const QString &method : { QStringLiteral("core.undo"), QStringLiteral("core.redo"), QStringLiteral("core.history.get") })
+    {
+        QJsonObject reply = sendAndWaitForReply(method, QJsonObject());
+        QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+        QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(),
+                 QStringLiteral("UNSUPPORTED"));
+    }
 }
 
 QTEST_GUILESS_MAIN(ApiCoreDomain_Test)

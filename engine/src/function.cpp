@@ -1178,7 +1178,11 @@ void Function::setPause(bool enable)
     if (enable && isRunning() == false)
         return;
 
+    if (m_paused == enable)
+        return;
+
     m_paused = enable;
+    emit pauseChanged(m_id, m_paused);
 }
 
 void Function::stop(FunctionParent source, bool preserveAttributes)

@@ -25,12 +25,14 @@ class Doc;
 
 /**
  * Fixture-patching slice of docs/api-spec/fragments/fixtures.yaml - section
- * "2. Patching" only: fixtures.list/get/patch/update/unpatch, plus the
- * advisory fixtures.findAvailableAddress helper. Fixture-definition-library
- * browsing (fixtures.defs.*, section 1), fixture groups (fixtures.group.*,
- * section 3) and fixture remapping (fixtures.remap.*, section 4) are
- * separate, larger slices of the same fragment and are deliberately NOT
- * implemented here.
+ * "2. Patching": fixtures.list/get/patch/update/unpatch, plus the advisory
+ * fixtures.findAvailableAddress helper - and the read-only section "1.
+ * Fixture definition library browsing" (fixtures.defs.listManufacturers/
+ * listModels/getModel/getMode over the Doc's QLCFixtureDefCache, which is
+ * what the Add Fixture dialog browses). Fixture groups (fixtures.group.*,
+ * section 3) live in ApiFixtureGroupDomain; fixture remapping
+ * (fixtures.remap.*, section 4) is a separate, larger slice and is
+ * deliberately NOT implemented here.
  *
  * All patching methods here are §4a structural mutations (baseRevision in,
  * docRevision out + broadcast to every client, see 00-conventions.md).
