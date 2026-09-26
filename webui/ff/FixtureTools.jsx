@@ -58,12 +58,12 @@
     );
   }
 
-  function Slider({ label, value, onChange, to = 255, width = 150, icon }) {
+  function Slider({ label, value, onChange, to = 255, width = 100, icon }) {
     const D = window.QLCData;
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, height: 26 }}>
         {icon ? <img src={D.icon(icon)} alt="" style={{ width: 18, height: 18, flex: 'none' }} /> : null}
-        <RobotoText label={label} fontSize={13} height={26} style={{ width: 62, flex: 'none' }} labelColor="var(--fg-light)" />
+        <RobotoText label={label} fontSize={13} height={26} style={{ width: 56, flex: "none" }} labelColor="var(--fg-light)" />
         <CustomSlider value={value} from={0} to={to} length={width} onMoved={onChange} />
         <CustomSpinBox value={value} from={0} to={to} width={to > 255 ? 70 : 56} showControls={false} onValueModified={onChange} />
       </div>

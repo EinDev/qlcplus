@@ -36,7 +36,7 @@ function TreeBranch({ node, selected, onSelect, expanded, onToggle, depth = 0, d
       hasChildren={!!node.children} isExpanded={isOpen} onToggle={() => onToggle(node.id)}
       isSelected={isSel} onSelect={(e) => onSelect(node.id, node, e)}
       isCheckable={checkable && !node.children} isChecked={isSel} onCheck={() => onSelect(node.id, node, { ctrlKey: true })}
-      onContextMenu={(e) => { if (onContextMenu) { e.preventDefault(); onContextMenu(node, e); } }}>
+      onContextMenu={(e) => { if (onContextMenu) { e.preventDefault(); e.stopPropagation(); onContextMenu(node, e); } }}>
       {isOpen && node.children ? node.children.map(c => (
         <TreeBranch key={c.id} node={c} selected={selected} onSelect={onSelect} expanded={expanded} onToggle={onToggle}
           depth={depth + 1} decorate={decorate} checkable={checkable} onContextMenu={onContextMenu} />
@@ -76,7 +76,7 @@ function useFixtureTree(qlc) {
     const universes = data.universes.slice().sort((a, b) => a.id - b.id);
     Object.keys(perUniverse).forEach(id => { if (!universes.some(u => u.id === Number(id))) universes.push({ id: Number(id), name: 'Universe ' + (Number(id) + 1) }); });
     const tree = universes.filter(u => perUniverse[u.id]).map(u => ({
-      id: 'u' + u.id, name: u.name, icon: D.icon('uniview'), universeId: u.id,
+      id: 'u' + u.id, kind: 'universe', name: u.name, icon: D.icon('uniview'), universeId: u.id,
       children: perUniverse[u.id].slice().sort((a, b) => a.address - b.address).map(f => ({
         id: 'fx' + f.id, kind: 'fixture', fixtureId: f.id, name: f.name,
         icon: D.icon(FIXTURE_TYPE_ICONS[f.fixtureType] || 'fixture'), summary: f
@@ -292,6 +292,23 @@ function FunctionDetail({ node, qlc, functions, fixtures, selectedFixtureIds, pa
   );
 }
 
+/** Tree root / universe row: a summary of what is below it. */
+function BranchDetail({ node, onSelectFixtures }) {
+  const leaves = flatten(node.children || [], []);
+  const fixtures = leaves.filter(n => n.kind === 'fixture');
+  const functions = leaves.filter(n => n.kind === 'function');
+  const channels = fixtures.reduce((s, n) => s + ((n.summary && n.summary.channels) || 0), 0);
+  return (
+    <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <RobotoText label={node.name} fontBold fontSize={14} />
+      {fixtures.length ? <RobotoText label={fixtures.length + ' fixtures · ' + channels + ' channels'} fontSize={14} labelColor="var(--fg-light)" /> : null}
+      {functions.length ? <RobotoText label={functions.length + ' functions'} fontSize={14} labelColor="var(--fg-light)" /> : null}
+      {!fixtures.length && !functions.length ? <RobotoText label="None" fontSize={14} labelColor="var(--fg-medium)" /> : null}
+      {fixtures.length ? <GenericButton label={'Select ' + fixtures.length + ' fixtures'} width={150} height={26} onClick={() => onSelectFixtures(fixtures.map(n => n.fixtureId))} /> : null}
+    </div>
+  );
+}
+
 function FolderDetail({ node, count, onNew }) {
   return (
     <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -333,10 +350,10 @@ function FixturesFunctions() {
 
   /* Live: one root per side; mock: the prototype's flat groups. */
   const fixturesRoot = live && fixtureTree
-    ? [{ id: 'root-fixtures', name: 'Fixtures', icon: D.icon('fixture'), children: fixtureTree.tree }]
+    ? [{ id: 'root-fixtures', kind: 'root', name: 'Fixtures', icon: D.icon('fixture'), children: fixtureTree.tree }]
     : D.fixtures;
   const functionsRoot = live && functionTree
-    ? [{ id: 'root-functions', name: 'Functions', icon: D.icon('functions'), children: functionTree.tree }]
+    ? [{ id: 'root-functions', kind: 'root', name: 'Functions', icon: D.icon('functions'), children: functionTree.tree }]
     : D.functions;
   const shownFixtures = React.useMemo(() => filterTree(fixturesRoot, search), [fixturesRoot, search]);
   const shownFunctions = React.useMemo(() => filterTree(functionsRoot, search), [functionsRoot, search]);
@@ -541,7 +558,7 @@ function FixturesFunctions() {
         </div>
 
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg-medium)' }}>
-          {detail && !isFolder ? (
+          {detail && (isFunction || isFixture) ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, height: 38, padding: '0 10px', background: 'var(--section-header)', borderBottom: '2px solid var(--section-header-div)', flex: 'none' }}>
               <img src={detail.icon} alt="" style={{ width: 24, height: 24 }} />
               <span data-ff-name="1" style={{ display: 'inline-flex' }}><CustomTextInput key={detail.id} text={detail.name} allowDoubleClick width={300} onTextConfirmed={rename} /></span>
@@ -567,6 +584,8 @@ function FixturesFunctions() {
           ) : live && isFolder ? (
             <FolderDetail node={detail} count={flatten(detail.children || [], []).filter(n => n.kind === 'function').length}
               onNew={() => setMenu({ x: 320, y: 120, kind: 'new' })} />
+          ) : live && (detail.kind === 'root' || detail.kind === 'universe') ? (
+            <BranchDetail node={detail} onSelectFixtures={selectFixtures} />
           ) : live && detail.kind === 'fixture' ? (
             <FixtureDetail node={detail} qlc={qlc} universes={fixtureTree ? fixtureTree.universes : []} />
           ) : live && detail.kind === 'function' ? (

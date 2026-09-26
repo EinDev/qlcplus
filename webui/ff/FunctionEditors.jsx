@@ -333,7 +333,7 @@
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <RobotoText label={'Step ' + (sel[0] + 1) + ' values'} fontBold fontSize={13} />
                   <GenericButton label={valuesOpen ? 'Hide' : 'Edit'} width={60} height={22} onClick={() => setValuesOpen(!valuesOpen)} />
-                  {sel[0] > 0 ? <GenericButton label="Copy from previous step" width={150} height={22} onClick={() => replaceStep(sel[0], { values: Object.assign({}, steps[sel[0] - 1].values || {}) })} /> : null}
+                  {sel[0] > 0 ? <GenericButton label="Copy from previous step" width={175} height={22} onClick={() => replaceStep(sel[0], { values: Object.assign({}, steps[sel[0] - 1].values || {}) })} /> : null}
                 </div>
                 {valuesOpen ? <SequenceStepValues qlc={qlc} step={curStep} index={sel[0]} fixtures={fixtures} boundSceneId={td.boundSceneId} setStepValue={setStepValue} /> : null}
               </div>
