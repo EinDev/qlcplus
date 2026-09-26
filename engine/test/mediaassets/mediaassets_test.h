@@ -79,6 +79,7 @@ private slots:
     void relocateReimportsFinishedCopySynchronously();
     void removeUnreferencedErrors();
     void unreferencedIgnoresForeignDirectories();
+    void partialFileCannotBeCreated();
 
 private:
     /** Overwrite @path with @content and push its mtime clearly past the

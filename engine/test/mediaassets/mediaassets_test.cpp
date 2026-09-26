@@ -1630,4 +1630,24 @@ void MediaAssets_Test::unreferencedIgnoresForeignDirectories()
     QCOMPARE(m_doc->assets()->unreferenced(), QStringList() << stored);
 }
 
+void MediaAssets_Test::partialFileCannotBeCreated()
+{
+    m_doc->setWorkspacePath(m_tmp->path());
+    m_doc->assets()->setProjectFile(m_tmp->path() + "/show.qxw");
+
+    // a 250 character file name is legal on every file system in use, but
+    // the ".XXXXXX.partial" suffix of the copy in progress pushes the
+    // working name past the 255 character component limit
+    const QString name = QString(246, 'y') + ".wav";
+    QString source = writeFile("src/" + name, "long name");
+    if (source.isEmpty() || QFileInfo(source).isFile() == false)
+        QSKIP("the file system refuses a 250 character file name");
+
+    QString error;
+    QCOMPARE(m_doc->assets()->importFile(source, &error), QString());
+    QVERIFY2(error.contains("Cannot write into"), qPrintable(error));
+    QVERIFY(QDir(m_doc->assets()->assetsDir()).entryList(QDir::Dirs | QDir::NoDotAndDotDot).isEmpty());
+    QCOMPARE(m_doc->assets()->importOrKeep(source), source);
+}
+
 QTEST_GUILESS_MAIN(MediaAssets_Test)
