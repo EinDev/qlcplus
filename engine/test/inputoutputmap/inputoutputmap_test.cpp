@@ -16,6 +16,7 @@
   See the License for the specific language governing permissions and
   limitations under the License.
 */
+#include <QScopeGuard>
 #include <QSignalSpy>
 #include <QtTest>
 
@@ -1636,8 +1637,10 @@ void InputOutputMap_Test::inputPatchBeatsPlugin()
     QVERIFY(stub != NULL);
 
     // a plugin advertising beat events gets its values routed to the beat
-    // slot as well, on every patch, re-patch and un-patch
+    // slot as well, on every patch, re-patch and un-patch. The shared stub
+    // must lose the flag again however this test ends.
     stub->m_extraCapabilities = QLCIOPlugin::Beats;
+    auto resetCapabilities = qScopeGuard([stub]() { stub->m_extraCapabilities = 0; });
     QVERIFY(stub->capabilities() & QLCIOPlugin::Beats);
 
     QVERIFY(im.setInputPatch(0, stub->name(), "", stub->inputs().at(0), 0) == true);
@@ -1659,9 +1662,6 @@ void InputOutputMap_Test::inputPatchBeatsPlugin()
 
     QVERIFY(im.setInputPatch(0, stub->name(), "", "", QLCIOPlugin::invalidLine()) == true);
     QVERIFY(im.inputPatch(0) == NULL);
-
-    stub->m_extraCapabilities = 0;
-    QVERIFY((stub->capabilities() & QLCIOPlugin::Beats) == 0);
 }
 
 void InputOutputMap_Test::inputPatchUnknownPlugin()
