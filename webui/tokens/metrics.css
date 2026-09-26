@@ -1,0 +1,21 @@
+/* All from UISettings.qml, resolved at screenPixelDensity 3.7795 (96 dpi).
+   The formula is kept in the comment so a different density can be derived. */
+:root{
+--icon-size-default:38px;  /* density * 10 — "more or less the size of a finger" */
+--icon-size-medium:30px;   /* density * 8 */
+--list-item-height:26px;   /* density * 7 */
+--medium-item-height:57px; /* density * 15 */
+--big-item-height:94px;    /* density * 25 */
+--scrollbar-width:23px;    /* density * 6 */
+--side-panel-width:189px;  /* density * 50, clamped to width/3 at runtime */
+--split-handle:3px;        /* density * 0.9 */
+
+/* Layout spacings that appear as literals in the QML */
+--space-row:5px;      /* RowLayout spacing in every toolbar */
+--space-keypad:3px;   /* KeyPad GridLayout row/columnSpacing */
+--space-inline:2px;   /* CustomComboBox delegate Row spacing */
+--pad-menu-entry:5px; /* ContextMenuEntry entryRow x */
+--pad-dialog:12px;    /* CustomPopupDialog header padding */
+--icon-margins:6px;   /* IconButton imgMargins */
+--tree-indent:20px;   /* TreeNodeDelegate child x offset */
+}

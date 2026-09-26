@@ -1,0 +1,8 @@
+/* QLC+ animates almost nothing. Three durations exist in the whole QML tree. */
+:root{
+--dur-panel:100ms; /* @kind other */   /* SidePanel open/close NumberAnimation */
+--dur-tooltip-delay:1000ms; /* @kind other */ /* IconButton / CustomCheckBox ToolTip delay */
+--dur-tooltip-timeout:5000ms; /* @kind other */
+--dur-beat:200ms; /* @kind other */    /* MainView beat indicator fallback duration */
+--ease-linear:linear; /* @kind other */
+}

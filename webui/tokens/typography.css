@@ -1,0 +1,20 @@
+/* QLC+ sizes everything from Qt's screenPixelDensity (device pixels per mm)
+   times UISettings.scalingFactor. At a standard 96 dpi desktop screen
+   screenPixelDensity is 3.7795, which is what the px values below assume.
+   Multiply by --scaling-factor to emulate UISettings.scalingFactor. */
+:root{
+--scaling-factor:1; /* @kind other */
+--pixel-density:3.7795px; /* @kind spacing */
+
+/* textSizeDefault = screenPixelDensity * scalingFactor * 4.5 */
+--text-size-default:17px;
+/* derived sizes used across the QML with explicit multipliers */
+--text-size-menubar:12px;   /* MenuBarEntry: textSizeDefault * 0.70 */
+--text-size-small:14px;     /* textSizeDefault * 0.8, tables and captions */
+--text-size-large:20px;     /* textSizeDefault * 1.2, section chevrons */
+
+--fw-regular:400; /* @kind font */
+--fw-bold:700; /* @kind font */
+--lh-tight:1; /* @kind font */
+--lh-normal:1.35; /* @kind font */
+}
