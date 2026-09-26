@@ -1370,15 +1370,15 @@ void Scene_Test::releaseOnStopZeroesChannels()
     fxi->setChannels(4);
     doc->addFixture(fxi);
 
-    Fixture *far = new Fixture(doc); // lives in a universe that is not handed over
-    far->setAddress(0);
-    far->setUniverse(1);
-    far->setChannels(4);
-    doc->addFixture(far);
+    Fixture *remote = new Fixture(doc); // lives in a universe that is not handed over
+    remote->setAddress(0);
+    remote->setUniverse(1);
+    remote->setChannels(4);
+    doc->addFixture(remote);
 
     Scene *s = new Scene(doc);
     s->setValue(fxi->id(), 1, 200);
-    s->setValue(far->id(), 0, 100);
+    s->setValue(remote->id(), 0, 100);
     s->setValue(4242, 0, 50); // fixture that does not exist
     s->setReleaseOnStop(true);
     doc->addFunction(s);
