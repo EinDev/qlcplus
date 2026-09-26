@@ -33,7 +33,7 @@
 
 #define SHORTCUTS_FILE "qlcplusShortcuts.json"
 
-/** Same "group/key" QSettings naming as App's workspace/* keys */
+/** Same "group/key" QSettings naming as App's "workspace/..." keys */
 #define SETTINGS_SHORTCUT_HINTS QStringLiteral("shortcuts/showhints")
 
 namespace {
