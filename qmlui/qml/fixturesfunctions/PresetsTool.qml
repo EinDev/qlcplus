@@ -38,6 +38,7 @@ Rectangle
     clip: true
 
     property bool closeOnSelect: false
+    property var dragTarget: null
     property alias presetModel: prList.model
     property int selectedFixture: -1
     property int selectedChannel: -1
@@ -137,6 +138,8 @@ Rectangle
                             id: prMouseArea
                             anchors.fill: parent
                             hoverEnabled: true
+                            drag.target: toolRoot.dragTarget ? toolRoot.dragTarget : toolRoot
+                            drag.axis: Drag.XAndYAxis
 
                             onClicked:
                             {
@@ -210,11 +213,8 @@ Rectangle
 
                             if (toolRoot.showPalette)
                             {
-                                let pct = (capability.max > capability.min)
-                                    ? Math.round((val - capability.min) * 100 / (capability.max - capability.min))
-                                    : 0
+                                let pct = Math.round(val * 100 / 255)
                                 paletteBox.updateValues(capability.preset, pct)
-                                paletteBox.updatePreview()
                             }
 
                             if (closeOnSelect)

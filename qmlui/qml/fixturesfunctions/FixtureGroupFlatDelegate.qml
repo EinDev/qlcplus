@@ -137,7 +137,10 @@ Item
                         // here reset or partially populate it first
                         var isShiftRangeSelect = (mouseMods & Qt.ShiftModifier) && groupListView.shiftAnchorIndex >= 0
 
-                        if (!isShiftRangeSelect && !qItem.isSelected)
+                        // an item selected some other way (e.g. from the preview) may
+                        // not be in the drag list yet: add it, or the drag would
+                        // carry a stale list instead of what is under the pointer
+                        if (!isShiftRangeSelect && (!qItem.isSelected || gfhcDragItem.itemsList.indexOf(qItem) === -1))
                         {
                             if ((mouseMods & Qt.ControlModifier) == 0)
                                 gfhcDragItem.itemsList = []
@@ -205,6 +208,8 @@ Item
                             mouseMods = -1
                         }
                         groupListView.dragActive = true
+                        // keeps MainView's file drop overlay out of the way (see there)
+                        UISettings.internalDragActive = true
                     break;
                     case App.DragFinished:
                         gfhcDragItem.Drag.drop()
@@ -212,6 +217,7 @@ Item
                         gfhcDragItem.x = 0
                         gfhcDragItem.y = 0
                         groupListView.dragActive = false
+                        UISettings.internalDragActive = false
                     break;
                     case App.Checked:
                         model.isChecked = iType

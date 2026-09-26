@@ -36,8 +36,10 @@
 #include <QPrinter>
 #include <QPainter>
 #include <QScreen>
+#include <QtMath>
 #include <QMediaPlayer>
 #include <QFileInfo>
+#include <QFileOpenEvent>
 #include <QPointer>
 #include <QDir>
 #include <unistd.h>
@@ -84,6 +86,10 @@
 #define KXMLQLCWorkspaceWindow QStringLiteral("CurrentWindow")
 
 #define MAX_RECENT_FILES    10
+
+/** Screen diagonal (in inches) at or below which the UI is considered
+ *  to be running on a small screen and needs to compact itself */
+#define SMALL_SCREEN_INCHES 7.0
 
 /** Resolution multiplier applied when grabbing an item for printing.
  *  3x brings a screen resolution item close to a 300DPI page */
@@ -786,6 +792,16 @@ qreal App::pixelDensity() const
     return m_pixelDensity;
 }
 
+qreal App::screenDiagonal() const
+{
+    return m_screenDiagonal;
+}
+
+bool App::smallScreen() const
+{
+    return m_screenDiagonal > 0 && m_screenDiagonal <= SMALL_SCREEN_INCHES;
+}
+
 int App::accessMask() const
 {
     return m_accessMask;
@@ -905,6 +921,9 @@ bool App::isPopupFocused() const
 
 void App::keyPressEvent(QKeyEvent *e)
 {
+    // If a text input item (e.g. an inline name being edited) currently has
+    // focus, let it handle the key press first (e.g. Delete/Backspace to edit
+    // text) instead of triggering global shortcuts like function/item deletion
     if (isTextInputFocused() && isTextEditingKey(e))
     {
         QQuickView::keyPressEvent(e);
@@ -981,6 +1000,26 @@ bool App::eventFilter(QObject *obj, QEvent *event)
             return true;
         }
     }
+    else if (event->type() == QEvent::FileOpen)
+    {
+        // On macOS, opening a .qxw/.qxf file from Finder (double click,
+        // "Open With", or a Dock drop) doesn't come in through argv: the OS
+        // delivers it as a FileOpen event to the application instead, which
+        // is why it needs to be caught here rather than in QCommandLineParser.
+        QFileOpenEvent *foe = static_cast<QFileOpenEvent *>(event);
+        QString filename = foe->file();
+        if (filename.isEmpty())
+            filename = foe->url().toLocalFile();
+
+        if (filename.isEmpty() == false)
+        {
+            if (filename.endsWith(KExtFixture))
+                loadFixture(filename);
+            else
+                loadWorkspace(filename);
+        }
+        return true;
+    }
 
     return QQuickView::eventFilter(obj, event);
 }
@@ -996,8 +1035,36 @@ void App::slotScreenChanged(QScreen *screen)
                      screen->orientation() == Qt::InvertedLandscapeOrientation) ? true : false;
     qreal sSize = isLandscape ? screen->size().height() : screen->size().width();
     m_pixelDensity = qMax(screen->physicalDotsPerInch() *  0.039370, sSize / 220.0);
+
+    /* Determine the physical diagonal size of the screen, in inches.
+     * QScreen::physicalSize is the most accurate source, but some platforms
+     * (and virtual/remote displays) report a bogus or null size, so fall back
+     * to the pixel geometry divided by the reported DPI */
+    qreal diagonal = 0;
+    QSizeF physSize = screen->physicalSize();
+    if (physSize.width() > 1 && physSize.height() > 1)
+    {
+        // physicalSize is in millimeters
+        diagonal = qSqrt((physSize.width() * physSize.width()) +
+                         (physSize.height() * physSize.height())) / 25.4;
+    }
+    else if (screen->physicalDotsPerInch() > 0)
+    {
+        QSize pxSize = screen->size();
+        diagonal = qSqrt((qreal(pxSize.width()) * pxSize.width()) +
+                         (qreal(pxSize.height()) * pxSize.height())) / screen->physicalDotsPerInch();
+    }
+
+    // note: no qFuzzyCompare here, since m_screenDiagonal starts at 0
+    if (qAbs(diagonal - m_screenDiagonal) > 0.01)
+    {
+        m_screenDiagonal = diagonal;
+        emit screenDiagonalChanged();
+    }
+
     qDebug() << "Screen changed to" << screen->name() << ", pixel density:" << m_pixelDensity
-             << ", geometry:" << screen->size() << ", physical size:" << screen->physicalSize() << isLandscape;
+             << ", geometry:" << screen->size() << ", physical size:" << screen->physicalSize() << isLandscape
+             << ", diagonal (inches):" << m_screenDiagonal << ", small screen:" << smallScreen();
     rootContext()->setContextProperty("screenPixelDensity", m_pixelDensity);
 }
 

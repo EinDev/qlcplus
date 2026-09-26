@@ -63,6 +63,12 @@ ShowManager::ShowManager(QQuickView *view, Doc *doc, QObject *parent)
     view->engine()->addImageProvider(QLatin1String("waveform"), m_waveformProvider);
     view->rootContext()->setContextProperty("waveformProvider", m_waveformProvider);
 
+    /* Relay Function changes to the UI, so Show Items can update
+       their preview lines when the referenced Function is edited
+       (string-based: Doc lives in the engine DLL, see stagewizard.cpp) */
+    connect(m_doc, SIGNAL(functionChanged(quint32)),
+            this, SIGNAL(functionChanged(quint32)));
+
     setContextResource("qrc:/ShowManager.qml");
     setContextTitle(tr("Show Manager"));
 }
@@ -136,6 +142,13 @@ void ShowManager::setCurrentShowID(int currentShowID)
         emit showNameChanged("");
         emit timeDivisionBPMChanged(timeDivisionBPM());
     }
+
+    /* The tick size depends on the Show's time division (see setTimeScale),
+       so the previous Show's scale must not carry over to one with a
+       different division: force a recompute and notification */
+    m_timeScale = 0.0;
+    setTimeScale(timeDivision() == Show::Time ? 5.0 : 1.0);
+
     emit tracksChanged();
     setPlaybackState(m_currentShow != nullptr ? m_currentShow->isRunning() : false,
                      m_currentShow != nullptr ? m_currentShow->isPaused() : false);
@@ -305,21 +318,29 @@ void ShowManager::setTimeDivision(Show::TimeDivision division)
     if (division == m_currentShow->timeDivisionType())
         return;
 
+    /* Set the division type first: setTimeScale needs it to
+       calculate the tick size against the new time division */
+    m_currentShow->setTimeDivisionType(division);
+
+    /* Notify the new beats division before any geometry-related signal.
+       setTimeScale emits tickSizeChanged/timeScaleChanged, which make the
+       UI recalculate the items geometry right away. If the beats division
+       is still the previous one, beat sizes are computed with a stale
+       (possibly zero) divider, messing up the whole timeline preview */
+    if (division != Show::Time)
+        emit beatsDivisionChanged(m_currentShow->beatsDivision());
+
     if (division == Show::Time)
     {
-        setTimeScale(5.0);
         m_currentShow->setTempoType(Function::Time);
+        setTimeScale(5.0);
     }
     else
     {
-        setTimeScale(1.0);
         m_currentShow->setTempoType(Function::Beats);
+        setTimeScale(1.0);
     }
-    m_currentShow->setTimeDivisionType(division);
     emit timeDivisionChanged(division);
-
-    if (division != Show::Time)
-        emit beatsDivisionChanged(m_currentShow->beatsDivision());
 }
 
 int ShowManager::beatsDivision() const
@@ -874,6 +895,10 @@ void ShowManager::deleteShowItems(QVariantList data)
 
     foreach (SelectedShowItem ssi, m_selectedItems)
     {
+        // the guarded pointer went null: the item is already gone
+        if (ssi.m_showFunc == nullptr)
+            continue;
+
         // drop any clipboard reference to the item being deleted to
         // avoid dangling pointers when pasting later
         for (int i = m_clipboard.count() - 1; i >= 0; i--)
@@ -898,11 +923,9 @@ void ShowManager::deleteShowItems(QVariantList data)
             QVariant());
 
         track->removeShowFunction(ssi.m_showFunc, true);
+        m_itemsMap.remove(sfId);
         if (ssi.m_item != nullptr)
-        {
-            m_itemsMap.remove(sfId);
-            delete ssi.m_item;
-        }
+            delete ssi.m_item.data();
     }
 
     m_selectedItems.clear();
@@ -927,6 +950,29 @@ void ShowManager::refreshView()
 
 void ShowManager::deleteShowItem(ShowFunction *sf)
 {
+    if (sf == nullptr)
+        return;
+
+    // the caller deletes the ShowFunction right after this, so drop
+    // every reference to it before it becomes dangling
+    int selectedCount = m_selectedItems.count();
+    for (int i = m_selectedItems.count() - 1; i >= 0; i--)
+    {
+        if (m_selectedItems.at(i).m_showFunc == sf)
+            m_selectedItems.removeAt(i);
+    }
+    if (m_selectedItems.count() != selectedCount)
+        emit selectedItemsCountChanged(m_selectedItems.count());
+
+    int clipboardCount = m_clipboard.count();
+    for (int i = m_clipboard.count() - 1; i >= 0; i--)
+    {
+        if (m_clipboard.at(i).m_showFunc == sf)
+            m_clipboard.removeAt(i);
+    }
+    if (m_clipboard.count() != clipboardCount)
+        emit clipboardItemsCountChanged(m_clipboard.count());
+
     quint32 sfId = sf->id();
     QQuickItem *item = m_itemsMap.value(sfId, nullptr);
     if (item != nullptr)
@@ -2276,7 +2322,7 @@ QVariantList ShowManager::selectedItemRefs() const
     foreach (SelectedShowItem si, m_selectedItems)
     {
         if (si.m_showFunc != nullptr)
-            list.append(QVariant::fromValue(si.m_showFunc));
+            list.append(QVariant::fromValue(si.m_showFunc.data()));
     }
     return list;
 }
@@ -2286,6 +2332,9 @@ QStringList ShowManager::selectedItemNames() const
     QStringList names;
     foreach (SelectedShowItem si, m_selectedItems)
     {
+        if (si.m_showFunc == nullptr)
+            continue;
+
         Function *func = m_doc->function(si.m_showFunc->functionID());
         if (func != nullptr)
             names.append(func->name());

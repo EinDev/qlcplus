@@ -25,6 +25,8 @@ import Qt3D.Render
 import Qt3D.Input
 import Qt3D.Extras
 
+import org.qlcplus.classes 1.0
+
 Rectangle
 {
     anchors.fill: parent
@@ -113,6 +115,8 @@ Rectangle
                     for (iHead = 0; iHead < fixtureItem.headsNumber; iHead++)
                     {
                         headEntity = fixtureItem.getHead(iHead)
+                        if (!headEntity)
+                            continue
 
                         component.createObject(frameGraph.myShadowFrameGraphNode,
                         {
@@ -234,11 +238,14 @@ Rectangle
                 for (iHead = 0; iHead < fixtureItem.headsNumber; iHead++)
                 {
                     headEntity = fixtureItem.getHead(iHead)
+                    if (!headEntity)
+                        continue
 
                     component.createObject(frameGraph.myCameraSelector,
                     {
                         "gBuffer": gBufferTarget,
-                        "shadowTex": headEntity.depthTex,
+                        // heads that don't cast shadows have no shadow map at all
+                        "shadowTex": fixtureItem.useShadows ? headEntity.depthTex : null,
                         "useShadows": fixtureItem.useShadows,
                         "spotlightShadingLayer": headEntity.spotlightShadingLayer,
                         "frameTarget": frameTarget
@@ -267,6 +274,8 @@ Rectangle
                 for (iHead = 0; iHead < fixtureItem.headsNumber; iHead++)
                 {
                     headEntity = fixtureItem.getHead(iHead)
+                    if (!headEntity)
+                        continue
 
                     component.createObject(frameGraph.myCameraSelector,
                     {
@@ -280,7 +289,7 @@ Rectangle
                         "frontDepth": depthTarget,
                         "gBuffer": gBufferTarget,
                         "spotlightScatteringLayer": headEntity.spotlightScatteringLayer,
-                        "shadowTex": headEntity.depthTex,
+                        "shadowTex": fixtureItem.useShadows ? headEntity.depthTex : null,
                         "frameTarget": frameTarget,
                         "useShadows": fixtureItem.useShadows
                     });
@@ -391,6 +400,10 @@ Rectangle
                 sourceDevice: mDevice
                 onPressed: (mouse) =>
                 {
+                    // mark the preview as the last clicked area, so CTRL+A
+                    // is handled here instead of being stolen from other
+                    // focused widgets like text fields
+                    contextManager.setLastClickedType(App.FixtureDragItem)
                     directionCounter = 0
                     dx = 0
                     dy = 0
@@ -399,6 +412,11 @@ Rectangle
 
                 onClicked: (mouse) =>
                 {
+                    // right button is reserved for camera rotation, so it
+                    // must not be used to select/deselect items in the view
+                    if (mouse.button === Qt.RightButton)
+                        return
+
                     // calculate normalized coordinates
                     // (x, y) screen coords → [-1, 1] range
                     var ndcX = ((2.0 * mouse.x) / scene3d.width) - 1.0
@@ -512,10 +530,14 @@ Rectangle
 
                 onWheel: (wheel) =>
                 {
-                    if (wheel.angleDelta.y > 0)
-                        viewCamera.setZoom(-1)
-                    else
-                        viewCamera.setZoom(1)
+                    // Scale the zoom step with the actual wheel delta instead of a
+                    // fixed +-1 per event. A standard mouse wheel reports angleDelta
+                    // in multiples of 120 (one "click"), while a trackpad's smooth
+                    // two-finger scroll/pinch sends a stream of much smaller deltas.
+                    // Using a fixed step made trackpad zooming feel jerky/intermittent,
+                    // since most of those small events produced the same full-size jump.
+                    var step = wheel.angleDelta.y / 120
+                    viewCamera.setZoom(-step)
                 }
 
                 onReleased: (mouse) =>

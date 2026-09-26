@@ -21,6 +21,7 @@
 #define SHOWMANAGER_H
 
 #include <QObject>
+#include <QPointer>
 #include <QQuickItem>
 
 #include "previewcontext.h"
@@ -37,8 +38,11 @@ class WaveformImageProvider;
 typedef struct
 {
     quint32 m_trackIndex;
-    ShowFunction *m_showFunc;
-    QQuickItem *m_item;
+    /* guarded pointers: Show items and ShowFunctions can be destroyed
+     * while still referenced here (view rebuild, undo, show closing),
+     * so use QPointer to have them automatically reset to nullptr */
+    QPointer<ShowFunction> m_showFunc;
+    QPointer<QQuickItem> m_item;
 } SelectedShowItem;
 
 class ShowManager final : public PreviewContext
@@ -558,6 +562,10 @@ signals:
     void selectedItemsCountChanged(int count);
     void clipboardItemsCountChanged(int count);
     void multipleSelectionChanged();
+
+    /** Notify the UI that the Function with the given $fid has been modified,
+     *  so Show Items referencing it can repaint their preview lines */
+    void functionChanged(quint32 fid);
 
     /** pasteFromClipboard() found no room for the whole group of copies at
      *  the cursor: $blockingName is the Function name of the clip in the way */

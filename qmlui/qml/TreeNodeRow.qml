@@ -92,6 +92,9 @@ Item
             {
                 id: nodeLabel
                 width: nodeBgRect.width - x - 1
+                // names longer than the column would otherwise be painted
+                // over the neighbouring items
+                clip: true
                 text: cRef ? cRef.name : textLabel
                 originalText: text
 

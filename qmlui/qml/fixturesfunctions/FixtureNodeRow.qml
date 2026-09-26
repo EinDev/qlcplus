@@ -140,6 +140,9 @@ Item
             {
                 id: nodeLabel
                 Layout.fillWidth: true
+                // names longer than the column would otherwise be painted
+                // over the neighbouring items
+                clip: true
                 text: textLabel
                 originalText: text
 

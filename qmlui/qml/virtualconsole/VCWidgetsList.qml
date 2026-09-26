@@ -162,6 +162,7 @@ Rectangle
                                 wDragItem.itemLabel = cRef.caption ? cRef.caption : modelData.label
                                 wDragItem.itemIcon = virtualConsole.widgetIcon(cRef.type)
                                 widgetsList.dragActive = true
+                                UISettings.internalDragActive = true
                             }
                             break;
                             case App.DragFinished:
@@ -171,6 +172,7 @@ Rectangle
                                 wDragItem.x = 0
                                 wDragItem.y = 0
                                 widgetsList.dragActive = false
+                                UISettings.internalDragActive = false
                             }
                             break;
                         }

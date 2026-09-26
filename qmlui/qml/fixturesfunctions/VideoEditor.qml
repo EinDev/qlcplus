@@ -149,6 +149,7 @@ Rectangle
                 {
                     id: getUrlDialog
                     title: qsTr("Enter a URL")
+                    onOpened: urlInputBox.selectAndFocus()
 
                     contentItem:
                         CustomTextEdit

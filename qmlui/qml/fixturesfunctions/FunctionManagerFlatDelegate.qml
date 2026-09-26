@@ -126,6 +126,8 @@ Item
                         else
                             fDragItem.itemIcon = ""
                         functionsListView.dragActive = true
+                        // keeps MainView's file drop overlay out of the way (see there)
+                        UISettings.internalDragActive = true
                     break;
                     case App.DragFinished:
                         // Drag.drop() can synchronously trigger a tree rebuild (e.g.
@@ -149,12 +151,14 @@ Item
                         // that may no longer exist.
                         var dragItem = fDragItem
                         var listView = functionsListView
+                        var settings = UISettings
                         Qt.callLater(function()
                         {
                             dragItem.parent = listView
                             dragItem.x = 0
                             dragItem.y = 0
                             listView.dragActive = false
+                            settings.internalDragActive = false
                         })
                         fDragItem.Drag.drop()
                     break;

@@ -76,6 +76,54 @@ SidePanel
         }
     }
 
+    /** Same flow as clicking deleteFunction: refuse if a selected function
+     *  is still placed on a Show, skip the confirmation for empty folders,
+     *  otherwise ask before deleting. Also used by the Delete key path
+     *  (ContextManager::deleteSelectedItems emits requestFunctionsDeletion),
+     *  so a keyboard deletion is neither silent nor bypasses those checks. */
+    function confirmDeleteSelectedItems()
+    {
+        // what would actually go: the selected functions plus every
+        // function inside the selected folders (by full path)
+        var info = functionManager.selectionDeletionInfo()
+
+        if (info.blockedMessage.length)
+        {
+            // some of them are still placed on a Show: refuse, delete nothing
+            fmGenericPopup.message = info.blockedMessage
+            fmGenericPopup.open()
+            return
+        }
+
+        if (info.visibleCount === 0 && info.folderCount > 0)
+        {
+            // only empty folders: nothing to lose, no confirmation
+            deleteItemsPopup.performDeletion(info.functionIds)
+            return
+        }
+
+        var selNames = functionManager.selectedItemNames()
+        var message = qsTr("Are you sure you want to delete the following items?") + "\n" + selNames
+        if (info.folderCount > 0)
+            message += "\n\n" + qsTr("%n function(s) will be deleted, including those inside the selected folder(s).", "", info.visibleCount)
+        deleteItemsPopup.functionIds = info.functionIds
+        deleteItemsPopup.message = message
+        deleteItemsPopup.open()
+    }
+
+    // Both the Fixtures & Functions and the Show Manager tab own one of these
+    // panels and both stay loaded once visited (see MainView.qml's per-tab
+    // Loaders), so only the one currently on screen may answer.
+    Connections
+    {
+        target: contextManager
+        function onRequestFunctionsDeletion()
+        {
+            if (visible && !functionManager.isEditing)
+                confirmDeleteSelectedItems()
+        }
+    }
+
     function createFunctionAndEditor(fType)
     {
         var i
@@ -376,35 +424,7 @@ SidePanel
                 faColor: "crimson"
                 tooltip: qsTr("Delete the selected functions")
                 counter: selectedItemsCount && !functionManager.isEditing
-                onClicked:
-                {
-                    // what would actually go: the selected functions plus every
-                    // function inside the selected folders (by full path)
-                    var info = functionManager.selectionDeletionInfo()
-
-                    if (info.blockedMessage.length)
-                    {
-                        // some of them are still placed on a Show: refuse, delete nothing
-                        fmGenericPopup.message = info.blockedMessage
-                        fmGenericPopup.open()
-                        return
-                    }
-
-                    if (info.visibleCount === 0 && info.folderCount > 0)
-                    {
-                        // only empty folders: nothing to lose, no confirmation
-                        deleteItemsPopup.performDeletion(info.functionIds)
-                        return
-                    }
-
-                    var selNames = functionManager.selectedItemNames()
-                    var message = qsTr("Are you sure you want to delete the following items?") + "\n" + selNames
-                    if (info.folderCount > 0)
-                        message += "\n\n" + qsTr("%n function(s) will be deleted, including those inside the selected folder(s).", "", info.visibleCount)
-                    deleteItemsPopup.functionIds = info.functionIds
-                    deleteItemsPopup.message = message
-                    deleteItemsPopup.open()
-                }
+                onClicked: confirmDeleteSelectedItems()
 
                 CustomPopupDialog
                 {

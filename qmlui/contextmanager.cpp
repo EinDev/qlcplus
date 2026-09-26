@@ -688,10 +688,11 @@ void ContextManager::deleteSelectedItems()
             //m_fixtureManager->deleteFixtureGroups(); // TODO
         break;
         case App::FunctionDragItem:
-            m_functionManager->deleteFunctions(m_functionManager->selectedFunctionsID());
-        break;
         case App::FolderDragItem:
-            m_functionManager->deleteSelectedFolders();
+            // Let the UI ask for confirmation before actually deleting,
+            // like the Functions Manager toolbar delete button does
+            // (which also refuses functions still placed on a Show)
+            emit requestFunctionsDeletion();
         break;
         case App::ShowDragItem:
         {
