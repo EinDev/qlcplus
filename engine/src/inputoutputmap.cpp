@@ -1141,10 +1141,13 @@ void InputOutputMap::slotProcessBeat(int bpm)
             setBpmNumber(bpm);
         }
     }
-    else
+    else if (elapsed > 0)
     {
         // no tempo estimate available: derive the BPM number from the
-        // wall-clock spacing of the beat signals
+        // wall-clock spacing of the beat signals. Two beats within the same
+        // millisecond (the guard above) give no spacing to derive it from:
+        // 60000 / 0 is infinite, and rounding that to an int is undefined
+        // (a Q_ASSERT in a debug Qt).
         int elapsedBpm = qRound(60000.0 / (float)elapsed);
         float currBpmTime = 60000.0 / (float)m_currentBPM;
         // here we check if the difference between the current BPM duration
