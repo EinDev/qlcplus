@@ -32,6 +32,11 @@ private slots:
     void initTestCase();
 
     void parsing();
+    void invalidInput();
+    void plusMinus();
+    void percentTokens();
+    void fullZeroByNumbers();
+    void outOfUniverse();
 
     void cleanupTestCase();
 

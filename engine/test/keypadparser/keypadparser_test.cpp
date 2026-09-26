@@ -191,6 +191,142 @@ void KeyPadParser_Test::parsing()
     }
 }
 
+void KeyPadParser_Test::invalidInput()
+{
+    KeyPadParser parser;
+    QByteArray universeValues;
+    universeValues.fill(0, 512);
+
+    /* No document / empty command */
+    QVERIFY(parser.parseCommand(NULL, "1 AT 2", universeValues).isEmpty());
+    QVERIFY(parser.parseCommand(m_doc, "", universeValues).isEmpty());
+
+    /* No channel given and no previous channel list: nothing to do */
+    QVERIFY(parser.parseCommand(m_doc, "AT 5", universeValues).isEmpty());
+
+    /* Channel 0 is not a valid channel number */
+    QVERIFY(parser.parseCommand(m_doc, "0 AT 5", universeValues).isEmpty());
+
+    /* Extra spaces and unknown tokens are skipped */
+    QList<SceneValue> scvList = parser.parseCommand(m_doc, "1  AT foo -5 2", universeValues);
+    QCOMPARE(scvList.count(), 1);
+    QCOMPARE(scvList.first().channel, quint32(0));
+    QCOMPARE(scvList.first().value, uchar(2));
+
+    /* Unbalanced command: THRU without a target channel affects one channel */
+    scvList = parser.parseCommand(m_doc, "3 THRU AT 9", universeValues);
+    QCOMPARE(scvList.count(), 1);
+    QCOMPARE(scvList.first().channel, quint32(2));
+    QCOMPARE(scvList.first().value, uchar(9));
+}
+
+void KeyPadParser_Test::plusMinus()
+{
+    KeyPadParser parser;
+    QByteArray universeValues;
+    universeValues.fill(0, 512);
+    universeValues[4] = 100;
+
+    QList<SceneValue> scvList = parser.parseCommand(m_doc, "5 + 20", universeValues);
+    QCOMPARE(scvList.count(), 1);
+    QCOMPARE(scvList.first().channel, quint32(4));
+    QCOMPARE(scvList.first().value, uchar(120));
+
+    scvList = parser.parseCommand(m_doc, "5 - 30", universeValues);
+    QCOMPARE(scvList.count(), 1);
+    QCOMPARE(scvList.first().value, uchar(70));
+
+    /* Results are clamped to the DMX range */
+    scvList = parser.parseCommand(m_doc, "5 + 200", universeValues);
+    QCOMPARE(scvList.first().value, uchar(255));
+
+    scvList = parser.parseCommand(m_doc, "5 - 200", universeValues);
+    QCOMPARE(scvList.first().value, uchar(0));
+}
+
+void KeyPadParser_Test::percentTokens()
+{
+    KeyPadParser parser;
+    QByteArray universeValues;
+    universeValues.fill(0, 512);
+    universeValues[4] = 100;
+
+    /* "+" followed by a separate "%" token */
+    QList<SceneValue> scvList = parser.parseCommand(m_doc, "5 + % 50", universeValues);
+    QCOMPARE(scvList.count(), 1);
+    QCOMPARE(scvList.first().channel, quint32(4));
+    QCOMPARE(scvList.first().value, uchar(150));
+
+    /* "-" followed by a separate "%" token */
+    scvList = parser.parseCommand(m_doc, "5 - % 50", universeValues);
+    QCOMPARE(scvList.count(), 1);
+    QCOMPARE(scvList.first().value, uchar(50));
+
+    /* Combined tokens */
+    scvList = parser.parseCommand(m_doc, "5 +% 10", universeValues);
+    QCOMPARE(scvList.first().value, uchar(110));
+    scvList = parser.parseCommand(m_doc, "5 -% 10", universeValues);
+    QCOMPARE(scvList.first().value, uchar(90));
+
+    /* A lone "%" without a preceding +/- is ignored */
+    scvList = parser.parseCommand(m_doc, "5 %", universeValues);
+    QCOMPARE(scvList.count(), 1);
+    QCOMPARE(scvList.first().value, uchar(100));
+}
+
+void KeyPadParser_Test::fullZeroByNumbers()
+{
+    KeyPadParser parser;
+    QByteArray universeValues;
+    universeValues.fill(0, 512);
+    universeValues[4] = 100;
+
+    /* Numbers following FULL / ZERO don't change the outcome */
+    QList<SceneValue> scvList = parser.parseCommand(m_doc, "5 FULL 12", universeValues);
+    QCOMPARE(scvList.count(), 1);
+    QCOMPARE(scvList.first().channel, quint32(4));
+    QCOMPARE(scvList.first().value, uchar(255));
+
+    scvList = parser.parseCommand(m_doc, "5 ZERO 12", universeValues);
+    QCOMPARE(scvList.count(), 1);
+    QCOMPARE(scvList.first().value, uchar(0));
+
+    /* FULL / ZERO spanning a range */
+    scvList = parser.parseCommand(m_doc, "1 THRU 4 ZERO", universeValues);
+    QCOMPARE(scvList.count(), 4);
+    foreach (SceneValue scv, scvList)
+        QCOMPARE(scv.value, uchar(0));
+
+    /* BY without a number keeps the default step of 1 */
+    scvList = parser.parseCommand(m_doc, "1 THRU 4 BY AT 7", universeValues);
+    QCOMPARE(scvList.count(), 4);
+}
+
+void KeyPadParser_Test::outOfUniverse()
+{
+    KeyPadParser parser;
+    QByteArray universeValues;
+    universeValues.fill(0, 512);
+
+    /* Channels beyond the universe size are skipped */
+    QList<SceneValue> scvList = parser.parseCommand(m_doc, "510 THRU 515 AT 7", universeValues);
+    QCOMPARE(scvList.count(), 3);
+    QCOMPARE(scvList.at(0).channel, quint32(509));
+    QCOMPARE(scvList.at(2).channel, quint32(511));
+    foreach (SceneValue scv, scvList)
+        QCOMPARE(scv.value, uchar(7));
+
+    /* Universe data shorter than the requested channels: missing values read as 0 */
+    QByteArray shortValues;
+    shortValues.fill(10, 4);
+    scvList = parser.parseCommand(m_doc, "1 THRU 6 + 5", shortValues);
+    QCOMPARE(scvList.count(), 6);
+    QCOMPARE(scvList.at(0).value, uchar(15));
+    QCOMPARE(scvList.at(3).value, uchar(15));
+    QCOMPARE(scvList.at(4).value, uchar(5));
+    QCOMPARE(scvList.at(5).value, uchar(5));
+}
+
 void KeyPadParser_Test::cleanupTestCase()
 {
     delete m_doc;

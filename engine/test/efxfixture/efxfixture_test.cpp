@@ -1403,6 +1403,25 @@ void EFXFixture_Test::nextStepModes()
         universe->dismissFader(fader);
     }
 
+    // Invalid fixture (no such mode channels): nextStep bails out early
+    {
+        QSharedPointer<GenericFader> fader = universe->requestFader();
+        EFX e(m_doc);
+        e.setDuration(1000);
+        EFXFixture* ef = new EFXFixture(&e);
+        ef->setHead(GroupHead(dimmer->id(), 0));
+        ef->setMode(EFXFixture::PanTilt);
+        QVERIFY(ef->isValid() == false);
+        e.addFixture(ef);
+        e.preRun(&mts);
+        ef->nextStep(ua, fader);
+        QCOMPARE(ef->m_elapsed, uint(0));
+        QVERIFY(ef->m_started == false);
+        QCOMPARE(fader->channelsCount(), 0);
+        e.postRun(&mts, ua);
+        universe->dismissFader(fader);
+    }
+
     // PanTilt mode with dimmer control
     {
         QSharedPointer<GenericFader> fader = universe->requestFader();
