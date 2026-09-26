@@ -30,6 +30,9 @@
 #include "genericfader.h"
 #include "fadechannel.h"
 #include "chaserstep.h"
+#include "collection.h"
+#include "grandmaster.h"
+#include "sequence.h"
 #include "universe.h"
 #include "qlcfile.h"
 #include "fixture.h"
@@ -1416,6 +1419,739 @@ void ChaserRunner_Test::adjustMasterIntensityAcrossRunningCrossfadeSteps()
     QCOMPARE(universes[0]->postGMValue(0), uchar(0));
     QCOMPARE(universes[0]->postGMValue(1), uchar(0));
     m_doc->inputOutputMap()->releaseUniverses(false);
+}
+
+void ChaserRunner_Test::stopStepAction()
+{
+    m_chaser->setDirection(Function::Forward);
+    m_chaser->setRunOrder(Function::Loop);
+    m_chaser->setDuration(Function::infiniteSpeed());
+
+    ChaserRunner cr(m_doc, m_chaser);
+    MasterTimer *timer = m_doc->masterTimer();
+    QSignalSpy spy(&cr, SIGNAL(currentStepChanged(int)));
+
+    // Two crossfading steps running at the same time
+    cr.adjustStepIntensity(0.75, 0, Chaser::Crossfade);
+    timer->timerTick();
+    cr.adjustStepIntensity(0.25, 1, Chaser::Crossfade);
+    timer->timerTick();
+    QCOMPARE(cr.runningStepsNumber(), 2);
+    QVERIFY(m_scene1->isRunning());
+    QVERIFY(m_scene2->isRunning());
+
+    // Stopping a step that is not running changes nothing
+    ChaserAction action;
+    action.m_action = ChaserStopStep;
+    action.m_stepIndex = 2;
+    cr.setAction(action);
+    QCOMPARE(cr.runningStepsNumber(), 2);
+    QCOMPARE(spy.count(), 0);
+    QCOMPARE(cr.m_pendingAction.m_action, ChaserNoAction);
+
+    // Stopping the first step leaves the second as the current one
+    action.m_stepIndex = 0;
+    cr.setAction(action);
+    timer->timerTick();
+    QCOMPARE(cr.runningStepsNumber(), 1);
+    QCOMPARE(cr.m_runnerSteps.at(0)->m_index, 1);
+    QCOMPARE(cr.currentStepIndex(), 1);
+    QCOMPARE(cr.m_lastFunctionID, m_scene1->id());
+    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.at(0).at(0).toInt(), 1);
+    QVERIFY(m_scene1->isRunning() == false);
+    QVERIFY(m_scene2->isRunning());
+
+    // Stopping the last running step doesn't emit a step change
+    action.m_stepIndex = 1;
+    cr.setAction(action);
+    timer->timerTick();
+    QCOMPARE(cr.runningStepsNumber(), 0);
+    QCOMPARE(spy.count(), 1);
+    QVERIFY(m_scene2->isRunning() == false);
+}
+
+void ChaserRunner_Test::currentRunningStep()
+{
+    m_chaser->setDirection(Function::Forward);
+    m_chaser->setRunOrder(Function::Loop);
+    m_chaser->setDuration(Function::infiniteSpeed());
+
+    ChaserRunner cr(m_doc, m_chaser);
+    MasterTimer timer(m_doc);
+
+    QVERIFY(cr.currentRunningStep() == NULL);
+
+    QVERIFY(cr.write(&timer, QList<Universe*>()) == true);
+    timer.timerTick();
+    ChaserRunnerStep *step = cr.currentRunningStep();
+    QVERIFY(step != NULL);
+    QCOMPARE(step, cr.m_runnerSteps.at(0));
+    QCOMPARE(step->m_index, 0);
+    QCOMPARE(step->m_function, m_scene1);
+}
+
+void ChaserRunner_Test::computeNextStepLoop()
+{
+    m_chaser->setDirection(Function::Forward);
+    m_chaser->setRunOrder(Function::Loop);
+
+    ChaserRunner cr(m_doc, m_chaser);
+
+    // Forward: in the middle, wrapping past the end and before the start
+    QCOMPARE(cr.computeNextStep(0), 1);
+    QCOMPARE(cr.computeNextStep(1), 2);
+    QCOMPARE(cr.computeNextStep(2), 0);
+    QCOMPARE(cr.computeNextStep(-2), 2);
+
+    // Backward: in the middle, wrapping before the start and past the end
+    cr.m_direction = Function::Backward;
+    QCOMPARE(cr.computeNextStep(2), 1);
+    QCOMPARE(cr.computeNextStep(1), 0);
+    QCOMPARE(cr.computeNextStep(0), 2);
+    QCOMPARE(cr.computeNextStep(4), 0);
+}
+
+void ChaserRunner_Test::computeNextStepSingleShotPingPong()
+{
+    m_chaser->setDirection(Function::Forward);
+    m_chaser->setRunOrder(Function::SingleShot);
+
+    ChaserRunner cr(m_doc, m_chaser);
+    QCOMPARE(cr.computeNextStep(1), 2);
+    QCOMPARE(cr.computeNextStep(2), -1);
+    cr.m_direction = Function::Backward;
+    QCOMPARE(cr.computeNextStep(1), 0);
+    QCOMPARE(cr.computeNextStep(0), -1);
+
+    m_chaser->setRunOrder(Function::PingPong);
+    cr.m_direction = Function::Forward;
+    QCOMPARE(cr.computeNextStep(0), 1);
+    QCOMPARE(cr.computeNextStep(2), 1); // bounce back, don't repeat the last step
+    cr.m_direction = Function::Backward;
+    QCOMPARE(cr.computeNextStep(2), 1);
+    QCOMPARE(cr.computeNextStep(0), 1); // bounce back, don't repeat the first step
+
+    // computeNextStep() never changes the run-time direction
+    QCOMPARE(cr.m_direction, Function::Backward);
+}
+
+void ChaserRunner_Test::computeNextStepRandom()
+{
+    m_chaser->setDirection(Function::Forward);
+    m_chaser->setRunOrder(Function::Random);
+
+    ChaserRunner cr(m_doc, m_chaser);
+    QCOMPARE(cr.m_order.size(), 3);
+
+    // Impose a known order: position 0 -> step 2, 1 -> step 0, 2 -> step 1
+    cr.m_order[0] = 2;
+    cr.m_order[1] = 0;
+    cr.m_order[2] = 1;
+    QCOMPARE(cr.randomStepIndex(0), 2);
+    QCOMPARE(cr.randomStepIndex(2), 1);
+    QCOMPARE(cr.randomStepIndex(3), 3);
+    QCOMPARE(cr.randomStepIndex(-1), -1);
+
+    // Step 0 sits at position 1, so the next one is at position 2 -> step 1
+    QCOMPARE(cr.computeNextStep(0), 1);
+    // Step 2 sits at position 0 -> position 1 -> step 0
+    QCOMPARE(cr.computeNextStep(2), 0);
+    // Step 1 sits at the last position: wraps beyond the order
+    QCOMPARE(cr.computeNextStep(1), 3);
+    // A step that is not in the order is used as-is
+    QCOMPARE(cr.computeNextStep(7), 8);
+
+    cr.m_direction = Function::Backward;
+    QCOMPARE(cr.computeNextStep(1), 0);
+    QCOMPARE(cr.computeNextStep(2), -1);
+}
+
+void ChaserRunner_Test::writeRandomForward()
+{
+    m_chaser->setDirection(Function::Forward);
+    m_chaser->setRunOrder(Function::Random);
+
+    ChaserRunner cr(m_doc, m_chaser);
+    MasterTimer timer(m_doc);
+
+    cr.m_order[0] = 2;
+    cr.m_order[1] = 0;
+    cr.m_order[2] = 1;
+
+    // The first round follows the imposed order
+    QVERIFY(cr.write(&timer, QList<Universe*>()) == true);
+    timer.timerTick();
+    QCOMPARE(timer.m_functionList.size(), 1);
+    QCOMPARE(timer.m_functionList[0], m_scene3);
+    QCOMPARE(cr.currentStepIndex(), 2);
+
+    QVERIFY(cr.write(&timer, QList<Universe*>()) == true);
+    timer.timerTick();
+    QCOMPARE(timer.m_functionList.size(), 1);
+    QCOMPARE(timer.m_functionList[0], m_scene1);
+    QCOMPARE(cr.currentStepIndex(), 0);
+
+    QVERIFY(cr.write(&timer, QList<Universe*>()) == true);
+    timer.timerTick();
+    QCOMPARE(timer.m_functionList.size(), 1);
+    QCOMPARE(timer.m_functionList[0], m_scene2);
+    QCOMPARE(cr.currentStepIndex(), 1);
+
+    // At the end of the round the order is reshuffled: the next step is
+    // unknown but never the one that just ran
+    for (int round = 0; round < 10; round++)
+    {
+        int last = cr.currentStepIndex();
+        QVERIFY(cr.write(&timer, QList<Universe*>()) == true);
+        timer.timerTick();
+        QCOMPARE(timer.m_functionList.size(), 1);
+        QVERIFY(cr.currentStepIndex() != last);
+        QVERIFY(cr.currentStepIndex() >= 0 && cr.currentStepIndex() < 3);
+        QCOMPARE(timer.m_functionList[0], m_doc->function(m_chaser->steps().at(cr.currentStepIndex()).fid));
+    }
+}
+
+void ChaserRunner_Test::writeRandomBackward()
+{
+    m_chaser->setDirection(Function::Backward);
+    m_chaser->setRunOrder(Function::Random);
+
+    ChaserRunner cr(m_doc, m_chaser);
+    MasterTimer timer(m_doc);
+
+    cr.m_order[0] = 2;
+    cr.m_order[1] = 0;
+    cr.m_order[2] = 1;
+
+    // Backward starts from the last position of the order
+    QVERIFY(cr.write(&timer, QList<Universe*>()) == true);
+    timer.timerTick();
+    QCOMPARE(timer.m_functionList[0], m_scene2);
+    QCOMPARE(cr.currentStepIndex(), 1);
+
+    QVERIFY(cr.write(&timer, QList<Universe*>()) == true);
+    timer.timerTick();
+    QCOMPARE(timer.m_functionList[0], m_scene1);
+    QCOMPARE(cr.currentStepIndex(), 0);
+
+    QVERIFY(cr.write(&timer, QList<Universe*>()) == true);
+    timer.timerTick();
+    QCOMPARE(timer.m_functionList[0], m_scene3);
+    QCOMPARE(cr.currentStepIndex(), 2);
+
+    for (int round = 0; round < 10; round++)
+    {
+        int last = cr.currentStepIndex();
+        QVERIFY(cr.write(&timer, QList<Universe*>()) == true);
+        timer.timerTick();
+        QCOMPARE(timer.m_functionList.size(), 1);
+        QVERIFY(cr.currentStepIndex() != last);
+        QVERIFY(cr.currentStepIndex() >= 0 && cr.currentStepIndex() < 3);
+    }
+}
+
+void ChaserRunner_Test::writeRandomPrevious()
+{
+    m_chaser->setDirection(Function::Forward);
+    m_chaser->setRunOrder(Function::Random);
+    m_chaser->setDuration(Function::infiniteSpeed());
+
+    ChaserRunner cr(m_doc, m_chaser);
+    MasterTimer timer(m_doc);
+
+    cr.m_order[0] = 2;
+    cr.m_order[1] = 0;
+    cr.m_order[2] = 1;
+
+    QVERIFY(cr.write(&timer, QList<Universe*>()) == true);
+    timer.timerTick();
+    QCOMPARE(cr.currentStepIndex(), 2);
+
+    // "Previous" from the first position wraps to the end of a fresh order
+    ChaserAction action;
+    action.m_action = ChaserPreviousStep;
+    cr.setAction(action);
+    QVERIFY(cr.write(&timer, QList<Universe*>()) == true);
+    timer.timerTick();
+    QVERIFY(cr.currentStepIndex() != 2);
+    QVERIFY(cr.currentStepIndex() >= 0 && cr.currentStepIndex() < 3);
+
+    // Same thing running backwards: "previous" moves up in the order
+    m_chaser->setDirection(Function::Backward);
+    ChaserRunner crb(m_doc, m_chaser);
+    crb.m_order[0] = 2;
+    crb.m_order[1] = 0;
+    crb.m_order[2] = 1;
+
+    QVERIFY(crb.write(&timer, QList<Universe*>()) == true);
+    timer.timerTick();
+    QCOMPARE(crb.currentStepIndex(), 1);
+
+    crb.setAction(action);
+    QVERIFY(crb.write(&timer, QList<Universe*>()) == true);
+    timer.timerTick();
+    QVERIFY(crb.currentStepIndex() != 1);
+    QVERIFY(crb.currentStepIndex() >= 0 && crb.currentStepIndex() < 3);
+}
+
+void ChaserRunner_Test::writeRandomSetStepIndex()
+{
+    m_chaser->setDirection(Function::Forward);
+    m_chaser->setRunOrder(Function::Random);
+    m_chaser->setDuration(Function::infiniteSpeed());
+
+    ChaserRunner cr(m_doc, m_chaser);
+    MasterTimer timer(m_doc);
+
+    cr.m_order[0] = 2;
+    cr.m_order[1] = 0;
+    cr.m_order[2] = 1;
+
+    // A requested index is a position in the randomized order
+    ChaserAction action;
+    action.m_action = ChaserSetStepIndex;
+    action.m_stepIndex = 1;
+    action.m_masterIntensity = 1.0;
+    action.m_stepIntensity = 1.0;
+    action.m_fadeMode = Chaser::FromFunction;
+    cr.setAction(action);
+
+    QVERIFY(cr.write(&timer, QList<Universe*>()) == true);
+    timer.timerTick();
+    QCOMPARE(timer.m_functionList.size(), 1);
+    QCOMPARE(timer.m_functionList[0], m_scene1);
+    QCOMPARE(cr.currentStepIndex(), 0);
+}
+
+void ChaserRunner_Test::writePingPongPrevious()
+{
+    m_chaser->setDirection(Function::Forward);
+    m_chaser->setRunOrder(Function::PingPong);
+    m_chaser->setDuration(Function::infiniteSpeed());
+
+    ChaserRunner cr(m_doc, m_chaser);
+    MasterTimer timer(m_doc);
+
+    QVERIFY(cr.write(&timer, QList<Universe*>()) == true);
+    timer.timerTick();
+    QCOMPARE(cr.currentStepIndex(), 0);
+    QCOMPARE(cr.m_direction, Function::Forward);
+
+    // "Previous" at the first step reverses the direction: the previous
+    // step of a ping pong at the start is the second one
+    ChaserAction action;
+    action.m_action = ChaserPreviousStep;
+    cr.setAction(action);
+    QVERIFY(cr.write(&timer, QList<Universe*>()) == true);
+    timer.timerTick();
+    QCOMPARE(cr.currentStepIndex(), 1);
+    QCOMPARE(cr.m_direction, Function::Backward);
+    QCOMPARE(timer.m_functionList[0], m_scene2);
+
+    // Still going "previous" while backwards moves up
+    cr.setAction(action);
+    QVERIFY(cr.write(&timer, QList<Universe*>()) == true);
+    timer.timerTick();
+    QCOMPARE(cr.currentStepIndex(), 2);
+    QCOMPARE(cr.m_direction, Function::Backward);
+
+    // "Previous" at the last step reverses the direction again
+    cr.setAction(action);
+    QVERIFY(cr.write(&timer, QList<Universe*>()) == true);
+    timer.timerTick();
+    QCOMPARE(cr.currentStepIndex(), 1);
+    QCOMPARE(cr.m_direction, Function::Forward);
+    QCOMPARE(timer.m_functionList[0], m_scene2);
+}
+
+void ChaserRunner_Test::writeBackwardPrevious()
+{
+    m_chaser->setDirection(Function::Backward);
+    m_chaser->setRunOrder(Function::Loop);
+    m_chaser->setDuration(Function::infiniteSpeed());
+
+    ChaserRunner cr(m_doc, m_chaser);
+    MasterTimer timer(m_doc);
+
+    QVERIFY(cr.write(&timer, QList<Universe*>()) == true);
+    timer.timerTick();
+    QCOMPARE(cr.currentStepIndex(), 2);
+    QCOMPARE(timer.m_functionList[0], m_scene3);
+
+    // "Previous" for a backward loop at its first step wraps to step 0
+    ChaserAction action;
+    action.m_action = ChaserPreviousStep;
+    cr.setAction(action);
+    QVERIFY(cr.write(&timer, QList<Universe*>()) == true);
+    timer.timerTick();
+    QCOMPARE(cr.currentStepIndex(), 0);
+    QCOMPARE(timer.m_functionList[0], m_scene1);
+
+    cr.setAction(action);
+    QVERIFY(cr.write(&timer, QList<Universe*>()) == true);
+    timer.timerTick();
+    QCOMPARE(cr.currentStepIndex(), 1);
+    QCOMPARE(timer.m_functionList[0], m_scene2);
+}
+
+void ChaserRunner_Test::writeBeats()
+{
+    m_chaser->setDirection(Function::Forward);
+    m_chaser->setRunOrder(Function::Loop);
+    m_chaser->setTempoType(Function::Beats);
+    m_chaser->setDuration(2000); // two beats per step
+
+    ChaserRunner cr(m_doc, m_chaser);
+    MasterTimer timer(m_doc);
+
+    QVERIFY(cr.write(&timer, QList<Universe*>()) == true);
+    timer.timerTick();
+    QCOMPARE(cr.currentStepIndex(), 0);
+    QCOMPARE(cr.m_runnerSteps.at(0)->m_elapsedBeats, quint32(0));
+
+    // Ticks without a beat don't advance the step
+    for (int i = 0; i < 5; i++)
+    {
+        QVERIFY(cr.write(&timer, QList<Universe*>()) == true);
+        timer.timerTick();
+    }
+    QCOMPARE(cr.currentStepIndex(), 0);
+    QCOMPARE(cr.m_runnerSteps.at(0)->m_elapsedBeats, quint32(0));
+
+    // First beat: one beat elapsed, still on the same step
+    timer.m_beatRequested = true;
+    QVERIFY(cr.write(&timer, QList<Universe*>()) == true);
+    timer.m_beatRequested = false;
+    timer.timerTick();
+    QCOMPARE(cr.currentStepIndex(), 0);
+    QCOMPARE(cr.m_runnerSteps.at(0)->m_elapsedBeats, quint32(1000));
+
+    // Second beat: the step is over and the next one starts
+    timer.m_beatRequested = true;
+    QVERIFY(cr.write(&timer, QList<Universe*>()) == true);
+    timer.m_beatRequested = false;
+    timer.timerTick();
+    QCOMPARE(cr.currentStepIndex(), 1);
+    QCOMPARE(timer.m_functionList.size(), 1);
+    QCOMPARE(timer.m_functionList[0], m_scene2);
+    QCOMPARE(cr.m_runnerSteps.at(0)->m_elapsedBeats, quint32(0));
+}
+
+void ChaserRunner_Test::speedChangeWhileRunning()
+{
+    m_chaser->setDirection(Function::Forward);
+    m_chaser->setRunOrder(Function::Loop);
+    m_chaser->setDuration(Function::infiniteSpeed());
+    m_chaser->setFadeInMode(Chaser::Common);
+    m_chaser->setFadeOutMode(Chaser::Common);
+    m_chaser->setFadeInSpeed(100);
+    m_chaser->setFadeOutSpeed(200);
+
+    ChaserRunner cr(m_doc, m_chaser);
+    MasterTimer timer(m_doc);
+
+    QVERIFY(cr.write(&timer, QList<Universe*>()) == true);
+    timer.timerTick();
+    QCOMPARE(cr.m_runnerSteps.at(0)->m_fadeIn, uint(100));
+    QCOMPARE(cr.m_runnerSteps.at(0)->m_fadeOut, uint(200));
+    QCOMPARE(m_scene1->overrideFadeInSpeed(), uint(100));
+    QCOMPARE(cr.m_updateOverrideSpeeds, false);
+
+    // Changing the chaser speeds updates the running step right away...
+    m_chaser->setFadeInSpeed(300);
+    QCOMPARE(cr.m_updateOverrideSpeeds, true);
+    QCOMPARE(cr.m_runnerSteps.at(0)->m_fadeIn, uint(300));
+    QCOMPARE(cr.m_runnerSteps.at(0)->m_fadeOut, uint(200));
+    m_chaser->setFadeOutSpeed(400);
+    QCOMPARE(cr.m_runnerSteps.at(0)->m_fadeOut, uint(400));
+    QCOMPARE(cr.runningStepsNumber(), 1);
+
+    // ...and the running Function gets the new speeds on the next write
+    QVERIFY(cr.write(&timer, QList<Universe*>()) == true);
+    timer.timerTick();
+    QCOMPARE(cr.m_updateOverrideSpeeds, false);
+    QCOMPARE(m_scene1->overrideFadeInSpeed(), uint(300));
+    QCOMPARE(m_scene1->overrideFadeOutSpeed(), uint(400));
+    QCOMPARE(cr.currentStepIndex(), 0);
+}
+
+void ChaserRunner_Test::pauseNoSteps()
+{
+    Chaser empty(m_doc);
+    ChaserRunner cr(m_doc, &empty);
+
+    QList<Universe*> ua;
+    ua.append(new Universe(0, new GrandMaster()));
+
+    // Nothing to pause, nothing to write
+    cr.setPause(true, ua);
+    MasterTimer timer(m_doc);
+    QVERIFY(cr.write(&timer, ua) == false);
+    QCOMPARE(cr.runningStepsNumber(), 0);
+
+    delete ua.takeFirst();
+}
+
+void ChaserRunner_Test::pauseWithUniverses()
+{
+    m_chaser->setDirection(Function::Forward);
+    m_chaser->setRunOrder(Function::Loop);
+    m_chaser->setDuration(Function::infiniteSpeed());
+
+    ChaserRunner cr(m_doc, m_chaser);
+    MasterTimer timer(m_doc);
+
+    QList<Universe*> ua;
+    ua.append(new Universe(0, new GrandMaster()));
+
+    QVERIFY(cr.write(&timer, ua) == true);
+    timer.timerTick();
+    QVERIFY(m_scene1->isRunning());
+
+    // Move to the second step: the first Scene becomes the last function
+    // ran, whose faders would still be fading out on the universes
+    ChaserAction action;
+    action.m_action = ChaserNextStep;
+    cr.setAction(action);
+    QVERIFY(cr.write(&timer, ua) == true);
+    timer.timerTick();
+    QCOMPARE(cr.m_lastFunctionID, m_scene1->id());
+    QVERIFY(m_scene2->isRunning());
+    QVERIFY(m_scene2->isPaused() == false);
+
+    // A pause request is processed by the next write
+    action.m_action = ChaserPauseRequest;
+    action.m_fadeMode = 1;
+    cr.setAction(action);
+    QCOMPARE(cr.m_pendingAction.m_action, ChaserPauseRequest);
+    QVERIFY(cr.write(&timer, ua) == true);
+    QVERIFY(m_scene2->isPaused());
+    QCOMPARE(cr.m_pendingAction.m_action, ChaserNoAction);
+
+    cr.setPause(false, ua);
+    QVERIFY(m_scene2->isPaused() == false);
+
+    // The runner must survive the last function disappearing
+    m_doc->deleteFunction(m_scene1->id());
+    cr.setPause(true, ua);
+    QVERIFY(m_scene2->isPaused());
+    cr.setPause(false, ua);
+
+    delete ua.takeFirst();
+}
+
+void ChaserRunner_Test::adjustRunningStepIntensity()
+{
+    m_chaser->setDirection(Function::Forward);
+    m_chaser->setRunOrder(Function::Loop);
+    m_chaser->setDuration(Function::infiniteSpeed());
+
+    ChaserRunner cr(m_doc, m_chaser);
+    MasterTimer timer(m_doc);
+
+    QVERIFY(cr.write(&timer, QList<Universe*>()) == true);
+    timer.timerTick();
+    QCOMPARE(cr.runningStepsNumber(), 1);
+    QCOMPARE(m_scene1->getAttributeValue(Function::Intensity), qreal(1.0));
+
+    // Adjusting the intensity of the running step doesn't start a new one
+    cr.adjustStepIntensity(0.5, 0);
+    QCOMPARE(cr.runningStepsNumber(), 1);
+    QCOMPARE(cr.m_runnerSteps.at(0)->m_stepIntensity, qreal(0.5));
+    QCOMPARE(cr.m_runnerSteps.at(0)->m_masterIntensity, qreal(1.0));
+    QCOMPARE(m_scene1->getAttributeValue(Function::Intensity), qreal(0.5));
+    QCOMPARE(m_scene1->getAttributeValue(Scene::ParentIntensity), qreal(1.0));
+
+    // The master intensity is kept separate from the step intensity
+    cr.adjustStepIntensity(0.5);
+    QCOMPARE(cr.m_runnerSteps.at(0)->m_stepIntensity, qreal(0.5));
+    QCOMPARE(cr.m_runnerSteps.at(0)->m_masterIntensity, qreal(0.5));
+    QCOMPARE(m_scene1->getAttributeValue(Function::Intensity), qreal(0.5));
+    QCOMPARE(m_scene1->getAttributeValue(Scene::ParentIntensity), qreal(0.5));
+}
+
+void ChaserRunner_Test::adjustIntensityNonSceneStep()
+{
+    Collection *coll = new Collection(m_doc);
+    m_doc->addFunction(coll);
+    coll->addFunction(m_scene1->id());
+
+    Chaser *chaser = new Chaser(m_doc);
+    m_doc->addFunction(chaser);
+    chaser->addStep(ChaserStep(coll->id()));
+    chaser->setDuration(Function::infiniteSpeed());
+
+    ChaserRunner cr(m_doc, chaser);
+    MasterTimer timer(m_doc);
+
+    QVERIFY(cr.write(&timer, QList<Universe*>()) == true);
+    timer.timerTick();
+    QCOMPARE(cr.runningStepsNumber(), 1);
+    QCOMPARE(cr.m_runnerSteps.at(0)->m_function, coll);
+    QVERIFY(cr.m_runnerSteps.at(0)->m_intensityOverrideId != Function::invalidAttributeId());
+    QCOMPARE(cr.m_runnerSteps.at(0)->m_pIntensityOverrideId, Function::invalidAttributeId());
+    QCOMPARE(cr.m_lastFunctionID, Function::invalidId());
+
+    // A non-Scene step gets the product of master and step intensity
+    cr.adjustStepIntensity(0.5);
+    QCOMPARE(cr.m_runnerSteps.at(0)->m_masterIntensity, qreal(0.5));
+    QCOMPARE(coll->getAttributeValue(Function::Intensity), qreal(0.5));
+
+    cr.adjustStepIntensity(0.5, 0);
+    QCOMPARE(cr.m_runnerSteps.at(0)->m_stepIntensity, qreal(0.5));
+    QCOMPARE(coll->getAttributeValue(Function::Intensity), qreal(0.25));
+
+    // Moving on from a non-Scene step: no Scene blending is set up
+    ChaserAction action;
+    action.m_action = ChaserNextStep;
+    cr.setAction(action);
+    QVERIFY(cr.write(&timer, QList<Universe*>()) == true);
+    timer.timerTick();
+    QCOMPARE(cr.m_lastFunctionID, Function::invalidId());
+}
+
+void ChaserRunner_Test::adjustIntensityEdgeCases()
+{
+    m_chaser->setDirection(Function::Forward);
+    m_chaser->setRunOrder(Function::Loop);
+    m_chaser->setDuration(Function::infiniteSpeed());
+    // A step whose Function doesn't exist
+    m_chaser->addStep(ChaserStep(12345));
+    QCOMPARE(m_chaser->stepsCount(), 4);
+
+    ChaserRunner cr(m_doc, m_chaser);
+    MasterTimer *timer = m_doc->masterTimer();
+
+    // A zero intensity never starts a new step
+    cr.adjustStepIntensity(0.0, 2);
+    timer->timerTick();
+    QCOMPARE(cr.runningStepsNumber(), 0);
+
+    // A step with a missing Function is not started
+    cr.adjustStepIntensity(1.0, 3);
+    timer->timerTick();
+    QCOMPARE(cr.runningStepsNumber(), 0);
+
+    // An index out of range falls back to the first step
+    cr.adjustStepIntensity(1.0, 7);
+    timer->timerTick();
+    QCOMPARE(cr.runningStepsNumber(), 1);
+    QCOMPARE(cr.m_runnerSteps.at(0)->m_index, 0);
+    QCOMPARE(cr.m_runnerSteps.at(0)->m_function, m_scene1);
+
+    // Without steps there's nothing to start
+    Chaser empty(m_doc);
+    ChaserRunner crEmpty(m_doc, &empty);
+    crEmpty.adjustStepIntensity(1.0, 0);
+    QCOMPARE(crEmpty.runningStepsNumber(), 0);
+}
+
+void ChaserRunner_Test::adjustIntensityFadeModes()
+{
+    m_chaser->setDirection(Function::Forward);
+    m_chaser->setRunOrder(Function::Loop);
+    m_chaser->setDuration(Function::infiniteSpeed());
+    m_chaser->setFadeInMode(Chaser::Common);
+    m_chaser->setFadeOutMode(Chaser::Common);
+    m_chaser->setFadeInSpeed(100);
+    m_chaser->setFadeOutSpeed(200);
+
+    ChaserRunner cr(m_doc, m_chaser);
+    MasterTimer *timer = m_doc->masterTimer();
+
+    // Blended keeps the Function fade times
+    cr.adjustStepIntensity(0.5, 0, Chaser::Blended);
+    timer->timerTick();
+    QCOMPARE(cr.runningStepsNumber(), 1);
+    QCOMPARE(cr.m_runnerSteps.at(0)->m_fadeIn, uint(100));
+    QCOMPARE(cr.m_runnerSteps.at(0)->m_fadeOut, uint(200));
+    QCOMPARE(m_scene1->blendFunctionID(), Function::invalidId());
+
+    // Crossfade and BlendedCrossfade fade immediately (the slider fades)
+    cr.adjustStepIntensity(0.5, 1, Chaser::Crossfade);
+    timer->timerTick();
+    QCOMPARE(cr.runningStepsNumber(), 2);
+    QCOMPARE(cr.m_runnerSteps.at(1)->m_fadeIn, uint(0));
+    QCOMPARE(cr.m_runnerSteps.at(1)->m_fadeOut, uint(0));
+    // A Scene started on top of another blends into the previous one
+    QCOMPARE(m_scene2->blendFunctionID(), m_scene1->id());
+
+    cr.adjustStepIntensity(0.5, 2, Chaser::BlendedCrossfade);
+    timer->timerTick();
+    QCOMPARE(cr.runningStepsNumber(), 3);
+    QCOMPARE(cr.m_runnerSteps.at(2)->m_fadeIn, uint(0));
+    QCOMPARE(cr.m_runnerSteps.at(2)->m_fadeOut, uint(0));
+    // ...and the previous one stops blending into its own predecessor
+    QCOMPARE(m_scene3->blendFunctionID(), m_scene2->id());
+    QCOMPARE(m_scene2->blendFunctionID(), Function::invalidId());
+    QCOMPARE(m_scene1->blendFunctionID(), Function::invalidId());
+}
+
+void ChaserRunner_Test::adjustIntensityNullFunctionStep()
+{
+    m_chaser->setDirection(Function::Forward);
+    m_chaser->setRunOrder(Function::Loop);
+
+    ChaserRunner cr(m_doc, m_chaser);
+
+    // A running step whose Function has gone is skipped
+    ChaserRunnerStep *fake = new ChaserRunnerStep();
+    fake->m_index = 0;
+    fake->m_function = NULL;
+    fake->m_masterIntensity = 1.0;
+    fake->m_stepIntensity = 1.0;
+    cr.m_runnerSteps.append(fake);
+
+    cr.adjustStepIntensity(0.5);
+    QCOMPARE(fake->m_masterIntensity, qreal(1.0));
+    QCOMPARE(cr.m_pendingAction.m_masterIntensity, qreal(0.5));
+
+    cr.m_runnerSteps.removeAll(fake);
+    delete fake;
+}
+
+void ChaserRunner_Test::sequenceSteps()
+{
+    quint32 fxiID = m_scene1->values().at(0).fxi;
+
+    Sequence *seq = new Sequence(m_doc);
+    seq->setBoundSceneID(m_scene1->id());
+    seq->setDuration(Function::infiniteSpeed());
+    m_doc->addFunction(seq);
+
+    ChaserStep step1(m_scene1->id());
+    step1.values << SceneValue(fxiID, 0, 42) << SceneValue(fxiID, 1, 43);
+    seq->addStep(step1);
+    ChaserStep step2(m_scene1->id());
+    step2.values << SceneValue(fxiID, 0, 99) << SceneValue(fxiID, 1, 98);
+    seq->addStep(step2);
+
+    ChaserRunner cr(m_doc, seq);
+    MasterTimer timer(m_doc);
+
+    // A Sequence step loads its values into the bound Scene
+    QVERIFY(cr.write(&timer, QList<Universe*>()) == true);
+    timer.timerTick();
+    QCOMPARE(cr.runningStepsNumber(), 1);
+    QCOMPARE(cr.m_runnerSteps.at(0)->m_function, m_scene1);
+    QCOMPARE(m_scene1->value(fxiID, 0), uchar(42));
+    QCOMPARE(m_scene1->value(fxiID, 1), uchar(43));
+    QVERIFY(m_scene1->isRunning());
+
+    // The next step reuses the same Scene with the new values
+    ChaserAction action;
+    action.m_action = ChaserNextStep;
+    cr.setAction(action);
+    QVERIFY(cr.write(&timer, QList<Universe*>()) == true);
+    timer.timerTick();
+    QCOMPARE(cr.runningStepsNumber(), 1);
+    QCOMPARE(cr.currentStepIndex(), 1);
+    QCOMPARE(m_scene1->value(fxiID, 0), uchar(99));
+    QCOMPARE(m_scene1->value(fxiID, 1), uchar(98));
+
+    cr.postRun(&timer, QList<Universe*>());
+    QCOMPARE(cr.runningStepsNumber(), 0);
 }
 
 QTEST_APPLESS_MAIN(ChaserRunner_Test)
