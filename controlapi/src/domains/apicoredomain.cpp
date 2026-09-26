@@ -20,6 +20,7 @@
 #include <QFileInfo>
 #include <QBuffer>
 #include <QSettings>
+#include <QTimer>
 
 #include "apicoredomain.h"
 #include "apiserver.h"
@@ -27,11 +28,61 @@
 #include "apidispatcher.h"
 #include "apienvelope.h"
 #include "apiprojecthost.h"
+#include "inputoutputmap.h"
 #include "mastertimer.h"
 
 #define MASTERTIMER_FREQUENCY "mastertimer/frequency"
 
+/** core.bpm.tap: a pause longer than this between two taps starts a new
+ *  tap run instead of contributing a (meaninglessly long) interval. */
+#define TAP_RESET_INTERVAL_MS 2000
+/** core.bpm.tap: the tempo is the mean of at most this many most recent
+ *  intervals - enough to smooth jitter, few enough to follow a tempo change
+ *  within a bar. */
+#define TAP_WINDOW 4
+/** Upper BPM bound for core.bpm.set/tap - the same cap qmlui's
+ *  BeatGeneratorsPanel.qml applies to its own tap button. */
+#define BPM_MAX 1000
+/** core.history.changed coalescing window, see ApiCoreDomain::slotHistoryChanged() */
+#define HISTORY_COALESCE_MS 50
+
 namespace {
+
+// Web UI contract spelling ("disabled"|"internal"|"plugin"|"audio") -
+// deliberately NOT InputOutputMap::beatTypeToString(), whose capitalized
+// form is the .qxw persistence spelling.
+QString beatGeneratorToJson(InputOutputMap::BeatGeneratorType type)
+{
+    switch (type)
+    {
+    case InputOutputMap::Internal: return QStringLiteral("internal");
+    case InputOutputMap::Plugin:   return QStringLiteral("plugin");
+    case InputOutputMap::Audio:    return QStringLiteral("audio");
+    default:
+    case InputOutputMap::Disabled: return QStringLiteral("disabled");
+    }
+}
+
+bool beatGeneratorFromJson(const QString &str, InputOutputMap::BeatGeneratorType &type)
+{
+    if (str == QStringLiteral("disabled"))      type = InputOutputMap::Disabled;
+    else if (str == QStringLiteral("internal")) type = InputOutputMap::Internal;
+    else if (str == QStringLiteral("plugin"))   type = InputOutputMap::Plugin;
+    else if (str == QStringLiteral("audio"))    type = InputOutputMap::Audio;
+    else return false;
+    return true;
+}
+
+// core.bpm.get result / core.bpm.changed data. No beatsPerBar: the engine
+// has no bar concept at generator level (only Show has a per-show
+// beatsDivision), so the contract's optional field is simply absent.
+QJsonObject bpmStateToJson(InputOutputMap *ioMap)
+{
+    QJsonObject obj;
+    obj.insert(QStringLiteral("bpm"), ioMap->bpmNumber());
+    obj.insert(QStringLiteral("generator"), beatGeneratorToJson(ioMap->beatGeneratorType()));
+    return obj;
+}
 
 // Shared by core.project.get and the core.project.loaded broadcast - see
 // CoreProjectMetadata in docs/api-spec/fragments/core.yaml.
@@ -56,9 +107,15 @@ ApiCoreDomain::ApiCoreDomain(Doc *doc, ApiServer *server, QObject *parent)
     : QObject(parent)
     , m_doc(doc)
     , m_server(server)
+    , m_historyTimer(new QTimer(this))
 {
     Q_ASSERT(m_doc != nullptr);
     Q_ASSERT(m_server != nullptr);
+
+    m_tapClock.start();
+    m_historyTimer->setSingleShot(true);
+    m_historyTimer->setInterval(HISTORY_COALESCE_MS);
+    connect(m_historyTimer, &QTimer::timeout, this, &ApiCoreDomain::slotBroadcastHistoryChanged);
 
     registerMethods();
 
@@ -66,6 +123,15 @@ ApiCoreDomain::ApiCoreDomain(Doc *doc, ApiServer *server, QObject *parent)
             this, SLOT(slotModeChanged(Doc::Mode)));
     connect(m_doc, SIGNAL(docRevisionChanged(quint32)),
             this, SLOT(slotDocRevisionChanged(quint32)));
+
+    // Beat generator feed (engine DLL: string-based connects, see
+    // apiiodomain.cpp). beat() arrives from InputOutputMap on this thread
+    // for Internal (via MasterTimer's queued beat) and from the audio
+    // capture / input thread otherwise - auto connection queues those.
+    InputOutputMap *ioMap = m_doc->inputOutputMap();
+    connect(ioMap, SIGNAL(bpmNumberChanged(int)), this, SLOT(slotBpmNumberChanged(int)));
+    connect(ioMap, SIGNAL(beatGeneratorTypeChanged()), this, SLOT(slotBeatGeneratorTypeChanged()));
+    connect(ioMap, SIGNAL(beat()), this, SLOT(slotBeat()));
 
     // Connected via the QObject the domain's methods actually live on
     // (whatever ApiServer's parent is, normally qmlui's App) rather than
@@ -79,6 +145,64 @@ ApiCoreDomain::ApiCoreDomain(Doc *doc, ApiServer *server, QObject *parent)
                 this, SLOT(slotRecentFilesChanged()));
         connect(host, SIGNAL(workingPathChanged(QString)),
                 this, SLOT(slotWorkingPathChanged(QString)));
+        // App::historyChanged (relay of Tardis::historyChanged) - see
+        // apiprojecthost.h's undo/redo block. Silently absent on a host
+        // that has no such signal.
+        connect(host, SIGNAL(historyChanged()),
+                this, SLOT(slotHistoryChanged()));
+    }
+}
+
+bool ApiCoreDomain::requireUndoHost(ApiSession *session, const QString &id, ApiProjectHost **host) const
+{
+    *host = projectHost();
+    if (*host != nullptr)
+        return true;
+    session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrUnsupported,
+                                                    QStringLiteral("No undo/redo engine available in this server")));
+    return false;
+}
+
+QJsonObject ApiCoreDomain::historyStateToJson() const
+{
+    ApiProjectHost *host = projectHost();
+    QJsonObject obj;
+    bool canUndo = host != nullptr && host->canUndo();
+    bool canRedo = host != nullptr && host->canRedo();
+    obj.insert(QStringLiteral("canUndo"), canUndo);
+    obj.insert(QStringLiteral("canRedo"), canRedo);
+    if (canUndo)
+        obj.insert(QStringLiteral("undoText"), host->undoText());
+    if (canRedo)
+        obj.insert(QStringLiteral("redoText"), host->redoText());
+    obj.insert(QStringLiteral("docRevision"), int(m_doc->docRevision()));
+    return obj;
+}
+
+bool ApiCoreDomain::ensureInternalBeatGenerator(ApiSession *session, const QString &id)
+{
+    InputOutputMap *ioMap = m_doc->inputOutputMap();
+    switch (ioMap->beatGeneratorType())
+    {
+    case InputOutputMap::Internal:
+        return true;
+    case InputOutputMap::Disabled:
+        // Same as picking "Internal" in the toolbar's beat panel: the only
+        // generator whose tempo is set by hand, and the one qmlui itself
+        // enables at startup (App::initDoc()).
+        m_pendingOriginClientId = session->clientId();
+        ioMap->setBeatGeneratorType(InputOutputMap::Internal);
+        m_pendingOriginClientId.clear();
+        return true;
+    default:
+    {
+        QJsonObject details;
+        details.insert(QStringLiteral("generator"), beatGeneratorToJson(ioMap->beatGeneratorType()));
+        session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidState,
+            QStringLiteral("The tempo is detected from the active beat source; set generator to \"internal\" first"),
+            details));
+        return false;
+    }
     }
 }
 
@@ -321,6 +445,164 @@ void ApiCoreDomain::registerMethods()
         session->send(ApiEnvelope::buildOkResponse(id, QJsonObject()));
     });
 
+    /*********************************************************************
+     * Beat generator (§4b live state, no baseRevision)
+     *********************************************************************/
+
+    // core.bpm.get {} -> {bpm, generator}
+    d->registerMethod(QStringLiteral("core.bpm.get"), [this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        Q_UNUSED(params)
+        session->send(ApiEnvelope::buildOkResponse(id, bpmStateToJson(m_doc->inputOutputMap())));
+    });
+
+    // core.bpm.set {bpm?, generator?} -> {}
+    d->registerMethod(QStringLiteral("core.bpm.set"), [this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        InputOutputMap *ioMap = m_doc->inputOutputMap();
+        bool hasBpm = params.contains(QStringLiteral("bpm"));
+        bool hasGenerator = params.contains(QStringLiteral("generator"));
+        if (hasBpm == false && hasGenerator == false)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams,
+                                                            QStringLiteral("bpm and/or generator required")));
+            return;
+        }
+
+        InputOutputMap::BeatGeneratorType generator = ioMap->beatGeneratorType();
+        if (hasGenerator &&
+            beatGeneratorFromJson(params.value(QStringLiteral("generator")).toString(), generator) == false)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams,
+                QStringLiteral("generator must be one of disabled, internal, plugin, audio")));
+            return;
+        }
+
+        int bpm = -1;
+        if (hasBpm)
+        {
+            QJsonValue bpmValue = params.value(QStringLiteral("bpm"));
+            bpm = bpmValue.isDouble() ? qRound(bpmValue.toDouble()) : -1;
+            if (bpm < 0 || bpm > BPM_MAX)
+            {
+                session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams,
+                    QStringLiteral("bpm must be a number between 0 (off) and %1").arg(BPM_MAX)));
+                return;
+            }
+        }
+
+        // Validate everything above before mutating anything below.
+        if (hasGenerator)
+        {
+            m_pendingOriginClientId = session->clientId();
+            ioMap->setBeatGeneratorType(generator);
+            m_pendingOriginClientId.clear();
+        }
+
+        if (hasBpm)
+        {
+            if (bpm == 0)
+            {
+                // "BPM: Off" - the toolbar shows exactly this when the
+                // generator is disabled, so 0 maps to disabling it.
+                m_pendingOriginClientId = session->clientId();
+                ioMap->setBeatGeneratorType(InputOutputMap::Disabled);
+                m_pendingOriginClientId.clear();
+            }
+            else
+            {
+                if (ensureInternalBeatGenerator(session, id) == false)
+                    return;
+                m_pendingOriginClientId = session->clientId();
+                ioMap->setBpmNumber(bpm);
+                m_pendingOriginClientId.clear();
+            }
+        }
+
+        session->send(ApiEnvelope::buildOkResponse(id, QJsonObject()));
+    });
+
+    // core.bpm.tap {} -> {bpm, tapCount}
+    d->registerMethod(QStringLiteral("core.bpm.tap"), [this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        Q_UNUSED(params)
+        if (ensureInternalBeatGenerator(session, id) == false)
+            return;
+
+        qint64 now = m_tapClock.elapsed();
+        if (m_tapTimesMs.isEmpty() == false && now - m_tapTimesMs.last() > TAP_RESET_INTERVAL_MS)
+            m_tapTimesMs.clear();
+        m_tapTimesMs.append(now);
+        while (m_tapTimesMs.count() > TAP_WINDOW + 1)
+            m_tapTimesMs.removeFirst();
+
+        if (m_tapTimesMs.count() >= 2)
+        {
+            double meanIntervalMs = double(m_tapTimesMs.last() - m_tapTimesMs.first()) / (m_tapTimesMs.count() - 1);
+            int bpm = qBound(1, qRound(60000.0 / meanIntervalMs), BPM_MAX);
+            m_pendingOriginClientId = session->clientId();
+            m_doc->inputOutputMap()->setBpmNumber(bpm);
+            m_pendingOriginClientId.clear();
+        }
+
+        QJsonObject result;
+        result.insert(QStringLiteral("bpm"), m_doc->inputOutputMap()->bpmNumber());
+        result.insert(QStringLiteral("tapCount"), int(m_tapTimesMs.count()));
+        session->send(ApiEnvelope::buildOkResponse(id, result));
+    });
+
+    /*********************************************************************
+     * Undo / redo (ApiProjectHost -> qmlui Tardis)
+     *********************************************************************/
+
+    // core.history.get {} -> {canUndo, canRedo, undoText?, redoText?, docRevision, entries}
+    d->registerMethod(QStringLiteral("core.history.get"), [this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        Q_UNUSED(params)
+        ApiProjectHost *host = nullptr;
+        if (requireUndoHost(session, id, &host) == false)
+            return;
+        QJsonObject result = historyStateToJson();
+        // Tardis exposes only the next undo/redo step, not the stack - the
+        // spec's entries list stays empty rather than being invented.
+        result.insert(QStringLiteral("entries"), QJsonArray());
+        session->send(ApiEnvelope::buildOkResponse(id, result));
+    });
+
+    // core.undo / core.redo {steps?} -> {ok, description?, stepsApplied, canUndo, canRedo, docRevision}
+    auto undoRedoHandler = [this](bool undo)
+    {
+        return [this, undo](ApiSession *session, const QString &id, const QJsonObject &params)
+        {
+            ApiProjectHost *host = nullptr;
+            if (requireUndoHost(session, id, &host) == false)
+                return;
+
+            int steps = qMax(1, params.value(QStringLiteral("steps")).toInt(1));
+            QString description = undo ? host->undoText() : host->redoText();
+            int applied = 0;
+            for (; applied < steps; applied++)
+            {
+                bool done = undo ? host->undo() : host->redo();
+                if (done == false)
+                    break;
+            }
+
+            // The matching core.history.changed follows via the host's
+            // historyChanged relay (coalesced), and any structural step
+            // bumped docRevision through the engine setters it re-invoked.
+            QJsonObject result = historyStateToJson();
+            result.insert(QStringLiteral("ok"), applied > 0);
+            result.insert(QStringLiteral("stepsApplied"), applied);
+            result.insert(QStringLiteral("direction"), undo ? QStringLiteral("undo") : QStringLiteral("redo"));
+            if (applied > 0 && description.isEmpty() == false)
+                result.insert(QStringLiteral("description"), description);
+            session->send(ApiEnvelope::buildOkResponse(id, result));
+        };
+    };
+    d->registerMethod(QStringLiteral("core.undo"), undoRedoHandler(true));
+    d->registerMethod(QStringLiteral("core.redo"), undoRedoHandler(false));
+
     // core.settings.get
     d->registerMethod(QStringLiteral("core.settings.get"), [this](ApiSession *session, const QString &id, const QJsonObject &params)
     {
@@ -366,6 +648,40 @@ void ApiCoreDomain::slotModeChanged(Doc::Mode mode)
     QJsonObject data;
     data.insert(QStringLiteral("mode"), mode == Doc::Design ? QStringLiteral("design") : QStringLiteral("operate"));
     m_server->broadcast(QStringLiteral("core.mode.changed"), data, m_pendingOriginClientId, false);
+}
+
+void ApiCoreDomain::slotBpmNumberChanged(int bpm)
+{
+    Q_UNUSED(bpm)
+    m_server->broadcast(QStringLiteral("core.bpm.changed"), bpmStateToJson(m_doc->inputOutputMap()),
+                        m_pendingOriginClientId, false);
+}
+
+void ApiCoreDomain::slotBeatGeneratorTypeChanged()
+{
+    m_server->broadcast(QStringLiteral("core.bpm.changed"), bpmStateToJson(m_doc->inputOutputMap()),
+                        m_pendingOriginClientId, false);
+}
+
+void ApiCoreDomain::slotBeat()
+{
+    // Ungated on purpose, despite 00-conventions.md §5's ">~2Hz" rule of
+    // thumb: the web UI contract has clients merely listen for core.beat
+    // (no subscribe step), and the frame is tiny and never faster than
+    // BPM_MAX/60 Hz. Revisit if a client count makes this measurable.
+    QJsonObject data;
+    data.insert(QStringLiteral("bpm"), m_doc->inputOutputMap()->bpmNumber());
+    m_server->broadcast(QStringLiteral("core.beat"), data, QString(), false);
+}
+
+void ApiCoreDomain::slotHistoryChanged()
+{
+    m_historyTimer->start(); // (re)arms the single-shot - coalesces bursts
+}
+
+void ApiCoreDomain::slotBroadcastHistoryChanged()
+{
+    m_server->broadcast(QStringLiteral("core.history.changed"), historyStateToJson(), QString(), false);
 }
 
 void ApiCoreDomain::slotDocRevisionChanged(quint32 revision)
