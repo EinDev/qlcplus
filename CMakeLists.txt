@@ -128,8 +128,10 @@ add_custom_target(check
 
 # Unit test coverage measurement
 if(WIN32)
+    # MSYS2/MinGW checkout: lcov/coverage.sh don't apply, dev-test-coverage.ps1
+    # (gcovr + gcov) does the same job and writes coverage/ under the source dir.
     add_custom_target(coverage
-        COMMAND @echo Get a better OS.
+        COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File dev-test-coverage.ps1
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     )
 else()
