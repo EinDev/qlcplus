@@ -16,7 +16,8 @@ const MOCK_PLUGINS = [
 ];
 const MOCK_PROFILES = [{ name: 'Generic MIDI', manufacturer: 'Generic', model: 'MIDI' }, { name: 'Novation Launchpad', manufacturer: 'Novation', model: 'Launchpad' }];
 const mockUniverses = () => window.QLCData.universes.map(u => {
-  const find = (dir, label) => { for (const p of MOCK_PLUGINS) for (const l of (dir === 'input' ? p.inputLines : p.outputLines)) if (l.name === label) return { plugin: p.name, line: l }; return null; };
+  /* data.js labels are "<plugin> <line>" ("ArtNet 2.0.0.1") or just the line ("MIDI Controller"). */
+  const find = (dir, label) => { for (const p of MOCK_PLUGINS) for (const l of (dir === 'input' ? p.inputLines : p.outputLines)) if (l.name === label || p.name + ' ' + l.name === label) return { plugin: p.name, line: l }; return null; };
   const i = find('input', u.input), o = find('output', u.output), f = find('output', u.feedback);
   return { id: u.id - 1, name: u.name, passthrough: u.passthrough, usedChannels: 0, totalChannels: 512,
     inputPatch: i ? { pluginName: i.plugin, input: i.line.index, inputName: i.line.name, profileName: u.id === 3 ? 'Generic MIDI' : null } : null,
