@@ -1,0 +1,65 @@
+/* Every value below is copied verbatim from qmlui/qml/UISettings.qml.
+   Do not round, re-tint or "harmonise" them — that file is the source of truth. */
+:root{
+/* --- backgrounds --- */
+--bg-stronger:#161616;
+--bg-strong:#232323;
+--bg-medium:#333333;
+--bg-control:#555555;
+--bg-light:#6F6F6F;
+--bg-lighter:#8F8F8F;
+--bg-fixture-odd:#414b41;
+--bg-fixture-even:#42444b;
+
+/* --- foregrounds --- */
+--fg-main:#ffffff;
+--fg-medium:#888888;
+--fg-light:#aaaaaa;
+
+/* --- accents and states --- */
+--section-header:#31456B;
+--section-header-div:#22304a;
+--highlight:#0978FF;
+--highlight-pressed:#044089;
+--hover:#B6B6B6;
+--selection:#ffff00;
+--active-drop-area:#9DFF52;
+--border-color-dark:#111111;
+
+/* --- toolbar gradients --- */
+--toolbar-start-main:#222222;
+--toolbar-start-sub:#333333;
+--toolbar-end:#111111;
+--toolbar-hover-start:#444444;
+--toolbar-hover-end:#171717;
+--toolbar-selection-main:#12B4FF;
+--toolbar-selection-sub:#ffff00;
+
+/* --- literals used inline in QML, promoted to tokens --- */
+--icon-border:#1D1D1D;          /* IconButton.qml background border */
+--spin-border:#222222;          /* CustomSpinBox.qml background border */
+--fader-track:#38b0ff;          /* QLCPlusFader.qml defaultTrackColor */
+--fader-fill:#bdbebf;           /* QLCPlusFader.qml filled portion */
+--fader-handle-border:#5c5c5c;
+--keypad-enter:#43B008;         /* KeyPad.qml ENTER */
+--keypad-enter-hover:#61FF0C;
+--keypad-enter-pressed:#225B04;
+--beat-flash:#00FF00;           /* MainView.qml beat indicator ColorAnimation from */
+--override-red:#ff0000;         /* SimpleDesk channel override + DMX dump bubble */
+--panel-edge:#141414;           /* SidePanel.qml gradient border ends */
+--check-lime:#00ff00;           /* CustomCheckBox.qml tick colour ("lime") */
+
+/* --- composed gradients --- */
+--gradient-toolbar-main:linear-gradient(to bottom,var(--toolbar-start-main),var(--toolbar-end));
+--gradient-toolbar-sub:linear-gradient(to bottom,var(--toolbar-start-sub),var(--toolbar-end));
+--gradient-toolbar-hover:linear-gradient(to bottom,var(--toolbar-hover-start),var(--toolbar-hover-end));
+--gradient-toolbar-pressed:linear-gradient(to bottom,var(--bg-light),var(--bg-medium));
+--gradient-panel-edge:linear-gradient(to right,var(--panel-edge) 0%,var(--bg-strong) 21%,var(--bg-strong) 79%,var(--panel-edge) 100%);
+--gradient-fader-handle:linear-gradient(to bottom,#ccc 0%,#555 45%,#000 50%,#555 55%,#888 100%); /* @kind color */
+--gradient-fader-handle-hover:linear-gradient(to bottom,#eee 0%,#999 45%,#f00 50%,#999 55%,#ccc 100%); /* @kind color */
+
+/* --- disabled overlay (QML paints a black rect at these opacities) --- */
+--disabled-veil-strong:rgba(0,0,0,.6);
+--disabled-veil-soft:rgba(0,0,0,.4);
+--dim-screen:rgba(0,0,0,.5);    /* MainView.qml dimScreen */
+}

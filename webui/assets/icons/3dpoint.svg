@@ -1,0 +1,24 @@
+<?xml version="1.0"?><svg width="48" height="48" version="1.1" id="svg23" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg">
+  
+  <defs id="defs13">
+    
+    <linearGradient id="b">
+      <stop offset="0" stop-color="#ef2929" id="stop2"></stop>
+      <stop offset="1" stop-color="#c00" id="stop4"></stop>
+    </linearGradient>
+    <linearGradient id="a">
+      <stop offset="0" id="stop7"></stop>
+      <stop offset="1" stop-opacity="0" id="stop9"></stop>
+    </linearGradient>
+    <radialGradient xlink:href="#b" id="c" cx="20.935" cy="12.593" r="19.968" fx="20.935" fy="12.593" gradientTransform="matrix(-1.26287 .02797 -.03607 -1.62966 47.367 36.498)" gradientUnits="userSpaceOnUse"></radialGradient>
+    <radialGradient cx="171.2081" cy="196.85463" r="200" fx="171.2081" fy="196.85463" id="radialGradient" xlink:href="#linearGradient" gradientUnits="userSpaceOnUse" gradientTransform="matrix(0.01921073,0.01470191,-0.01503961,0.01965199,27.223616,26.45874)"></radialGradient>
+    <linearGradient id="linearGradient">
+      <stop style="stop-color:#ff0000;stop-opacity:1;" offset="0" id="stop6455"></stop>
+      <stop style="stop-color:#410000;stop-opacity:1;" offset="1" id="stop6457"></stop>
+    </linearGradient>
+  </defs>
+  <rect style="fill:#c8c8c8;fill-opacity:1;stroke:#000000;stroke-width:1.00975892;stroke-dasharray:none;stroke-opacity:1;stroke-linejoin:round" id="rect12736" width="20.581724" height="20.970716" x="7.1186271" y="16.49328" transform="matrix(0.85008815,-0.52664043,0,1,0,0)"></rect>
+  <rect style="fill:#b4b4b4;fill-opacity:1;stroke:#000000;stroke-width:1.0099;stroke-dasharray:none;stroke-opacity:1;stroke-linejoin:round" id="rect12736-6" width="20.581724" height="20.970716" x="-48.938934" y="-13.028898" transform="matrix(-0.85008815,-0.52664043,0,1,0,0)"></rect>
+  <rect style="fill:#b4b4b4;fill-opacity:1;stroke:#000000;stroke-width:0.985941;stroke-linejoin:round;stroke-dasharray:none;stroke-opacity:1" id="rect13560" width="20.497358" height="20.497358" x="35.536331" y="7.2845225" transform="matrix(0.8425439,0.53862768,-0.8425439,0.53862768,0,0)"></rect>
+  <circle cx="29.006882" cy="33.852554" r="3.6928864" style="fill:url(#radialGradient);stroke-width:0.0184645" id="circle4717"></circle>
+</svg>
