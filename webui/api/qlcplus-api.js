@@ -1,9 +1,9 @@
 /**
  * qlcplus-api.js — WebSocket client for the QLC+ Control API.
  *
- * Protocol verified by reading source directly against a live dev build of a QLC+ fork
- * (controlapi/src/*.cpp, docs/api-spec/) — that repo is under active development elsewhere,
- * so treat every detail below as "true as of that reading," not a stable public spec.
+ * Protocol per docs/api-spec/00-conventions.md and controlapi/src/ in this repo (the server this
+ * client ships with, so the two are versioned together — if a shape below disagrees with the
+ * server, fix it here, not in a screen).
  *
  * Transport: a plain WebSocket at ws://<host>:<port>/ (any path — the server does not filter
  * on it), default port 9010, carrying JSON envelopes:
@@ -12,58 +12,69 @@
  *          or {"type":"response","id":"<n>","ok":false,"error":{"code","message","details"?}}
  *   event:    {"type":"event","topic":"<name>","data":{...},"originClientId":<id>|null}
  * A malformed/non-JSON request is silently dropped (no reply). Every method except "hello"
- * is rejected with an UNAUTHORIZED error until "hello" has completed once per connection —
- * this client sends it automatically on open, before anything else. There is no password/auth
- * actually enforced today: hello's params are ignored server-side.
+ * is rejected with an UNAUTHORIZED error ("Send \"hello\" first") until "hello" has completed
+ * once per connection — this client sends it automatically on open, before anything else.
+ * There is no password/auth actually enforced today: hello's params are ignored server-side,
+ * but we still send the spec's {apiVersion, clientName}.
  *
- * Virtual Console live interaction: the spec now defines vc.slider.setValue / vc.button.press
- * (api/domains/virtualconsole.js) — setWidget() below routes to them by widget kind. Whether
- * this fork's running server actually implements them yet (vs. just the earlier-confirmed
- * structural vc.widget.* CRUD) is unverified from a spec reading alone; if they still 404,
- * that's the server catching up, not a client bug.
+ * Unknown methods come back as NOT_FOUND with message 'Unknown method "<name>"'. The client
+ * remembers those in `unsupported` (and emits 'unsupported') so a screen can grey out a
+ * control the running server simply does not have yet, instead of failing every click.
  *
- * Channel numbering: this client keeps the same "absolute channel" convention the legacy
- * protocol used (1-based, stride 512 per universe: universe 2 address 1 = channel 513) via
- * absoluteChannel(), so callers don't need to know the wire format changed. Internally the
- * server wants a 0-based flat "address" (= absoluteChannel - 1); this client does that
- * conversion at the edges.
+ * Numbering follows the server everywhere: universes are 0-based `universeId`s, a DMX
+ * channel inside a universe is 0-based `channel`, and Simple Desk uses the flat 0-based
+ * `address` = universeId * 512 + channel. Screens add +1 for display only.
+ *
+ * Subscriptions: every structural/low-frequency event is delivered to every client. The only
+ * subscribe-gated topic on this server is `io.dmx.universe.<id>.changed` (the live DMX output
+ * stream, delta-only); watchUniverse() below manages it.
  *
  * Usage:
- *   const qlc = new QLCPlusAPI('localhost');
- *   qlc.on('ready', () => qlc.getChannelsValues(1, 1, 64));
- *   qlc.on('channels', (rows) => console.log(rows)); // [{channel, value, type, overriding}]
+ *   const qlc = new QLCPlusAPI('localhost', { port: 9010 });
+ *   qlc.on('ready', () => qlc.watchUniverse(0));
+ *   qlc.on('channels', (rows) => console.log(rows)); // [{address, universeId, channel, value, overridden}]
  *   qlc.connect();
- *   qlc.setChannel(qlc.absoluteChannel(1, 5), 255);
+ *   qlc.setChannel(qlc.address(0, 4), 255);
  *
- * This file is the transport + the handful of methods that need real translation (channel
- * numbering, decoded arrays, event routing). Full method coverage of the spec
- * (docs/api-spec/fragments/*.yaml in that repo — core/fixtures/fixturedefs/functions-core/
- * functions-advanced/io/palette/virtualconsole) lives in api/domains/*.js, one file per
- * fragment, each adding one namespace (qlc.core, qlc.fixtures, qlc.fixtureDefs, qlc.functions,
- * qlc.functionsAdvanced, qlc.io, qlc.palette, qlc.vc) of thin pass-through wrappers — load
- * those <script> tags after this one. Any method with no wrapper yet still works via the
- * generic qlc.api.<dot.path>(params) proxy below (=== qlc.call('<dot.path>', params)), and
- * any event topic can always be listened to directly: qlc.on('vc.widget.created', fn).
+ * This file is the transport + the handful of methods that need real translation (merging the
+ * two Simple Desk sources, event routing, unsupported-method tracking). Full method coverage of
+ * the spec lives in api/domains/*.js, one file per fragment, each adding one namespace
+ * (qlc.core, qlc.fixtures, qlc.fixtureDefs, qlc.functions, qlc.functionsAdvanced, qlc.io,
+ * qlc.palette, qlc.vc) of thin pass-through wrappers — load those <script> tags after this one.
+ * Any method with no wrapper still works via qlc.call('<dot.path>', params) or the generic
+ * qlc.api.<dot.path>(params) proxy, and any event topic can always be listened to directly:
+ * qlc.on('vc.widget.created', fn).
  */
 (function (root) {
   'use strict';
 
   var DEFAULT_PORT = 9010;
+  var API_VERSION = '1';
+  var CLIENT_NAME = 'QLC+ Web UI';
 
   function QLCPlusAPI(host, options) {
     options = options || {};
     this.host = host || (typeof location !== 'undefined' && location.hostname) || 'localhost';
     this.port = options.port || DEFAULT_PORT;
+    this.clientName = options.clientName || CLIENT_NAME;
+    /* Reconnect: capped exponential backoff, 1s -> 10s, until disconnect() is called. */
     this.autoReconnect = options.autoReconnect !== false;
     this.reconnectDelay = options.reconnectDelay || 1000;
+    this.reconnectMaxDelay = options.reconnectMaxDelay || 10000;
+    this.reconnectAttempt = 0;
+    this._reconnectTimer = null;
     this.socket = null;
     this._handlers = {};
     this._pending = {};
     this._nextId = 1;
-    this._lastDeskQuery = null;
     this._closedByUser = false;
+    this._everReady = false;
+    this._watchedUniverse = null;
     this.clientId = null;
     this.serverVersion = null;
+    this.docRevision = null;
+    /** method name -> true for every method this server answered 'Unknown method' to. */
+    this.unsupported = {};
   }
 
   QLCPlusAPI.prototype.url = function () {
@@ -74,21 +85,30 @@
    * Subscribe. Events:
    *   'open' | 'close' | 'error'  — socket lifecycle
    *   'ready'                     — hello completed; every other method is safe to call now
+   *   'reconnecting'              — {attempt, delay} scheduled retry after an unexpected close
    *   'message'                   — every inbound frame, parsed
    *   'event'                     — every inbound {type:"event"} frame, unparsed
    *   'apiError'                  — {method, error} for any {ok:false} response
-   *   'channels'                  — decoded Simple Desk rows: [{channel, value, type, overriding}]
+   *   'unsupported'               — method name the server reported as unknown (once per method)
+   *   'channels'                  — Simple Desk / DMX rows: [{address, universeId, channel, value, overridden}]
    *   'grandmaster' | 'blackout'  — pushed value changes
-   *   '<method>'                  — the parsed result of that method's own response (e.g.
-   *                                  'getWidgetsList' -> {widgets:[...]}, 'getFunctionsList' -> {functions:[...]})
+   *   '<topic>'                   — the raw data of any server event topic (qlc.on('functions.created', fn))
    */
   QLCPlusAPI.prototype.on = function (event, fn) {
     (this._handlers[event] = this._handlers[event] || []).push(fn);
     return this;
   };
 
+  QLCPlusAPI.prototype.off = function (event, fn) {
+    var list = this._handlers[event];
+    if (!list) return this;
+    var i = list.indexOf(fn);
+    if (i !== -1) list.splice(i, 1);
+    return this;
+  };
+
   QLCPlusAPI.prototype._emit = function (event, payload) {
-    (this._handlers[event] || []).forEach(function (fn) {
+    (this._handlers[event] || []).slice().forEach(function (fn) {
       try { fn(payload); } catch (e) { /* a listener must not kill the socket */ }
     });
   };
@@ -96,17 +116,21 @@
   QLCPlusAPI.prototype.connect = function () {
     var self = this;
     this._closedByUser = false;
+    if (this._reconnectTimer) { clearTimeout(this._reconnectTimer); this._reconnectTimer = null; }
     var ws;
     try { ws = new WebSocket(this.url()); }
-    catch (e) { this._emit('error', e); return this; }
+    catch (e) { this._emit('error', e); this._scheduleReconnect(); return this; }
     this.socket = ws;
 
     ws.onopen = function () {
       self._emit('open');
-      /* Every other method 403s until this completes — see file header. */
-      self.call('hello', {}).then(function (result) {
+      /* Every other method is UNAUTHORIZED until this completes — see file header. */
+      self.call('hello', { apiVersion: API_VERSION, clientName: self.clientName }).then(function (result) {
         self.clientId = result.clientId;
         self.serverVersion = result.serverVersion;
+        self.docRevision = result.docRevision;
+        self.reconnectAttempt = 0;
+        self._everReady = true;
         self._emit('ready', result);
       }, function (err) {
         if (err && err.code === 'LOCAL_CLOSED') return; // already reported via 'close'
@@ -115,6 +139,7 @@
     };
     ws.onerror = function (e) { self._emit('error', e); };
     ws.onclose = function (e) {
+      if (self.socket === ws) self.socket = null;
       var pending = self._pending;
       self._pending = {};
       Object.keys(pending).forEach(function (id) {
@@ -123,22 +148,38 @@
         pending[id].reject(err);
       });
       self._emit('close', e);
-      if (self.autoReconnect && !self._closedByUser) {
-        setTimeout(function () { self.connect(); }, self.reconnectDelay);
-      }
+      self._scheduleReconnect();
     };
     ws.onmessage = function (e) { self._dispatch(e.data); };
     return this;
   };
 
+  QLCPlusAPI.prototype._scheduleReconnect = function () {
+    var self = this;
+    if (!this.autoReconnect || this._closedByUser || this._reconnectTimer) return;
+    this.reconnectAttempt += 1;
+    var delay = Math.min(this.reconnectMaxDelay, this.reconnectDelay * Math.pow(2, this.reconnectAttempt - 1));
+    this._emit('reconnecting', { attempt: this.reconnectAttempt, delay: delay });
+    this._reconnectTimer = setTimeout(function () {
+      self._reconnectTimer = null;
+      if (!self._closedByUser) self.connect();
+    }, delay);
+  };
+
   QLCPlusAPI.prototype.disconnect = function () {
     this._closedByUser = true;
+    if (this._reconnectTimer) { clearTimeout(this._reconnectTimer); this._reconnectTimer = null; }
     if (this.socket) this.socket.close();
     return this;
   };
 
   QLCPlusAPI.prototype.connected = function () {
     return !!this.socket && this.socket.readyState === 1;
+  };
+
+  /** True for a method this server has already answered 'Unknown method' to. */
+  QLCPlusAPI.prototype.isUnsupported = function (method) {
+    return this.unsupported[method] === true;
   };
 
   /** Send one request; resolves with `result`, rejects with an Error (`.code`, `.details` set
@@ -172,6 +213,11 @@
       var err = new Error((frame.error && frame.error.message) || (pending.method + ' failed'));
       err.code = frame.error && frame.error.code;
       err.details = frame.error && frame.error.details;
+      err.method = pending.method;
+      if (err.code === 'NOT_FOUND' && /^Unknown method/.test(err.message || '') && !this.unsupported[pending.method]) {
+        this.unsupported[pending.method] = true;
+        this._emit('unsupported', pending.method);
+      }
       this._emit('apiError', { method: pending.method, error: frame.error });
       pending.reject(err);
       return;
@@ -184,109 +230,149 @@
     }
   };
 
-  /** Translate a handful of well-known push topics into the friendlier events the UI kit uses. */
+  /** Translate a handful of well-known push topics into the friendlier events the UI uses. */
   QLCPlusAPI.prototype._routeEvent = function (topic, data) {
+    var self = this;
     if (topic === 'io.grandMaster.changed') { this._emit('grandmaster', data.value); return; }
     if (topic === 'io.blackout.changed') { this._emit('blackout', data.blackout); return; }
+    if (topic === 'core.project.loaded' || topic === 'core.project.saved') {
+      if (data && typeof data.docRevision === 'number') this.docRevision = data.docRevision;
+      return;
+    }
     if (topic === 'io.simpleDesk.channelChanged') {
-      /* One channel per event: {address, value, overridden}. `address` is the same 0-based
-         flat encoding setChannel()/resetChannel() send — +1 gets back to absoluteChannel(). */
-      this._emit('channels', [{
-        channel: data.address + 1, value: data.value, type: '', overriding: !!data.overridden
-      }]);
+      /* One overridden channel per event: {address, value, overridden}, flat 0-based address. */
+      this._emit('channels', [this._row(data.address, data.value, !!data.overridden)]);
       return;
     }
     if (topic === 'io.simpleDesk.universeReset') {
-      /* Unlike a single channel reset, a universe reset doesn't say what the channels landed
-         on — refresh whichever universe is currently being watched, if any. */
-      var q = this._lastDeskQuery;
-      if (q && (q.universe - 1) === data.universeId) this.getChannelsValues(q.universe, q.address, q.count);
+      /* A universe reset doesn't say what the channels landed on — refresh the watched universe. */
+      if (this._watchedUniverse === data.universeId) this.getUniverseValues(data.universeId);
       return;
     }
+    var m = /^io\.dmx\.universe\.(\d+)\.changed$/.exec(topic);
+    if (m) {
+      /* Live DMX output (subscribe-gated): {universeId, changes:[{channel, value}]}, channel
+         within the universe. Override flags are unknown here; null means "leave as is". */
+      var universeId = Number(m[1]);
+      this._emit('channels', (data.changes || []).map(function (c) {
+        return self._row(universeId * 512 + c.channel, c.value, null);
+      }));
+    }
+  };
+
+  QLCPlusAPI.prototype._row = function (address, value, overridden) {
+    return { address: address, universeId: Math.floor(address / 512), channel: address % 512, value: value, overridden: overridden };
   };
 
   QLCPlusAPI.prototype.subscribe = function (topics) { return this.call('subscribe', { topics: topics }); };
   QLCPlusAPI.prototype.unsubscribe = function (topics) { return this.call('unsubscribe', { topics: topics }); };
 
-  /* --- Simple Desk --------------------------------------------------------
-     Channel numbers passed IN to this client are absolute & 1-based, stride 512 (legacy
-     convention) — see absoluteChannel(). Converted to the server's 0-based flat `address`
-     (= absoluteChannel - 1) right before sending. */
+  /* --- Simple Desk / live DMX ------------------------------------------- */
 
-  QLCPlusAPI.prototype.absoluteChannel = function (universe, address) {
-    return ((Math.max(1, universe | 0) - 1) * 512) + (address | 0);
+  /** Flat 0-based address of `channel` (0-based) in `universeId` (0-based). */
+  QLCPlusAPI.prototype.address = function (universeId, channel) {
+    return (Math.max(0, universeId | 0) * 512) + (channel | 0);
   };
 
-  /** Set one channel. `channel` must be ABSOLUTE — see absoluteChannel(). */
-  QLCPlusAPI.prototype.setChannel = function (channel, value) {
+  /** Override one channel. `address` is flat 0-based (see address()). */
+  QLCPlusAPI.prototype.setChannel = function (address, value) {
     return this.send('io.simpleDesk.setChannel', {
-      address: channel - 1, value: Math.max(0, Math.min(255, Math.round(value)))
+      address: address, value: Math.max(0, Math.min(255, Math.round(value)))
     });
   };
 
-  /** Ask for every channel value in one universe. Answered once, as a 'channels' event —
-      also pushed live afterwards via io.simpleDesk.channelChanged, so no polling needed. */
-  QLCPlusAPI.prototype.getChannelsValues = function (universe, address, count) {
+  /** Override several channels at once: [{address, value}]. */
+  QLCPlusAPI.prototype.setChannels = function (items) {
+    return this.send('io.simpleDesk.setChannels', { channels: items.map(function (i) {
+      return { address: i.address, value: Math.max(0, Math.min(255, Math.round(i.value))) };
+    }) });
+  };
+
+  /**
+   * Fetch the full state of one universe, answered as one 'channels' event with 512 rows (and
+   * returned). Two server sources are merged: io.dmx.universe.get gives every channel's actual
+   * output value, io.simpleDesk.get lists only the channels currently overridden by the desk.
+   */
+  QLCPlusAPI.prototype.getUniverseValues = function (universeId) {
     var self = this;
-    universe = universe || 1; address = address || 1; count = count || 512;
-    this._lastDeskQuery = { universe: universe, address: address, count: count };
-    return this.call('io.simpleDesk.get', { universeId: universe - 1 }).then(function (result) {
-      var lo = self.absoluteChannel(universe, address) + 1;
-      var hi = lo + count - 1;
-      var rows = (result.channels || [])
-        .map(function (c) { return { channel: c.address + 1, value: c.value, type: '', overriding: !!c.overridden }; })
-        .filter(function (r) { return r.channel >= lo && r.channel <= hi; });
+    return Promise.all([
+      this.call('io.dmx.universe.get', { universeId: universeId }),
+      this.call('io.simpleDesk.get', { universeId: universeId })
+    ]).then(function (res) {
+      var values = res[0].values || [];
+      var overridden = {};
+      (res[1].channels || []).forEach(function (c) { overridden[c.address] = c.value; });
+      var rows = [];
+      for (var ch = 0; ch < 512; ch++) {
+        var address = universeId * 512 + ch;
+        var isOverridden = Object.prototype.hasOwnProperty.call(overridden, address);
+        rows.push(self._row(address, isOverridden ? overridden[address] : (values[ch] || 0), isOverridden));
+      }
       self._emit('channels', rows);
       return rows;
     });
   };
 
-  /** Release a manual override. This is NOT the same as setting the channel to 0. */
-  QLCPlusAPI.prototype.resetChannel = function (absoluteChannel) {
-    return this.send('io.simpleDesk.resetChannel', { address: absoluteChannel - 1 });
+  /**
+   * Follow one universe live: seeds it via getUniverseValues() and subscribes to its DMX output
+   * stream (the one subscribe-gated topic). Switching universes unsubscribes the previous one.
+   * Server-side subscriptions die with the socket, so call this again after every 'ready'.
+   */
+  QLCPlusAPI.prototype.watchUniverse = function (universeId) {
+    var previous = this._watchedUniverse;
+    this._watchedUniverse = universeId;
+    if (previous !== null && previous !== universeId && this.connected())
+      this.send('unsubscribe', { topics: ['io.dmx.universe.' + previous + '.changed'] });
+    this.send('subscribe', { topics: ['io.dmx.universe.' + universeId + '.changed'] });
+    return this.getUniverseValues(universeId);
   };
 
-  QLCPlusAPI.prototype.resetUniverse = function (universe) {
-    return this.send('io.simpleDesk.resetUniverse', { universeId: Math.max(1, universe || 1) - 1 });
-  };
-
-  /** No-ops kept only so callers written for the old poll-based protocol don't need to
-      change: io.simpleDesk.channelChanged is now pushed on every change, nothing to poll.
-      getChannelsValues() (called once up front) already seeds the initial state. */
-  QLCPlusAPI.prototype.startPolling = function (universe, address, count) {
-    this.getChannelsValues(universe, address, count);
+  QLCPlusAPI.prototype.unwatchUniverse = function () {
+    if (this._watchedUniverse !== null && this.connected())
+      this.send('unsubscribe', { topics: ['io.dmx.universe.' + this._watchedUniverse + '.changed'] });
+    this._watchedUniverse = null;
     return this;
   };
-  QLCPlusAPI.prototype.stopPolling = function () { this._lastDeskQuery = null; return this; };
+
+  /** Release a manual override. This is NOT the same as setting the channel to 0. */
+  QLCPlusAPI.prototype.resetChannel = function (address) {
+    return this.send('io.simpleDesk.resetChannel', { address: address });
+  };
+
+  QLCPlusAPI.prototype.resetUniverse = function (universeId) {
+    return this.send('io.simpleDesk.resetUniverse', { universeId: universeId });
+  };
 
   /* --- Functions -------------------------------------------------------- */
 
-  QLCPlusAPI.prototype.getFunctionsList = function () {
+  QLCPlusAPI.prototype.getFunctionsList = function (params) {
     var self = this;
-    return this.call('functions.list', {}).then(function (result) {
+    return this.call('functions.list', params || {}).then(function (result) {
       self._emit('getFunctionsList', result);
       return result;
     });
   };
-  QLCPlusAPI.prototype.startFunction = function (id) { return this.send('functions.start', { functionId: String(id) }); };
-  QLCPlusAPI.prototype.stopFunction = function (id) { return this.send('functions.stop', { functionId: String(id) }); };
+  QLCPlusAPI.prototype.startFunction = function (id) { return this.call('functions.start', { functionId: String(id) }); };
+  QLCPlusAPI.prototype.stopFunction = function (id) { return this.call('functions.stop', { functionId: String(id) }); };
 
-  /* --- Virtual Console ----------------------------------------------------
-     Structural only for now: this API has no live-interaction methods yet (no
-     vc.slider.setValue / vc.button.press equivalent — confirmed absent server-side).
-     Listing widgets works; pushing a value does not, so setWidget() is a documented
-     no-op until the server grows one. */
+  /* --- Virtual Console -------------------------------------------------- */
 
-  QLCPlusAPI.prototype.getWidgetsList = function () {
+  QLCPlusAPI.prototype.getWidgetsList = function (params) {
     var self = this;
-    return this.call('vc.widget.list', {}).then(function (result) {
+    return this.call('vc.widget.list', params || {}).then(function (result) {
       self._emit('getWidgetsList', result);
       return result;
     });
   };
-  QLCPlusAPI.prototype.setWidget = function () {
-    this._emit('alert', 'This server build has no live Virtual Console interaction API yet (structural vc.widget.* only) — the change was not sent.');
-    return this;
+  QLCPlusAPI.prototype.getPagesList = function () { return this.call('vc.page.list', {}); };
+  /** Live button press/release (spec vc.button.press). Rejects with NOT_FOUND on a server that
+      has not implemented it yet — see isUnsupported('vc.button.press'). */
+  QLCPlusAPI.prototype.pressButton = function (widgetId, pressed) {
+    return this.call('vc.button.press', { widgetId: String(widgetId), pressed: pressed !== false });
+  };
+  /** Live slider move (spec vc.slider.setValue), same caveat as pressButton(). */
+  QLCPlusAPI.prototype.setSliderValue = function (widgetId, value) {
+    return this.call('vc.slider.setValue', { widgetId: String(widgetId), value: Math.max(0, Math.min(255, Math.round(value))) });
   };
 
   /* --- Global ------------------------------------------------------------ */
@@ -296,14 +382,11 @@
     return this.send('io.grandMaster.setValue', { value: Math.max(0, Math.min(255, Math.round(value))) });
   };
   QLCPlusAPI.prototype.getGrandMaster = function () { return this.call('io.grandMaster.get', {}); };
-  QLCPlusAPI.prototype.setBlackout = function (on) { return this.send('io.blackout.set', { blackout: !!on }); };
+  QLCPlusAPI.prototype.setBlackout = function (on) { return this.call('io.blackout.set', { blackout: !!on }); };
   QLCPlusAPI.prototype.getBlackout = function () { return this.call('io.blackout.get', {}); };
 
-  /** Generic fallback for any method not yet covered by a domains/*.js wrapper: `qlc.api.foo.bar(params)`
-      === `qlc.call('foo.bar', params)`. Prefer the generated per-domain namespaces (qlc.core, qlc.io,
-      qlc.vc, qlc.fixtures, qlc.fixtureDefs, qlc.functions, qlc.functionsAdvanced, qlc.palette) when a
-      method is covered there — this exists so a brand-new spec method works immediately, with zero
-      client changes, before its domain wrapper (or the server method itself) exists yet. */
+  /** Generic fallback for any method not covered by a domains/*.js wrapper: `qlc.api.foo.bar(params)`
+      === `qlc.call('foo.bar', params)`. */
   Object.defineProperty(QLCPlusAPI.prototype, 'api', {
     configurable: true,
     get: function () {
@@ -321,15 +404,17 @@
     }
   });
 
-  /** Log every frame — the fastest way to learn what your build actually speaks. */
+  /** Log every frame — the fastest way to learn what your build actually speaks. Read-only. */
   QLCPlusAPI.prototype.probe = function () {
     this.on('message', function (f) { console.log('[qlc]', f); });
     this.getFunctionsList();
+    this.getPagesList();
     this.getWidgetsList();
-    this.getChannelsValues(1, 1, 16);
+    this.getUniverseValues(0);
     return this;
   };
 
+  QLCPlusAPI.DEFAULT_PORT = DEFAULT_PORT;
   root.QLCPlusAPI = QLCPlusAPI;
   if (typeof module !== 'undefined' && module.exports) module.exports = { QLCPlusAPI: QLCPlusAPI };
 })(typeof window !== 'undefined' ? window : this);
