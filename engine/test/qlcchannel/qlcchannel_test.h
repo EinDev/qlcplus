@@ -60,6 +60,7 @@ private slots:
     void loadPreset();
     void loadNoName();
     void loadUnknownTag();
+    void enumRegistrations();
 };
 
 #endif

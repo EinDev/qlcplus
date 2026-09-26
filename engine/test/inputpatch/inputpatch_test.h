@@ -36,6 +36,7 @@ private slots:
     void parameters();
     void uidAndReconnect();
     void profilePageControls();
+    void defaultArgOverloads();
 
 private:
     Doc* m_doc;

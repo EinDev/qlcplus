@@ -23,7 +23,9 @@
 #include "universe_test.h"
 
 #define protected public
+#define private public
 #include "universe.h"
+#undef private
 #undef protected
 
 #include "channelmodifier.h"
@@ -1512,6 +1514,81 @@ void Universe_Test::savePatches()
     QVERIFY(m_uni->setInputPatch(m_stub, QLCIOPlugin::invalidLine(), NULL) == true);
     QVERIFY(m_uni->setOutputPatch(NULL, 0, 0) == true);
     QVERIFY(m_uni->setFeedbackPatch(NULL, 0) == true);
+}
+
+void Universe_Test::nullFaderSkipped()
+{
+    m_uni->setChannelCapability(0, QLCChannel::Intensity);
+
+    QSharedPointer<GenericFader> fader = m_uni->requestFader();
+    FadeChannel fc;
+    fc.addChannel(0);
+    fc.setFlags(FadeChannel::HTP | FadeChannel::Intensity | FadeChannel::CanFade);
+    fc.setTarget(100);
+    fader->add(fc);
+
+    // a null entry in the fader list is skipped, the real fader still runs
+    m_uni->m_faders.prepend(QSharedPointer<GenericFader>());
+    QCOMPARE(m_uni->m_faders.size(), 2);
+    m_uni->processFaders(20);
+    QCOMPARE(m_uni->postGMValue(0), uchar(100));
+
+    m_uni->m_faders.removeAll(QSharedPointer<GenericFader>());
+    QCOMPARE(m_uni->m_faders.size(), 1);
+}
+
+void Universe_Test::savePatchXMLInvalid()
+{
+    QMap<QString, QVariant> params;
+
+    // no plugin, the "None" placeholder or no line: nothing is written
+    QBuffer buffer;
+    buffer.open(QIODevice::WriteOnly | QIODevice::Text);
+    QXmlStreamWriter xmlWriter(&buffer);
+    m_uni->savePatchXML(&xmlWriter, "Input", "", "1: Stub 1", "", 0, "", params);
+    m_uni->savePatchXML(&xmlWriter, "Input", KInputNone, "1: Stub 1", "", 0, "", params);
+    m_uni->savePatchXML(&xmlWriter, "Input", m_stub->name(), "1: Stub 1", "",
+                        QLCIOPlugin::invalidLine(), "", params);
+    xmlWriter.setDevice(NULL);
+    buffer.close();
+    QVERIFY(buffer.data().isEmpty());
+
+    // a valid patch with a profile name gets that attribute as well
+    QBuffer valid;
+    valid.open(QIODevice::WriteOnly | QIODevice::Text);
+    QXmlStreamWriter validWriter(&valid);
+    m_uni->savePatchXML(&validWriter, "Input", m_stub->name(), "1: Stub 1", "uid-1", 0,
+                        "Generic MIDI", params);
+    validWriter.setDevice(NULL);
+    valid.close();
+    QString xml = QString::fromUtf8(valid.data());
+    QVERIFY(xml.contains("<Input Plugin=\"I/O Plugin Stub\" Name=\"1: Stub 1\" UID=\"uid-1\" Line=\"0\" Profile=\"Generic MIDI\"/>"));
+}
+
+void Universe_Test::defaultArgOverloads()
+{
+    QSignalSpy spy(m_uni, SIGNAL(inputValueChanged(quint32,quint32,uchar,QString)));
+
+    // the moc-generated overloads for the defaulted key argument
+    m_uni->slotInputValueChanged(0, 5, 200);
+    QCOMPARE(spy.size(), 1);
+    QCOMPARE(spy.at(0).at(1).toUInt(), quint32(5));
+    QCOMPARE(spy.at(0).at(2).toUInt(), uint(200));
+    QVERIFY(spy.at(0).at(3).toString().isEmpty());
+
+    emit m_uni->inputValueChanged(0, 6, 100);
+    QCOMPARE(spy.size(), 2);
+    QCOMPARE(spy.at(1).at(1).toUInt(), quint32(6));
+}
+
+void Universe_Test::destroyWhileStarting()
+{
+    // deleting a universe whose thread has been started, whether or not it
+    // has entered its run loop yet, must stop that thread cleanly
+    Universe *uni = new Universe(1, m_gm, this);
+    QVERIFY(uni->isRunning() == false);
+    uni->start();
+    delete uni;
 }
 
 QTEST_APPLESS_MAIN(Universe_Test)

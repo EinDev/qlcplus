@@ -959,13 +959,26 @@ void MonitorProperties_Test::heapInstanceAndEnums()
     QCOMPARE(mp->gridUnits(), MonitorProperties::Feet);
     delete mp;
 
-    // the Q_ENUM registrations
-    QMetaEnum units = QMetaEnum::fromType<MonitorProperties::GridUnits>();
-    QCOMPARE(units.valueToKey(MonitorProperties::Feet), "Feet");
-    QMetaEnum pov = QMetaEnum::fromType<MonitorProperties::PointOfView>();
-    QCOMPARE(pov.valueToKey(MonitorProperties::TopView), "TopView");
-    QMetaEnum flags = QMetaEnum::fromType<MonitorProperties::ItemFlags>();
-    QCOMPARE(flags.valueToKey(MonitorProperties::HasDmxRotationFlag), "HasDmxRotationFlag");
+    // The Q_ENUM registrations. Their constexpr helpers get folded away when
+    // called with a constant (as QMetaEnum::fromType() does), so hand them a
+    // value the compiler can't see through to make the generated code run.
+    volatile int raw = int(MonitorProperties::Feet);
+    MonitorProperties::GridUnits units = MonitorProperties::GridUnits(raw);
+    QVERIFY(qt_getEnumMetaObject(units) == &MonitorProperties::staticMetaObject);
+    QCOMPARE(QString(qt_getEnumName(units)), QString("GridUnits"));
+    QCOMPARE(QString(QMetaEnum::fromType<MonitorProperties::GridUnits>().valueToKey(units)), QString("Feet"));
+
+    raw = int(MonitorProperties::TopView);
+    MonitorProperties::PointOfView pov = MonitorProperties::PointOfView(raw);
+    QVERIFY(qt_getEnumMetaObject(pov) == &MonitorProperties::staticMetaObject);
+    QCOMPARE(QString(qt_getEnumName(pov)), QString("PointOfView"));
+    QCOMPARE(QString(QMetaEnum::fromType<MonitorProperties::PointOfView>().valueToKey(pov)), QString("TopView"));
+
+    raw = int(MonitorProperties::HasDmxRotationFlag);
+    MonitorProperties::ItemFlags flag = MonitorProperties::ItemFlags(raw);
+    QVERIFY(qt_getEnumMetaObject(flag) == &MonitorProperties::staticMetaObject);
+    QCOMPARE(QString(qt_getEnumName(flag)), QString("ItemFlags"));
+    QCOMPARE(QString(QMetaEnum::fromType<MonitorProperties::ItemFlags>().valueToKey(flag)), QString("HasDmxRotationFlag"));
 }
 
 // QTEST_GUILESS_MAIN: saving generic items resolves the system meshes folder

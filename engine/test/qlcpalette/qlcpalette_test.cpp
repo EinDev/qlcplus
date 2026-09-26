@@ -1849,6 +1849,25 @@ void QLCPalette_Test::saveNoValue()
     QVERIFY(buffer.data().isEmpty());
 }
 
+/** Call the Q_ENUM helpers with a value the compiler can't fold: with a
+    constant argument (as QMetaEnum::fromType() passes) the constexpr helpers
+    are evaluated at compile time and the generated code never runs. */
+template <typename Enum>
+static void checkEnumHelpers(int value, const char *name)
+{
+    volatile int raw = value;
+    Enum e = Enum(raw);
+    QVERIFY(qt_getEnumMetaObject(e) == &QLCPalette::staticMetaObject);
+    QCOMPARE(QString(qt_getEnumName(e)), QString(name));
+}
+
+void QLCPalette_Test::enumRegistrations()
+{
+    checkEnumHelpers<QLCPalette::PaletteType>(QLCPalette::Gobo, "PaletteType");
+    checkEnumHelpers<QLCPalette::FanningType>(QLCPalette::Sine, "FanningType");
+    checkEnumHelpers<QLCPalette::FanningLayout>(QLCPalette::ZCentered, "FanningLayout");
+}
+
 /* QTEST_GUILESS_MAIN: the fixture based cases build a Doc with fixtures and
    monitor properties, whose helpers rely on QCoreApplication::applicationDirPath(). */
 QTEST_GUILESS_MAIN(QLCPalette_Test)

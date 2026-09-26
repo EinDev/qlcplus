@@ -48,6 +48,11 @@ public:
     /** @reimp */
     int capabilities() const override;
 
+    /** Extra QLCIOPlugin::Capability flags OR'ed into capabilities(): a test
+        hook so a suite can make the stub advertise e.g. Beats for the
+        duration of one test. Always 0 unless a test sets it. */
+    int m_extraCapabilities = 0;
+
     /** @reimp */
     QString pluginInfo() const override;
 
@@ -94,9 +99,10 @@ public:
     QString inputInfo(quint32 input) override;
 
     /** Tell the plugin to emit valueChanged signal */
-    void emitValueChanged(quint32 universe, quint32 input, quint32 channel, uchar value)
+    void emitValueChanged(quint32 universe, quint32 input, quint32 channel, uchar value,
+                          const QString &key = QString())
     {
-        emit valueChanged(universe, input, channel, value);
+        emit valueChanged(universe, input, channel, value, key);
     }
 
 public:

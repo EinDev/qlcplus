@@ -66,6 +66,10 @@ private slots:
     void defaults();
     void loadSaveXML();
     void loadXMLWebOnlyAndUnknownTags();
+    void inputPatchBeatsPlugin();
+    void inputPatchUnknownPlugin();
+    void beatGeneratorAudio();
+    void defaultArgOverload();
 
 private:
     Doc* m_doc;
