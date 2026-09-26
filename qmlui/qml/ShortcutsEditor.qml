@@ -288,6 +288,39 @@ Rectangle
                 label: qsTr("Keyboard Shortcuts")
             }
 
+            // Master switch for the learning aids (key-cast toast + click
+            // hints, see MainView.qml's FeedbackToast). Tooltip "(Ctrl+X)"
+            // suffixes stay on regardless.
+            CustomCheckBox
+            {
+                id: hintsCheckBox
+                implicitHeight: UISettings.iconSizeMedium
+                implicitWidth: implicitHeight
+                checked: shortcutManager.hintsEnabled
+                tooltip: qsTr("Briefly show the shortcut that just fired, and hint at the shortcut when a button that has one is clicked")
+                onClicked: shortcutManager.hintsEnabled = checked
+            }
+
+            RobotoText
+            {
+                height: UISettings.iconSizeDefault
+                fontSize: UISettings.textSizeDefault
+                label: qsTr("Show shortcut hints")
+                rightMargin: UISettings.textSizeDefault
+
+                // clicking the label flips the box too; toggle() doesn't emit
+                // clicked(), so push the new value through explicitly
+                MouseArea
+                {
+                    anchors.fill: parent
+                    onClicked:
+                    {
+                        hintsCheckBox.toggle()
+                        shortcutManager.hintsEnabled = hintsCheckBox.checked
+                    }
+                }
+            }
+
             GenericButton
             {
                 height: UISettings.iconSizeDefault

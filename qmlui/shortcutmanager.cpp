@@ -20,6 +20,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QKeyEvent>
+#include <QSettings>
 #include <QFile>
 #include <QDir>
 #include <QUrl>
@@ -31,6 +32,9 @@
 #include "qlcfile.h"
 
 #define SHORTCUTS_FILE "qlcplusShortcuts.json"
+
+/** Same "group/key" QSettings naming as App's "workspace/..." keys */
+#define SETTINGS_SHORTCUT_HINTS QStringLiteral("shortcuts/showhints")
 
 namespace {
 
@@ -47,9 +51,13 @@ QString localFilePath(const QString &path)
 
 } // namespace
 
-ShortcutManager::ShortcutManager(QObject *parent)
+ShortcutManager::ShortcutManager(QObject *parent, const QString &overridesFilePath)
     : QObject(parent)
+    , m_overridesFilePath(overridesFilePath)
 {
+    QSettings settings;
+    m_hintsEnabled = settings.value(SETTINGS_SHORTCUT_HINTS, true).toBool();
+
     loadOverrides();
 }
 
@@ -260,6 +268,54 @@ void ShortcutManager::setCapturing(bool capturing)
     emit capturingChanged();
 }
 
+bool ShortcutManager::hintsEnabled() const
+{
+    return m_hintsEnabled;
+}
+
+void ShortcutManager::setHintsEnabled(bool enabled)
+{
+    if (m_hintsEnabled == enabled)
+        return;
+
+    m_hintsEnabled = enabled;
+
+    QSettings settings;
+    settings.setValue(SETTINGS_SHORTCUT_HINTS, enabled);
+
+    emit hintsEnabledChanged();
+}
+
+QString ShortcutManager::sequenceTextForAction(const QString &id) const
+{
+    const ShortcutAction *action = findAction(id);
+    if (action == nullptr)
+        return QString();
+
+    return action->sequence.toString(QKeySequence::NativeText);
+}
+
+QString ShortcutManager::descriptionForAction(const QString &id) const
+{
+    const ShortcutAction *action = findAction(id);
+    if (action == nullptr)
+        return QString();
+
+    return action->description;
+}
+
+void ShortcutManager::notifyButtonClicked(const QString &id)
+{
+    if (m_hintsEnabled == false)
+        return;
+
+    const ShortcutAction *action = findAction(id);
+    if (action == nullptr || action->sequence.isEmpty())
+        return;
+
+    emit clickHintRequested(action->id, action->sequence.toString(QKeySequence::NativeText), action->description);
+}
+
 bool ShortcutManager::handleKeyEvent(QKeyEvent *event)
 {
     if (m_capturing)
@@ -282,6 +338,7 @@ bool ShortcutManager::handleKeyEvent(QKeyEvent *event)
             continue;
 
         emit actionTriggered(action.id);
+        emit shortcutFired(action.id, action.sequence.toString(QKeySequence::NativeText), action.description);
         if (action.callback)
             action.callback();
 
@@ -325,8 +382,22 @@ bool ShortcutManager::scopeMatchesCurrentContext(ShortcutScope scope) const
 
 QString ShortcutManager::userConfFilepath() const
 {
+    if (m_overridesFilePath.isEmpty() == false)
+        return m_overridesFilePath;
+
     QDir userConfDir = QLCFile::userDirectory(QString(USERQLCPLUSDIR), QString(USERQLCPLUSDIR), QStringList());
     return userConfDir.absolutePath() + QDir::separator() + SHORTCUTS_FILE;
+}
+
+const ShortcutManager::ShortcutAction *ShortcutManager::findAction(const QString &id) const
+{
+    for (const ShortcutAction &action : std::as_const(m_actions))
+    {
+        if (action.id == id)
+            return &action;
+    }
+
+    return nullptr;
 }
 
 void ShortcutManager::persistOverrides() const

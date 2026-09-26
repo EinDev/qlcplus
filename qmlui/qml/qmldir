@@ -22,6 +22,7 @@ DMXPercentageButton 0.1 DMXPercentageButton.qml
 ExternalControls.qml 0.1 ExternalControls.qml
 ExternalControlDelegate.qml 0.1 ExternalControlDelegate.qml
 FixtureConsole 0.1 FixtureConsole.qml
+FeedbackToast 0.1 FeedbackToast.qml
 FixtureDelegate 0.1 FixtureDelegate.qml
 FunctionDelegate 0.1 FunctionDelegate.qml
 GenericButton 0.1 GenericButton.qml

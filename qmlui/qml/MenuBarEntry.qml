@@ -48,7 +48,58 @@ Button
     property Gradient pressedGradient: defPressedGradient
     property color checkedColor: UISettings.toolbarSelectionMain
 
+    /** Optional id of the ShortcutManager action this entry is the exact
+     *  mouse equivalent of (eg. the main tabs' context.switch* actions).
+     *  When set, hovering shows a "Entry text (Ctrl+X)" tooltip that follows
+     *  remaps, and a mouse click shows a hint pointing at the shortcut.
+     *  MenuBarEntry has no tooltip otherwise - see IconButton.qml for the
+     *  same mechanism on icon buttons */
+    property string shortcutActionId: ""
+    property string shortcutSequence: ""
+
     signal rightClicked
+
+    function refreshShortcutSequence()
+    {
+        shortcutSequence = shortcutActionId === "" ? "" : shortcutManager.sequenceTextForAction(shortcutActionId)
+    }
+
+    function notifyShortcutClick()
+    {
+        if (shortcutActionId !== "")
+            shortcutManager.notifyButtonClicked(shortcutActionId)
+    }
+
+    onShortcutActionIdChanged: refreshShortcutSequence()
+    onClicked: notifyShortcutClick()
+
+    Connections
+    {
+        target: control.shortcutActionId === "" ? null : shortcutManager
+        function onActionsChanged() { control.refreshShortcutSequence() }
+    }
+
+    // Only shown for entries bound to a shortcut - same look as IconButton's
+    ToolTip
+    {
+        visible: control.shortcutSequence !== "" && control.hovered
+        text: control.entryText + " (" + control.shortcutSequence + ")"
+        delay: 1000
+        timeout: 5000
+        background:
+            Rectangle
+            {
+                color: UISettings.bgMedium
+                border.width: 1
+                border.color: UISettings.bgLight
+            }
+        contentItem:
+            Text
+            {
+                text: control.entryText + " (" + control.shortcutSequence + ")"
+                color: "white"
+            }
+    }
 
     Gradient
     {

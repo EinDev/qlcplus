@@ -110,6 +110,7 @@ SidePanel
                 checkable: true
                 checked: ioManager.blackout
                 tooltip: qsTr("Enable/Disable blackout on all the output patches")
+                shortcutActionId: "io.blackoutToggle"
                 onToggled: ioManager.blackout = checked
             }
 
