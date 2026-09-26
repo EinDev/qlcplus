@@ -243,7 +243,7 @@ function InputOutput() {
               <img src={D.icon('uniview')} alt="" style={{ width: 22, height: 22, flex: 'none' }} />
               <CustomTextInput text={u.name} width="100%" height={24} allowDoubleClick align="center" data-role="universe-name"
                 title={updateOff ? 'Rename — not available: this server has no io.universe.update yet' : 'Double-click or F2 to rename'}
-                onTextConfirmed={t => { if (!updateOff) rename(u, t); }} onClick={() => setSel(u.id)} />
+                onTextConfirmed={t => rename(u, t)} onClick={() => setSel(u.id)} />
               <IconButton faSource="fa_trash_can" faColor="var(--bg-strong)" size={22} disabled={!canDelete(u)} tooltip={deleteTooltip(u)} data-role="delete-universe"
                 onClick={(e) => { e.stopPropagation(); setDelOpen(u); }} />
             </div>
