@@ -425,6 +425,14 @@ void ApiFunctionsDomain_Test::createAudioWithSourceImportsIntoStore()
     QCOMPARE(audio->name(), QString("Intro song"));
     QVERIFY(QFile::exists(wav));
 
+    // Creating the Audio also kicked off its offline BPM analysis; when that
+    // finishes (quickly, for a file that isn't audio at all) the function
+    // emits changed() and the Doc revision goes up. Let it settle before the
+    // next revision-checked call, or baseRevision below is stale by the time
+    // the server handles it - which is exactly what happened whenever the
+    // decoder libraries were already warm from an earlier test binary.
+    QTRY_VERIFY_WITH_TIMEOUT(audio->bpmAnalysisState() != Audio::Analyzing, 10000);
+
     // without a name the file name is used, like the editors do
     QJsonObject extra2;
     extra2.insert(QStringLiteral("source"), wav);
