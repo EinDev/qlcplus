@@ -708,7 +708,15 @@ void ApiIoDomain::registerMethods()
             return;
         }
 
+        // Input profile, three cases (matching the web UI's expectations of
+        // QML's setInputProfile(): a line change re-sends the current
+        // profile, an explicit "" clears it): key absent -> keep whatever
+        // profile the current input patch has; "" -> none; name -> must exist.
+        bool hasProfile = params.contains(QStringLiteral("profile")) || params.contains(QStringLiteral("profileName"));
         QString profileName = stringParam(params, "profile", "profileName");
+        if (direction == PatchInput && hasProfile == false &&
+            universe->inputPatch() != nullptr && universe->inputPatch()->profile() != nullptr)
+            profileName = universe->inputPatch()->profileName();
         if (direction == PatchInput && profileName.isEmpty() == false &&
             doc->inputOutputMap()->profile(profileName) == nullptr)
         {
