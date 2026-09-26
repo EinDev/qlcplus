@@ -489,8 +489,11 @@ void Video_Test::runningState()
     QSignalSpy seekSpy(&v, SIGNAL(requestSeek(qint64)));
     QSignalSpy pauseSpy(&v, SIGNAL(requestPause(bool)));
 
-    // not running: stop/seek/pause requests are ignored
+    // not running: stop/seek/pause requests are ignored (a Function starts
+    // out in the stopped state, so clear it to see that stopFromUI() did
+    // not request a stop)
     QVERIFY(v.isRunning() == false);
+    v.m_stop = false;
     v.stopFromUI();
     QVERIFY(v.stopped() == false);
     v.seekTo(500);
