@@ -42,6 +42,14 @@ private slots:
     void loadNoProfile();
     void loader();
     void save();
+    void types();
+    void channelExtraParams();
+    void colorAndMidiChannelTables();
+    void copyAndAssignTables();
+    void saveLoadTables();
+    void loaderInvalid();
+    void loadTablesXMLErrors();
+    void saveUnwritable();
 };
 
 #endif

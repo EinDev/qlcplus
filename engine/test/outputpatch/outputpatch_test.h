@@ -35,6 +35,7 @@ private slots:
     void defaults();
     void patch();
     void dump();
+    void uidPausedAndParameters();
 
 private:
     Doc* m_doc;

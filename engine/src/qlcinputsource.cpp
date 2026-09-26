@@ -55,6 +55,7 @@ QLCInputSource::QLCInputSource(quint32 universe, quint32 channel, QThread *paren
     : QThread(parent)
     , m_universe(universe)
     , m_channel(channel)
+    , m_id(invalidID)
     , m_workingMode(Absolute)
     , m_sensitivity(20)
     , m_emitExtraPressRelease(false)

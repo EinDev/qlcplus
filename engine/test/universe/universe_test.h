@@ -24,6 +24,7 @@
 
 class GrandMaster;
 class Universe;
+class IOPluginStub;
 
 class Universe_Test final : public QObject
 {
@@ -61,10 +62,26 @@ private slots:
     void zeroIntensityChannelsEfficiency();
     void zeroIntensityChannelsEfficiency2();
 
+    void nameAndMisc();
+    void channelCapabilityEdges();
+    void writeMultipleAndBlended();
+    void channelModifiers();
+    void lastWrites();
+    void passthrough();
+    void faders();
+    void processFaders();
+    void processFadersFadeOut();
+    void thread();
+    void inputPatch();
+    void outputPatches();
+    void feedbackPatch();
+    void savePatches();
+
 private:
 
     GrandMaster *m_gm;
     Universe *m_uni;
+    IOPluginStub *m_stub;
 };
 
 #endif
