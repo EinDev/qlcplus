@@ -10,7 +10,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        task: [build-v5]
+        # coverage-v5: same sources and tests as build-v5, but compiled with
+        # -Dcoverage=ON (gcov instrumentation, Debug) and finished with a gcovr
+        # report instead of the install/AppImage steps. Local equivalent on
+        # Windows: dev-test-coverage.ps1.
+        task: [build-v5, coverage-v5]
     env:
       CI_REPO_SLUG: ${{ github.repository }}
       CI_BRANCH: ${{ github.head_ref }}
@@ -112,8 +116,16 @@ jobs:
           whoami
 
       - name: Configure for v5 build
+        if: ${{ matrix.task == 'build-v5' }}
         run: |
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$QTDIR/lib/cmake/" -Dqmlui=ON -Dappimage=ON -DINSTALL_ROOT=${INSTALL_ROOT} -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+      - name: Configure for v5 coverage build
+        if: ${{ matrix.task == 'coverage-v5' }}
+        run: |
+          # Debug (-O0) so no line is optimised away; no ccache, it can't cache
+          # -fprofile-arcs objects anyway. coverage.cmake adds the gcov flags.
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH="$QTDIR/lib/cmake/" -Dqmlui=ON -Dcoverage=ON
 
       - name: Build
         run: |
@@ -121,9 +133,47 @@ jobs:
           cmake --build build --parallel `nproc`
 
       - name: Test
+        # For the coverage task a failing suite must not hide the report; the
+        # build-v5 task still fails the workflow on the same failure.
+        continue-on-error: ${{ matrix.task == 'coverage-v5' }}
         run: cmake --build build --target check
 
+      - name: Coverage report (gcovr)
+        if: ${{ matrix.task == 'coverage-v5' }}
+        run: |
+          pip install gcovr
+          mkdir -p coverage/html
+          COMMON=(--root . --exclude '.*_test\.cpp$' --exclude '.*/test/.*' --exclude '.*_autogen/.*' --exclude '.*/build/.*' --exclude-throw-branches --exclude-unreachable-branches)
+          # One tracefile over everything; reports and per-area summaries are derived from it
+          gcovr "${COMMON[@]}" --object-directory build --filter 'engine/src/' --filter 'controlapi/src/' --filter 'qmlui/' --json coverage/coverage.json
+          gcovr "${COMMON[@]}" --add-tracefile coverage/coverage.json --html-details coverage/html/index.html --cobertura coverage/coverage.xml --cobertura-pretty
+          {
+            echo "## Unit test coverage"
+            echo
+            echo "| Area | Files | Lines | Functions | Branches |"
+            echo "|---|---|---|---|---|"
+            for area in "engine:engine/src/" "controlapi:controlapi/src/" "qmlui:qmlui/" "TOTAL:"; do
+              name=${area%%:*}; filter=${area#*:}
+              f=(); if [ -n "$filter" ]; then f=(--filter "$filter"); fi
+              gcovr "${COMMON[@]}" --add-tracefile coverage/coverage.json "${f[@]}" --json-summary coverage/summary-$name.json > /dev/null
+              python3 -c "import json,sys; n=sys.argv[1]; s=json.load(open(sys.argv[2])); print(f\"| {n} | {len(s['files'])} | {s['line_percent']:.1f}% ({s['line_covered']}/{s['line_total']}) | {s['function_percent']:.1f}% ({s['function_covered']}/{s['function_total']}) | {s['branch_percent']:.1f}% ({s['branch_covered']}/{s['branch_total']}) |\")" "$name" coverage/summary-$name.json
+            done
+            echo
+            echo "Full HTML report: the coverage-v5-report artifact of this run."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Store coverage report
+        if: ${{ matrix.task == 'coverage-v5' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-v5-report
+          path: |
+            coverage/html
+            coverage/coverage.xml
+            coverage/summary-*.json
+
       - name: Install
+        if: ${{ matrix.task != 'coverage-v5' }}
         run: |
           cmake --build build --target install
           cp -v resources/icons/svg/qlcplus.svg ${INSTALL_ROOT}
@@ -131,11 +181,13 @@ jobs:
           cp -v $QTDIR/translations/qtbase_* ${INSTALL_ROOT}/share/qlcplus/translations5/
 
       - name: Set APPVERSION
+        if: ${{ matrix.task != 'coverage-v5' }}
         run: |
           APPVERSION=$(awk -F\" '/^#define APPVERSION/ {gsub(/ /,"-",$2); print $2}' engine/src/qlcconfig.h)
           echo "APPVERSION=$APPVERSION" >> $GITHUB_ENV
 
       - name: Adapt qlcplus for AppImage
+        if: ${{ matrix.task != 'coverage-v5' }}
         run: |
           chrpath -r "../lib" ${INSTALL_ROOT}/usr/bin/qlcplus5
           sed -i -e 's/Exec=qlcplus --open %f/Exec=qlcplus5/g' ${INSTALL_ROOT}/qlcplus.desktop
@@ -149,11 +201,13 @@ jobs:
           path: ${{ env.INSTALL_ROOT }}
 
       - name: Strip Binaries
+        if: ${{ matrix.task != 'coverage-v5' }}
         run: |
           strip -v ${INSTALL_ROOT}/usr/bin/qlcplus5
           find ${INSTALL_ROOT}/usr/lib/ -name 'libqlcplus*.so*' -exec strip -v {} \;
 
       - name: Delete unused files for AppImage
+        if: ${{ matrix.task != 'coverage-v5' }}
         run: |
           find ${INSTALL_ROOT}/usr/bin/ -name plugins.qmltypes -type f -delete
           find ${INSTALL_ROOT}/usr/bin -name *.qmlc -type f -delete
@@ -163,6 +217,7 @@ jobs:
           rm -rf ${INSTALL_ROOT}/usr/bin/QtQuick/Controls.2/Imagine QtQuick/Controls.2/Scene2D
 
       - name: Build AppImage
+        if: ${{ matrix.task != 'coverage-v5' }}
         run: |
           wget -c https://github.com/AppImage/AppImageKit/releases/download/continuous/AppRun-x86_64 -O ${INSTALL_ROOT}/AppRun
           chmod a+x ${INSTALL_ROOT}/AppRun
@@ -172,10 +227,12 @@ jobs:
           mv -v Q_Light_Controller_Plus_-_QLC+-x86_64.AppImage qlcplus-${{env.TASK}}-${{env.APPVERSION}}-${{env.BUILD_DATE}}-${{env.GIT_REV}}.AppImage
 
       - name: Test Load AppImage
+        if: ${{ matrix.task != 'coverage-v5' }}
         run: |
           ./qlcplus-${{env.TASK}}-${{env.APPVERSION}}-${{env.BUILD_DATE}}-${{env.GIT_REV}}.AppImage --platform offscreen --version
 
       - name: Store AppImage artifacts
+        if: ${{ matrix.task != 'coverage-v5' }}
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.task }}-AppImage
