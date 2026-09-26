@@ -31,7 +31,10 @@
 #include "doc.h"
 
 /* The test image is 4x3 with a distinct, opaque color per pixel, except for
- * the bottom-right one which is fully transparent. */
+ * the bottom-right one which is fully transparent.
+ *
+ * QTEST_MAIN (a QGuiApplication) is required: the animated source goes
+ * through QMovie::currentImage(), which is backed by a QPixmap. */
 #define IMG_W 4
 #define IMG_H 3
 
@@ -620,4 +623,4 @@ void RGBImage_Test::loadXMLMalformed()
     }
 }
 
-QTEST_GUILESS_MAIN(RGBImage_Test)
+QTEST_MAIN(RGBImage_Test)

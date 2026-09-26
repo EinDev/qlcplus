@@ -837,11 +837,13 @@ void RGBScript_Test::evaluateMissingSetColors()
     QVERIFY(s.m_rgbMap.isUndefined() == false);
     QVERIFY(s.m_rgbMapSetColors.isCallable() == false);
     s.rgbMapSetColors(QVector<uint>() << 1 << 2);
+    QCOMPARE(s.name(), QString("CoverageTest")); // flushes the queued call
 
     // A fresh script that claims apiVersion 3 without a parsed rgbMap()
     RGBScript fresh(m_doc);
     fresh.m_apiVersion = 3;
     fresh.rgbMapSetColors(QVector<uint>() << 1 << 2);
+    QCOMPARE(fresh.name(), QString()); // flushes the queued call
     QVERIFY(fresh.m_rgbMap.isUndefined());
 }
 
@@ -894,6 +896,15 @@ void RGBScript_Test::assignmentAndEquality()
     QCOMPARE(f.fileName(), a.fileName());
     QCOMPARE(f.property("mode"), QString("B"));
     QVERIFY(f == a);
+
+    // And so does clone()
+    RGBAlgorithm *clone = a.clone();
+    QVERIFY(clone != NULL);
+    QCOMPARE(clone->type(), RGBAlgorithm::Script);
+    QCOMPARE(clone->name(), QString("CoverageTest"));
+    QCOMPARE(static_cast<RGBScript*>(clone)->property("mode"), QString("B"));
+    QVERIFY(*static_cast<RGBScript*>(clone) == a);
+    delete clone;
 }
 
 void RGBScript_Test::runtimeErrors()
