@@ -526,10 +526,10 @@ void EFXFixture_Test::setPoint8bit()
     QCOMPARE(fader->channels().count(), 2);
     universe->processFaders(MasterTimer::tick());
 
-    QCOMPARE((int)universe->preGMValues()[m_fixture8bitAddress + 0], 5);
-    QCOMPARE((int)universe->preGMValues()[m_fixture8bitAddress + 1], 1);
-    QCOMPARE((int)universe->preGMValues()[m_fixture8bitAddress + 2], 0); /* No LSB channels */
-    QCOMPARE((int)universe->preGMValues()[m_fixture8bitAddress + 3], 0); /* No LSB channels */
+    QCOMPARE((int)(uchar)universe->preGMValues()[m_fixture8bitAddress + 0], 5);
+    QCOMPARE((int)(uchar)universe->preGMValues()[m_fixture8bitAddress + 1], 1);
+    QCOMPARE((int)(uchar)universe->preGMValues()[m_fixture8bitAddress + 2], 0); /* No LSB channels */
+    QCOMPARE((int)(uchar)universe->preGMValues()[m_fixture8bitAddress + 3], 0); /* No LSB channels */
 }
 
 void EFXFixture_Test::setPoint16bit()
@@ -546,10 +546,10 @@ void EFXFixture_Test::setPoint16bit()
     ef.setPointPanTilt(ua, fader, 5.4, 1.5); // PMSB: 5, PLSB: 0.4, TMSB: 1 (102), TLSB: 0.5(127)
     QCOMPARE(fader->channels().count(), 4);
     universe->processFaders(MasterTimer::tick());
-    QCOMPARE((int)universe->preGMValues()[m_fixture16bitAddress + 0], 5);
-    QCOMPARE((int)universe->preGMValues()[m_fixture16bitAddress + 1], 1);
-    QCOMPARE((int)universe->preGMValues()[m_fixture16bitAddress + 2], 102); /* 255 * 0.4 */
-    QCOMPARE((int)universe->preGMValues()[m_fixture16bitAddress + 3], 127); /* 255 * 0.5 */
+    QCOMPARE((int)(uchar)universe->preGMValues()[m_fixture16bitAddress + 0], 5);
+    QCOMPARE((int)(uchar)universe->preGMValues()[m_fixture16bitAddress + 1], 1);
+    QCOMPARE((int)(uchar)universe->preGMValues()[m_fixture16bitAddress + 2], 102); /* 255 * 0.4 */
+    QCOMPARE((int)(uchar)universe->preGMValues()[m_fixture16bitAddress + 3], 127); /* 255 * 0.5 */
 }
 
 void EFXFixture_Test::setPointPanOnly()
@@ -566,10 +566,10 @@ void EFXFixture_Test::setPointPanOnly()
     ef.setPointPanTilt(ua, fader, 5.4, 1.5); // PMSB: 5, PLSB: 0.4, TMSB: 1 (102), TLSB: 0.5(127)
     QCOMPARE(fader->channels().count(), 1);
     universe->processFaders(MasterTimer::tick());
-    QCOMPARE((int)universe->preGMValues()[m_fixturePanOnlyAddress + 0], 5); /* Pan */
-    QCOMPARE((int)universe->preGMValues()[m_fixturePanOnlyAddress + 1], 0);
-    QCOMPARE((int)universe->preGMValues()[m_fixturePanOnlyAddress + 2], 0);
-    QCOMPARE((int)universe->preGMValues()[m_fixturePanOnlyAddress + 3], 0);
+    QCOMPARE((int)(uchar)universe->preGMValues()[m_fixturePanOnlyAddress + 0], 5); /* Pan */
+    QCOMPARE((int)(uchar)universe->preGMValues()[m_fixturePanOnlyAddress + 1], 0);
+    QCOMPARE((int)(uchar)universe->preGMValues()[m_fixturePanOnlyAddress + 2], 0);
+    QCOMPARE((int)(uchar)universe->preGMValues()[m_fixturePanOnlyAddress + 3], 0);
 }
 
 void EFXFixture_Test::setPointLedBar()
@@ -587,10 +587,10 @@ void EFXFixture_Test::setPointLedBar()
     QCOMPARE(fader->channels().count(), 1);
     universe->processFaders(MasterTimer::tick());
 
-    QCOMPARE((int)universe->preGMValues()[m_fixtureLedBarAddress + 0], 1); /* Tilt */
-    QCOMPARE((int)universe->preGMValues()[m_fixtureLedBarAddress + 1], 0);
-    QCOMPARE((int)universe->preGMValues()[m_fixtureLedBarAddress + 2], 0);
-    QCOMPARE((int)universe->preGMValues()[m_fixtureLedBarAddress + 3], 0);
+    QCOMPARE((int)(uchar)universe->preGMValues()[m_fixtureLedBarAddress + 0], 1); /* Tilt */
+    QCOMPARE((int)(uchar)universe->preGMValues()[m_fixtureLedBarAddress + 1], 0);
+    QCOMPARE((int)(uchar)universe->preGMValues()[m_fixtureLedBarAddress + 2], 0);
+    QCOMPARE((int)(uchar)universe->preGMValues()[m_fixtureLedBarAddress + 3], 0);
 }
 
 
@@ -962,18 +962,18 @@ void EFXFixture_Test::setPoint16bitSecondary()
     ef.setPointPanTilt(ua, fader, 5.4, 1.5); // PMSB: 5, PLSB: 0.4, TMSB: 1 (102), TLSB: 0.5(127)
     QCOMPARE(fader->channelsCount(), 2); // 2 x 16bit channels
     universe->processFaders(MasterTimer::tick());
-    QCOMPARE((int)universe->preGMValues()[100], 5);
-    QCOMPARE((int)universe->preGMValues()[101], 102);
-    QCOMPARE((int)universe->preGMValues()[102], 1);
-    QCOMPARE((int)universe->preGMValues()[103], 127);
+    QCOMPARE((int)(uchar)universe->preGMValues()[100], 5);
+    QCOMPARE((int)(uchar)universe->preGMValues()[101], 102);
+    QCOMPARE((int)(uchar)universe->preGMValues()[102], 1);
+    QCOMPARE((int)(uchar)universe->preGMValues()[103], 127);
 
     // Outbound (negative) values are clamped to zero
     ef.setPointPanTilt(ua, fader, -3.0, -1.0);
     universe->processFaders(MasterTimer::tick());
-    QCOMPARE((int)universe->preGMValues()[100], 0);
-    QCOMPARE((int)universe->preGMValues()[101], 0);
-    QCOMPARE((int)universe->preGMValues()[102], 0);
-    QCOMPARE((int)universe->preGMValues()[103], 0);
+    QCOMPARE((int)(uchar)universe->preGMValues()[100], 0);
+    QCOMPARE((int)(uchar)universe->preGMValues()[101], 0);
+    QCOMPARE((int)(uchar)universe->preGMValues()[102], 0);
+    QCOMPARE((int)(uchar)universe->preGMValues()[103], 0);
 
     // Relative EFX: the fader channels get the Relative flag
     e.setIsRelative(true);
@@ -1000,10 +1000,10 @@ void EFXFixture_Test::setPointNonContiguousLsb()
     ef.setPointPanTilt(ua, fader, 5.4, 1.5);
     QCOMPARE(fader->channelsCount(), 4);
     universe->processFaders(MasterTimer::tick());
-    QCOMPARE((int)universe->preGMValues()[100], 5);
-    QCOMPARE((int)universe->preGMValues()[101], 1);
-    QCOMPARE((int)universe->preGMValues()[102], 102);
-    QCOMPARE((int)universe->preGMValues()[103], 127);
+    QCOMPARE((int)(uchar)universe->preGMValues()[100], 5);
+    QCOMPARE((int)(uchar)universe->preGMValues()[101], 1);
+    QCOMPARE((int)(uchar)universe->preGMValues()[102], 102);
+    QCOMPARE((int)(uchar)universe->preGMValues()[103], 127);
 }
 
 void EFXFixture_Test::setPointDimmer()
@@ -1033,8 +1033,8 @@ void EFXFixture_Test::setPointDimmer()
         ef.setPointDimmer(ua, fader, 100.5);
         QCOMPARE(fader->channelsCount(), 1);
         universe->processFaders(MasterTimer::tick());
-        QCOMPARE((int)universe->preGMValues()[200], 100);
-        QCOMPARE((int)universe->preGMValues()[201], 127);
+        QCOMPARE((int)(uchar)universe->preGMValues()[200], 100);
+        QCOMPARE((int)(uchar)universe->preGMValues()[201], 127);
         universe->dismissFader(fader);
     }
 
@@ -1048,7 +1048,7 @@ void EFXFixture_Test::setPointDimmer()
         ef.setPointDimmer(ua, fader, 42.9);
         QCOMPARE(fader->channelsCount(), 1);
         universe->processFaders(MasterTimer::tick());
-        QCOMPARE((int)universe->preGMValues()[200], 42);
+        QCOMPARE((int)(uchar)universe->preGMValues()[200], 42);
         universe->dismissFader(fader);
     }
 
@@ -1064,7 +1064,7 @@ void EFXFixture_Test::setPointDimmer()
         ef.setPointDimmer(ua, fader, 77.0);
         QCOMPARE(fader->channelsCount(), 1);
         universe->processFaders(MasterTimer::tick());
-        QCOMPARE((int)universe->preGMValues()[210], 77);
+        QCOMPARE((int)(uchar)universe->preGMValues()[210], 77);
         universe->dismissFader(fader);
     }
 
@@ -1079,7 +1079,7 @@ void EFXFixture_Test::setPointDimmer()
         QVERIFY(fader->handleSecondary() == false);
         ef.setPointDimmer(ua, fader, 33.0);
         universe->processFaders(MasterTimer::tick());
-        QCOMPARE((int)universe->preGMValues()[220], 33);
+        QCOMPARE((int)(uchar)universe->preGMValues()[220], 33);
         universe->dismissFader(fader);
     }
 }
@@ -1108,7 +1108,7 @@ void EFXFixture_Test::setPointDimmerMaster()
     QCOMPARE(ef.m_firstMsbChannel, quint32(2));
     ef.setPointDimmer(ua, fader, 66.0);
     universe->processFaders(MasterTimer::tick());
-    QCOMPARE((int)universe->preGMValues()[242], 66);
+    QCOMPARE((int)(uchar)universe->preGMValues()[242], 66);
 }
 
 void EFXFixture_Test::setPointIntensity()
@@ -1149,8 +1149,8 @@ void EFXFixture_Test::setPointIntensity()
         ef.setPointIntensity(ua, fader, 0.5);
         QCOMPARE(fader->channelsCount(), 1);
         universe->processFaders(MasterTimer::tick());
-        QCOMPARE((int)universe->preGMValues()[304], 127);
-        QCOMPARE((int)universe->preGMValues()[305], 127);
+        QCOMPARE((int)(uchar)universe->preGMValues()[304], 127);
+        QCOMPARE((int)(uchar)universe->preGMValues()[305], 127);
         universe->dismissFader(fader);
     }
 
@@ -1163,7 +1163,7 @@ void EFXFixture_Test::setPointIntensity()
         ef.setPointIntensity(ua, fader, 1.0);
         QCOMPARE(fader->channelsCount(), 1);
         universe->processFaders(MasterTimer::tick());
-        QCOMPARE((int)universe->preGMValues()[304], 255);
+        QCOMPARE((int)(uchar)universe->preGMValues()[304], 255);
         universe->dismissFader(fader);
     }
 
@@ -1177,7 +1177,7 @@ void EFXFixture_Test::setPointIntensity()
         QCOMPARE(ef.m_intensityLsbChannel, QLCChannel::invalid());
         ef.setPointIntensity(ua, fader, 0.2);
         universe->processFaders(MasterTimer::tick());
-        QCOMPARE((int)universe->preGMValues()[322], 51);
+        QCOMPARE((int)(uchar)universe->preGMValues()[322], 51);
         universe->dismissFader(fader);
     }
 
@@ -1217,16 +1217,16 @@ void EFXFixture_Test::setPointRGB()
         QCOMPARE(fader->channelsCount(), 3);
         universe->processFaders(MasterTimer::tick());
         QColor pixel = EFXFixture::m_rgbGradient.pixel(0, 0);
-        QCOMPARE((int)universe->preGMValues()[400], pixel.red());
-        QCOMPARE((int)universe->preGMValues()[401], pixel.green());
-        QCOMPARE((int)universe->preGMValues()[402], pixel.blue());
+        QCOMPARE((int)(uchar)universe->preGMValues()[400], pixel.red());
+        QCOMPARE((int)(uchar)universe->preGMValues()[401], pixel.green());
+        QCOMPARE((int)(uchar)universe->preGMValues()[402], pixel.blue());
 
         ef.setPointRGB(ua, fader, 200, 100);
         universe->processFaders(MasterTimer::tick());
         pixel = EFXFixture::m_rgbGradient.pixel(200, 100);
-        QCOMPARE((int)universe->preGMValues()[400], pixel.red());
-        QCOMPARE((int)universe->preGMValues()[401], pixel.green());
-        QCOMPARE((int)universe->preGMValues()[402], pixel.blue());
+        QCOMPARE((int)(uchar)universe->preGMValues()[400], pixel.red());
+        QCOMPARE((int)(uchar)universe->preGMValues()[401], pixel.green());
+        QCOMPARE((int)(uchar)universe->preGMValues()[402], pixel.blue());
         universe->dismissFader(fader);
     }
 
@@ -1379,7 +1379,7 @@ void EFXFixture_Test::nextStepModes()
             ef->nextStep(ua, fader);
         QCOMPARE(fader->channelsCount(), 3);
         universe->processFaders(MasterTimer::tick());
-        int sum = (int)universe->preGMValues()[400] + (int)universe->preGMValues()[401] + (int)universe->preGMValues()[402];
+        int sum = (int)(uchar)universe->preGMValues()[400] + (int)(uchar)universe->preGMValues()[401] + (int)(uchar)universe->preGMValues()[402];
         QVERIFY(sum > 0);
         e.postRun(&mts, ua);
         universe->dismissFader(fader);
