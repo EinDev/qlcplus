@@ -105,6 +105,116 @@ void RGBAlgorithm_Test::algorithm()
     delete algo;
 }
 
+void RGBAlgorithm_Test::builtInAlgorithms()
+{
+    RGBAlgorithm* algo = RGBAlgorithm::algorithm(m_doc, "Image");
+    QVERIFY(algo != NULL);
+    QCOMPARE(algo->type(), RGBAlgorithm::Image);
+    QCOMPARE(algo->name(), QString("Image"));
+    QCOMPARE(algo->apiVersion(), 1);
+    QCOMPARE(algo->acceptColors(), 0);
+    delete algo;
+
+    algo = RGBAlgorithm::algorithm(m_doc, "Audio Spectrum");
+    QVERIFY(algo != NULL);
+    QCOMPARE(algo->type(), RGBAlgorithm::Audio);
+    QCOMPARE(algo->name(), QString("Audio Spectrum"));
+    QCOMPARE(algo->acceptColors(), 2);
+    delete algo;
+
+    algo = RGBAlgorithm::algorithm(m_doc, "Plain Color");
+    QVERIFY(algo != NULL);
+    QCOMPARE(algo->type(), RGBAlgorithm::Plain);
+    QCOMPARE(algo->name(), QString("Plain Color"));
+    QCOMPARE(algo->acceptColors(), 1);
+    delete algo;
+
+    // The built-in algorithms come first in the list, in a fixed order
+    QStringList list = RGBAlgorithm::algorithms(m_doc);
+    QCOMPARE(list.at(0), QString("Plain Color"));
+    QCOMPARE(list.at(1), QString("Text"));
+    QCOMPARE(list.at(2), QString("Image"));
+    QCOMPARE(list.at(3), QString("Audio Spectrum"));
+    QCOMPARE(list.mid(4), m_doc->rgbScriptsCache()->names());
+}
+
+void RGBAlgorithm_Test::colors()
+{
+    // The base class keeps as many colors as the algorithm accepts
+    QScopedPointer<RGBAlgorithm> plain(RGBAlgorithm::algorithm(m_doc, "Plain Color"));
+    QCOMPARE(plain->acceptColors(), 1);
+    QVector<QColor> colors;
+    colors << Qt::red << Qt::green;
+    plain->setColors(colors);
+    QCOMPARE(plain->getColor(0), QColor(Qt::red));
+    QCOMPARE(plain->getColor(1), QColor()); // beyond acceptColors()
+    QCOMPARE(plain->getColor(99), QColor());
+
+    // Fewer colors than accepted: only those given are stored
+    QScopedPointer<RGBAlgorithm> audio(RGBAlgorithm::algorithm(m_doc, "Audio Spectrum"));
+    QCOMPARE(audio->acceptColors(), 2);
+    audio->setColors(QVector<QColor>() << Qt::blue);
+    QCOMPARE(audio->getColor(0), QColor(Qt::blue));
+    QCOMPARE(audio->getColor(1), QColor());
+    audio->setColors(QVector<QColor>());
+    QCOMPARE(audio->getColor(0), QColor());
+}
+
+void RGBAlgorithm_Test::loaderBuiltIn()
+{
+    struct Case { const char *type; RGBAlgorithm::Type expected; const char *name; };
+    const QList<Case> cases = {
+        { "Image", RGBAlgorithm::Image, "Image" },
+        { "Audio", RGBAlgorithm::Audio, "Audio Spectrum" },
+        { "Plain", RGBAlgorithm::Plain, "Plain Color" },
+    };
+
+    foreach (const Case &c, cases)
+    {
+        QBuffer buffer;
+        buffer.open(QIODevice::WriteOnly | QIODevice::Text);
+        QXmlStreamWriter xmlWriter(&buffer);
+        xmlWriter.writeStartElement("Algorithm");
+        xmlWriter.writeAttribute("Type", c.type);
+        xmlWriter.writeEndElement();
+        xmlWriter.writeEndDocument();
+        xmlWriter.setDevice(NULL);
+        buffer.close();
+
+        buffer.open(QIODevice::ReadOnly | QIODevice::Text);
+        QXmlStreamReader xmlReader(&buffer);
+        xmlReader.readNextStartElement();
+
+        RGBAlgorithm* algo = RGBAlgorithm::loader(m_doc, xmlReader);
+        QVERIFY2(algo != NULL, c.type);
+        QCOMPARE(algo->type(), c.expected);
+        QCOMPARE(algo->name(), QString(c.name));
+        delete algo;
+    }
+}
+
+void RGBAlgorithm_Test::loaderInvalidScript()
+{
+    // A script that isn't in the cache loads as an invalid script and is dropped
+    QBuffer buffer;
+    buffer.open(QIODevice::WriteOnly | QIODevice::Text);
+    QXmlStreamWriter xmlWriter(&buffer);
+    xmlWriter.writeStartElement("Algorithm");
+    xmlWriter.writeAttribute("Type", "Script");
+    xmlWriter.writeCharacters("No such script");
+    xmlWriter.writeEndElement();
+    xmlWriter.writeEndDocument();
+    xmlWriter.setDevice(NULL);
+    buffer.close();
+
+    buffer.open(QIODevice::ReadOnly | QIODevice::Text);
+    QXmlStreamReader xmlReader(&buffer);
+    xmlReader.readNextStartElement();
+
+    RGBAlgorithm* algo = RGBAlgorithm::loader(m_doc, xmlReader);
+    QVERIFY(algo == NULL);
+}
+
 void RGBAlgorithm_Test::loader()
 {
     // Script algo

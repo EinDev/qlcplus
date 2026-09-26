@@ -33,6 +33,10 @@ private slots:
     void cleanupTestCase();
     void defaults();
     void mapping();
+    void colors();
+    void copyAndClone();
+    void saveXML();
+    void loadXML();
 
 private:
     Doc *m_doc;

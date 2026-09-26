@@ -34,7 +34,11 @@ private slots:
 
     void algorithms();
     void algorithm();
+    void builtInAlgorithms();
+    void colors();
     void loader();
+    void loaderBuiltIn();
+    void loaderInvalidScript();
 private:
    Doc * m_doc;
 };
