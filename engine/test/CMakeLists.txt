@@ -42,6 +42,7 @@ add_subdirectory(qlcfixturemode)
 add_subdirectory(qlci18n)
 add_subdirectory(qlcinputchannel)
 add_subdirectory(qlcinputprofile)
+add_subdirectory(qlcinputsource)
 add_subdirectory(qlcmacros)
 add_subdirectory(qlcmodifierscache)
 add_subdirectory(qlcpalette)
@@ -124,6 +125,7 @@ set(QLCPLUS_ENGINE_TESTS
     qlci18n_test
     qlcinputchannel_test
     qlcinputprofile_test
+    qlcinputsource_test
     qlcmacros_test
     qlcmodifierscache_test
     qlcpalette_test
