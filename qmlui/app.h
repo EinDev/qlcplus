@@ -47,6 +47,7 @@ class InputOutputManager;
 class ImportManager;
 class NetworkManager;
 class ApiServer;
+class WebServer;
 class VideoProvider;
 class FixtureEditor;
 class StageWizard;
@@ -280,6 +281,7 @@ private:
     VideoProvider *m_videoProvider;
     NetworkManager *m_networkManager;
     ApiServer *m_apiServer;
+    WebServer *m_webServer;
     UiManager *m_uiManager;
     StageWizard *m_stageWizard;
     Tardis *m_tardis;
@@ -302,6 +304,10 @@ public:
 
     /** Return the WebSocket control API server instance (docs/api-spec/) */
     ApiServer *apiServer() const;
+
+    /** Return the HTTP server that serves the browser-based web UI
+     *  (docs/webui.md); started by main.cpp behind --webui */
+    WebServer *webServer() const;
 
     /** Return if the current Doc instance has been loaded */
     bool docLoaded();
