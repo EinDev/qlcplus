@@ -1393,7 +1393,10 @@ void Chaser_Test::writeSelfStop()
     ua.append(new Universe(0, new GrandMaster()));
     MasterTimerStub timer(m_doc, ua);
 
-    c->preRun(&timer);
+    // start() clears the stop flag and the stub timer calls preRun()
+    QVERIFY(c->stopped() == true);
+    c->start(&timer, FunctionParent::master());
+    QVERIFY(c->isRunning());
     QVERIFY(c->stopped() == false);
     c->write(&timer, ua);
     QCOMPARE(c->runningStepsNumber(), 1);
