@@ -54,7 +54,7 @@ default until "Use server default" is pressed.
 | `VirtualConsole.jsx` | Pages + widgets at their real geometry, live interaction, Design-mode layout editing, Grand Master. |
 | `vc/vc-shared.jsx`, `vc/vc-widgets.jsx`, `vc/vc-edit.jsx` | VC context + pointer-event fader/knob; one body per widget type (button, slider/knob, cue list, XY pad, speed dial, frame, label); selection/move/resize wrapper, widget palette and properties panel. |
 | `SimpleDesk.jsx` | 512 channel strips per universe, live DMX values + overrides, keypad, dump to scene. |
-| `InputOutput.jsx` | Universe / patch table (read-only against today's server). |
+| `InputOutput.jsx` | Universe table: rename, passthrough, add / remove (last universe only), input / output / feedback / profile pickers over `io.plugin.list` + `io.patch.*`, blackout. |
 | `data.js` | Mock workspace used while offline. |
 | `_ds_bundle.js`, `styles.css`, `tokens/` | The compiled QLC+ design-system components and their CSS tokens. |
 | `assets/icons/`, `assets/fonts/` | SVG icons (the qmlui icon set) and Roboto Condensed / Roboto Mono / Font Awesome. |
@@ -65,31 +65,54 @@ path. `?ctx=fx|vc|sd|io` in the URL picks the initial screen.
 
 ## What is live and what is not
 
-Live against the Control API when connected: fixture and function trees and details, function
-start/stop/pause (running state from `running`/`paused` on `functions.list` and
-`functions.status.changed` where the server reports them, otherwise shown as last sent),
-function create/rename/move/delete with multi-select, Scene values and members, Chaser/Sequence
-steps and timing, fixture re-addressing, fixture groups, palettes, live fixture tools (intensity /
-colour / position / presets via Simple Desk overrides), Add Fixtures (needs `fixtures.defs.*` on
-the server; generic dimmer otherwise), rename/delete/unpatch, Simple
-Desk values/overrides/reset/keypad/dump, Virtual Console pages and widget layout, Grand Master,
-blackout, engine mode, project name and save, universe table.
+Everything below was exercised end to end in a real browser against a real QLC+ 5 instance
+(`qlcplus5 --api --webui`, SF3 workspace, no IO plugins) on 2026-09-26, with every mutation
+verified by reading the server back (`functions.get`, `vc.widget.get`, `io.dmx.universe.get`, ...)
+and a second tab checked for the pushed event:
 
-Virtual Console live interaction is wired to the server contract that landed on master
-(`vc.button.press`, `vc.slider.setValue`, `vc.cueList.*`, `vc.xyPad.setPosition`,
-`vc.speedDial.setValue/tap`, `vc.frame.gotoPage/get` and their `*Changed` events); on a server
-that predates a method the UI detects the `Unknown method` reply and shows that control as
-view-only. VC layout editing (add / move / resize / configure Button and Slider / copy / paste /
-delete, page add / rename / delete) works in Design mode over `vc.widget.*` and `vc.page.*`.
+- **Connection**: auto-connect from `qlcplus-config.json`, lamp states, automatic reconnect after
+  the server dies and comes back (re-`hello`, docRevision re-synced, Simple Desk DMX stream
+  re-subscribed).
+- **Fixtures & Functions**: fixture and function trees; fixture tools (intensity, colour incl. the
+  typed hex field, pan/tilt spin boxes and XY pad, presets) write real DMX through Simple Desk
+  overrides, *Release fixtures* clears them; multi-select; re-addressing; Add Fixtures over
+  `fixtures.defs.*` + `fixtures.patch` (Add is blocked until the range is free); fixture groups
+  (create / assign / unassign / delete); palettes (create / apply / delete); unpatch. Functions:
+  create of every type (Scene, Chaser, Sequence, EFX, Collection, RGB Matrix, Show, Script, Audio,
+  Video) in a folder, rename, move to folder, multi-select delete, context menu; start / pause /
+  resume / stop with server-reported running state; Scene editor (add fixtures, inline values,
+  console faders, remove channel, add palette, fade times); Chaser editor (add / move / remove steps,
+  run order, common duration - per-step times are governed by the speed modes exactly like the
+  desktop app). Editors for Collection, EFX, RGB Matrix, Script, Audio, Video and Show are still
+  placeholders (no server methods yet).
+- **Virtual Console**: page switch; Toggle and Flash buttons with state colouring from
+  `vc.button.stateChanged`; slider and knob with the value pushed to every tab; cue list
+  play / next / previous / stop / jump with the current step highlighted; XY pad; speed dial
+  set / tap; multipage frame next / previous (the frame page flip bumps docRevision - the event
+  carries the new one); Grand Master. Design-mode editing: add page / rename / delete, add widgets
+  from the palette, move, resize, caption, attach function, Flash action, copy / paste, delete,
+  all persisted (reload shows the same layout). Widget *configuration* beyond Button and Slider
+  is still view-only (server `vc.widget.setConfig` covers those two types).
+- **Simple Desk**: universe tabs, live values + overrides, faders, keypad (`1 THRU 12 AT 128`,
+  `+% 20`, `FULL`, `ZERO`, `CLR`, ...), per-channel reset, reset universe, dump to a new Scene,
+  fixture list panel.
+- **Input / Output**: universe rename / passthrough / add / delete (last universe only), patch
+  pickers (an instance without IO plugins shows just "None"), input profiles list, blackout.
+  Plugin configuration dialogs and audio devices remain desktop-only.
+- **Toolbar**: Stop all with the running count, BPM set / tap / off with the beat pulse, Undo /
+  Redo (desktop history), Design / Operate mode, New / Open / Save / Save as (server-side paths,
+  discard prompt when the project is modified).
 
-Wired in the toolbar but still waiting for server methods: Stop all (`functions.stopAll`),
-running-function state (`functions.status.changed`, `running` on `functions.list`), BPM / tap /
-beat (`core.bpm.*`, `core.beat`), Undo / Redo (`core.undo/redo`, `core.history.get`) - the
-buttons probe once per connection and grey out when the server lacks them. Still not possible:
-adding fixtures (no fixture-definition browsing). Not yet built in the UI although the server
-could do it: function editors (scene values, chaser steps), fixture re-addressing, Show Manager.
+Still not available in the web UI: Show Manager, the 2D / 3D / DMX monitor views, fixture-address
+remap, plugin configuration, the fixture editor, UI settings. Disconnected, every screen keeps
+working on its built-in mock data (`data.js`), clearly labelled as such.
 
 The source design system (component sources, guidelines, templates) lives outside this repo;
 only runtime files are vendored here. When re-importing from it, keep the load order in
 `index.html`: `_ds_bundle.js` contains stale compiled copies of the screens that the real files
-loaded afterwards overwrite.
+loaded afterwards overwrite. Three components were patched locally in `_ds_bundle.js` after the
+live pass and must be carried over (or fixed at the source) on a re-import, or the bugs come
+back: `CustomSlider` (handle drifted past the track end at high values), `CustomSpinBox` (a
+controlled input that snapped back on every non-numeric keystroke, so typing a value was
+impossible) and `CustomPopupDialog` (new `disabledButtons` prop, used to block Add Fixtures while
+the address range overlaps).

@@ -536,6 +536,7 @@ function CustomPopupDialog({
   message,
   children,
   standardButtons = ['Cancel', 'Ok'],
+  disabledButtons = [],
   onClicked,
   onClose,
   width = '33%',
@@ -598,6 +599,7 @@ function CustomPopupDialog({
     label: b,
     width: 'calc(var(--big-item-height) * 2)',
     bgColor: 'var(--bg-light)',
+    disabled: disabledButtons.indexOf(b) !== -1,
     onClick: () => onClicked && onClicked(b)
   }))) : null));
 }
@@ -765,7 +767,12 @@ function CustomSlider({
     const el = ref.current;
     if (!el || !onMoved) return;
     const r = el.getBoundingClientRect();
-    const p = horizontal ? (clientX - r.left) / r.width : 1 - (clientY - r.top) / r.height;
+    /* The handle's centre travels from handle/2 to length - handle/2 (it stays inside the
+       control), so the pointer maps over that same span: the handle follows the cursor
+       exactly, and the extremes are reached at the handle's own end positions. The handle
+       is square, so its size is the control's thickness. */
+    const hs = horizontal ? r.height : r.width;
+    const p = horizontal ? (clientX - r.left - hs / 2) / Math.max(1, r.width - hs) : 1 - (clientY - r.top - hs / 2) / Math.max(1, r.height - hs);
     onMoved(Math.round(from + Math.max(0, Math.min(1, p)) * (to - from)));
   };
   const start = e => {
@@ -813,8 +820,9 @@ function CustomSlider({
       borderRadius: 999,
       left: 0,
       bottom: 0,
-      width: horizontal ? pos * 100 + '%' : '100%',
-      height: horizontal ? '100%' : pos * 100 + '%'
+      /* fill ends under the handle's centre: handle/2 + pos * (track - handle) */
+      width: horizontal ? 'calc(' + handle + ' / 2 + ' + pos + ' * (100% - ' + handle + '))' : '100%',
+      height: horizontal ? '100%' : 'calc(' + handle + ' / 2 + ' + pos + ' * (100% - ' + handle + '))'
     }
   })), React.createElement('div', {
     style: {
@@ -823,9 +831,12 @@ function CustomSlider({
       height: handle,
       background: 'var(--fg-main)',
       borderRadius: 'calc(var(--list-item-height) * 0.16)',
-      left: horizontal ? 'calc(' + pos * 100 + '% - ' + pos * 100 + '% * 0 )' : undefined,
-      transform: horizontal ? 'translateX(calc(' + pos * (length - 21) + 'px - 50% + 10px))' : 'none',
-      bottom: horizontal ? undefined : 'calc(' + pos * 100 + '% - ' + pos * 21 + 'px)'
+      /* The handle stays fully inside the control at both extremes: its leading edge moves
+         over (100% - handle). The previous version added pos * 100% AND a pos * (length - 21)px
+         translate, so at high values the handle sat past the end of the track (at 255 it was
+         almost a full track length too far right and overlapped the value box). */
+      left: horizontal ? 'calc(' + pos + ' * (100% - ' + handle + '))' : undefined,
+      bottom: horizontal ? undefined : 'calc(' + pos + ' * (100% - ' + handle + '))'
     }
   }));
 }
@@ -1536,6 +1547,13 @@ function CustomSpinBox({
     const c = Math.min(to, Math.max(from, v));
     if (onValueModified) onValueModified(c);
   };
+  /* While focused the field shows what was typed (text != null), not the clamped/committed value:
+     a controlled input bound straight to `value` snapped back after every keystroke that was not a
+     number - clearing the field was impossible and typing "128" into "105" produced "1051" -> 1000.
+     Every parsable intermediate value is still committed immediately (clamped); blur/Enter/Escape
+     re-syncs the text with the committed value. */
+  const [text, setText] = React.useState(null);
+  const { onKeyDown: restKeyDown, onFocus: restFocus, onBlur: restBlur, ...inputRest } = rest;
   const arrow = dir => React.createElement('button', {
     key: dir,
     type: 'button',
@@ -1570,11 +1588,21 @@ function CustomSpinBox({
       ...style
     }
   }, React.createElement('input', {
-    value: value + suffix,
+    value: text != null ? text : value + suffix,
     disabled,
     inputMode: 'numeric',
+    onFocus: e => { setText(String(value)); if (restFocus) restFocus(e); },
+    onBlur: e => { setText(null); if (restBlur) restBlur(e); },
+    onKeyDown: e => {
+      if (e.key === 'Enter' || e.key === 'Escape') setText(null);
+      else if (e.key === 'ArrowUp') { e.preventDefault(); set(value + stepSize); setText(String(Math.min(to, value + stepSize))); }
+      else if (e.key === 'ArrowDown') { e.preventDefault(); set(value - stepSize); setText(String(Math.max(from, value - stepSize))); }
+      if (restKeyDown) restKeyDown(e);
+    },
     onChange: e => {
-      const n = parseInt(String(e.target.value).replace(suffix, ''), 10);
+      const t = String(e.target.value);
+      setText(t);
+      const n = parseInt(t.replace(suffix, ''), 10);
       if (!isNaN(n)) set(n);
     },
     style: {
@@ -1590,7 +1618,7 @@ function CustomSpinBox({
       fontFamily: 'var(--font-roboto)',
       fontSize: 'var(--text-size-default)'
     },
-    ...rest
+    ...inputRest
   }), showControls ? React.createElement('div', {
     style: {
       display: 'flex',

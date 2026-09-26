@@ -993,6 +993,11 @@ void ApiVcDomain::vcFramePageChanged(quint32 widgetId, int page)
 {
     QJsonObject data;
     data.insert(QStringLiteral("page"), page);
+    // The one live event whose cause bumps docRevision (VCFrame::setCurrentPage() persists the
+    // page, see vc.frame.gotoPage's spec note). Carrying the new revision here lets every client
+    // re-sync from the event itself instead of paying a CONFLICT round trip on its next structural
+    // request - the generic "any event carrying docRevision" client rule (00-conventions §4a) applies.
+    data.insert(QStringLiteral("docRevision"), int(m_doc->docRevision()));
     broadcastLive(QStringLiteral("vc.frame.pageChanged"), widgetId, data);
 }
 

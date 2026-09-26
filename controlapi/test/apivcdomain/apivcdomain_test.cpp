@@ -1278,6 +1278,9 @@ void ApiVcDomain_Test::liveFrameGotoPageAndGet()
     QCOMPARE(events.at(0).value(QStringLiteral("widgetId")).toString(), frameId);
     QCOMPARE(events.at(0).value(QStringLiteral("page")).toInt(), 2);
     QCOMPARE(events.at(0).value(QStringLiteral("_origin")).toString(), clientId);
+    // the page flip is the one live change that bumps docRevision, so the event carries it
+    QVERIFY(events.at(0).contains(QStringLiteral("docRevision")));
+    QCOMPARE(events.at(0).value(QStringLiteral("docRevision")).toInt(), int(m_doc->docRevision()));
 
     // Same page again: ack, no event
     QCOMPARE(sendAndWaitForReply(QStringLiteral("vc.frame.gotoPage"), widgetParams(frameId, page), QStringLiteral("t-gp2")).value(QStringLiteral("ok")).toBool(), true);

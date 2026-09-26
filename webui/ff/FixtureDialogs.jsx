@@ -82,7 +82,7 @@
         fixtures.filter(f => f.universe === universe).forEach(f => { for (let i = f.address; i < f.address + f.channels && i < 512; i++) used[i] = true; });
         const fits = (start) => { for (let n = 0; n < quantity; n++) { const a = start + n * (channels + gap); for (let i = a; i < a + channels; i++) if (i >= 512 || used[i]) return false; } return true; };
         if (fits(address - 1)) return { available: true, address: address - 1 };
-        for (let s = 0; s + footprint <= 512; s++) if (fits(s)) return { available: false, address: s };
+        for (let s = 0; s + footprint <= 512; s++) if (fits(s)) return { available: true, address: s };
         return { available: false };
       };
       if (qlc.isUnsupported('fixtures.findAvailableAddress')) { setFree(local()); return undefined; }
@@ -91,8 +91,15 @@
       return () => { alive = false; };
     }, [open, universe, address, quantity, gap, channels]);
 
+    /* fixtures.findAvailableAddress answers {available:true, address} where address is the
+       REQUESTED address when that one is free and otherwise the first free block found
+       (available:false only when the universe has no room at all) - so "the range I asked for
+       is free" is available && address === requested, not available alone. */
+    const requestedFree = !!free && free.available === true && free.address === address - 1;
+    const nextFree = free && free.available === true && !requestedFree ? free.address : null;
+    const canPatch = !!definition && channels > 0 && requestedFree && !busy;
     const patch = () => {
-      if (!definition || busy) return;
+      if (!canPatch) return;
       setBusy(true); setError('');
       FF.mutate(qlc, 'fixtures.patch', { universe, address: address - 1, definition, name: name || undefined, quantity, gap })
         .then(() => { setBusy(false); onClose(); })
@@ -101,10 +108,9 @@
     const manuModel = manufacturers === false ? [] : (manufacturers || []).filter(m => !search || m.toLowerCase().indexOf(search.toLowerCase()) !== -1);
     const modelList = models.filter(m => !search || search.length < 2 || m.model.toLowerCase().indexOf(search.toLowerCase()) !== -1);
     const universeModel = universes.map(u => ({ mLabel: u.name, mValue: u.id }));
-    const canPatch = !!definition && channels > 0 && free && free.available !== false && !busy;
 
     return (
-      <CustomPopupDialog open={open} title="Add Fixtures" width={720} standardButtons={['Cancel', 'Add']}
+      <CustomPopupDialog open={open} title="Add Fixtures" width={720} standardButtons={['Cancel', 'Add']} disabledButtons={canPatch ? [] : ['Add']}
         onClicked={(b) => { if (b === 'Add') patch(); else onClose(); }} onClose={onClose}>
         <div style={{ display: 'grid', gridTemplateColumns: '220px 220px 1fr', gap: 10, minHeight: 320 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
@@ -155,13 +161,13 @@
             <FF.Row label="Quantity" width={70}><CustomSpinBox value={quantity} from={1} to={512} width={100} onValueModified={setQuantity} /></FF.Row>
             <FF.Row label="Gap" width={70}><CustomSpinBox value={gap} from={0} to={511} width={100} onValueModified={setGap} /></FF.Row>
             <FF.Row label="Channels" width={70}>{channels ? channels + (quantity > 1 ? ' × ' + quantity + ' = ' + footprint + ' (' + (address) + '–' + (address + footprint - 1) + ')' : ' (' + address + '–' + (address + channels - 1) + ')') : '—'}</FF.Row>
-            {free && channels ? (free.available
+            {free && channels ? (requestedFree
               ? <RobotoText label="Address range is free" fontSize={13} labelColor="var(--check-lime)" height={22} />
-              : free.address != null
-                ? <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><RobotoText label={'Address ' + address + ' is in use. Next free: ' + (free.address + 1)} fontSize={13} labelColor="var(--override-red)" height={22} /><GenericButton label="Use" width={44} height={22} onClick={() => setAddress(free.address + 1)} /></div>
+              : nextFree != null
+                ? <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><RobotoText label={'Address ' + address + ' is in use. Next free: ' + (nextFree + 1)} fontSize={13} labelColor="var(--override-red)" height={22} /><GenericButton label="Use" width={44} height={22} onClick={() => setAddress(nextFree + 1)} /></div>
                 : <RobotoText label="No free range of that size in this universe" fontSize={13} labelColor="var(--override-red)" height={22} />) : null}
             {error ? <RobotoText label={'Cannot patch fixture: ' + error} fontSize={13} labelColor="var(--override-red)" wrapText height="auto" /> : null}
-            {!canPatch && definition && free && free.available === false ? <FF.Note text="Add is blocked while the range overlaps another fixture." /> : null}
+            {definition && free && !requestedFree ? <FF.Note text="Add is blocked while the range overlaps another fixture." /> : null}
           </div>
         </div>
       </CustomPopupDialog>
