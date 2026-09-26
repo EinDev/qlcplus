@@ -32,8 +32,10 @@ default until "Use server default" is pressed.
   as the Control API has no TLS.
 - The network button's corner lamp shows the state: grey offline, blinking amber connecting /
   reconnecting, green live, red failed. An unexpected drop reconnects automatically with
-  backoff (1 s -> 10 s) until Disconnect is pressed. Disconnected, every screen keeps working on
-  its built-in mock data (`data.js`), clearly labelled as such.
+  backoff (1 s -> 10 s) until Disconnect is pressed. A first attempt that never opens (QLC+'s
+  API not running, wrong port) is *not* retried - the lamp turns red and the page waits for
+  Connect. Disconnected, every screen keeps working on its built-in mock data (`data.js`),
+  clearly labelled as such.
 
 ## Layout
 

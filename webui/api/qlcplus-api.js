@@ -209,11 +209,13 @@
       var pending = this._pending[frame.id];
       if (!pending) return;
       delete this._pending[frame.id];
-      if (frame.ok) { pending.resolve(frame.result); return; }
+      if (frame.ok) { this._trackRevision(frame.result); pending.resolve(frame.result); return; }
       var err = new Error((frame.error && frame.error.message) || (pending.method + ' failed'));
       err.code = frame.error && frame.error.code;
       err.details = frame.error && frame.error.details;
       err.method = pending.method;
+      /* A CONFLICT carries the authoritative revision in details — learn it so the retry passes. */
+      this._trackRevision(err.details);
       if (err.code === 'NOT_FOUND' && /^Unknown method/.test(err.message || '') && !this.unsupported[pending.method]) {
         this.unsupported[pending.method] = true;
         this._emit('unsupported', pending.method);
@@ -224,6 +226,8 @@
     }
 
     if (frame.type === 'event') {
+      /* Every structural event (from any client) carries the new docRevision — §4a. */
+      this._trackRevision(frame.data, frame.topic === 'core.project.loaded');
       this._emit('event', frame);
       this._emit(frame.topic, frame.data); // generic: qlc.on('vc.widget.created', fn) always works
       this._routeEvent(frame.topic, frame.data);
@@ -235,10 +239,6 @@
     var self = this;
     if (topic === 'io.grandMaster.changed') { this._emit('grandmaster', data.value); return; }
     if (topic === 'io.blackout.changed') { this._emit('blackout', data.blackout); return; }
-    if (topic === 'core.project.loaded' || topic === 'core.project.saved') {
-      if (data && typeof data.docRevision === 'number') this.docRevision = data.docRevision;
-      return;
-    }
     if (topic === 'io.simpleDesk.channelChanged') {
       /* One overridden channel per event: {address, value, overridden}, flat 0-based address. */
       this._emit('channels', [this._row(data.address, data.value, !!data.overridden)]);
@@ -258,6 +258,17 @@
         return self._row(universeId * 512 + c.channel, c.value, null);
       }));
     }
+  };
+
+  /**
+   * Keep docRevision current: the server bumps it on every structural mutation from any client
+   * and puts the new value in the mutation's result, in every structural event's data, and in a
+   * CONFLICT's error.details. A project load may legitimately move it backwards, so a
+   * core.project.loaded value always wins; otherwise only newer values are taken.
+   */
+  QLCPlusAPI.prototype._trackRevision = function (obj, force) {
+    if (!obj || typeof obj.docRevision !== 'number') return;
+    if (force || this.docRevision === null || obj.docRevision > this.docRevision) this.docRevision = obj.docRevision;
   };
 
   QLCPlusAPI.prototype._row = function (address, value, overridden) {
