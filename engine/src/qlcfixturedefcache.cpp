@@ -212,9 +212,12 @@ bool QLCFixtureDefCache::reloadOrAddFixtureDef(QLCFixtureDef *fixtureDef)
             }
             else
             {
-                // Set as user and perform a deep copy.
-                def->setIsUser(true);
+                // Perform a deep copy, then set as user: the assignment
+                // copies the source's user flag as well, so setting it
+                // first would leave the cache entry with whatever the
+                // editor's instance happened to carry.
                 *def = *fixtureDef;
+                def->setIsUser(true);
                 def->setLoaded(true);
             }
 
@@ -333,9 +336,13 @@ bool QLCFixtureDefCache::loadMap(const QDir &dir)
     m_mapAbsolutePath = dir.absolutePath();
 
     QXmlStreamReader *doc = QLCFile::getXMLReader(mapPath);
+    // Every return below must release the reader (and the QFile it owns):
+    // leaking it keeps the map file open, which on Windows also stops the
+    // caller from deleting the directory it lives in.
     if (doc == NULL || doc->device() == NULL || doc->hasError())
     {
         qWarning() << Q_FUNC_INFO << "Unable to read from" << mapPath;
+        QLCFile::releaseXMLReader(doc);
         return false;
     }
 
@@ -393,6 +400,7 @@ bool QLCFixtureDefCache::loadMap(const QDir &dir)
         }
     }
     qDebug() << fxCount << "fixtures found in map";
+    QLCFile::releaseXMLReader(doc);
 
 #if 0
     /* Attempt to read all files not in FixtureMap */

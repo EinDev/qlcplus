@@ -11,11 +11,14 @@ target_include_directories(${module_name} PRIVATE
     ../iopluginstub
 )
 
+# qlcplusaudio: the beat generator test subclasses AudioCapture (a stub that
+# never opens a device), which the engine only links privately.
 target_link_libraries(${module_name} PRIVATE
     Qt${QT_MAJOR_VERSION}::Core
     Qt${QT_MAJOR_VERSION}::Gui
     Qt${QT_MAJOR_VERSION}::Test
     qlcplusengine
+    qlcplusaudio
 )
 
 if ("$ENV{TRAVIS}" STREQUAL "true")

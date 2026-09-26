@@ -42,7 +42,7 @@ QString IOPluginStub::name() const
 
 int IOPluginStub::capabilities() const
 {
-    return QLCIOPlugin::Output | QLCIOPlugin::Input;
+    return QLCIOPlugin::Output | QLCIOPlugin::Input | m_extraCapabilities;
 }
 
 /*****************************************************************************

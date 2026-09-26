@@ -1064,6 +1064,25 @@ void QLCCapability_Test::loadClampedRange()
     QCOMPARE(single.middle(), uchar(42));
 }
 
+/** Call the Q_ENUM helpers with a value the compiler can't fold: with a
+    constant argument (as QMetaEnum::fromType() passes) the constexpr helpers
+    are evaluated at compile time and the generated code never runs. */
+template <typename Enum>
+static void checkEnumHelpers(int value, const char *name)
+{
+    volatile int raw = value;
+    Enum e = Enum(raw);
+    QVERIFY(qt_getEnumMetaObject(e) == &QLCCapability::staticMetaObject);
+    QCOMPARE(QString(qt_getEnumName(e)), QString(name));
+}
+
+void QLCCapability_Test::enumRegistrations()
+{
+    checkEnumHelpers<QLCCapability::Preset>(QLCCapability::Alias, "Preset");
+    checkEnumHelpers<QLCCapability::PresetType>(QLCCapability::SingleColor, "PresetType");
+    checkEnumHelpers<QLCCapability::WarningType>(QLCCapability::Overlapping, "WarningType");
+}
+
 /* QTEST_GUILESS_MAIN: the picture presets resolve paths through
    QLCFile::systemDirectory(), which needs QCoreApplication::applicationDirPath(). */
 QTEST_GUILESS_MAIN(QLCCapability_Test)

@@ -42,6 +42,13 @@ private slots:
     void modes();
     void copy();
     void saveLoadXML();
+    void assignment();
+    void typeStrings();
+    void checkLoadedGeneric();
+    void clearContents();
+    void saveFailures();
+    void loadFileFailures();
+    void loadReaderEdgeCases();
 };
 
 #endif

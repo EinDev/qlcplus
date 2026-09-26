@@ -19,6 +19,7 @@
 
 #include <QtTest>
 #include <QBuffer>
+#include <QMetaEnum>
 #include <QMatrix4x4>
 #include <QXmlStreamReader>
 #include <QXmlStreamWriter>
@@ -949,6 +950,35 @@ void MonitorProperties_Test::meshItemsXML()
 
     QVERIFY(loaded.itemResource(3).endsWith("elsewhere.obj"));
     QCOMPARE(loaded.itemScale(3), QVector3D(1, 1, 1));
+}
+
+void MonitorProperties_Test::heapInstanceAndEnums()
+{
+    MonitorProperties *mp = new MonitorProperties();
+    mp->setGridUnits(MonitorProperties::Feet);
+    QCOMPARE(mp->gridUnits(), MonitorProperties::Feet);
+    delete mp;
+
+    // The Q_ENUM registrations. Their constexpr helpers get folded away when
+    // called with a constant (as QMetaEnum::fromType() does), so hand them a
+    // value the compiler can't see through to make the generated code run.
+    volatile int raw = int(MonitorProperties::Feet);
+    MonitorProperties::GridUnits units = MonitorProperties::GridUnits(raw);
+    QVERIFY(qt_getEnumMetaObject(units) == &MonitorProperties::staticMetaObject);
+    QCOMPARE(QString(qt_getEnumName(units)), QString("GridUnits"));
+    QCOMPARE(QString(QMetaEnum::fromType<MonitorProperties::GridUnits>().valueToKey(units)), QString("Feet"));
+
+    raw = int(MonitorProperties::TopView);
+    MonitorProperties::PointOfView pov = MonitorProperties::PointOfView(raw);
+    QVERIFY(qt_getEnumMetaObject(pov) == &MonitorProperties::staticMetaObject);
+    QCOMPARE(QString(qt_getEnumName(pov)), QString("PointOfView"));
+    QCOMPARE(QString(QMetaEnum::fromType<MonitorProperties::PointOfView>().valueToKey(pov)), QString("TopView"));
+
+    raw = int(MonitorProperties::HasDmxRotationFlag);
+    MonitorProperties::ItemFlags flag = MonitorProperties::ItemFlags(raw);
+    QVERIFY(qt_getEnumMetaObject(flag) == &MonitorProperties::staticMetaObject);
+    QCOMPARE(QString(qt_getEnumName(flag)), QString("ItemFlags"));
+    QCOMPARE(QString(QMetaEnum::fromType<MonitorProperties::ItemFlags>().valueToKey(flag)), QString("HasDmxRotationFlag"));
 }
 
 // QTEST_GUILESS_MAIN: saving generic items resolves the system meshes folder

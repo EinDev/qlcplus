@@ -253,4 +253,38 @@ void InputPatch_Test::profilePageControls()
     QCOMPARE(ip2.profileName(), prof.name());
 }
 
+void InputPatch_Test::defaultArgOverloads()
+{
+    InputPatch ip(0, this);
+    IOPluginStub* stub = static_cast<IOPluginStub*> (m_doc->ioPluginCache()->plugins().at(0));
+    QVERIFY(stub != NULL);
+    QVERIFY(ip.set(stub, 0, NULL) == true);
+
+    QSignalSpy spy(&ip, SIGNAL(inputValueChanged(quint32,quint32,uchar,QString)));
+
+    // the moc-generated overloads for the defaulted key argument: a first
+    // value is only buffered, a later change to zero passes straight through
+    ip.slotValueChanged(0, 0, 3, 150);
+    QCOMPARE(spy.size(), 0);
+    QVERIFY(ip.m_inputBuffer.contains(3));
+    QCOMPARE(ip.m_inputBuffer.value(3).value, uchar(150));
+    QVERIFY(ip.m_inputBuffer.value(3).key.isEmpty());
+
+    ip.slotValueChanged(0, 0, 3, 0);
+    QCOMPARE(spy.size(), 1);
+    QCOMPARE(spy.at(0).at(1).toUInt(), quint32(3));
+    QCOMPARE(spy.at(0).at(2).toUInt(), uint(150));
+
+    emit ip.inputValueChanged(0, 4, 7);
+    QCOMPARE(spy.size(), 2);
+    QCOMPARE(spy.at(1).at(1).toUInt(), quint32(4));
+
+    // a default-constructed buffer entry
+    InputPatch::InputValue value;
+    value.value = 9;
+    value.key = "key";
+    QCOMPARE(value.value, uchar(9));
+    QCOMPARE(value.key, QString("key"));
+}
+
 QTEST_APPLESS_MAIN(InputPatch_Test)

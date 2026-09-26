@@ -23,11 +23,15 @@
 #define private public
 #include "mastertimer_stub.h"
 #include "fixtureremapper.h"
+#include "qlcfixturedefcache.h"
 #include "monitorproperties.h"
+#include "channelmodifier.h"
 #include "qlcfixturemode.h"
 #include "qlcfixturedef.h"
 #include "channelsgroup.h"
 #include "fixturegroup.h"
+#include "collection.h"
+#include "efxfixture.h"
 #include "qlcchannel.h"
 #include "scenevalue.h"
 #include "chaserstep.h"
@@ -35,6 +39,7 @@
 #include "sequence.h"
 #include "fixture.h"
 #include "scene.h"
+#include "efx.h"
 #include "doc.h"
 #undef private
 #undef protected
@@ -437,4 +442,207 @@ void FixtureRemapper_Test::testApplyRemapMonitor()
     QVERIFY(props->fixtureItemsID().contains(tgtId));
     QCOMPARE(props->fixtureProperties(tgtId).m_baseItem.m_position,
              QVector3D(1.0f, 2.0f, 3.0f));
+}
+
+void FixtureRemapper_Test::testAutoConnectNullAndUntyped()
+{
+    FixtureRemapper remapper;
+    Fixture *dimmer = buildDimmer(m_doc, 0, 2);
+
+    QVERIFY(remapper.autoConnectFixtures(nullptr, dimmer).isEmpty());
+    QVERIFY(remapper.autoConnectFixtures(dimmer, nullptr).isEmpty());
+    QVERIFY(remapper.sourceList().isEmpty());
+    QVERIFY(remapper.targetList().isEmpty());
+
+    // Two fixtures without any definition: a bare channel count is all they
+    // have, which still qualifies for a direct index mapping. setChannels()
+    // would build a generic dimmer definition, so poke the count in directly.
+    Fixture src(this);
+    src.m_channels = 3;
+    Fixture tgt(this);
+    tgt.m_channels = 2;
+    QVERIFY(src.fixtureDef() == nullptr && src.fixtureMode() == nullptr);
+
+    src.setChannelCanFade(1, false);
+    ChannelModifier mod;
+    mod.setName("Modifier");
+    src.setChannelModifier(0, &mod);
+
+    QList<QPair<quint32, quint32>> pairs = remapper.autoConnectFixtures(&src, &tgt);
+
+    // the third source channel has no counterpart on the target
+    QCOMPARE(pairs.count(), 2);
+    QCOMPARE(pairs.at(0), qMakePair(quint32(0), quint32(0)));
+    QCOMPARE(pairs.at(1), qMakePair(quint32(1), quint32(1)));
+    QVERIFY(tgt.channelCanFade(0) == true);
+    QVERIFY(tgt.channelCanFade(1) == false);
+    QVERIFY(tgt.channelModifier(0) == &mod);
+    QVERIFY(tgt.channelModifier(1) == nullptr);
+}
+
+void FixtureRemapper_Test::testAutoConnectMixedTyped()
+{
+    Doc srcDoc(this);
+    Fixture *typed = buildMovingHead(&srcDoc, 0, "MH", "M1");
+
+    Fixture bare(this);
+    bare.m_channels = 3;
+    QVERIFY(bare.fixtureDef() == nullptr);
+
+    // Without a definition on one side there is nothing to match against:
+    // neither direction produces a single pair
+    FixtureRemapper remapper;
+    QVERIFY(remapper.autoConnectFixtures(typed, &bare).isEmpty());
+    QVERIFY(remapper.autoConnectFixtures(&bare, typed).isEmpty());
+    QVERIFY(remapper.sourceList().isEmpty());
+}
+
+void FixtureRemapper_Test::testAutoConnectOneToOneFlags()
+{
+    Doc srcDoc(this);
+    Doc tgtDoc(this);
+
+    Fixture *src = buildMovingHead(&srcDoc, 0,  "MH1", "Mode1");
+    Fixture *tgt = buildMovingHead(&tgtDoc, 10, "MH1", "Mode1");
+
+    src->setChannelCanFade(2, false);
+    src->setForcedHTPChannels(QList<int>() << 1);
+    src->setForcedLTPChannels(QList<int>() << 0);
+    ChannelModifier mod;
+    mod.setName("Modifier");
+    src->setChannelModifier(1, &mod);
+
+    FixtureRemapper remapper;
+    QCOMPARE(remapper.autoConnectFixtures(src, tgt).count(), 3);
+
+    QVERIFY(tgt->channelCanFade(0) == true);
+    QVERIFY(tgt->channelCanFade(2) == false);
+    QVERIFY(tgt->channelModifier(1) == &mod);
+    QVERIFY(tgt->channelModifier(0) == nullptr);
+    QCOMPARE(tgt->forcedHTPChannels(), QList<int>() << 1);
+    QCOMPARE(tgt->forcedLTPChannels(), QList<int>() << 0);
+}
+
+void FixtureRemapper_Test::testAutoConnectSemanticMisses()
+{
+    Doc srcDoc(this);
+    Doc tgtDoc(this);
+
+    // Source: Dimmer, coarse Pan, fine Pan
+    QLCFixtureDef *srcDef = makeDef("SRC");
+    srcDef->addChannel(makeChannel("Dimmer",   QLCChannel::Intensity));
+    srcDef->addChannel(makeChannel("Pan",      QLCChannel::Pan, QLCChannel::MSB));
+    srcDef->addChannel(makeChannel("Pan fine", QLCChannel::Pan, QLCChannel::LSB));
+    QLCFixtureMode *srcMode = new QLCFixtureMode(srcDef);
+    srcMode->setName("3ch");
+    srcMode->insertChannel(srcDef->channel("Dimmer"),   0);
+    srcMode->insertChannel(srcDef->channel("Pan"),      1);
+    srcMode->insertChannel(srcDef->channel("Pan fine"), 2);
+    srcDef->addMode(srcMode);
+
+    // Target: fine Pan, Tilt, coarse Pan, Dimmer - every source channel has
+    // to skip at least one candidate with the wrong group or control byte
+    QLCFixtureDef *tgtDef = makeDef("TGT");
+    tgtDef->addChannel(makeChannel("Pan fine", QLCChannel::Pan, QLCChannel::LSB));
+    tgtDef->addChannel(makeChannel("Tilt",     QLCChannel::Tilt, QLCChannel::MSB));
+    tgtDef->addChannel(makeChannel("Pan",      QLCChannel::Pan, QLCChannel::MSB));
+    tgtDef->addChannel(makeChannel("Dimmer",   QLCChannel::Intensity));
+    QLCFixtureMode *tgtMode = new QLCFixtureMode(tgtDef);
+    tgtMode->setName("4ch");
+    tgtMode->insertChannel(tgtDef->channel("Pan fine"), 0);
+    tgtMode->insertChannel(tgtDef->channel("Tilt"),     1);
+    tgtMode->insertChannel(tgtDef->channel("Pan"),      2);
+    tgtMode->insertChannel(tgtDef->channel("Dimmer"),   3);
+    tgtDef->addMode(tgtMode);
+
+    Fixture *src = new Fixture(&srcDoc);
+    src->setAddress(0);
+    src->setUniverse(0);
+    src->setFixtureDefinition(srcDef, srcMode);
+    srcDoc.addFixture(src);
+    src->setChannelCanFade(0, false);
+
+    Fixture *tgt = new Fixture(&tgtDoc);
+    tgt->setAddress(10);
+    tgt->setUniverse(0);
+    tgt->setFixtureDefinition(tgtDef, tgtMode);
+    tgtDoc.addFixture(tgt);
+
+    FixtureRemapper remapper;
+    QList<QPair<quint32, quint32>> pairs = remapper.autoConnectFixtures(src, tgt);
+
+    QCOMPARE(pairs.count(), 3);
+    QCOMPARE(pairs.at(0), qMakePair(quint32(0), quint32(3))); // Dimmer
+    QCOMPARE(pairs.at(1), qMakePair(quint32(1), quint32(2))); // Pan
+    QCOMPARE(pairs.at(2), qMakePair(quint32(2), quint32(0))); // Pan fine
+
+    // the fade flag follows the semantic match, not the channel index
+    QVERIFY(tgt->channelCanFade(3) == false);
+    QVERIFY(tgt->channelCanFade(0) == true);
+}
+
+void FixtureRemapper_Test::testApplyRemapEFX()
+{
+    Fixture *src = buildMovingHead(m_doc, 0, "MH", "M1");
+    quint32 srcId = src->id();
+
+    Doc targetDoc(this);
+    Fixture *tgtDimmer = buildDimmer(&targetDoc, 0, 1);
+    Fixture *tgt = buildMovingHead(&targetDoc, 20, "MH", "M1");
+    quint32 tgtId = tgt->id();
+    QVERIFY(tgtId != tgtDimmer->id());
+
+    // Doc::replaceFixtures() re-resolves every non-generic definition through
+    // the doc's fixture cache: without this the remapped moving head would
+    // end up with no definition, and therefore no pan/tilt channels
+    QVERIFY(m_doc->fixtureDefCache()->addFixtureDef(
+                const_cast<QLCFixtureDef*>(tgt->fixtureDef())) == true);
+
+    EFX *efx = new EFX(m_doc);
+    EFXFixture *ef = new EFXFixture(efx);
+    ef->setHead(GroupHead(srcId, 0));
+    QVERIFY(efx->addFixture(ef));
+    m_doc->addFunction(efx);
+
+    // a function type the remapper leaves untouched
+    Collection *collection = new Collection(m_doc);
+    m_doc->addFunction(collection);
+
+    FixtureRemapper remapper;
+    remapper.addChannelRemap(srcId + 55, 0, tgtId, 1);      // some other source fixture
+    remapper.addChannelRemap(srcId, 0, tgtId + 99, 0);      // target missing from the doc
+    remapper.addChannelRemap(srcId, 0, tgtId, 50);          // target channel out of range
+    remapper.addChannelRemap(srcId, 0, tgtDimmer->id(), 0); // dimmer: no pan/tilt there
+    remapper.addChannelRemap(srcId, 1, tgtId, 1);           // Pan: the head moves here
+    remapper.addChannelRemap(srcId, 2, tgtId, 2);           // Tilt: same target, once only
+
+    remapper.applyRemap(m_doc, targetDoc.fixtures());
+
+    QCOMPARE(efx->fixtures().count(), 1);
+    QCOMPARE(efx->fixtures().first()->head().fxi, tgtId);
+    QCOMPARE(efx->fixtures().first()->head().head, 0);
+    QVERIFY(m_doc->function(collection->id()) == collection);
+}
+
+void FixtureRemapper_Test::testApplyRemapGroupInvalidHead()
+{
+    Fixture *src = buildMovingHead(m_doc, 0, "MH", "M1");
+    quint32 srcId = src->id();
+
+    Doc targetDoc(this);
+    Fixture *tgt = buildMovingHead(&targetDoc, 20, "MH", "M1");
+    quint32 tgtId = tgt->id();
+
+    FixtureGroup *group = new FixtureGroup(m_doc);
+    group->assignHead(QLCPoint(0, 0), GroupHead(srcId, 0));
+    // an invalid placeholder entry, as left behind by a removed fixture
+    group->m_heads[QLCPoint(1, 1)] = GroupHead();
+    m_doc->addFixtureGroup(group);
+
+    FixtureRemapper remapper;
+    remapper.autoConnectFixtures(src, tgt);
+    remapper.applyRemap(m_doc, targetDoc.fixtures());
+
+    QCOMPARE(group->head(QLCPoint(0, 0)).fxi, tgtId);
+    QVERIFY(group->head(QLCPoint(1, 1)).isValid() == false);
 }

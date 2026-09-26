@@ -23,7 +23,20 @@
 #include <QXmlStreamWriter>
 
 #include "qlcinputchannel_test.h"
+#include "qlcinputfeedback.h"
 #include "qlcinputchannel.h"
+
+/** Call the Q_ENUM helpers with a value the compiler can't fold: with a
+    constant argument (as QMetaEnum::fromType() passes) the constexpr helpers
+    are evaluated at compile time and the generated code never runs. */
+template <typename Enum>
+static void checkEnumHelpers(int value, const QMetaObject *metaObject, const char *name)
+{
+    volatile int raw = value;
+    Enum e = Enum(raw);
+    QVERIFY(qt_getEnumMetaObject(e) == metaObject);
+    QCOMPARE(QString(qt_getEnumName(e)), QString(name));
+}
 
 void QLCInputChannel_Test::types()
 {
@@ -394,4 +407,33 @@ void QLCInputChannel_Test::saveVariants()
     QVERIFY(xml.contains("<Feedback LowerValue=\"5\"/>"));
 }
 
-QTEST_APPLESS_MAIN(QLCInputChannel_Test)
+void QLCInputChannel_Test::icons()
+{
+    // No resource backs NoType, so those icons are empty; the typed ones
+    // resolve the same resource whichever way they are asked for
+    QVERIFY(QLCInputChannel::typeToIcon(QLCInputChannel::NoType).isNull());
+    QVERIFY(QLCInputChannel::stringToIcon("Foo").isNull());
+
+    QIcon button = QLCInputChannel::typeToIcon(QLCInputChannel::Button);
+    QCOMPARE(QLCInputChannel::stringToIcon(KXMLQLCInputChannelButton).isNull(), button.isNull());
+
+    QLCInputChannel ch;
+    ch.setType(QLCInputChannel::Button);
+    QCOMPARE(ch.icon().isNull(), button.isNull());
+    ch.setType(QLCInputChannel::NoType);
+    QVERIFY(ch.icon().isNull());
+}
+
+void QLCInputChannel_Test::enumRegistrations()
+{
+    checkEnumHelpers<QLCInputChannel::Type>(QLCInputChannel::Knob,
+                                            &QLCInputChannel::staticMetaObject, "Type");
+    checkEnumHelpers<QLCInputChannel::MovementType>(QLCInputChannel::Relative,
+                                                    &QLCInputChannel::staticMetaObject, "MovementType");
+    checkEnumHelpers<QLCInputFeedback::FeedbackType>(QLCInputFeedback::UpperValue,
+                                                     &QLCInputFeedback::staticMetaObject, "FeedbackType");
+}
+
+// QTEST_MAIN rather than APPLESS: icons() builds QIcons, which need a
+// QGuiApplication (a QIcon without one aborts inside QPixmap).
+QTEST_MAIN(QLCInputChannel_Test)

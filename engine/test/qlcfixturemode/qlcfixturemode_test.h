@@ -51,6 +51,12 @@ private slots:
     void save();
     void savePhysicalOverride();
 
+    void replaceChannel();
+    void removeAllChannels();
+    void actsOn();
+    void resetPhysical();
+    void saveActsOn();
+
     void cleanupTestCase();
 
 private:

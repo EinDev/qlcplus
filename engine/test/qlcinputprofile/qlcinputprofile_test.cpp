@@ -788,4 +788,15 @@ void QLCInputProfile_Test::saveUnwritable()
     QVERIFY(ip.path().isEmpty());
 }
 
+void QLCInputProfile_Test::enumRegistration()
+{
+    // Call the Q_ENUM helpers with a value the compiler can't fold: with a
+    // constant argument the constexpr helpers never run at all
+    volatile int raw = int(QLCInputProfile::OSC);
+    QLCInputProfile::Type type = QLCInputProfile::Type(raw);
+    QVERIFY(qt_getEnumMetaObject(type) == &QLCInputProfile::staticMetaObject);
+    QCOMPARE(QString(qt_getEnumName(type)), QString("Type"));
+    QCOMPARE(QString(QMetaEnum::fromType<QLCInputProfile::Type>().valueToKey(type)), QString("OSC"));
+}
+
 QTEST_APPLESS_MAIN(QLCInputProfile_Test)

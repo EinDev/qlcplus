@@ -39,6 +39,8 @@ private slots:
     void typeStringAndIcons();
     void loadExtras();
     void saveVariants();
+    void icons();
+    void enumRegistrations();
 };
 
 #endif

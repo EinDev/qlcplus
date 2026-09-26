@@ -1290,6 +1290,25 @@ void QLCChannel_Test::loadUnknownTag()
     QCOMPARE(ch.capabilities().size(), 0);
 }
 
+/** Call the Q_ENUM helpers with a value the compiler can't fold: with a
+    constant argument (as QMetaEnum::fromType() passes) the constexpr helpers
+    are evaluated at compile time and the generated code never runs. */
+template <typename Enum>
+static void checkEnumHelpers(int value, const char *name)
+{
+    volatile int raw = value;
+    Enum e = Enum(raw);
+    QVERIFY(qt_getEnumMetaObject(e) == &QLCChannel::staticMetaObject);
+    QCOMPARE(QString(qt_getEnumName(e)), QString(name));
+}
+
+void QLCChannel_Test::enumRegistrations()
+{
+    checkEnumHelpers<QLCChannel::Preset>(QLCChannel::IntensityDimmer, "Preset");
+    checkEnumHelpers<QLCChannel::Group>(QLCChannel::Intensity, "Group");
+    checkEnumHelpers<QLCChannel::PrimaryColour>(QLCChannel::Cyan, "PrimaryColour");
+}
+
 /* QTEST_MAIN (a QGuiApplication): icons() paints QPixmaps through QPainter,
    which needs a GUI application instance. */
 QTEST_MAIN(QLCChannel_Test)

@@ -645,6 +645,24 @@ void FixtureGroup_Test::loadWrongID()
     QVERIFY(grp.loadXML(xmlReader) == false);
 }
 
+void FixtureGroup_Test::loadUnknownTag()
+{
+    QXmlStreamReader xmlReader(
+        "<FixtureGroup ID=\"7\">"
+        "<Name>Grp</Name>"
+        "<Bogus><Nested/></Bogus>"
+        "<Head X=\"0\" Y=\"0\" Fixture=\"3\">0</Head>"
+        "</FixtureGroup>");
+    QVERIFY(xmlReader.readNextStartElement());
+
+    FixtureGroup grp(m_doc);
+    QVERIFY(grp.loadXML(xmlReader) == true);
+    QCOMPARE(grp.id(), quint32(7));
+    QCOMPARE(grp.name(), QString("Grp"));
+    // the unknown element was skipped as a whole, the head after it loaded
+    QCOMPARE(grp.head(QLCPoint(0, 0)).fxi, quint32(3));
+}
+
 void FixtureGroup_Test::loadWrongHeadAttributes()
 {
     QBuffer buffer;

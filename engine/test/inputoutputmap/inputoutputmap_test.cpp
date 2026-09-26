@@ -16,6 +16,7 @@
   See the License for the specific language governing permissions and
   limitations under the License.
 */
+#include <QScopeGuard>
 #include <QSignalSpy>
 #include <QtTest>
 #include <QTemporaryDir>
@@ -29,6 +30,7 @@
 #include "qlcinputchannel.h"
 #include "ioplugincache.h"
 #include "qlcinputsource.h"
+#include "audiocapture.h"
 #include "grandmaster.h"
 #include "mastertimer.h"
 #include "outputpatch.h"
@@ -1716,6 +1718,138 @@ void InputOutputMap_Test::pluginCacheHotplugSetting()
 // systemProfileDirectory(), which on WIN32/APPLE builds QLCFile::systemDirectory()
 // paths from QCoreApplication::applicationDirPath() - a static method that
 // requires an application instance to exist (see QLCFile::systemDirectory() in
+void InputOutputMap_Test::inputPatchBeatsPlugin()
+{
+    InputOutputMap im(m_doc, 2);
+
+    IOPluginStub* stub = static_cast<IOPluginStub*>
+                                (m_doc->ioPluginCache()->plugins().at(0));
+    QVERIFY(stub != NULL);
+
+    // a plugin advertising beat events gets its values routed to the beat
+    // slot as well, on every patch, re-patch and un-patch. The shared stub
+    // must lose the flag again however this test ends.
+    stub->m_extraCapabilities = QLCIOPlugin::Beats;
+    auto resetCapabilities = qScopeGuard([stub]() { stub->m_extraCapabilities = 0; });
+    QVERIFY(stub->capabilities() & QLCIOPlugin::Beats);
+
+    QVERIFY(im.setInputPatch(0, stub->name(), "", stub->inputs().at(0), 0) == true);
+    QVERIFY(im.inputPatch(0) != NULL);
+    QVERIFY(im.setInputPatch(0, stub->name(), "", stub->inputs().at(1), 1) == true);
+    QCOMPARE(im.inputPatch(0)->input(), quint32(1));
+
+    // a plugin beat is only counted while the plugin is the beat source
+    // (patches buffer their values, hence the flush)
+    im.setBeatGeneratorType(InputOutputMap::Plugin);
+    QSignalSpy beatSpy(&im, SIGNAL(beat()));
+    stub->emitValueChanged(UINT_MAX, 1, 0, UCHAR_MAX, "beat");
+    im.flushInputs();
+    QCOMPARE(beatSpy.size(), 1);
+    stub->emitValueChanged(UINT_MAX, 1, 1, UCHAR_MAX, "foo");
+    im.flushInputs();
+    QCOMPARE(beatSpy.size(), 1);
+    im.setBeatGeneratorType(InputOutputMap::Disabled);
+
+    QVERIFY(im.setInputPatch(0, stub->name(), "", "", QLCIOPlugin::invalidLine()) == true);
+    QVERIFY(im.inputPatch(0) == NULL);
+}
+
+void InputOutputMap_Test::inputPatchUnknownPlugin()
+{
+    InputOutputMap im(m_doc, 1);
+
+    IOPluginStub* stub = static_cast<IOPluginStub*>
+                                (m_doc->ioPluginCache()->plugins().at(0));
+    QVERIFY(stub != NULL);
+    QVERIFY(im.setInputPatch(0, stub->name(), "", stub->inputs().at(0), 0) == true);
+
+    // re-patching an existing patch to a plugin that isn't loaded fails and
+    // leaves a patch without any plugin behind
+    QVERIFY(im.setInputPatch(0, "No Such Plugin", "", "", 0) == false);
+    QVERIFY(im.inputPatch(0) != NULL);
+    QVERIFY(im.inputPatch(0)->plugin() == NULL);
+
+    QString uni, ch;
+    QVERIFY(im.inputSourceNames(new QLCInputSource(0, 3), uni, ch) == true);
+    QCOMPARE(uni, QString("1: ??"));
+    QCOMPARE(ch, QString("4: ?"));
+
+    // patching it again must cope with the plugin-less patch
+    QVERIFY(im.setInputPatch(0, stub->name(), "", stub->inputs().at(1), 1) == true);
+    QVERIFY(im.inputPatch(0)->plugin() == stub);
+    QCOMPARE(im.inputPatch(0)->input(), quint32(1));
+}
+
+/** An AudioCapture that never touches an audio device: its initialisation
+    fails on purpose, so the capture thread ends right after it starts. */
+class StubAudioCapture final : public AudioCapture
+{
+public:
+    StubAudioCapture() : AudioCapture(), initializeCalls(0) {}
+    ~StubAudioCapture() override { wait(5000); }
+
+    void setVolume(qreal) override {}
+    bool initialize() override { initializeCalls.ref(); return false; }
+    void uninitialize() override {}
+    void suspend() override {}
+    void resume() override {}
+    qint64 latency() const override { return 0; }
+    bool readAudio(int) override { return false; }
+
+    QAtomicInt initializeCalls;
+};
+
+void InputOutputMap_Test::beatGeneratorAudio()
+{
+    InputOutputMap im(m_doc, 1);
+
+    // hand the doc a capture stub so no real audio device is ever opened
+    StubAudioCapture *capture = new StubAudioCapture();
+    QSharedPointer<AudioCapture> shared(capture);
+    m_doc->m_inputCapture = shared;
+
+    QSignalSpy typeSpy(&im, SIGNAL(beatGeneratorTypeChanged()));
+    im.setBeatGeneratorType(InputOutputMap::Audio);
+    QCOMPARE(im.beatGeneratorType(), InputOutputMap::Audio);
+    QCOMPARE(typeSpy.size(), 1);
+    QCOMPARE(m_doc->masterTimer()->beatSourceType(), MasterTimer::External);
+    QVERIFY(im.m_inputCapture.data() == capture);
+
+    // registering the bands started the capture thread, whose
+    // initialisation fails in the stub, so it stops again by itself
+    QTRY_VERIFY_WITH_TIMEOUT(capture->initializeCalls.loadAcquire() == 1, 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(capture->isRunning() == false, 5000);
+
+    // a beat detected by the capture reaches the map's beat signal
+    QSignalSpy beatSpy(&im, SIGNAL(beat()));
+    emit capture->beatDetected(120);
+    QCOMPARE(beatSpy.size(), 1);
+    QCOMPARE(im.bpmNumber(), 120);
+
+    // leaving audio mode unregisters the bands and drops the capture
+    im.setBeatGeneratorType(InputOutputMap::Disabled);
+    QCOMPARE(im.beatGeneratorType(), InputOutputMap::Disabled);
+    QVERIFY(im.m_inputCapture.isNull());
+    QCOMPARE(m_doc->masterTimer()->beatSourceType(), MasterTimer::None);
+
+    m_doc->destroyAudioCapture();
+    QVERIFY(m_doc->m_inputCapture.isNull());
+    shared.clear();
+}
+
+void InputOutputMap_Test::defaultArgOverload()
+{
+    InputOutputMap im(m_doc, 1);
+    QSignalSpy spy(&im, SIGNAL(inputValueChanged(quint32,quint32,uchar,QString)));
+
+    // the moc-generated overload for the defaulted key argument
+    emit im.inputValueChanged(0, 7, 42);
+    QCOMPARE(spy.size(), 1);
+    QCOMPARE(spy.at(0).at(1).toUInt(), quint32(7));
+    QCOMPARE(spy.at(0).at(2).toUInt(), uint(42));
+    QVERIFY(spy.at(0).at(3).toString().isEmpty());
+}
+
 // qlcfile.cpp). QTEST_APPLESS_MAIN doesn't create one, so applicationDirPath()
 // warned and returned an empty string there, same failure on both platforms.
 // engine/test/rgbscript/rgbscript_test.cpp exercises the equivalent

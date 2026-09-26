@@ -68,6 +68,10 @@ private slots:
     void loadXMLWebOnlyAndUnknownTags();
     void pluginCacheEdgeCases();
     void pluginCacheHotplugSetting();
+    void inputPatchBeatsPlugin();
+    void inputPatchUnknownPlugin();
+    void beatGeneratorAudio();
+    void defaultArgOverload();
 
 private:
     Doc* m_doc;

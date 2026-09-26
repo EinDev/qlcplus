@@ -50,6 +50,7 @@ private slots:
     void loaderInvalid();
     void loadTablesXMLErrors();
     void saveUnwritable();
+    void enumRegistration();
 };
 
 #endif

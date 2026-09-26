@@ -366,4 +366,14 @@ void QLCPhysical_Test::save()
     QVERIFY(technical == true);
 }
 
+void QLCPhysical_Test::heapInstance()
+{
+    QLCPhysical *phys = new QLCPhysical();
+    phys->setWeight(7);
+    QLCPhysical *copy = new QLCPhysical(*phys);
+    QCOMPARE(copy->weight(), 7.0);
+    delete phys;
+    delete copy;
+}
+
 QTEST_MAIN(QLCPhysical_Test)

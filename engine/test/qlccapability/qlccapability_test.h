@@ -69,6 +69,7 @@ private slots:
     void loadEmptyName();
     void loadUnknownTag();
     void loadClampedRange();
+    void enumRegistrations();
 };
 
 #endif

@@ -387,6 +387,10 @@ bool QLCFixtureMode::loadXML(QXmlStreamReader &doc)
     if (str.isEmpty() == true)
     {
         qWarning() << Q_FUNC_INFO << "Mode has no name";
+        // Consume the whole element, or the caller's readNextStartElement()
+        // descends into this mode's children and stops at its end tag,
+        // silently dropping every mode that follows.
+        doc.skipCurrentElement();
         return false;
     }
     else

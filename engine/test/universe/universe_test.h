@@ -76,6 +76,10 @@ private slots:
     void outputPatches();
     void feedbackPatch();
     void savePatches();
+    void nullFaderSkipped();
+    void savePatchXMLInvalid();
+    void defaultArgOverloads();
+    void destroyWhileStarting();
 
 private:
 
