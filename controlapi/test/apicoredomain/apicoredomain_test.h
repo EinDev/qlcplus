@@ -20,7 +20,10 @@
 
 #include <QObject>
 #include <QJsonObject>
+#include <QList>
 #include <QTemporaryDir>
+
+class QSignalSpy;
 
 class Doc;
 class ApiServer;
@@ -39,9 +42,20 @@ private slots:
     void modeGetSetBroadcastsEvent();
     void settingsGetSetBroadcastsEvent();
 
+    void bpmGetReportsDisabledGeneratorOnFreshDoc();
+    void bpmSetEnablesInternalGeneratorAndBroadcasts();
+    void bpmSetZeroDisablesGenerator();
+    void bpmSetRejectsOutOfRangeAndEmptyParams();
+    void bpmTapDerivesTempoFromTapSpacing();
+    void beatEventFollowsInternalGeneratorTicks();
+    void undoRedoHistoryWithoutHostIsUnsupported();
+
 private:
     QJsonObject sendAndWaitForReply(const QString &method, const QJsonObject &params);
     QString helloAndGetClientId();
+
+    /** Every event frame with the given topic received by spy so far */
+    QList<QJsonObject> eventsWithTopic(QSignalSpy &spy, const QString &topic);
 
 private:
     Doc *m_doc;

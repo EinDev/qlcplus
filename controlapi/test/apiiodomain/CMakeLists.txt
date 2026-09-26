@@ -14,3 +14,8 @@ target_link_libraries(apiiodomain_test PRIVATE
     qlcplusapiserver
     qlcplusengine
 )
+
+# The io.plugin.list / io.patch.* cases load engine/test/iopluginstub's
+# plugin DLL at runtime (see ApiIoDomain_Test::loadStubPlugin()) - make sure
+# it exists whenever this test binary does.
+add_dependencies(apiiodomain_test iopluginstub)
