@@ -18,7 +18,8 @@
  * Deviations from the C++ (deliberate, documented): values are clamped to 0-255 instead of wrapping
  * through uchar(); "BY 0" is treated as "BY 1" instead of looping forever; a relative command
  * (+, -, +%, -%) without a channel list is applied relative to each remembered channel's current
- * value (the C++ stores the raw operand there, which is never what the operator meant).
+ * value (the C++ stores the raw operand there, which is never what the operator meant); a line
+ * with neither a channel nor a verb ("HELLO") does nothing (the C++ would zero the remembered list).
  */
 (function (root) {
   'use strict';
@@ -134,9 +135,10 @@
       return clamp(Math.trunc(fromValue));
     };
 
-    /* No channel named: re-apply to the channel list of the last command. */
+    /* No channel named: re-apply to the channel list of the last command. A line with no verb at
+       all (a typo like "HELLO") is dropped instead of zeroing the remembered channels. */
     if (!channelSet) {
-      if (!this.channels.length) return values;
+      if (!this.channels.length || lastCommand === CommandNone) return values;
       for (i = 0; i < this.channels.length; i++) {
         var ch = this.channels[i];
         var relative = lastCommand >= CommandPlus;
