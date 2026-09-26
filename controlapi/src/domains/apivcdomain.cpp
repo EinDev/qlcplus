@@ -20,6 +20,7 @@
 #include <QPointF>
 #include <QSet>
 #include <algorithm>
+#include <limits>
 
 #include "apivcdomain.h"
 #include "apivchost.h"
@@ -881,17 +882,18 @@ const QString kWidgetId = QStringLiteral("widgetId");
 
 /** Strict integer check: QJsonValue::toInt() happily turns "abc"/true/1.5 into 0/1/1, which would let
  *  a wrong-type field pass as a legitimate value. Live methods reject anything that isn't a whole
- *  JSON number instead. */
+ *  JSON number instead. Bounded to qint32 because every caller then reads the value with
+ *  QJsonValue::toInt(), which returns its default (0) for a whole number outside that range - so
+ *  without this bound "value": 4294967296 would silently be applied as 0. */
 bool jsonIsInteger(const QJsonValue &v)
 {
     if (v.isDouble() == false)
         return false;
     double d = v.toDouble();
-    // Stay inside the exactly-representable integer range before casting - converting e.g. 1e300 to
-    // qint64 is undefined behaviour, and nothing here legitimately needs more than 2^53 anyway.
-    if (d < -9007199254740992.0 || d > 9007199254740992.0)
+    // Range-check before the cast - converting e.g. 1e300 to an integer type is undefined behaviour.
+    if (d < double(std::numeric_limits<qint32>::min()) || d > double(std::numeric_limits<qint32>::max()))
         return false;
-    return d == double(qint64(d));
+    return d == double(qint32(d));
 }
 
 } // namespace
