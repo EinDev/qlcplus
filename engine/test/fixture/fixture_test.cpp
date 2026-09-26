@@ -23,14 +23,22 @@
 #include <QXmlStreamWriter>
 
 #include "qlcfixturedefcache.h"
+#include "qlcmodifierscache.h"
+#include "channelmodifier.h"
 #include "qlcfixturemode.h"
 #include "qlcfixturedef.h"
 #include "qlccapability.h"
+#include "qlcphysical.h"
+#include "qlcchannel.h"
 #include "qlcconfig.h"
 #include "qlcfile.h"
 
 #include "fixture_test.h"
+// componentsToString()/stringToComponents() are protected helpers of Fixture;
+// expose them the same way the neighbouring suites do for their classes.
+#define protected public
 #include "fixture.h"
+#undef protected
 #include "doc.h"
 
 #include "../common/resource_paths.h"
@@ -1016,4 +1024,754 @@ void Fixture_Test::save()
     info = fxi.status();
 }*/
 
-QTEST_APPLESS_MAIN(Fixture_Test)
+/*****************************************************************************
+ * Helpers for the in-memory definitions used below. Fixture does not own a
+ * non-generic definition, so these are deleted by the test after the Fixture
+ * has been detached from them (setFixtureDefinition(NULL, NULL)).
+ *****************************************************************************/
+
+static QLCChannel *makeChannel(QLCFixtureDef *def, const QString &name, QLCChannel::Group group,
+                               QLCChannel::Preset preset = QLCChannel::Custom,
+                               QLCChannel::ControlByte cb = QLCChannel::MSB)
+{
+    QLCChannel *ch = new QLCChannel();
+    ch->setName(name);
+    ch->setGroup(group);
+    ch->setControlByte(cb);
+    if (preset != QLCChannel::Custom)
+        ch->setPreset(preset);
+    def->addChannel(ch);
+    return ch;
+}
+
+static QLCFixtureMode *makeMode(QLCFixtureDef *def, const QString &name, const QList<QLCChannel *> &channels)
+{
+    QLCFixtureMode *mode = new QLCFixtureMode(def);
+    mode->setName(name);
+    for (int i = 0; i < channels.count(); i++)
+        mode->insertChannel(channels.at(i), i);
+    def->addMode(mode);
+    return mode;
+}
+
+static QByteArray writeFixture(const Fixture &fxi)
+{
+    QBuffer buffer;
+    buffer.open(QIODevice::WriteOnly | QIODevice::Text);
+    QXmlStreamWriter xmlWriter(&buffer);
+    xmlWriter.writeStartElement("TestRoot");
+    fxi.saveXML(&xmlWriter);
+    xmlWriter.writeEndDocument();
+    xmlWriter.setDevice(NULL);
+    buffer.close();
+    return buffer.data();
+}
+
+static bool readFixture(const QByteArray &xml, Fixture &fxi, Doc *doc)
+{
+    QBuffer buffer;
+    buffer.setData(xml);
+    buffer.open(QIODevice::ReadOnly | QIODevice::Text);
+    QXmlStreamReader xmlReader(&buffer);
+    xmlReader.readNextStartElement(); // TestRoot
+    xmlReader.readNextStartElement(); // Fixture
+    return fxi.loadXML(xmlReader, doc, doc->fixtureDefCache());
+}
+
+/*****************************************************************************
+ * Universe / channel bookkeeping
+ *****************************************************************************/
+
+void Fixture_Test::crossUniverse()
+{
+    Fixture fxi(this);
+    QCOMPARE(fxi.crossUniverse(), false);
+    fxi.setCrossUniverse(true);
+    QCOMPARE(fxi.crossUniverse(), true);
+    fxi.setCrossUniverse(false);
+    QCOMPARE(fxi.crossUniverse(), false);
+}
+
+void Fixture_Test::setChannelsReplacesGenericDef()
+{
+    Fixture fxi(this);
+    fxi.setChannels(3);
+    QLCFixtureDef *firstDef = fxi.fixtureDef();
+    QVERIFY(firstDef != NULL);
+    QCOMPARE(fxi.channels(), quint32(3));
+    QCOMPARE(fxi.fixtureMode()->name(), QString("3 Channel"));
+
+    // same count: the generic definition is kept as is
+    fxi.setChannels(3);
+    QCOMPARE(fxi.fixtureDef(), firstDef);
+
+    // different count: a new generic definition/mode replaces the old one
+    fxi.setChannels(5);
+    QVERIFY(fxi.fixtureDef() != NULL);
+    QCOMPARE(fxi.channels(), quint32(5));
+    QCOMPARE(fxi.fixtureMode()->name(), QString("5 Channel"));
+    QCOMPARE(fxi.fixtureMode()->heads().count(), 5);
+    QCOMPARE(fxi.channelValues().size(), 5);
+}
+
+void Fixture_Test::channelLookupMisses()
+{
+    Fixture bare(this);
+    // no definition at all: any group lookup is invalid
+    QCOMPARE(bare.channel(QLCChannel::Pan), QLCChannel::invalid());
+    QCOMPARE(bare.channel(QLCChannel::Intensity, QLCChannel::Red), QLCChannel::invalid());
+    QVERIFY(bare.channels(QLCChannel::Pan).isEmpty());
+
+    Fixture fxi(this);
+    QLCFixtureDef *def = m_doc->fixtureDefCache()->fixtureDef("Martin", "MAC250+");
+    QVERIFY(def != NULL);
+    QLCFixtureMode *mode = def->modes().at(1);
+    QVERIFY(mode != NULL);
+    fxi.setFixtureDefinition(def, mode);
+
+    // MAC250+ has no red intensity channel
+    QCOMPARE(fxi.channel(QLCChannel::Intensity, QLCChannel::Red), QLCChannel::invalid());
+
+    // head index out of range on every head-based lookup
+    QCOMPARE(fxi.heads(), 1);
+    QCOMPARE(fxi.channelNumber(QLCChannel::Pan, QLCChannel::MSB, 5), QLCChannel::invalid());
+    QCOMPARE(fxi.channelNumber(QLCChannel::Pan, QLCChannel::MSB, -1), QLCChannel::invalid());
+    QCOMPARE(fxi.rgbChannels(5), QVector<quint32>());
+    QCOMPARE(fxi.cmyChannels(5), QVector<quint32>());
+    QCOMPARE(fxi.head(5).channels().count(), 0);
+}
+
+/*****************************************************************************
+ * Position / axis / zoom helpers
+ *****************************************************************************/
+
+void Fixture_Test::positionNoMovement()
+{
+    Fixture bare(this);
+    QVERIFY(bare.positionToValues(QLCChannel::Pan, 90).isEmpty());
+    QVERIFY(bare.positionToValues(QLCChannel::Tilt, 90).isEmpty());
+    QVERIFY(bare.axisValueToValues(QLCChannel::Pan, 100).isEmpty());
+    QVERIFY(bare.zoomToValues(10, false).isEmpty());
+    QCOMPARE(bare.degreesRange(0), QRectF());
+
+    Fixture dimmer(this);
+    dimmer.setChannels(4);
+    // a generic dimmer has heads but no pan/tilt/zoom: nothing to produce
+    QVERIFY(dimmer.positionToValues(QLCChannel::Pan, 90).isEmpty());
+    QVERIFY(dimmer.positionToValues(QLCChannel::Tilt, 45).isEmpty());
+    QVERIFY(dimmer.axisValueToValues(QLCChannel::Tilt, 100).isEmpty());
+    QVERIFY(dimmer.zoomToValues(10, false).isEmpty());
+    // ...and no pan/tilt range either
+    QCOMPARE(dimmer.degreesRange(0), QRectF());
+}
+
+void Fixture_Test::positionRelative()
+{
+    Fixture fxi(this);
+    QLCFixtureDef *def = m_doc->fixtureDefCache()->fixtureDef("Martin", "MAC250+");
+    QVERIFY(def != NULL);
+    QLCFixtureMode *mode = def->modes().at(1); // 16 bit pan/tilt, 540/270 degrees
+    QVERIFY(mode != NULL);
+    fxi.setFixtureDefinition(def, mode);
+    fxi.setID(5);
+    fxi.setAddress(0);
+
+    // current values: pan MSB 128 (= 270 degrees), tilt MSB 64 (= 67.5 degrees)
+    QByteArray values(16, 0);
+    values[7] = char(128);
+    values[9] = char(64);
+    QVERIFY(fxi.setChannelValues(values) == true);
+    QCOMPARE(fxi.channelValueAt(7), uchar(128));
+
+    // +90 degrees relative pan: 360 degrees -> 0xAAAA
+    QList<SceneValue> pos = fxi.positionToValues(QLCChannel::Pan, 90, true);
+    QCOMPARE(pos.count(), 2);
+    QCOMPARE(pos.at(0).fxi, quint32(5));
+    QCOMPARE(pos.at(0).channel, quint32(7));
+    QCOMPARE(pos.at(0).value, uchar(0xAA));
+    QCOMPARE(pos.at(1).channel, quint32(8));
+    QCOMPARE(pos.at(1).value, uchar(0xAA));
+
+    // relative pan beyond the range is clamped to the maximum
+    pos = fxi.positionToValues(QLCChannel::Pan, 500, true);
+    QCOMPARE(pos.count(), 2);
+    QCOMPARE(pos.at(0).value, uchar(0xFF));
+    QCOMPARE(pos.at(1).value, uchar(0xFF));
+
+    // -20 degrees relative tilt: 47.5 degrees -> 11529 = 0x2D09
+    pos = fxi.positionToValues(QLCChannel::Tilt, -20, true);
+    QCOMPARE(pos.count(), 2);
+    QCOMPARE(pos.at(0).channel, quint32(9));
+    QCOMPARE(pos.at(0).value, uchar(0x2D));
+    QCOMPARE(pos.at(1).channel, quint32(10));
+    QCOMPARE(pos.at(1).value, uchar(0x09));
+
+    // relative tilt below zero is clamped to zero
+    pos = fxi.positionToValues(QLCChannel::Tilt, -200, true);
+    QCOMPARE(pos.count(), 2);
+    QCOMPARE(pos.at(0).value, uchar(0));
+    QCOMPARE(pos.at(1).value, uchar(0));
+}
+
+void Fixture_Test::axisValues()
+{
+    Fixture fxi(this);
+    QLCFixtureDef *def = m_doc->fixtureDefCache()->fixtureDef("Martin", "MAC250+");
+    QVERIFY(def != NULL);
+    QLCFixtureMode *mode = def->modes().at(1);
+    QVERIFY(mode != NULL);
+    fxi.setFixtureDefinition(def, mode);
+    fxi.setID(6);
+
+    QList<SceneValue> vals = fxi.axisValueToValues(QLCChannel::Pan, 0x1234);
+    QCOMPARE(vals.count(), 2);
+    QCOMPARE(vals.at(0).fxi, quint32(6));
+    QCOMPARE(vals.at(0).channel, quint32(7));
+    QCOMPARE(vals.at(0).value, uchar(0x12));
+    QCOMPARE(vals.at(1).channel, quint32(8));
+    QCOMPARE(vals.at(1).value, uchar(0x34));
+
+    // raw values are clamped to the 16 bit range
+    vals = fxi.axisValueToValues(QLCChannel::Tilt, 70000);
+    QCOMPARE(vals.count(), 2);
+    QCOMPARE(vals.at(0).channel, quint32(9));
+    QCOMPARE(vals.at(0).value, uchar(0xFF));
+    QCOMPARE(vals.at(1).channel, quint32(10));
+    QCOMPARE(vals.at(1).value, uchar(0xFF));
+
+    vals = fxi.axisValueToValues(QLCChannel::Tilt, -5);
+    QCOMPARE(vals.count(), 2);
+    QCOMPARE(vals.at(0).value, uchar(0));
+    QCOMPARE(vals.at(1).value, uchar(0));
+
+    // an axis this fixture does not have
+    QVERIFY(fxi.axisValueToValues(QLCChannel::Speed, 100).isEmpty());
+}
+
+void Fixture_Test::zoom()
+{
+    QLCFixtureDef *def = new QLCFixtureDef();
+    def->setManufacturer("Test");
+    def->setModel("Zoom");
+    QList<QLCChannel *> chList;
+    chList << makeChannel(def, "Dimmer", QLCChannel::Intensity);
+    chList << makeChannel(def, "Zoom", QLCChannel::Beam, QLCChannel::BeamZoomSmallBig);
+    chList << makeChannel(def, "Zoom Fine", QLCChannel::Beam, QLCChannel::BeamZoomFine, QLCChannel::LSB);
+    chList << makeChannel(def, "Zoom Inverted", QLCChannel::Beam, QLCChannel::BeamZoomBigSmall);
+    chList << makeChannel(def, "Focus", QLCChannel::Beam, QLCChannel::BeamFocusNearFar);
+    QLCFixtureMode *mode = makeMode(def, "Zoom", chList);
+
+    QLCPhysical phy;
+    phy.setLensDegreesMin(10);
+    phy.setLensDegreesMax(50);
+    mode->setPhysical(phy);
+
+    Fixture fxi(this);
+    fxi.setFixtureDefinition(def, mode);
+    fxi.setID(8);
+    fxi.setAddress(0);
+
+    // absolute 30 degrees over a 10..50 lens: (30 - 10) / 40 -> 0x7FFF
+    QList<SceneValue> vals = fxi.zoomToValues(30, false);
+    QCOMPARE(vals.count(), 3);
+    QCOMPARE(vals.at(0).fxi, quint32(8));
+    QCOMPARE(vals.at(0).channel, quint32(1));
+    QCOMPARE(vals.at(0).value, uchar(0x7F));
+    QCOMPARE(vals.at(1).channel, quint32(2));
+    QCOMPARE(vals.at(1).value, uchar(0xFF));
+    QCOMPARE(vals.at(2).channel, quint32(3));
+    QCOMPARE(vals.at(2).value, uchar(255 - 0x7F));
+
+    // absolute values are clamped to the lens range
+    vals = fxi.zoomToValues(100, false);
+    QCOMPARE(vals.count(), 3);
+    QCOMPARE(vals.at(0).value, uchar(0xFF));
+    QCOMPARE(vals.at(1).value, uchar(0xFF));
+    QCOMPARE(vals.at(2).value, uchar(0));
+
+    // relative: current zoom MSB 64 (= 10 degrees of travel), inverted channel 191
+    QByteArray values(5, 0);
+    values[1] = char(64);
+    values[3] = char(191);
+    QVERIFY(fxi.setChannelValues(values) == true);
+
+    vals = fxi.zoomToValues(10, true);
+    QCOMPARE(vals.count(), 3);
+    QCOMPARE(vals.at(0).channel, quint32(1));
+    QCOMPARE(vals.at(0).value, uchar(0x7F));
+    QCOMPARE(vals.at(1).channel, quint32(2));
+    QCOMPARE(vals.at(1).value, uchar(0xFE));
+    QCOMPARE(vals.at(2).channel, quint32(3));
+    QCOMPARE(vals.at(2).value, uchar(64));
+
+    vals = fxi.zoomToValues(-10, true);
+    QCOMPARE(vals.count(), 3);
+    QCOMPARE(vals.at(0).value, uchar(0));
+    QCOMPARE(vals.at(1).value, uchar(0));
+    QCOMPARE(vals.at(2).value, uchar(192));
+
+    fxi.setFixtureDefinition(NULL, NULL);
+    delete def;
+}
+
+/*****************************************************************************
+ * Channel values, fade/precedence lists, modifiers
+ *****************************************************************************/
+
+void Fixture_Test::channelValuesCache()
+{
+    Fixture fxi(this);
+    fxi.setChannels(4);
+    fxi.setAddress(10);
+    QCOMPARE(fxi.channelValues().size(), 4);
+
+    // buffer too short to reach the fixture's address: nothing changes
+    QCOMPARE(fxi.setChannelValues(QByteArray(5, 0)), false);
+
+    QByteArray universe(512, 0);
+    universe[10] = char(100);
+    universe[12] = char(50);
+    QSignalSpy spy(&fxi, SIGNAL(valuesChanged()));
+    QCOMPARE(fxi.setChannelValues(universe), true);
+    QCOMPARE(spy.count(), 1);
+    QCOMPARE(fxi.channelValueAt(0), uchar(100));
+    QCOMPARE(fxi.channelValueAt(1), uchar(0));
+    QCOMPARE(fxi.channelValueAt(2), uchar(50));
+    QCOMPARE(fxi.channelValueAt(-1), uchar(0));
+    QCOMPARE(fxi.channelValueAt(4), uchar(0));
+
+    QByteArray cached = fxi.channelValues();
+    QCOMPARE(cached.size(), 4);
+    QCOMPARE(uchar(cached.at(0)), uchar(100));
+    QCOMPARE(uchar(cached.at(2)), uchar(50));
+
+    // same values again: no change reported
+    QCOMPARE(fxi.setChannelValues(universe), false);
+    QCOMPARE(spy.count(), 1);
+
+    // a buffer covering only part of the fixture updates the covered channels
+    QByteArray partial(12, 0);
+    partial[10] = char(7);
+    QCOMPARE(fxi.setChannelValues(partial), true);
+    QCOMPARE(fxi.channelValueAt(0), uchar(7));
+    QCOMPARE(fxi.channelValueAt(2), uchar(50));
+}
+
+void Fixture_Test::fadeAndPrecedenceLists()
+{
+    Fixture fxi(this);
+    fxi.setChannels(4);
+
+    // lists longer than the channel count are rejected
+    QList<int> tooMany;
+    tooMany << 0 << 1 << 2 << 3 << 4;
+    fxi.setExcludeFadeChannels(tooMany);
+    QVERIFY(fxi.excludeFadeChannels().isEmpty());
+    fxi.setForcedHTPChannels(tooMany);
+    QVERIFY(fxi.forcedHTPChannels().isEmpty());
+    fxi.setForcedLTPChannels(tooMany);
+    QVERIFY(fxi.forcedLTPChannels().isEmpty());
+
+    fxi.setChannelCanFade(2, false);
+    fxi.setChannelCanFade(0, false);
+    QCOMPARE(fxi.excludeFadeChannels(), QList<int>() << 0 << 2); // kept sorted
+    QCOMPARE(fxi.channelCanFade(2), false);
+    QCOMPARE(fxi.channelCanFade(1), true);
+    fxi.setChannelCanFade(2, false); // no duplicates
+    QCOMPARE(fxi.excludeFadeChannels(), QList<int>() << 0 << 2);
+    fxi.setChannelCanFade(2, true);
+    QCOMPARE(fxi.excludeFadeChannels(), QList<int>() << 0);
+    fxi.setChannelCanFade(3, true); // not excluded: no-op
+    QCOMPARE(fxi.excludeFadeChannels(), QList<int>() << 0);
+
+    // forced HTP and LTP lists are mutually exclusive
+    fxi.setForcedHTPChannels(QList<int>() << 0 << 1);
+    fxi.setForcedLTPChannels(QList<int>() << 1 << 2);
+    QCOMPARE(fxi.forcedHTPChannels(), QList<int>() << 0);
+    QCOMPARE(fxi.forcedLTPChannels(), QList<int>() << 1 << 2);
+    fxi.setForcedHTPChannels(QList<int>() << 2);
+    QCOMPARE(fxi.forcedHTPChannels(), QList<int>() << 2);
+    QCOMPARE(fxi.forcedLTPChannels(), QList<int>() << 1);
+}
+
+void Fixture_Test::channelModifiers()
+{
+    Fixture fxi(this);
+    fxi.setChannels(3);
+
+    ChannelModifier mod;
+    mod.setName("TestMod");
+
+    QVERIFY(fxi.channelModifier(0) == NULL);
+    fxi.setChannelModifier(5, &mod); // out of range: ignored
+    QVERIFY(fxi.channelModifier(5) == NULL);
+
+    fxi.setChannelModifier(1, &mod);
+    QCOMPARE(fxi.channelModifier(1), &mod);
+    QVERIFY(fxi.channelModifier(0) == NULL);
+
+    fxi.setChannelModifier(1, NULL);
+    QVERIFY(fxi.channelModifier(1) == NULL);
+}
+
+/*****************************************************************************
+ * Icons
+ *****************************************************************************/
+
+void Fixture_Test::iconResources()
+{
+    Fixture fxi(this);
+    QCOMPARE(fxi.iconResource(true), QString("qrc:/dimmer.svg"));
+
+    QLCFixtureDef *def = new QLCFixtureDef();
+    def->setManufacturer("Test");
+    def->setModel("Icons");
+    QList<QLCChannel *> chList;
+    chList << makeChannel(def, "Speed", QLCChannel::Speed);
+    QLCFixtureMode *mode = makeMode(def, "Mode", chList);
+    fxi.setFixtureDefinition(def, mode);
+
+    struct IconCase { QLCFixtureDef::FixtureType type; const char *res; };
+    const IconCase cases[] = {
+        { QLCFixtureDef::ColorChanger, "fixture" },
+        { QLCFixtureDef::Dimmer, "dimmer" },
+        { QLCFixtureDef::Effect, "effect" },
+        { QLCFixtureDef::Fan, "fan" },
+        { QLCFixtureDef::Flower, "flower" },
+        { QLCFixtureDef::Hazer, "hazer" },
+        { QLCFixtureDef::Laser, "laser" },
+        { QLCFixtureDef::MovingHead, "movinghead" },
+        { QLCFixtureDef::Scanner, "scanner" },
+        { QLCFixtureDef::Smoke, "smoke" },
+        { QLCFixtureDef::Strobe, "strobe" },
+        { QLCFixtureDef::LEDBarBeams, "ledbar_beams" },
+        { QLCFixtureDef::LEDBarPixels, "ledbar_pixels" },
+        { QLCFixtureDef::Other, "other" }
+    };
+
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++)
+    {
+        def->setType(cases[i].type);
+        QCOMPARE(fxi.type(), cases[i].type);
+        QCOMPARE(fxi.iconResource(false), QString(":/%1.png").arg(cases[i].res));
+        QCOMPARE(fxi.iconResource(true), QString("qrc:/%1.svg").arg(cases[i].res));
+    }
+
+    // The icon files live in the application's resources, not in this test
+    // binary, so only the resource path can be checked. Building the QIcon
+    // itself needs a QGuiApplication (hence QTEST_MAIN below).
+    QIcon icon = fxi.getIconFromType();
+    Q_UNUSED(icon);
+
+    fxi.setFixtureDefinition(NULL, NULL);
+    delete def;
+}
+
+/*****************************************************************************
+ * Capability aliases
+ *****************************************************************************/
+
+void Fixture_Test::aliasChannels()
+{
+    QLCFixtureDef *def = new QLCFixtureDef();
+    def->setManufacturer("Test");
+    def->setModel("Alias");
+
+    QLCChannel *control = makeChannel(def, "Control", QLCChannel::Maintenance);
+    QLCChannel *color = makeChannel(def, "Color", QLCChannel::Colour);
+    QLCChannel *strobe = makeChannel(def, "Strobe", QLCChannel::Shutter);
+    QLCChannel *gobo = makeChannel(def, "Gobo", QLCChannel::Gobo);
+
+    // Aliases targeting another mode must be ignored
+    AliasInfo otherModeAlias;
+    otherModeAlias.targetMode = "Other";
+    otherModeAlias.sourceChannel = "Color";
+    otherModeAlias.targetChannel = "Strobe";
+
+    QLCCapability *plain = new QLCCapability(0, 9, "Plain");
+
+    QLCCapability *capB = new QLCCapability(10, 19, "Strobe mode");
+    capB->setPreset(QLCCapability::Alias);
+    AliasInfo bAlias;
+    bAlias.targetMode = "Main";
+    bAlias.sourceChannel = "Color";
+    bAlias.targetChannel = "Strobe";
+    capB->addAlias(bAlias);
+    capB->addAlias(otherModeAlias);
+
+    QLCCapability *capC = new QLCCapability(20, 255, "Gobo mode");
+    capC->setPreset(QLCCapability::Alias);
+    AliasInfo cAlias;
+    cAlias.targetMode = "Main";
+    cAlias.sourceChannel = "Color";
+    cAlias.targetChannel = "Gobo";
+    capC->addAlias(cAlias);
+    capC->addAlias(otherModeAlias);
+
+    QVERIFY(control->addCapability(plain));
+    QVERIFY(control->addCapability(capB));
+    QVERIFY(control->addCapability(capC));
+
+    QLCFixtureMode *mainMode = makeMode(def, "Main", QList<QLCChannel *>() << control << color);
+    makeMode(def, "Other", QList<QLCChannel *>() << control << color);
+
+    Fixture fxi(this);
+    fxi.setFixtureDefinition(def, mainMode);
+    fxi.setAddress(0);
+    QSignalSpy spy(&fxi, SIGNAL(aliasChanged()));
+    QCOMPARE(fxi.channel(1), (const QLCChannel *)color);
+
+    // enter the "Strobe mode" range: Color is replaced by Strobe
+    QByteArray values(2, 0);
+    values[0] = char(15);
+    QVERIFY(fxi.setChannelValues(values) == true);
+    QCOMPARE(spy.count(), 1);
+    QCOMPARE(fxi.channel(1), (const QLCChannel *)strobe);
+
+    // enter the "Gobo mode" range: the previous alias is reverted, then Gobo applied
+    values[0] = char(25);
+    QVERIFY(fxi.setChannelValues(values) == true);
+    QCOMPARE(spy.count(), 2);
+    QCOMPARE(fxi.channel(1), (const QLCChannel *)gobo);
+
+    // a value inside the currently active capability changes nothing
+    values[0] = char(30);
+    QVERIFY(fxi.setChannelValues(values) == true);
+    QCOMPARE(spy.count(), 2);
+    QCOMPARE(fxi.channel(1), (const QLCChannel *)gobo);
+
+    // back to the alias-free range: the original channel set is restored
+    values[0] = char(5);
+    QVERIFY(fxi.setChannelValues(values) == true);
+    QCOMPARE(spy.count(), 3);
+    QCOMPARE(fxi.channel(1), (const QLCChannel *)color);
+
+    fxi.setFixtureDefinition(NULL, NULL);
+    delete def;
+}
+
+/*****************************************************************************
+ * RGB panel component strings
+ *****************************************************************************/
+
+void Fixture_Test::componentStrings()
+{
+    bool is16bit = true;
+    QCOMPARE(int(Fixture::stringToComponents("BGR", is16bit)), int(Fixture::BGR));
+    QCOMPARE(is16bit, false);
+    QCOMPARE(int(Fixture::stringToComponents("BRG", is16bit)), int(Fixture::BRG));
+    QCOMPARE(int(Fixture::stringToComponents("GBR", is16bit)), int(Fixture::GBR));
+    QCOMPARE(int(Fixture::stringToComponents("GRB", is16bit)), int(Fixture::GRB));
+    QCOMPARE(int(Fixture::stringToComponents("RBG", is16bit)), int(Fixture::RBG));
+    QCOMPARE(int(Fixture::stringToComponents("RGBW", is16bit)), int(Fixture::RGBW));
+    QCOMPARE(int(Fixture::stringToComponents("RGB", is16bit)), int(Fixture::RGB));
+    QCOMPARE(int(Fixture::stringToComponents("Foo", is16bit)), int(Fixture::RGB));
+
+    QCOMPARE(int(Fixture::stringToComponents("GRB 16bit", is16bit)), int(Fixture::GRB));
+    QCOMPARE(is16bit, true);
+    QCOMPARE(int(Fixture::stringToComponents("RGB 8bit", is16bit)), int(Fixture::RGB));
+    QCOMPARE(is16bit, false);
+
+    QCOMPARE(Fixture::componentsToString(Fixture::GBR, true), QString("GBR 16bit"));
+    QCOMPARE(Fixture::componentsToString(Fixture::RGBW, false), QString("RGBW"));
+    QCOMPARE(Fixture::componentsToString(Fixture::RGB, false), QString("RGB"));
+}
+
+/*****************************************************************************
+ * Load & save, optional parts
+ *****************************************************************************/
+
+void Fixture_Test::saveBare()
+{
+    Fixture fxi(this);
+    fxi.setID(3);
+    fxi.setName("Bare");
+
+    QByteArray xml = writeFixture(fxi);
+    QVERIFY(xml.contains("<Manufacturer>Generic</Manufacturer>"));
+    QVERIFY(xml.contains("<Model>Generic</Model>"));
+    QVERIFY(xml.contains("<Mode>Generic</Mode>"));
+    QVERIFY(xml.contains("<Channels>0</Channels>"));
+    QVERIFY(xml.contains("<ID>3</ID>"));
+    QVERIFY(!xml.contains("CrossUniverse"));
+    QVERIFY(!xml.contains("ExcludeFade"));
+}
+
+void Fixture_Test::saveLoadOptionalParts()
+{
+    Doc doc(this);
+    ChannelModifier *mod = new ChannelModifier();
+    mod->setName("SaveMod");
+    QVERIFY(doc.modifiersCache()->addModifier(mod) == true);
+
+    Fixture fxi(this);
+    fxi.setID(7);
+    fxi.setName("Optional");
+    fxi.setChannels(6);
+    fxi.setUniverse(1);
+    fxi.setAddress(508);
+    fxi.setCrossUniverse(true);
+    fxi.setExcludeFadeChannels(QList<int>() << 0 << 2);
+    fxi.setForcedHTPChannels(QList<int>() << 1 << 2);
+    fxi.setForcedLTPChannels(QList<int>() << 3 << 4);
+    fxi.setChannelModifier(5, mod);
+
+    QByteArray xml = writeFixture(fxi);
+    QVERIFY(xml.contains("<CrossUniverse>True</CrossUniverse>"));
+    QVERIFY(xml.contains("<ExcludeFade>0,2</ExcludeFade>"));
+    QVERIFY(xml.contains("<ForcedHTP>1,2</ForcedHTP>"));
+    QVERIFY(xml.contains("<ForcedLTP>3,4</ForcedLTP>"));
+    QVERIFY(xml.contains("<Modifier Channel=\"5\" Name=\"SaveMod\"/>"));
+
+    Fixture loaded(this);
+    QVERIFY(readFixture(xml, loaded, &doc) == true);
+    QCOMPARE(loaded.id(), quint32(7));
+    QCOMPARE(loaded.name(), QString("Optional"));
+    QCOMPARE(loaded.universe(), quint32(1));
+    // a cross-universe fixture may exceed the 512 channel boundary
+    QCOMPARE(loaded.address(), quint32(508));
+    QCOMPARE(loaded.crossUniverse(), true);
+    QCOMPARE(loaded.channels(), quint32(6));
+    QVERIFY(loaded.fixtureDef() != NULL);
+    QCOMPARE(loaded.fixtureDef()->manufacturer(), QString(KXMLFixtureGeneric));
+    QCOMPARE(loaded.fixtureDef()->model(), QString(KXMLFixtureGeneric));
+    QCOMPARE(loaded.excludeFadeChannels(), QList<int>() << 0 << 2);
+    QCOMPARE(loaded.forcedHTPChannels(), QList<int>() << 1 << 2);
+    QCOMPARE(loaded.forcedLTPChannels(), QList<int>() << 3 << 4);
+    QCOMPARE(loaded.channelModifier(5), mod);
+    QVERIFY(loaded.channelModifier(0) == NULL);
+
+    // a modifier the cache does not know is dropped on load
+    QByteArray unknown = xml;
+    unknown.replace("Name=\"SaveMod\"", "Name=\"Nope\"");
+    Fixture loaded2(this);
+    QVERIFY(readFixture(unknown, loaded2, &doc) == true);
+    QVERIFY(loaded2.channelModifier(5) == NULL);
+}
+
+void Fixture_Test::saveLoadRGBPanel()
+{
+    Doc doc(this);
+    Fixture fxi(this);
+    QLCFixtureDef *def = fxi.genericRGBPanelDef(4, Fixture::RGBW, true);
+    QLCFixtureMode *mode = fxi.genericRGBPanelMode(def, Fixture::RGBW, true, 800, 120);
+    fxi.setFixtureDefinition(def, mode);
+    fxi.setID(11);
+    fxi.setName("Panel");
+
+    QCOMPARE(fxi.channels(), quint32(32)); // 4 columns x (RGBW + fine)
+    QCOMPARE(fxi.heads(), 4);
+    QCOMPARE(mode->name(), QString("RGBW 16bit"));
+    QCOMPARE(fxi.channel(6)->name(), QString("White 1"));
+    QCOMPARE(fxi.channel(7)->name(), QString("White Fine 1"));
+    QCOMPARE(fxi.channel(7)->colour(), QLCChannel::White);
+    QCOMPARE(fxi.channel(7)->controlByte(), QLCChannel::LSB);
+
+    QByteArray xml = writeFixture(fxi);
+    QVERIFY(xml.contains("<Width>800</Width>"));
+    QVERIFY(xml.contains("<Height>120</Height>"));
+
+    Fixture loaded(this);
+    QVERIFY(readFixture(xml, loaded, &doc) == true);
+    QCOMPARE(loaded.channels(), quint32(32));
+    QCOMPARE(loaded.heads(), 4);
+    QVERIFY(loaded.fixtureDef() != NULL);
+    QCOMPARE(loaded.fixtureDef()->model(), QString(KXMLFixtureRGBPanel));
+    QCOMPARE(loaded.fixtureMode()->name(), QString("RGBW 16bit"));
+    QCOMPARE(loaded.fixtureMode()->physical().width(), 800);
+    QCOMPARE(loaded.fixtureMode()->physical().height(), 120);
+    QCOMPARE(loaded.channel(7)->name(), QString("White Fine 1"));
+}
+
+void Fixture_Test::loadMissingMode()
+{
+    QByteArray xml =
+        "<TestRoot><Fixture>"
+        "<Manufacturer>Martin</Manufacturer><Model>MAC250+</Model><Mode>Nonexistent</Mode>"
+        "<ID>42</ID><Name>NoMode</Name><Universe>0</Universe><Address>21</Address><Channels>9</Channels>"
+        "</Fixture></TestRoot>";
+
+    // known definition, unknown mode: falls back to a generic dimmer and logs the error
+    Fixture fxi(this);
+    QVERIFY(readFixture(xml, fxi, m_doc) == true);
+    QCOMPARE(fxi.channels(), quint32(9));
+    QVERIFY(fxi.fixtureDef() != NULL);
+    QCOMPARE(fxi.fixtureDef()->manufacturer(), QString(KXMLFixtureGeneric));
+    QVERIFY(m_doc->errorLog().contains("Fixture mode <b>Nonexistent</b> not found"));
+}
+
+void Fixture_Test::loadZeroChannels()
+{
+    QByteArray xml =
+        "<TestRoot><Fixture>"
+        "<Manufacturer>Generic</Manufacturer><Model>Generic</Model><Mode>Generic</Mode>"
+        "<ID>1</ID><Name>Zero</Name><Universe>0</Universe><Address>0</Address><Channels>0</Channels>"
+        "</Fixture></TestRoot>";
+
+    Fixture fxi(this);
+    QVERIFY(readFixture(xml, fxi, m_doc) == true);
+    // an invalid channel count is corrected to one generic dimmer channel
+    QCOMPARE(fxi.channels(), quint32(1));
+    QCOMPARE(fxi.fixtureMode()->name(), QString("1 Channel"));
+    QVERIFY(m_doc->errorLog().contains("out of bounds"));
+}
+
+void Fixture_Test::loadUnknownTag()
+{
+    QByteArray xml =
+        "<TestRoot><Fixture>"
+        "<Manufacturer>Generic</Manufacturer><Model>Generic</Model><Mode>Generic</Mode>"
+        "<Foo>bar</Foo>"
+        "<ID>2</ID><Name>Unknown</Name><Universe>2</Universe><CrossUniverse>True</CrossUniverse>"
+        "<Address>510</Address><Channels>4</Channels>"
+        "</Fixture></TestRoot>";
+
+    Fixture fxi(this);
+    QVERIFY(readFixture(xml, fxi, m_doc) == true);
+    QCOMPARE(fxi.name(), QString("Unknown"));
+    QCOMPARE(fxi.channels(), quint32(4));
+    QCOMPARE(fxi.universe(), quint32(2));
+    QCOMPARE(fxi.crossUniverse(), true);
+    // the cross-universe flag keeps an address range that overflows the universe
+    QCOMPARE(fxi.address(), quint32(510));
+}
+
+void Fixture_Test::loaderFailures()
+{
+    Doc doc(this);
+
+    // wrong root element: nothing is added
+    {
+        QBuffer buffer;
+        buffer.setData(QByteArray("<Function/>"));
+        buffer.open(QIODevice::ReadOnly | QIODevice::Text);
+        QXmlStreamReader xmlReader(&buffer);
+        xmlReader.readNextStartElement();
+        QVERIFY(Fixture::loader(xmlReader, &doc) == false);
+        QCOMPARE(doc.fixtures().size(), 0);
+    }
+
+    QByteArray xml =
+        "<Fixture>"
+        "<Manufacturer>Generic</Manufacturer><Model>Generic</Model><Mode>Generic</Mode>"
+        "<ID>42</ID><Name>Twice</Name><Universe>0</Universe><Address>0</Address><Channels>2</Channels>"
+        "</Fixture>";
+
+    for (int attempt = 0; attempt < 2; attempt++)
+    {
+        QBuffer buffer;
+        buffer.setData(xml);
+        buffer.open(QIODevice::ReadOnly | QIODevice::Text);
+        QXmlStreamReader xmlReader(&buffer);
+        xmlReader.readNextStartElement();
+        // the second fixture with the same ID cannot be added to the Doc
+        QCOMPARE(Fixture::loader(xmlReader, &doc), attempt == 0);
+        QCOMPARE(doc.fixtures().size(), 1);
+    }
+    QVERIFY(doc.fixture(42) != NULL);
+    QCOMPARE(doc.fixture(42)->name(), QString("Twice"));
+}
+
+// QTEST_MAIN (QGuiApplication): getIconFromType() constructs a QIcon, which
+// needs a live QGuiApplication (QPixmap aborts without one).
+QTEST_MAIN(Fixture_Test)

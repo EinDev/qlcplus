@@ -39,6 +39,20 @@ private slots:
     void lightItemsXML();
     void genericItems();
     void reset();
+
+    void pointOfViewConversion();
+    void removeFixtureItems();
+    void containsFixtureItems();
+    void subItemProperties();
+    void lightHeads();
+    void rotationMatrix();
+    void beamPosition();
+    void genericItemDefaults();
+    void customBackgrounds();
+    void loadInvalid();
+    void loadLegacyAndOptional();
+    void saveOptionalParts();
+    void meshItemsXML();
 };
 
 #endif
