@@ -27,10 +27,16 @@
 #include <QDir>
 
 #include "mediaassets_test.h"
+
+#define protected public
+#define private public
 #include "mediaassets.h"
 #include "audio.h"
 #include "video.h"
+#include "scene.h"
 #include "doc.h"
+#undef private
+#undef protected
 
 void MediaAssets_Test::init()
 {
@@ -1132,6 +1138,496 @@ void MediaAssets_Test::removeUnreferencedDropsOrigin()
     QVERIFY(m_doc->assets()->removeUnreferenced(QStringList() << stored));
     QVERIFY(m_doc->assets()->origin(stored).isValid() == false);
     QCOMPARE(MediaAssets::readManifest(m_doc->assets()->assetsDir()).count(), 0);
+}
+
+/*****************************************************************************
+ * Error paths and remaining variants
+ *****************************************************************************/
+
+void MediaAssets_Test::storeDirectoryIsAFile()
+{
+    // the store directory cannot be created because a file is in its way:
+    // every import route reports that and keeps the external reference
+    m_doc->setWorkspacePath(m_tmp->path());
+    QString blocker = writeFile("show.qxw.assets", "not a directory");
+    m_doc->assets()->setProjectFile(m_tmp->path() + "/show.qxw");
+    QCOMPARE(m_doc->assets()->assetsDir(), blocker);
+
+    QString source = writeFile("src/a.wav", "hello");
+    QString error;
+    QCOMPARE(m_doc->assets()->importFile(source, &error), QString());
+    QVERIFY2(error.contains("Cannot create the asset directory"), qPrintable(error));
+
+    QCOMPARE(m_doc->assets()->importOrKeep(source), source);
+    QCOMPARE(m_doc->assets()->hasPendingImports(), false);
+
+    Audio *audio = new Audio(m_doc);
+    audio->setSourceFileName(source);
+    QVERIFY(m_doc->addFunction(audio));
+    MediaAssets::CollectResult result = m_doc->assets()->collectExternal();
+    QCOMPARE(result.copied, 0);
+    QCOMPARE(result.queued, 0);
+    QCOMPARE(result.failed, 1);
+    QVERIFY2(result.firstError.contains("Cannot create the asset directory"), qPrintable(result.firstError));
+    QCOMPARE(audio->getSourceFileName(), source);
+
+    // a background copy fails on its thread the same way
+    m_doc->assets()->setBackgroundThreshold(1);
+    QSignalSpy finishedSpy(m_doc->assets(), SIGNAL(importFinished(QString,QString,QString)));
+    QCOMPARE(m_doc->assets()->importOrKeep(source), source);
+    QVERIFY(m_doc->assets()->hasPendingImports());
+    QTRY_COMPARE_WITH_TIMEOUT(finishedSpy.count(), 1, 10000);
+    QCOMPARE(finishedSpy.at(0).at(0).toString(), source);
+    QCOMPARE(finishedSpy.at(0).at(1).toString(), QString());
+    QVERIFY(finishedSpy.at(0).at(2).toString().contains("Cannot create the asset directory"));
+    QCOMPARE(audio->getSourceFileName(), source);
+    QCOMPARE(m_doc->assets()->hasPendingImports(), false);
+    QVERIFY(QFile::exists(blocker));
+}
+
+void MediaAssets_Test::hashDirectoryIsAFile()
+{
+    m_doc->setWorkspacePath(m_tmp->path());
+    m_doc->assets()->setProjectFile(m_tmp->path() + "/show.qxw");
+
+    // the <sha12>/ directory of this content is blocked by a file
+    QString source = writeFile("src/a.wav", "hello");
+    QString blocker = writeFile("show.qxw.assets/" + hashDirFor("hello"), "in the way");
+    QString error;
+    QCOMPARE(m_doc->assets()->importFile(source, &error), QString());
+    QVERIFY2(error.contains("Cannot create the asset directory"), qPrintable(error));
+    // the partial copy is cleaned up
+    QCOMPARE(QDir(m_doc->assets()->assetsDir()).entryList(QStringList() << "*.partial", QDir::Files), QStringList());
+
+    QVERIFY(QFile::remove(blocker));
+    QString stored = m_doc->assets()->importFile(source, &error);
+    QVERIFY2(stored.isEmpty() == false, qPrintable(error));
+    Video *video = new Video(m_doc);
+    video->setSourceUrl(stored);
+    QVERIFY(m_doc->addFunction(video));
+
+    // the origin changes to content whose hash directory is blocked: the
+    // reload fails and the function keeps its current copy
+    rewriteFile(source, "world");
+    writeFile("show.qxw.assets/" + hashDirFor("world"), "in the way");
+    MediaAssets::ReloadStatus status;
+    error.clear();
+    QCOMPARE(m_doc->assets()->importOrigin(video, &status, &error), stored);
+    QCOMPARE(status, MediaAssets::Failed);
+    QVERIFY2(error.contains("Cannot create the asset directory"), qPrintable(error));
+    QCOMPARE(video->sourceUrl(), stored);
+
+    MediaAssets::ReloadResult result = m_doc->assets()->reloadChanged();
+    QCOMPARE(result.failed, 1);
+    QCOMPARE(result.reloaded, 0);
+    QCOMPARE(result.unchanged, 0);
+    QVERIFY(result.firstError.contains("Cannot create the asset directory"));
+    QCOMPARE(video->sourceUrl(), stored);
+}
+
+/** Point the process' temporary directory somewhere else for a scope,
+ *  restoring the previous value on the way out (also on an early return
+ *  from a failed assertion, so the other cases keep a working temp dir) */
+struct ScopedTempEnv
+{
+    QList<QByteArray> names;
+    QList<QByteArray> previous;
+    QList<bool> wasSet;
+
+    explicit ScopedTempEnv(const QString &path)
+    {
+#if defined(WIN32) || defined(Q_OS_WIN)
+        names << "TMP" << "TEMP";
+#else
+        names << "TMPDIR";
+#endif
+        for (const QByteArray &name : names)
+        {
+            wasSet << qEnvironmentVariableIsSet(name.constData());
+            previous << qgetenv(name.constData());
+            qputenv(name.constData(), QDir::toNativeSeparators(path).toLocal8Bit());
+        }
+    }
+
+    ~ScopedTempEnv()
+    {
+        for (int i = 0; i < names.count(); i++)
+        {
+            if (wasSet.at(i))
+                qputenv(names.at(i).constData(), previous.at(i));
+            else
+                qunsetenv(names.at(i).constData());
+        }
+    }
+};
+
+void MediaAssets_Test::stagingDirectoryUnavailable()
+{
+    // untitled project whose staging directory cannot be created: imports
+    // fail with a clear reason and the external references are kept
+    QVERIFY(m_doc->assets()->isStaging());
+    QString source = writeFile("src/a.wav", "hello");
+    const QString bogus = QDir::cleanPath(m_tmp->path() + "/does/not/exist");
+
+    {
+        ScopedTempEnv env(bogus);
+        QVERIFY2(QDir::cleanPath(QDir::tempPath()).compare(bogus, Qt::CaseInsensitive) == 0,
+                 qPrintable(QDir::tempPath()));
+
+        QString error;
+        QCOMPARE(m_doc->assets()->importFile(source, &error), QString());
+        QVERIFY2(error.contains("No asset directory available"), qPrintable(error));
+        QCOMPARE(m_doc->assets()->assetsDir(), QString());
+        QCOMPARE(m_doc->assets()->stagingDir(), QString());
+
+        QCOMPARE(m_doc->assets()->importOrKeep(source), source);
+        m_doc->assets()->setBackgroundThreshold(1);
+        QCOMPARE(m_doc->assets()->importOrKeep(source), source);
+        QCOMPARE(m_doc->assets()->hasPendingImports(), false);
+        m_doc->assets()->setBackgroundThreshold(MediaAssets::DefaultBackgroundThreshold);
+
+        // nothing stored, nothing to list, nothing to record
+        QCOMPARE(m_doc->assets()->unreferenced(), QStringList());
+        m_doc->assets()->saveManifest();
+        m_doc->assets()->recordOrigin(source, source, "abc");
+        QVERIFY(m_doc->assets()->m_manifest.isEmpty());
+        QVERIFY(m_doc->assets()->origin(source).isValid() == false);
+    }
+
+    // back to a usable temp directory: staging works again
+    QString stored = m_doc->assets()->importFile(source);
+    QVERIFY(stored.isEmpty() == false);
+    QVERIFY(m_doc->assets()->isManaged(stored));
+}
+
+void MediaAssets_Test::copyAndManifestErrors()
+{
+    QCOMPARE(MediaAssets::assetsDirNameFor("/x/y/show"), QString("show.qxw.assets"));
+    QCOMPARE(MediaAssets::assetsDirNameFor("show.QXW"), QString("show.QXW.assets"));
+
+    QCOMPARE(m_doc->assets()->projectFile(), QString());
+    m_doc->setWorkspacePath(m_tmp->path());
+    m_doc->assets()->setProjectFile(m_tmp->path() + "/proj/../show.qxw");
+    QCOMPARE(m_doc->assets()->projectFile(), QDir::cleanPath(m_tmp->path() + "/show.qxw"));
+    const QString store = m_doc->assets()->assetsDir();
+
+    // a source that cannot be read
+    QString error;
+    QCOMPARE(m_doc->assets()->copyIntoStore(m_tmp->path() + "/missing.wav", store, &error), QString());
+    QVERIFY2(error.contains("Cannot read"), qPrintable(error));
+    QVERIFY(QDir(store).exists());   // the store itself was created on the way
+
+    QCOMPARE(MediaAssets::sourceOf(nullptr), QString());
+    QCOMPARE(MediaAssets::hashFile(m_tmp->path() + "/missing.wav"), QString());
+    QCOMPARE(MediaAssets::readManifest(QString()).count(), 0);
+    QCOMPARE(MediaAssets::writeManifest(QString(), QHash<QString, MediaOrigin>()), false);
+
+    // manifest.json cannot be written when a directory sits in its place
+    QVERIFY(QDir().mkpath(store + "/" + MediaAssets::manifestFileName()));
+    QCOMPARE(MediaAssets::writeManifest(store, QHash<QString, MediaOrigin>()), false);
+    QVERIFY(QDir(store).rmdir(MediaAssets::manifestFileName()));
+
+    // job slots invoked without a job as sender are ignored
+    m_doc->assets()->slotJobProgress(1, 2);
+    m_doc->assets()->slotJobFinished(store + "/x", QString(), QString());
+    QCOMPARE(m_doc->assets()->hasPendingImports(), false);
+
+    MediaCopyJob job(m_tmp->path() + "/a.wav", store, 42);
+    QCOMPARE(job.source(), m_tmp->path() + "/a.wav");
+    QCOMPARE(job.storeDir(), store);
+    QCOMPARE(job.size(), qint64(42));
+    QVERIFY(job.reloadFunctions().isEmpty());
+    job.addReloadFunction(7);
+    job.addReloadFunction(7);
+    QCOMPARE(job.reloadFunctions(), QList<quint32>() << 7);
+}
+
+void MediaAssets_Test::longStoredPathsWarn()
+{
+    const QString ws = QDir::cleanPath(m_tmp->path() + "/proj");
+    QDir().mkpath(ws);
+    m_doc->setWorkspacePath(ws);
+    m_doc->assets()->setProjectFile(ws + "/show.qxw");
+    const QString store = m_doc->assets()->assetsDir();
+
+    // a stored path just past the warning threshold, but still below the
+    // classic Windows MAX_PATH so the copy itself succeeds everywhere
+    const int target = MediaAssets::PathLengthWarning + 6;
+    const int pad = target - store.length() - 14;   // "/" + <sha12> + "/" + basename
+    if (pad < 8 || pad > 200)
+        QSKIP("temporary directory too long or too short for this layout");
+    const QString name = QString(pad - 4, 'x') + ".wav";
+
+    QString source = writeFile("long/" + name, "long");
+    QVERIFY(source.isEmpty() == false);
+    QString error;
+    QString stored = m_doc->assets()->importFile(source, &error);
+    QVERIFY2(stored.isEmpty() == false, qPrintable(error));
+    QCOMPARE(stored.length(), target);
+    QVERIFY(stored.length() > MediaAssets::PathLengthWarning);
+    QVERIFY(QFile::exists(stored));
+
+    Audio *audio = new Audio(m_doc);
+    audio->setSourceFileName(stored);
+    QVERIFY(m_doc->addFunction(audio));
+
+    // relocating to a project with a longer name warns for the copy too
+    const QString newWs = QDir::cleanPath(m_tmp->path() + "/next");
+    QDir().mkpath(newWs);
+    QVERIFY2(m_doc->assets()->relocateTo(newWs + "/show2.qxw", &error), qPrintable(error));
+    QVERIFY(audio->getSourceFileName().startsWith(newWs + "/show2.qxw.assets/"));
+    QVERIFY(audio->getSourceFileName().length() > MediaAssets::PathLengthWarning);
+    QVERIFY(QFile::exists(audio->getSourceFileName()));
+}
+
+void MediaAssets_Test::relocateCopyFailure()
+{
+    const QString oldWs = QDir::cleanPath(m_tmp->path() + "/old");
+    const QString newWs = QDir::cleanPath(m_tmp->path() + "/new");
+    QDir().mkpath(oldWs);
+    m_doc->setWorkspacePath(oldWs);
+    m_doc->assets()->setProjectFile(oldWs + "/a.qxw");
+
+    QString used = m_doc->assets()->importFile(writeFile("src/used.wav", "used"));
+    QVERIFY(used.isEmpty() == false);
+    Audio *audio = new Audio(m_doc);
+    audio->setSourceFileName(used);
+    QVERIFY(m_doc->addFunction(audio));
+
+    // the copy's hash directory in the new store is blocked by a file
+    writeFile("new/b.qxw.assets/" + hashDirFor("used"), "blocker");
+
+    QString error;
+    QCOMPARE(m_doc->assets()->relocateTo(newWs + "/b.qxw", &error), false);
+    QVERIFY2(error.contains("Cannot copy"), qPrintable(error));
+
+    // the store moved, the function keeps pointing at the old copy
+    QCOMPARE(m_doc->assets()->assetsDir(), newWs + "/b.qxw.assets");
+    QCOMPARE(audio->getSourceFileName(), used);
+    QVERIFY(QFile::exists(used));
+    QVERIFY(m_doc->assets()->isManaged(used) == false);
+}
+
+void MediaAssets_Test::manifestReadWriteErrors()
+{
+    m_doc->setWorkspacePath(m_tmp->path());
+    m_doc->assets()->setProjectFile(m_tmp->path() + "/show.qxw");
+    QString stored = m_doc->assets()->importFile(writeFile("src/a.wav", "hello"));
+    QVERIFY(m_doc->assets()->origin(stored).isValid());
+    const QString manifest = m_doc->assets()->assetsDir() + "/" + MediaAssets::manifestFileName();
+
+    // a corrupt manifest is ignored rather than trusted
+    QFile f(manifest);
+    QVERIFY(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    f.write("{ this is not json");
+    f.close();
+    QCOMPARE(MediaAssets::readManifest(m_doc->assets()->assetsDir()).count(), 0);
+    m_doc->assets()->m_manifestDir.clear();   // force a re-read
+    QVERIFY(m_doc->assets()->origin(stored).isValid() == false);
+
+    // entries without an origin path are dropped on read
+    QVERIFY(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    f.write("{ \"version\": 1, \"files\": { \"abc/x.wav\": { \"origin\": \"\", \"sha1\": \"00\" },"
+            " \"abc/y.wav\": { \"origin\": \"/src/y.wav\", \"size\": 3, \"sha1\": \"11\" } } }");
+    f.close();
+    QHash<QString, MediaOrigin> entries = MediaAssets::readManifest(m_doc->assets()->assetsDir());
+    QCOMPARE(entries.count(), 1);
+    QCOMPARE(entries.value("abc/y.wav").path, QString("/src/y.wav"));
+    QCOMPARE(entries.value("abc/y.wav").size, qint64(3));
+    QVERIFY(entries.value("abc/y.wav").mtime.isValid() == false);
+
+#if defined(WIN32) || defined(Q_OS_WIN)
+    // the manifest cannot be replaced while another handle keeps it open
+    QFile lock(manifest);
+    QVERIFY(lock.open(QIODevice::ReadOnly));
+    QCOMPARE(MediaAssets::writeManifest(m_doc->assets()->assetsDir(), entries), false);
+    lock.close();
+#endif
+    QCOMPARE(MediaAssets::writeManifest(m_doc->assets()->assetsDir(), entries), true);
+    QCOMPARE(MediaAssets::readManifest(m_doc->assets()->assetsDir()).count(), 1);
+}
+
+void MediaAssets_Test::reloadVariants()
+{
+    m_doc->setWorkspacePath(m_tmp->path());
+    m_doc->assets()->setProjectFile(m_tmp->path() + "/show.qxw");
+
+    QString wav = writeFile("src/song.wav", "take one");
+    QString stored = m_doc->assets()->importFile(wav);
+    QVERIFY(stored.isEmpty() == false);
+    Audio *audio = new Audio(m_doc);
+    audio->setSourceFileName(stored);
+    audio->setName("My song");
+    QVERIFY(m_doc->addFunction(audio));
+
+    Scene *scene = new Scene(m_doc);
+    QVERIFY(m_doc->addFunction(scene));
+    QString ext = writeFile("src/ext.wav", "external");
+    Audio *external = new Audio(m_doc);
+    external->setSourceFileName(ext);
+    QVERIFY(m_doc->addFunction(external));
+    Video *stream = new Video(m_doc);
+    stream->setSourceUrl("http://example.org/live.m3u8");
+    QVERIFY(m_doc->addFunction(stream));
+
+    // not a stored copy: nothing to import from
+    MediaAssets::ReloadStatus status;
+    QString error;
+    QCOMPARE(m_doc->assets()->importOrigin(external, &status, &error), ext);
+    QCOMPARE(status, MediaAssets::NotManaged);
+    QCOMPARE(m_doc->assets()->importOrigin(stream, &status, &error), QString());
+    QCOMPARE(status, MediaAssets::NotManaged);
+
+    // applyReload() is a no-op for the current path, an empty path and a
+    // function without a media source
+    QSignalSpy reloadedSpy(m_doc->assets(), SIGNAL(originReloaded(quint32,QString,QString,quint32)));
+    m_doc->assets()->applyReload(audio, stored);
+    m_doc->assets()->applyReload(audio, QString());
+    m_doc->assets()->applyReload(scene, stored);
+    QCOMPARE(reloadedSpy.count(), 0);
+
+    // a stored file that never went through the store has no provenance
+    QString handMade = writeFile("show.qxw.assets/0123456789ab/hand.wav", "hand");
+    Audio *hand = new Audio(m_doc);
+    hand->setSourceFileName(handMade);
+    QVERIFY(m_doc->addFunction(hand));
+    QVERIFY(m_doc->assets()->isManaged(handMade));
+    QVERIFY(m_doc->assets()->originOf(hand).isValid() == false);
+    QCOMPARE(m_doc->assets()->originChanged(hand), false);
+
+    // the bulk reload skips everything without a usable origin
+    MediaAssets::ReloadResult result = m_doc->assets()->reloadChanged();
+    QCOMPARE(result.unchanged, 1);
+    QCOMPARE(result.reloaded + result.queued + result.missing + result.busy + result.failed, 0);
+
+    // a running function is not reloaded under its playback
+    rewriteFile(wav, "take two");
+    QCOMPARE(m_doc->assets()->changedOrigins(), QList<Function *>() << audio);
+    audio->m_running = true;
+    result = m_doc->assets()->reloadChanged();
+    QCOMPARE(result.busy, 1);
+    QCOMPARE(result.reloaded, 0);
+    audio->m_running = false;
+    QCOMPARE(audio->getSourceFileName(), stored);
+
+    // an Audio reload keeps the user's name and reports the old duration
+    QString fresh = m_doc->assets()->importOrigin(audio, &status, &error);
+    QCOMPARE(status, MediaAssets::Reloaded);
+    QVERIFY(fresh != stored);
+    m_doc->assets()->applyReload(audio, fresh);
+    QCOMPARE(audio->getSourceFileName(), fresh);
+    QCOMPARE(audio->name(), QString("My song"));
+    QCOMPARE(reloadedSpy.count(), 1);
+    QCOMPARE(reloadedSpy.at(0).at(0).toUInt(), audio->id());
+    QCOMPARE(reloadedSpy.at(0).at(1).toString(), stored);
+    QCOMPARE(reloadedSpy.at(0).at(2).toString(), fresh);
+    QCOMPARE(m_doc->assets()->originChanged(audio), false);
+
+    // stale provenance for a copy whose content already matches the origin:
+    // the re-import lands on the same copy, which counts as unchanged and
+    // repairs the recorded origin on the way
+    const QString key = MediaAssets::manifestKey(fresh, m_doc->assets()->assetsDir());
+    QVERIFY(m_doc->assets()->m_manifest.contains(key));
+    MediaOrigin stale = m_doc->assets()->m_manifest.value(key);
+    stale.sha1 = "0000";
+    stale.mtime = stale.mtime.addSecs(-100);
+    m_doc->assets()->m_manifest.insert(key, stale);
+    m_doc->assets()->m_changeCache.clear();
+    QCOMPARE(m_doc->assets()->originChanged(audio), true);
+    result = m_doc->assets()->reloadChanged();
+    QCOMPARE(result.unchanged, 1);
+    QCOMPARE(result.reloaded, 0);
+    QCOMPARE(audio->getSourceFileName(), fresh);
+    QCOMPARE(reloadedSpy.count(), 1);
+    QCOMPARE(m_doc->assets()->originChanged(audio), false);
+    QCOMPARE(m_doc->assets()->origin(fresh).sha1,
+             QString::fromLatin1(QCryptographicHash::hash("take two", QCryptographicHash::Sha1).toHex()));
+}
+
+void MediaAssets_Test::relocateReimportsFinishedCopySynchronously()
+{
+    // like backgroundImportFollowsRelocate(), but the threshold goes back
+    // up before the staging copy lands: the second hop into the real store
+    // is then a plain synchronous copy
+    m_doc->assets()->setBackgroundThreshold(16);
+    QVERIFY(m_doc->assets()->isStaging());
+
+    QString clip = writeFile("src/clip.mp4", "a video, not really but long enough");
+    Video *video = new Video(m_doc);
+    video->setSourceUrl(clip);
+    QVERIFY(m_doc->addFunction(video));
+
+    QSignalSpy finishedSpy(m_doc->assets(), SIGNAL(importFinished(QString,QString,QString)));
+    QCOMPARE(m_doc->assets()->importOrKeep(clip), clip);
+    QVERIFY(m_doc->assets()->hasPendingImports());
+    const QString staging = m_doc->assets()->assetsDir();
+
+    const QString project = m_tmp->path() + "/saved/show.qxw";
+    QDir().mkpath(m_tmp->path() + "/saved");
+    m_doc->setWorkspacePath(m_tmp->path() + "/saved");
+    QVERIFY(m_doc->assets()->relocateTo(project));
+    m_doc->assets()->setBackgroundThreshold(MediaAssets::DefaultBackgroundThreshold);
+
+    const QString hashDir = hashDirFor("a video, not really but long enough");
+    QTRY_COMPARE_WITH_TIMEOUT(finishedSpy.count(), 1, 10000);
+    QCOMPARE(finishedSpy.at(0).at(1).toString(), staging + "/" + hashDir + "/clip.mp4");
+    QCOMPARE(video->sourceUrl(), m_doc->assets()->assetsDir() + "/" + hashDir + "/clip.mp4");
+    QVERIFY(m_doc->assets()->isManaged(video->sourceUrl()));
+    QCOMPARE(m_doc->assets()->hasPendingImports(), false);
+    QCOMPARE(m_doc->assets()->externalSources(), QStringList());
+    // provenance points at the original pick, not at the staging copy
+    QCOMPARE(m_doc->assets()->originOf(video).path, clip);
+    QTest::qWait(50);
+    QCOMPARE(finishedSpy.count(), 1);
+}
+
+void MediaAssets_Test::removeUnreferencedErrors()
+{
+    m_doc->setWorkspacePath(m_tmp->path());
+    m_doc->assets()->setProjectFile(m_tmp->path() + "/show.qxw");
+
+    QString external = writeFile("src/external.wav", "external");
+    QString unused = m_doc->assets()->importFile(writeFile("src/unused.wav", "unused"));
+    QVERIFY(unused.isEmpty() == false);
+
+    // the first refusal is what the error reports; valid entries are
+    // still deleted
+    QString error;
+    QCOMPARE(m_doc->assets()->removeUnreferenced(QStringList() << external << unused, &error), false);
+    QVERIFY2(error.contains("not inside the project's media store"), qPrintable(error));
+    QVERIFY(QFile::exists(external));
+    QVERIFY(QFile::exists(unused) == false);
+
+#if defined(WIN32) || defined(Q_OS_WIN)
+    // a stored file that is open elsewhere cannot be deleted
+    QString locked = m_doc->assets()->importFile(writeFile("src/locked.wav", "locked"));
+    QVERIFY(locked.isEmpty() == false);
+    QFile lock(locked);
+    QVERIFY(lock.open(QIODevice::ReadOnly));
+    error.clear();
+    QCOMPARE(m_doc->assets()->removeUnreferenced(QStringList() << locked, &error), false);
+    QVERIFY2(error.contains("Cannot delete"), qPrintable(error));
+    QVERIFY(QFile::exists(locked));
+    QVERIFY(m_doc->assets()->origin(locked).isValid());
+    lock.close();
+    QCOMPARE(m_doc->assets()->removeUnreferenced(QStringList() << locked), true);
+    QVERIFY(QFile::exists(locked) == false);
+#else
+    QSKIP("Open files can only block deletion on Windows");
+#endif
+}
+
+void MediaAssets_Test::unreferencedIgnoresForeignDirectories()
+{
+    m_doc->setWorkspacePath(m_tmp->path());
+    m_doc->assets()->setProjectFile(m_tmp->path() + "/show.qxw");
+
+    QString stored = m_doc->assets()->importFile(writeFile("src/a.wav", "hello"));
+    QVERIFY(stored.isEmpty() == false);
+    // anything outside the <sha12>/ layout is not the store's business
+    writeFile("show.qxw.assets/notahash/x.wav", "x");
+    writeFile("show.qxw.assets/0123456789AB/upper.wav", "upper");   // hex, but not lowercase
+    QCOMPARE(m_doc->assets()->unreferenced(), QStringList() << stored);
 }
 
 QTEST_GUILESS_MAIN(MediaAssets_Test)
