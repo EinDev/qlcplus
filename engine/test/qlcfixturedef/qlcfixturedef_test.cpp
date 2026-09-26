@@ -464,9 +464,11 @@ void QLCFixtureDef_Test::checkLoadedGeneric()
     other.checkLoaded(QString());
     QVERIFY(other.m_isLoaded == false);
 
-    /* Already loaded: nothing happens, whatever the path */
-    other.setLoaded(true);
+    /* Already loaded: nothing happens, whatever the path (note that setting
+       the source file resets the flag, so flag it afterwards) */
     other.setDefinitionSourceFile("/no/such/file.qxf");
+    QVERIFY(other.m_isLoaded == false);
+    other.setLoaded(true);
     other.checkLoaded(QString());
     QVERIFY(other.m_isLoaded == true);
     QCOMPARE(other.definitionSourceFile(), QString("/no/such/file.qxf"));
@@ -564,8 +566,10 @@ void QLCFixtureDef_Test::loadReaderEdgeCases()
     QVERIFY(def.loadCreator(wrong) == false);
     QVERIFY(def.author().isEmpty());
 
-    /* Duplicate and nameless channels/modes plus unknown tags are skipped,
-       the rest of the definition still loads */
+    /* Nameless channels/modes plus unknown tags are skipped, the rest of the
+       definition still loads. Duplicate names are NOT rejected: addChannel()
+       and addMode() only refuse an instance that is already in the list, so
+       a repeated <Channel>/<Mode> element loads a second time. */
     const QString xml(
         "<FixtureDefinition>"
         " <Creator><Name>Q</Name><Version>1</Version><Author>Me</Author><Bogus/></Creator>"
@@ -586,9 +590,12 @@ void QLCFixtureDef_Test::loadReaderEdgeCases()
     QCOMPARE(def.model(), QString("Bar"));
     QCOMPARE(def.author(), QString("Me"));
     QCOMPARE(def.type(), QLCFixtureDef::Scanner);
-    QCOMPARE(def.channels().size(), 1);
-    QCOMPARE(def.modes().size(), 1);
+    QCOMPARE(def.channels().size(), 2);
+    QCOMPARE(def.channels().at(0)->name(), QString("Dimmer"));
+    QCOMPARE(def.channels().at(1)->name(), QString("Dimmer"));
+    QCOMPARE(def.modes().size(), 2);
     QCOMPARE(def.modes().at(0)->channels().size(), 1);
+    QCOMPARE(def.modes().at(1)->name(), QString("M1"));
 }
 
 QTEST_APPLESS_MAIN(QLCFixtureDef_Test)
