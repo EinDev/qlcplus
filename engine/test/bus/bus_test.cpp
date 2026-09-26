@@ -195,6 +195,21 @@ void Bus_Test::loadWrongID()
     QVERIFY(Bus::instance()->name(0) == "Foo");
 }
 
+void Bus_Test::outOfRange()
+{
+    // Reads beyond the last bus yield empty/zero values instead of touching memory
+    QCOMPARE(Bus::instance()->name(Bus::count()), QString());
+    QCOMPARE(Bus::instance()->value(Bus::count()), quint32(0));
+    QCOMPARE(Bus::instance()->name(UINT_MAX), QString());
+    QCOMPARE(Bus::instance()->value(UINT_MAX), quint32(0));
+
+    // Writes beyond the last bus are ignored as well
+    Bus::instance()->setName(Bus::count(), "Nope");
+    Bus::instance()->setValue(Bus::count(), 42);
+    QCOMPARE(Bus::instance()->name(Bus::count()), QString());
+    QCOMPARE(Bus::instance()->value(Bus::count()), quint32(0));
+}
+
 void Bus_Test::cleanupTestCase()
 {
     QVERIFY(Bus::instance() != NULL);

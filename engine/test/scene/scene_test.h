@@ -54,6 +54,21 @@ private slots:
     void writeHTPTwoTicksIntensity();
     void writeLTPReady();
 
+    void iconPauseAndReleaseFlags();
+    void colorValueEdgeCases();
+    void fixtureGroupsAndPalettes();
+    void saveLoadRoundTrip();
+    void loadLegacyChannelGroupsAndEmptyValues();
+    void postLoad();
+    void flashForceLTP();
+    void writeWithoutValuesStops();
+    void writeSkipsMissingUniverse();
+    void writeNonFadingChannel();
+    void writeBeatsTempo();
+    void releaseOnStopZeroesChannels();
+    void blendModeWhileRunning();
+    void writePalettes();
+
 private:
     Doc* m_doc;
 };

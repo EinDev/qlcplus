@@ -37,6 +37,8 @@ private slots:
     void channelMode();
     void valueMode();
     void value();
+    void sliderMode();
+    void enumsRegistered();
 
 private:
 

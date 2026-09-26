@@ -49,6 +49,9 @@ private slots:
     void findFeatureForFaderMatchesOwningInstance();
     void findFeatureForFaderFailsForForeignFader();
 
+    void outputEnabledFlag();
+    void findFeatureForFaderUnknownChannel();
+
 private:
     Doc* m_doc;
     quint32 m_fxiId;

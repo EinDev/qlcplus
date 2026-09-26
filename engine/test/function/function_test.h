@@ -66,6 +66,24 @@ private slots:
     void runOrderXML();
     void directionXML();
     void speedXML();
+
+    void baseClassInstance();
+    void pathTypePrefix();
+    void saveXMLCommonOptional();
+    void loadXMLInvalidNodes();
+    void tempoTypeUnhandled();
+    void bpmChangeMarksBeatResync();
+    void loaderInvalidId();
+    void loaderOptionalAttributes();
+    void loaderOtherTypes();
+    void loaderDuplicateId();
+    void loaderLoadXMLFailure();
+    void pauseGuards();
+    void roundElapsed();
+    void startedAsChild();
+    void stopAndWaitNotRunning();
+    void attributeEdgeCases();
+    void enumsRegistered();
 };
 
 #endif

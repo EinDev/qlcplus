@@ -18,6 +18,8 @@
 */
 
 #include <QtTest>
+#include <QMetaEnum>
+#include <QDebug>
 #include <sys/time.h>
 
 #include "grandmaster_test.h"
@@ -95,6 +97,42 @@ void GrandMaster_Test::value()
     m_gm->setValue(255);
     QCOMPARE(m_gm->value(), uchar(255));
     QCOMPARE(m_gm->fraction(), double(1));
+}
+
+void GrandMaster_Test::sliderMode()
+{
+    QCOMPARE(GrandMaster::stringToSliderMode("Inverted"), GrandMaster::Inverted);
+    QCOMPARE(GrandMaster::stringToSliderMode("Normal"), GrandMaster::Normal);
+    QCOMPARE(GrandMaster::stringToSliderMode("xyzzy"), GrandMaster::Normal);
+
+    QCOMPARE(GrandMaster::sliderModeToString(GrandMaster::Inverted), QString("Inverted"));
+    QCOMPARE(GrandMaster::sliderModeToString(GrandMaster::Normal), QString("Normal"));
+    QCOMPARE(GrandMaster::sliderModeToString(GrandMaster::SliderMode(42)), QString("Normal"));
+}
+
+void GrandMaster_Test::enumsRegistered()
+{
+    QMetaEnum valueMode = QMetaEnum::fromType<GrandMaster::ValueMode>();
+    QVERIFY(valueMode.isValid());
+    QCOMPARE(QString(valueMode.valueToKey(GrandMaster::Limit)), QString("Limit"));
+
+    QMetaEnum channelMode = QMetaEnum::fromType<GrandMaster::ChannelMode>();
+    QVERIFY(channelMode.isValid());
+    QCOMPARE(QString(channelMode.valueToKey(GrandMaster::AllChannels)), QString("AllChannels"));
+
+    // Debug output of the live modes resolves the enum names through the
+    // registration helpers at run time (nothing to fold at compile time here)
+    m_gm->setValueMode(GrandMaster::Limit);
+    m_gm->setChannelMode(GrandMaster::AllChannels);
+    QString text;
+    {
+        QDebug dbg(&text);
+        dbg << m_gm->valueMode() << m_gm->channelMode();
+    }
+    QVERIFY(text.contains("Limit"));
+    QVERIFY(text.contains("AllChannels"));
+    m_gm->setValueMode(GrandMaster::Reduce);
+    m_gm->setChannelMode(GrandMaster::Intensity);
 }
 
 QTEST_APPLESS_MAIN(GrandMaster_Test)

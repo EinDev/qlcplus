@@ -696,7 +696,7 @@ void Scene::writeDMX(MasterTimer *timer, QList<Universe *> ua)
 
                 FadeChannel fc(doc(), sv.fxi, sv.channel);
                 quint32 universe = fc.universe();
-                if (universe == Universe::invalid())
+                if (universe == Universe::invalid() || universe >= quint32(ua.count()))
                     continue;
 
                 QSharedPointer<GenericFader> fader = m_fadersMap.value(universe, QSharedPointer<GenericFader>());

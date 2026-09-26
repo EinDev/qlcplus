@@ -37,6 +37,12 @@ private slots:
     void writeLoop();
     void adjustIntensity();
 
+    void removeNull();
+    void setFadeOutWithoutTime();
+    void monitoring();
+    void invalidChannelIsSkipped();
+    void secondaryChannel();
+
 private:
     Doc* m_doc;
 };

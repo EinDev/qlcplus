@@ -21,6 +21,8 @@
 #include <QtTest>
 #include <QXmlStreamReader>
 #include <QXmlStreamWriter>
+#include <QVariant>
+#include <QDebug>
 
 #include "scenevalue_test.h"
 #include "scenevalue.h"
@@ -190,6 +192,27 @@ void SceneValue_Test::save()
     QVERIFY(xmlReader.attributes().value("Fixture").toString().toInt() == 4);
     QVERIFY(xmlReader.attributes().value("Channel").toString().toInt() == 8);
     QVERIFY(xmlReader.readElementText().toInt() == 16);
+}
+
+void SceneValue_Test::debugStream()
+{
+    QString text;
+    {
+        QDebug dbg(&text);
+        dbg << SceneValue(4, 8, 16);
+    }
+    QCOMPARE(text.trimmed(), QString("SceneValue(4, 8, 16)"));
+}
+
+void SceneValue_Test::metaType()
+{
+    QVERIFY(qMetaTypeId<SceneValue>() != 0);
+
+    QVariant var = QVariant::fromValue(SceneValue(1, 2, 3));
+    SceneValue back = var.value<SceneValue>();
+    QCOMPARE(back.fxi, quint32(1));
+    QCOMPARE(back.channel, quint32(2));
+    QCOMPARE(back.value, uchar(3));
 }
 
 QTEST_APPLESS_MAIN(SceneValue_Test)

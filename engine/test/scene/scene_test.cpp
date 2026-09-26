@@ -27,8 +27,11 @@
 #include "mastertimer_stub.h"
 #include "qlcfixturemode.h"
 #include "qlcfixturedef.h"
+#include "genericfader.h"
+#include "fixturegroup.h"
 #include "scene_test.h"
 #include "qlcchannel.h"
+#include "qlcpalette.h"
 #include "universe.h"
 #include "function.h"
 #include "fixture.h"
@@ -989,4 +992,542 @@ void Scene_Test::writeLTPReady()
     QVERIFY(s1->isRunning() == true);
 }
 
-QTEST_APPLESS_MAIN(Scene_Test)
+void Scene_Test::iconPauseAndReleaseFlags()
+{
+    MasterTimer timer(m_doc);
+    Scene s(m_doc);
+
+    // Only the QIcon construction is exercised: the image resource lives in the application binary
+    s.getIcon();
+
+    QVERIFY(s.releaseOnStop() == false);
+    s.setReleaseOnStop(true);
+    QVERIFY(s.releaseOnStop() == true);
+
+    // Pausing a Scene that is not running is refused
+    s.setPause(true);
+    QVERIFY(s.isPaused() == false);
+
+    // Un-flashing a Scene that is not flashing is a no-op
+    s.unFlash(&timer);
+    QVERIFY(s.flashing() == false);
+    QVERIFY(timer.m_dmxSourceList.isEmpty());
+}
+
+void Scene_Test::colorValueEdgeCases()
+{
+    Doc *doc = new Doc(this);
+
+    // A white LED counts as an equal amount of red, green and blue
+    QLCFixtureDef *rgbwDef = m_doc->fixtureDefCache()->fixtureDef("Generic", "Generic RGBW");
+    QVERIFY(rgbwDef != NULL);
+    QLCFixtureMode *rgbwMode = rgbwDef->mode("RGBW");
+    QVERIFY(rgbwMode != NULL);
+    Fixture *rgbw = new Fixture(doc);
+    rgbw->setFixtureDefinition(rgbwDef, rgbwMode);
+    QCOMPARE(rgbw->channels(), quint32(4));
+    rgbw->setAddress(0);
+    rgbw->setUniverse(0);
+    doc->addFixture(rgbw);
+
+    // A colour wheel with split (double) colours reports the first colour
+    QLCFixtureDef *wheelDef = m_doc->fixtureDefCache()->fixtureDef("Showtec", "Acrobat");
+    QVERIFY(wheelDef != NULL);
+    QLCFixtureMode *wheelMode = wheelDef->mode("16 Channel");
+    QVERIFY(wheelMode != NULL);
+    Fixture *wheel = new Fixture(doc);
+    wheel->setFixtureDefinition(wheelDef, wheelMode);
+    QCOMPARE(wheel->channels(), quint32(16));
+    wheel->setAddress(10);
+    wheel->setUniverse(0);
+    doc->addFixture(wheel);
+
+    // A plain dimmer carries no colour information at all
+    Fixture *dimmer = new Fixture(doc);
+    dimmer->setAddress(30);
+    dimmer->setUniverse(0);
+    dimmer->setChannels(2);
+    doc->addFixture(dimmer);
+
+    Scene *s = new Scene(doc);
+    doc->addFunction(s);
+    s->setValue(rgbw->id(), 3, 200);   // White
+    s->setValue(rgbw->id(), 99, 10);   // channel the fixture does not have
+    s->setValue(wheel->id(), 7, 68);   // "White + Blue" split colour
+    s->setValue(dimmer->id(), 0, 255);
+    s->setValue(4242, 0, 77);          // fixture that does not exist
+
+    QCOMPARE(s->colorValue(rgbw->id()), QColor(200, 200, 200));
+    QCOMPARE(s->colorValue(wheel->id()), QColor(255, 255, 255));
+    QVERIFY(s->colorValue(dimmer->id()).isValid() == false);
+    QVERIFY(s->colorValue(4242).isValid() == false);
+}
+
+void Scene_Test::fixtureGroupsAndPalettes()
+{
+    Scene s(m_doc);
+    QVERIFY(s.fixtureGroups().isEmpty());
+    QVERIFY(s.palettes().isEmpty());
+
+    s.addFixtureGroup(3);
+    s.addFixtureGroup(3); // no duplicates
+    s.addFixtureGroup(5);
+    QCOMPARE(s.fixtureGroups(), QList<quint32>() << 3 << 5);
+    QVERIFY(s.removeFixtureGroup(42) == false);
+    QVERIFY(s.removeFixtureGroup(3) == true);
+    QCOMPARE(s.fixtureGroups(), QList<quint32>() << 5);
+
+    s.addPalette(7);
+    s.addPalette(7);
+    s.addPalette(9);
+    QCOMPARE(s.palettes(), QList<quint32>() << 7 << 9);
+    QVERIFY(s.removePalette(42) == false);
+    QVERIFY(s.removePalette(7) == true);
+    QCOMPARE(s.palettes(), QList<quint32>() << 9);
+
+    s.clear();
+    QVERIFY(s.fixtureGroups().isEmpty());
+    QVERIFY(s.palettes().isEmpty());
+}
+
+void Scene_Test::saveLoadRoundTrip()
+{
+    Scene s(m_doc);
+    s.setName("Round");
+    s.setTempoType(Function::Beats);
+    s.setFadeInSpeed(1000);
+    s.setFadeOutSpeed(2000);
+    s.setDuration(4000);
+    s.setReleaseOnStop(true);
+    s.addChannelGroup(7);
+    s.setChannelGroupLevel(7, 100);
+    s.addChannelGroup(9);
+    s.setChannelGroupLevel(9, 200);
+    s.addFixtureGroup(11);
+    s.addFixtureGroup(12);
+    s.addPalette(21);
+    // Fixtures are saved in insertion order while the values are sorted by fixture ID
+    s.setValue(3, 0, 10);
+    s.setValue(3, 2, 20);
+    s.setValue(0, 1, 30);
+
+    QBuffer buffer;
+    buffer.open(QIODevice::WriteOnly | QIODevice::Text);
+    QXmlStreamWriter xmlWriter(&buffer);
+    QVERIFY(s.saveXML(&xmlWriter) == true);
+    xmlWriter.setDevice(NULL);
+    buffer.close();
+
+    buffer.open(QIODevice::ReadOnly | QIODevice::Text);
+    QXmlStreamReader xmlReader(&buffer);
+    xmlReader.readNextStartElement();
+
+    Scene loaded(m_doc);
+    QVERIFY(loaded.loadXML(xmlReader) == true);
+    QCOMPARE(loaded.tempoType(), Function::Beats);
+    QCOMPARE(loaded.fadeInSpeed(), uint(1000));
+    QCOMPARE(loaded.fadeOutSpeed(), uint(2000));
+    QCOMPARE(loaded.duration(), uint(4000));
+    QVERIFY(loaded.releaseOnStop() == true);
+    QCOMPARE(loaded.channelGroups(), QList<quint32>() << 7 << 9);
+    QCOMPARE(loaded.channelGroupsLevels().size(), 2);
+    QCOMPARE(loaded.channelGroupsLevels().at(0), uchar(100));
+    QCOMPARE(loaded.channelGroupsLevels().at(1), uchar(200));
+    QCOMPARE(loaded.fixtureGroups(), QList<quint32>() << 11 << 12);
+    QCOMPARE(loaded.palettes(), QList<quint32>() << 21);
+    QCOMPARE(loaded.fixtures(), QList<quint32>() << 3 << 0);
+    QCOMPARE(loaded.values().size(), 3);
+    QCOMPARE(loaded.value(3, 0), uchar(10));
+    QCOMPARE(loaded.value(3, 2), uchar(20));
+    QCOMPARE(loaded.value(0, 1), uchar(30));
+}
+
+void Scene_Test::loadLegacyChannelGroupsAndEmptyValues()
+{
+    QByteArray xml("<Function Type=\"Scene\">"
+                   "<ChannelGroups>4,6</ChannelGroups>"
+                   "<ChannelGroupsVal></ChannelGroupsVal>"
+                   "<FixtureVal ID=\"8\"></FixtureVal>"
+                   "<FixtureGroup ID=\"2\"/>"
+                   "<Palette ID=\"3\"/>"
+                   "</Function>");
+    QXmlStreamReader xmlReader(xml);
+    xmlReader.readNextStartElement();
+
+    Scene s(m_doc);
+    QVERIFY(s.loadXML(xmlReader) == true);
+    // The legacy tag carries only IDs: every level defaults to zero
+    QCOMPARE(s.channelGroups(), QList<quint32>() << 4 << 6);
+    QCOMPARE(s.channelGroupsLevels().size(), 2);
+    QCOMPARE(s.channelGroupsLevels().at(0), uchar(0));
+    QCOMPARE(s.channelGroupsLevels().at(1), uchar(0));
+    // An empty FixtureVal still registers the fixture, without any value
+    QCOMPARE(s.fixtures(), QList<quint32>() << 8);
+    QVERIFY(s.values().isEmpty());
+    QCOMPARE(s.fixtureGroups(), QList<quint32>() << 2);
+    QCOMPARE(s.palettes(), QList<quint32>() << 3);
+}
+
+void Scene_Test::postLoad()
+{
+    Fixture *fxi = new Fixture(m_doc);
+    fxi->setAddress(0);
+    fxi->setUniverse(0);
+    fxi->setChannels(4);
+    m_doc->addFixture(fxi);
+
+    Scene *s = new Scene(m_doc);
+    m_doc->addFunction(s);
+
+    QBuffer buffer;
+    buffer.open(QIODevice::WriteOnly | QIODevice::Text);
+    QXmlStreamWriter xmlWriter(&buffer);
+    xmlWriter.writeStartElement("Function");
+    xmlWriter.writeAttribute("Type", "Scene");
+    xmlWriter.writeStartElement("Bus");
+    xmlWriter.writeAttribute("Role", "Fade");
+    xmlWriter.writeCharacters("5");
+    xmlWriter.writeEndElement();
+    xmlWriter.writeStartElement("Value");
+    xmlWriter.writeAttribute("Fixture", QString::number(fxi->id()));
+    xmlWriter.writeAttribute("Channel", "1");
+    xmlWriter.writeCharacters("100");
+    xmlWriter.writeEndElement();
+    xmlWriter.writeStartElement("Value"); // channel beyond the fixture's channel count
+    xmlWriter.writeAttribute("Fixture", QString::number(fxi->id()));
+    xmlWriter.writeAttribute("Channel", "9");
+    xmlWriter.writeCharacters("50");
+    xmlWriter.writeEndElement();
+    xmlWriter.writeStartElement("Value"); // fixture that does not exist
+    xmlWriter.writeAttribute("Fixture", "4242");
+    xmlWriter.writeAttribute("Channel", "0");
+    xmlWriter.writeCharacters("77");
+    xmlWriter.writeEndElement();
+    xmlWriter.writeEndDocument();
+    xmlWriter.setDevice(NULL);
+    buffer.close();
+
+    buffer.open(QIODevice::ReadOnly | QIODevice::Text);
+    QXmlStreamReader xmlReader(&buffer);
+    xmlReader.readNextStartElement();
+
+    // Legacy bus 5 holds a speed expressed in timer ticks
+    Bus::instance()->setValue(5, 100);
+
+    QVERIFY(s->loadXML(xmlReader) == true);
+    QCOMPARE(s->m_legacyFadeBus, quint32(5));
+    QCOMPARE(s->values().size(), 3);
+
+    s->postLoad();
+    uint expectedSpeed = (100 / MasterTimer::frequency()) * 1000;
+    QCOMPARE(s->fadeInSpeed(), expectedSpeed);
+    QCOMPARE(s->fadeOutSpeed(), expectedSpeed);
+    // Values for unknown fixtures and non-existent channels are dropped
+    QCOMPARE(s->values().size(), 1);
+    QCOMPARE(s->value(fxi->id(), 1), uchar(100));
+
+    // Without a legacy bus the speeds are left alone
+    Scene s2(m_doc);
+    s2.setFadeInSpeed(300);
+    s2.postLoad();
+    QCOMPARE(s2.fadeInSpeed(), uint(300));
+}
+
+void Scene_Test::flashForceLTP()
+{
+    Doc *doc = new Doc(this);
+    QList<Universe*> ua;
+    MasterTimer timer(doc);
+
+    Fixture *fxi = new Fixture(doc);
+    fxi->setAddress(0);
+    fxi->setUniverse(0);
+    fxi->setChannels(10);
+    doc->addFixture(fxi);
+
+    Scene *s1 = new Scene(doc);
+    s1->setValue(fxi->id(), 0, 123);
+    // A value of a fixture that no longer exists is treated as an absolute
+    // address; this one maps beyond every universe the timer hands over
+    s1->setValue(4242, UNIVERSE_SIZE * doc->inputOutputMap()->universesCount(), 77);
+    doc->addFunction(s1);
+
+    s1->flash(&timer, false, true);
+    QVERIFY(s1->flashing() == true);
+    QVERIFY(s1->m_flashForceLTP == true);
+    QCOMPARE(timer.m_dmxSourceList.size(), 1);
+
+    ua = doc->inputOutputMap()->claimUniverses();
+    s1->writeDMX(&timer, ua);
+    QSharedPointer<GenericFader> fader = s1->m_fadersMap.value(0);
+    QVERIFY(!fader.isNull());
+    QCOMPARE(s1->m_fadersMap.count(), 1);
+    QCOMPARE(fader->channelsCount(), 1); // the out-of-range value is skipped
+    FadeChannel fc = fader->channels().values().first();
+    QVERIFY(fc.flags() & FadeChannel::ForceLTP);
+    QVERIFY(fc.flags() & FadeChannel::Flashing);
+    ua[0]->processFaders(MasterTimer::tick());
+    QCOMPARE(ua[0]->preGMValues()[0], char(123));
+    doc->inputOutputMap()->releaseUniverses(false);
+
+    s1->unFlash(&timer);
+    ua = doc->inputOutputMap()->claimUniverses();
+    s1->writeDMX(&timer, ua);
+    doc->inputOutputMap()->releaseUniverses(false);
+    QVERIFY(s1->m_fadersMap.isEmpty());
+    QVERIFY(timer.m_dmxSourceList.isEmpty());
+}
+
+void Scene_Test::writeWithoutValuesStops()
+{
+    Doc *doc = new Doc(this);
+    QList<Universe*> ua;
+    ua.append(new Universe(0, new GrandMaster()));
+    MasterTimerStub timer(m_doc, ua); // not parented to the Doc that is deleted below
+
+    Scene *s = new Scene(doc);
+    doc->addFunction(s);
+
+    s->start(&timer, FunctionParent::master());
+    QVERIFY(s->stopped() == false);
+    QVERIFY(s->isRunning() == true);
+
+    // Nothing to output: the Scene stops itself
+    s->write(&timer, ua);
+    QVERIFY(s->stopped() == true);
+    QVERIFY(s->m_fadersMap.isEmpty());
+    QCOMPARE(s->elapsed(), quint32(0));
+
+    s->postRun(&timer, ua);
+    delete doc;
+}
+
+void Scene_Test::writeSkipsMissingUniverse()
+{
+    Doc *doc = new Doc(this);
+    QList<Universe*> ua;
+    ua.append(new Universe(0, new GrandMaster()));
+    MasterTimerStub timer(m_doc, ua); // not parented to the Doc that is deleted below
+
+    Fixture *fxi = new Fixture(doc);
+    fxi->setAddress(0);
+    fxi->setUniverse(0);
+    fxi->setChannels(4);
+    doc->addFixture(fxi);
+
+    Scene *s = new Scene(doc);
+    s->setValue(fxi->id(), 0, 200);
+    doc->addFunction(s);
+
+    s->preRun(&timer);
+    // The fixture's universe is not among the ones handed over: no fader is requested
+    s->write(&timer, QList<Universe*>());
+    QVERIFY(s->m_fadersMap.isEmpty());
+    QCOMPARE(s->elapsed(), quint32(MasterTimer::tick()));
+
+    s->postRun(&timer, ua);
+    delete doc;
+}
+
+void Scene_Test::writeNonFadingChannel()
+{
+    Doc *doc = new Doc(this);
+    QList<Universe*> ua;
+    ua.append(new Universe(0, new GrandMaster()));
+    MasterTimerStub timer(m_doc, ua); // not parented to the Doc that is deleted below
+
+    Fixture *fxi = new Fixture(doc);
+    fxi->setAddress(0);
+    fxi->setUniverse(0);
+    fxi->setChannels(10);
+    fxi->setChannelCanFade(2, false);
+    doc->addFixture(fxi);
+
+    Scene *s = new Scene(doc);
+    s->setFadeInSpeed(MasterTimer::tick() * 5);
+    s->setValue(fxi->id(), 2, 200);
+    s->setValue(fxi->id(), 3, 100);
+    doc->addFunction(s);
+
+    s->preRun(&timer);
+    s->write(&timer, ua);
+    QSharedPointer<GenericFader> fader = s->m_fadersMap.value(0);
+    QVERIFY(!fader.isNull());
+    QHash<quint32, FadeChannel> channels = fader->channels();
+    QCOMPARE(channels.size(), 2);
+    // A channel that cannot fade snaps to its target, the other one keeps the Scene's fade in
+    QCOMPARE(channels.value(GenericFader::channelHash(fxi->id(), 2)).fadeTime(), uint(0));
+    QCOMPARE(channels.value(GenericFader::channelHash(fxi->id(), 3)).fadeTime(), uint(MasterTimer::tick() * 5));
+
+    s->postRun(&timer, ua);
+    delete doc;
+}
+
+void Scene_Test::writeBeatsTempo()
+{
+    Doc *doc = new Doc(this);
+    MasterTimer timer(doc);
+
+    Fixture *fxi = new Fixture(doc);
+    fxi->setAddress(0);
+    fxi->setUniverse(0);
+    fxi->setChannels(10);
+    doc->addFixture(fxi);
+
+    Scene *s = new Scene(doc);
+    s->setValue(fxi->id(), 0, 200);
+    doc->addFunction(s);
+    s->setTempoType(Function::Beats);
+    s->setFadeInSpeed(1);     // a negligible fraction of a beat: shorter than any late-to-beat offset
+    s->setFadeOutSpeed(1000); // one beat
+
+    // External beats are not generated by the timer, so a requested beat survives until the tick.
+    // Then move the timer to the last 20% of the current beat: the Scene is "late to beat" and
+    // the fade in is meant to complete before the next beat, which is nearer than its own length.
+    timer.setBeatSourceType(MasterTimer::External);
+    QTest::qSleep(300);
+    int elapsed = int(timer.m_beatTimer.elapsed());
+    timer.m_beatTimeDuration = elapsed + elapsed / 4; // 20% of the beat left: late to beat, with slack
+    QVERIFY(timer.nextBeatTimeOffset() > 0);
+
+    s->start(&timer, FunctionParent::master());
+    timer.requestBeat();
+    timer.timerTick(); // preRun + first write, on a beat
+    QVERIFY(s->isRunning() == true);
+    QCOMPARE(s->elapsedBeats(), quint32(1000));
+    QSharedPointer<GenericFader> fader = s->m_fadersMap.value(0);
+    QVERIFY(!fader.isNull());
+    QCOMPARE(fader->channelsCount(), 1);
+    QCOMPARE(fader->channels().values().first().fadeTime(), uint(0));
+
+    // The fade out is expressed in beats as well
+    s->stop(FunctionParent::master());
+    timer.timerTick();
+    QVERIFY(s->isRunning() == false);
+    QVERIFY(fader->isFadingOut() == true);
+    QVERIFY(s->m_fadersMap.isEmpty());
+}
+
+void Scene_Test::releaseOnStopZeroesChannels()
+{
+    Doc *doc = new Doc(this);
+    QList<Universe*> ua;
+    ua.append(new Universe(0, new GrandMaster()));
+    MasterTimerStub timer(m_doc, ua); // not parented to the Doc that is deleted below
+
+    Fixture *fxi = new Fixture(doc);
+    fxi->setAddress(10);
+    fxi->setUniverse(0);
+    fxi->setChannels(4);
+    doc->addFixture(fxi);
+
+    Fixture *remote = new Fixture(doc); // lives in a universe that is not handed over
+    remote->setAddress(0);
+    remote->setUniverse(1);
+    remote->setChannels(4);
+    doc->addFixture(remote);
+
+    Scene *s = new Scene(doc);
+    s->setValue(fxi->id(), 1, 200);
+    s->setValue(remote->id(), 0, 100);
+    s->setValue(4242, 0, 50); // fixture that does not exist
+    s->setReleaseOnStop(true);
+    doc->addFunction(s);
+
+    s->preRun(&timer);
+    s->write(&timer, ua);
+    ua[0]->processFaders(MasterTimer::tick());
+    QCOMPARE(ua[0]->preGMValue(11), uchar(200));
+
+    // Stopping forcefully zeroes every channel the Scene touched in the available universes
+    s->postRun(&timer, ua);
+    QCOMPARE(ua[0]->preGMValue(11), uchar(0));
+    QVERIFY(s->m_fadersMap.isEmpty());
+    delete doc;
+}
+
+void Scene_Test::blendModeWhileRunning()
+{
+    Doc *doc = new Doc(this);
+    QList<Universe*> ua;
+    ua.append(new Universe(0, new GrandMaster()));
+    MasterTimerStub timer(m_doc, ua); // not parented to the Doc that is deleted below
+
+    Fixture *fxi = new Fixture(doc);
+    fxi->setAddress(0);
+    fxi->setUniverse(0);
+    fxi->setChannels(4);
+    doc->addFixture(fxi);
+
+    Scene *s = new Scene(doc);
+    s->setValue(fxi->id(), 0, 200);
+    doc->addFunction(s);
+
+    s->preRun(&timer);
+    s->write(&timer, ua);
+    QSharedPointer<GenericFader> fader = s->m_fadersMap.value(0);
+    QVERIFY(!fader.isNull());
+    QCOMPARE(fader->m_blendMode, Universe::NormalBlend);
+
+    // A blend mode change while running is forwarded to the live faders
+    s->setBlendMode(Universe::AdditiveBlend);
+    QCOMPARE(s->blendMode(), Universe::AdditiveBlend);
+    QCOMPARE(fader->m_blendMode, Universe::AdditiveBlend);
+    s->setBlendMode(Universe::AdditiveBlend); // same mode: nothing to do
+    QCOMPARE(fader->m_blendMode, Universe::AdditiveBlend);
+
+    s->postRun(&timer, ua);
+    delete doc;
+}
+
+void Scene_Test::writePalettes()
+{
+    Doc *doc = new Doc(this);
+    QList<Universe*> ua;
+    ua.append(new Universe(0, new GrandMaster()));
+    MasterTimerStub timer(m_doc, ua); // not parented to the Doc that is deleted below
+
+    Fixture *fxi = new Fixture(doc);
+    fxi->setAddress(0);
+    fxi->setUniverse(0);
+    fxi->setChannels(4);
+    doc->addFixture(fxi);
+
+    Fixture *grouped = new Fixture(doc);
+    grouped->setAddress(10);
+    grouped->setUniverse(0);
+    grouped->setChannels(4);
+    doc->addFixture(grouped);
+
+    FixtureGroup *grp = new FixtureGroup(doc);
+    grp->assignFixture(grouped->id());
+    QVERIFY(doc->addFixtureGroup(grp) == true);
+
+    QLCPalette *palette = new QLCPalette(QLCPalette::Dimmer, doc);
+    palette->setValue(200);
+    QVERIFY(doc->addPalette(palette) == true);
+
+    Scene *s = new Scene(doc);
+    s->addPalette(4242); // palette that does not exist: skipped
+    s->addPalette(palette->id());
+    s->addFixture(fxi->id());
+    s->addFixtureGroup(grp->id());
+    doc->addFunction(s);
+    QVERIFY(s->values().isEmpty());
+
+    s->start(&timer, FunctionParent::master()); // the stub timer runs preRun() right away
+    s->write(&timer, ua);
+    QVERIFY(s->stopped() == false); // palettes count as content: no engine self-stop
+    QSharedPointer<GenericFader> fader = s->m_fadersMap.value(0);
+    QVERIFY(!fader.isNull());
+    QVERIFY(fader->channelsCount() >= 2);
+    ua[0]->processFaders(MasterTimer::tick());
+    // The palette is applied to both the direct fixture and the group's fixture
+    QCOMPARE(ua[0]->preGMValue(0), uchar(200));
+    QCOMPARE(ua[0]->preGMValue(10), uchar(200));
+
+    s->postRun(&timer, ua);
+    delete doc;
+}
+
+QTEST_MAIN(Scene_Test)

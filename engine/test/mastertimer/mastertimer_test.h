@@ -44,6 +44,11 @@ private slots:
     void stop();
     void restart();
 
+    void externalBeatSource();
+    void fadeAndStopAll();
+    void restartWhileStillListed();
+    void nextBeatTimeOffsetLateToBeat();
+
 private:
     Doc* m_doc;
 };

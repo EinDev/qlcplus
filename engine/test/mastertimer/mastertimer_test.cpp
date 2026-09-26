@@ -24,6 +24,8 @@
 #include "dmxsource_stub.h"
 #include "function_stub.h"
 #include "mastertimer.h"
+#include "inputoutputmap.h"
+#include "genericfader.h"
 #include "qlcchannel.h"
 #include "universe.h"
 #include "qlcfile.h"
@@ -457,6 +459,128 @@ void MasterTimer_Test::restart()
     fs2.start(mt, FunctionParent::master());
     fs3.start(mt, FunctionParent::master());
     QTRY_VERIFY(mt->runningFunctions() == 3);
+}
+
+/** Records whether the timer reported a beat while this source was written */
+class BeatProbe final : public DMXSource
+{
+public:
+    BeatProbe() : m_writes(0), m_beatSeen(false) {}
+    void writeDMX(MasterTimer *timer, QList<Universe*> universes) override
+    {
+        Q_UNUSED(universes);
+        m_writes++;
+        m_beatSeen = timer->isBeat();
+    }
+    int m_writes;
+    bool m_beatSeen;
+};
+
+void MasterTimer_Test::externalBeatSource()
+{
+    MasterTimer timer(m_doc); // never started: ticked by hand
+    BeatProbe probe;
+    timer.registerDMXSource(&probe);
+
+    QCOMPARE(timer.beatSourceType(), MasterTimer::None);
+
+    // Without a beat source a requested beat is discarded at the start of the tick
+    timer.requestBeat();
+    QVERIFY(timer.isBeat() == true);
+    timer.timerTick();
+    QCOMPARE(probe.m_writes, 1);
+    QVERIFY(probe.m_beatSeen == false);
+    QVERIFY(timer.isBeat() == false);
+
+    // With an external source the timer generates nothing itself but honours requested beats
+    timer.setBeatSourceType(MasterTimer::External);
+    QCOMPARE(timer.beatSourceType(), MasterTimer::External);
+    timer.setBeatSourceType(MasterTimer::External); // same type: no-op
+    timer.requestBeat();
+    timer.timerTick();
+    QCOMPARE(probe.m_writes, 2);
+    QVERIFY(probe.m_beatSeen == true);
+    QVERIFY(timer.isBeat() == false); // consumed by the tick
+
+    timer.unregisterDMXSource(&probe);
+}
+
+void MasterTimer_Test::fadeAndStopAll()
+{
+    MasterTimer *mt = m_doc->masterTimer();
+    QCOMPARE(mt->runningFunctions(), 0);
+
+    // Only faders owned by a Function are asked to fade out
+    QList<Universe*> ua = m_doc->inputOutputMap()->claimUniverses();
+    QSharedPointer<GenericFader> owned = ua[0]->requestFader();
+    owned->setParentFunctionID(1);
+    QSharedPointer<GenericFader> orphan = ua[0]->requestFader();
+    m_doc->inputOutputMap()->releaseUniverses(false);
+
+    // Without a timeout nothing fades: only the (empty) function list is stopped
+    mt->fadeAndStopAll(0);
+    QVERIFY(owned->isFadingOut() == false);
+    QVERIFY(orphan->isFadingOut() == false);
+
+    mt->fadeAndStopAll(500);
+    QVERIFY(owned->isFadingOut() == true);
+    QVERIFY(orphan->isFadingOut() == false);
+    QCOMPARE(mt->runningFunctions(), 0);
+
+    owned->requestDelete();
+    orphan->requestDelete();
+}
+
+void MasterTimer_Test::restartWhileStillListed()
+{
+    MasterTimer timer(m_doc); // never started: ticked by hand
+    Function_Stub fs(m_doc);
+
+    fs.start(&timer, FunctionParent::master());
+    timer.timerTick();
+    QCOMPARE(fs.m_preRunCalls, 1);
+    QCOMPARE(fs.m_writeCalls, 1);
+    QCOMPARE(timer.runningFunctions(), 1);
+
+    // Stop and restart between two ticks: the function is still listed when its
+    // queued start is processed, so it is wrapped up first and then started afresh
+    fs.stop(FunctionParent::master());
+    QVERIFY(fs.stopped() == true);
+    fs.start(&timer, FunctionParent::master());
+    QVERIFY(fs.stopped() == false);
+
+    timer.timerTick();
+    QCOMPARE(fs.m_postRunCalls, 1);
+    QCOMPARE(fs.m_preRunCalls, 2);
+    QCOMPARE(fs.m_writeCalls, 3); // regular write, then the write of the restart
+    QCOMPARE(timer.runningFunctions(), 1);
+    QVERIFY(fs.isRunning() == true);
+
+    fs.stop(FunctionParent::master());
+    timer.timerTick();
+    QCOMPARE(fs.m_postRunCalls, 2);
+    QCOMPARE(timer.runningFunctions(), 0);
+}
+
+void MasterTimer_Test::nextBeatTimeOffsetLateToBeat()
+{
+    MasterTimer timer(m_doc);
+    timer.setBeatSourceType(MasterTimer::Internal); // restarts the beat timer: 500ms at 120 BPM
+    QCOMPARE(timer.beatTimeDuration(), 500);
+
+    // Right after a beat the next one is far away: wait for the whole remaining time
+    QVERIFY(timer.nextBeatTimeOffset() < 0);
+
+    // Move the timer into the last 20% of the beat: a Function starting now is
+    // "late to beat" and only waits for the short remaining time
+    QTest::qSleep(200);
+    int elapsed = int(timer.m_beatTimer.elapsed());
+    timer.m_beatTimeDuration = elapsed + elapsed / 4; // 20% of the beat left: late to beat, with slack
+    int toNext = timer.timeToNextBeat();
+    QVERIFY(toNext > 0);
+    int offset = timer.nextBeatTimeOffset();
+    QVERIFY(offset > 0);
+    QVERIFY(offset <= toNext);
 }
 
 QTEST_MAIN(MasterTimer_Test)

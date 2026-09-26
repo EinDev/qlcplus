@@ -34,6 +34,8 @@ private slots:
     void loadWrongFixture();
     void loadWrongValue();
     void save();
+    void debugStream();
+    void metaType();
 };
 
 #endif
