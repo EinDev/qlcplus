@@ -885,7 +885,7 @@ void RGBMatrix_Test::loadSaveExtra()
     xmlWriter.writeCharacters("Stripes");
     xmlWriter.writeEndElement();
     xmlWriter.writeTextElement("FixtureGroup", QString::number(m_rgbGroup));
-    xmlWriter.writeTextElement("TempoType", "Beats");
+    xmlWriter.writeTextElement("Tempo", "Beats");
     xmlWriter.writeTextElement("Foo", "Bar"); // unknown tag, skipped
     xmlWriter.writeEndElement();
 
