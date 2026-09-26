@@ -22,6 +22,8 @@
 #include <QXmlStreamWriter>
 #include <QXmlStreamReader>
 #include <QVector3D>
+#include <QMetaEnum>
+#include <QIcon>
 #include <QRect>
 
 #define protected public
@@ -32,6 +34,7 @@
 #include "show.h"
 #include "track.h"
 #include "showfunction.h"
+#include "scene.h"
 #include "doc.h"
 #undef private
 #undef protected
@@ -337,6 +340,212 @@ void Video_Test::loadLegacyFullscreen()
     Video v2(m_doc);
     QVERIFY(loadFromXml(v2, "<Function Type=\"Video\" Name=\"x\"><Source Fullscreen=\"1\" Output=\"spout\">http://example.com/m.mp4</Source></Function>"));
     QCOMPARE(v2.outputMode(), Video::Spout);
+}
+
+void Video_Test::iconAndCapabilities()
+{
+    Video v(m_doc);
+    QIcon icon = v.getIcon();
+    Q_UNUSED(icon);
+
+    // Qt 6 has no QMediaPlayer::supportedMimeTypes(): the built-in list is
+    // what the file dialogs get
+    QStringList caps = Video::getVideoCapabilities();
+    QVERIFY(caps.contains("*.mp4"));
+    QVERIFY(caps.contains("*.mkv"));
+    QVERIFY(caps.contains("*.webm"));
+    QCOMPARE(caps, Video::m_defaultVideoCaps);
+
+    QStringList pics = Video::getPictureCapabilities();
+    QVERIFY(pics.contains("*.png"));
+    QVERIFY(pics.contains("*.jpg"));
+    QCOMPARE(pics, Video::m_defaultPictureCaps);
+
+    // the output mode is a registered enum (used by QML/undo through the
+    // meta-object system)
+    QMetaEnum modes = QMetaEnum::fromType<Video::OutputMode>();
+    QCOMPARE(QString(modes.valueToKey(Video::Spout)), QString("Spout"));
+    QCOMPARE(modes.keyToValue("Fullscreen"), int(Video::Fullscreen));
+}
+
+void Video_Test::createCopy()
+{
+    Video *v = new Video(m_doc);
+    v->setSourceUrl("http://example.com/movie.mp4");
+    v->setName("Movie");
+    v->setOutputMode(Video::Spout);
+    v->setSpoutSize(QSize(320, 240));
+    v->setVolume(33);
+    v->setMuted(true);
+    v->setTotalDuration(5000);
+    QVERIFY(m_doc->addFunction(v));
+    int before = m_doc->functions().count();
+
+    // added to the Doc: a new id, same content
+    Function *copy = v->createCopy(m_doc);
+    QVERIFY(copy != NULL);
+    QVERIFY(copy != v);
+    QCOMPARE(copy->type(), Function::VideoType);
+    QVERIFY(copy->id() != v->id());
+    QVERIFY(m_doc->function(copy->id()) == copy);
+    QCOMPARE(m_doc->functions().count(), before + 1);
+    Video *videoCopy = qobject_cast<Video *>(copy);
+    QVERIFY(videoCopy != NULL);
+    QCOMPARE(videoCopy->sourceUrl(), QString("http://example.com/movie.mp4"));
+    QCOMPARE(videoCopy->name(), QString("Movie"));
+    QCOMPARE(videoCopy->outputMode(), Video::Spout);
+    QCOMPARE(videoCopy->spoutSize(), QSize(320, 240));
+    QCOMPARE(videoCopy->volume(), 33.0);
+    QCOMPARE(videoCopy->muted(), true);
+    QCOMPARE(videoCopy->totalDuration(), 5000u);
+
+    // not added: the caller owns it
+    Function *loose = v->createCopy(m_doc, false);
+    QVERIFY(loose != NULL);
+    QCOMPARE(loose->id(), Function::invalidId());
+    QCOMPARE(m_doc->functions().count(), before + 1);
+    delete loose;
+
+    // only a Video can be copied into a Video
+    Scene scene(m_doc);
+    Video other(m_doc);
+    QVERIFY(other.copyFrom(&scene) == false);
+}
+
+void Video_Test::moreProperties()
+{
+    Video v(m_doc);
+    v.setID(9);
+
+    QSignalSpy durationSpy(&v, SIGNAL(totalTimeChanged(qint64)));
+    QSignalSpy metaSpy(&v, SIGNAL(metaDataChanged(QString,QVariant)));
+    QSignalSpy geometrySpy(&v, SIGNAL(customGeometryChanged(QRect)));
+    QSignalSpy rotationSpy(&v, SIGNAL(rotationChanged(QVector3D)));
+    QSignalSpy sourceSpy(&v, SIGNAL(sourceChanged(QString)));
+    QSignalSpy brightnessSpy(&v, SIGNAL(requestBrightnessVolumeAdjust(qreal)));
+    QSignalSpy intensitySpy(&v, SIGNAL(intensityChanged()));
+
+    QCOMPARE(v.totalDuration(), 0u);
+    v.setTotalDuration(0);
+    QCOMPARE(durationSpy.count(), 0);
+    v.setTotalDuration(12345);
+    QCOMPARE(v.totalDuration(), 12345u);
+    QCOMPARE(durationSpy.count(), 1);
+    QCOMPARE(durationSpy.at(0).at(0).toLongLong(), qint64(12345));
+
+    QCOMPARE(v.resolution(), QSize(0, 0));
+    v.setResolution(QSize(1920, 1080));
+    QCOMPARE(v.resolution(), QSize(1920, 1080));
+    QCOMPARE(metaSpy.count(), 1);
+    QCOMPARE(metaSpy.at(0).at(0).toString(), QString("Resolution"));
+    QCOMPARE(metaSpy.at(0).at(1).toSize(), QSize(1920, 1080));
+
+    v.setAudioCodec("aac");
+    v.setVideoCodec("h264");
+    QCOMPARE(v.audioCodec(), QString("aac"));
+    QCOMPARE(v.videoCodec(), QString("h264"));
+    QCOMPARE(metaSpy.count(), 3);
+    QCOMPARE(metaSpy.at(1).at(0).toString(), QString("AudioCodec"));
+    QCOMPARE(metaSpy.at(1).at(1).toString(), QString("aac"));
+    QCOMPARE(metaSpy.at(2).at(0).toString(), QString("VideoCodec"));
+    QCOMPARE(metaSpy.at(2).at(1).toString(), QString("h264"));
+
+    // unchanged geometry/rotation do not re-emit
+    v.setCustomGeometry(QRect(1, 2, 3, 4));
+    v.setCustomGeometry(QRect(1, 2, 3, 4));
+    QCOMPARE(geometrySpy.count(), 1);
+    v.setRotation(QVector3D(1, 2, 3));
+    v.setRotation(QVector3D(1, 2, 3));
+    QCOMPARE(rotationSpy.count(), 1);
+
+    // relinking to the current source is a no-op
+    v.setSourceUrl("http://example.com/a.mp4");
+    QCOMPARE(sourceSpy.count(), 1);
+    v.relinkSource("http://example.com/a.mp4");
+    QCOMPARE(sourceSpy.count(), 1);
+
+    // the int overload maps 1 onto Fullscreen
+    v.setOutputMode(int(Video::Fullscreen));
+    QCOMPARE(v.outputMode(), Video::Fullscreen);
+    QCOMPARE(v.fullscreen(), true);
+
+    // intensity is the generic Function attribute, adjusted through the
+    // player-facing signals
+    QCOMPARE(v.intensity(), 1.0);
+    QCOMPARE(v.adjustAttribute(0.5, Video::Intensity), int(Video::Intensity));
+    QCOMPARE(v.intensity(), 0.5);
+    QCOMPARE(brightnessSpy.count(), 1);
+    QCOMPARE(brightnessSpy.at(0).at(0).toReal(), 0.5);
+    QCOMPARE(intensitySpy.count(), 1);
+}
+
+void Video_Test::runningState()
+{
+    Video v(m_doc);
+    v.setID(11);
+    v.setSourceUrl("http://example.com/a.mp4");
+    MasterTimerStub timer(m_doc, QList<Universe *>());
+
+    QSignalSpy seekSpy(&v, SIGNAL(requestSeek(qint64)));
+    QSignalSpy pauseSpy(&v, SIGNAL(requestPause(bool)));
+
+    // not running: stop/seek/pause requests are ignored
+    QVERIFY(v.isRunning() == false);
+    v.stopFromUI();
+    QVERIFY(v.stopped() == false);
+    v.seekTo(500);
+    QCOMPARE(seekSpy.count(), 0);
+    v.setPause(true);
+    QCOMPARE(pauseSpy.count(), 0);
+    QVERIFY(v.isPaused() == false);
+
+    // running (the state the MasterTimer thread sets in preRun)
+    v.m_running = true;
+    v.seekTo(1234);
+    QCOMPARE(seekSpy.count(), 1);
+    QCOMPARE(seekSpy.at(0).at(0).toLongLong(), qint64(1234));
+
+    v.setPause(true);
+    QCOMPARE(pauseSpy.count(), 1);
+    QCOMPARE(pauseSpy.at(0).at(0).toBool(), true);
+    QVERIFY(v.isPaused());
+    v.setPause(false);
+    QCOMPARE(pauseSpy.count(), 2);
+    QVERIFY(v.isPaused() == false);
+
+    // write() only advances the elapsed time: the player does the work
+    QCOMPARE(v.elapsed(), 0u);
+    v.write(&timer, QList<Universe *>());
+    QCOMPARE(v.elapsed(), quint32(MasterTimer::tick()));
+    v.write(&timer, QList<Universe *>());
+    QCOMPARE(v.elapsed(), quint32(2 * MasterTimer::tick()));
+
+    // EndOfMedia from the player stops the run
+    v.stopFromUI();
+    QVERIFY(v.stopped());
+
+    v.postRun(&timer, QList<Universe *>());
+    v.m_running = false;
+}
+
+void Video_Test::loadInvalid()
+{
+    Video v1(m_doc);
+    QVERIFY(loadFromXml(v1, "<Foo Type=\"Video\"/>") == false);
+
+    Video v2(m_doc);
+    QVERIFY(loadFromXml(v2, "<Function Type=\"Scene\" Name=\"x\"/>") == false);
+
+    // Fullscreen="0" is an explicit windowed mode; unknown tags are skipped
+    Video v3(m_doc);
+    v3.setFullscreen(true);
+    QVERIFY(loadFromXml(v3, "<Function Type=\"Video\" Name=\"x\">"
+                            "<Bogus><Nested/></Bogus>"
+                            "<Source Fullscreen=\"0\">http://example.com/m.mp4</Source>"
+                            "</Function>"));
+    QCOMPARE(v3.outputMode(), Video::Windowed);
+    QCOMPARE(v3.fullscreen(), false);
+    QCOMPARE(v3.sourceUrl(), QString("http://example.com/m.mp4"));
 }
 
 QTEST_MAIN(Video_Test)
