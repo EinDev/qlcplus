@@ -58,6 +58,16 @@ private slots:
 
     void quickChaser();
 
+    void iconAndSpeedModeEnum();
+    void totalDuration();
+    void moveStepBounds();
+    void runnerWrappersWithoutRunner();
+    void runnerWrappersWithRunner();
+    void containsAndSelfContainment();
+    void loadTempoAndLegacySequence();
+    void writePaused();
+    void writeSelfStop();
+
 private:
     Doc* m_doc;
 };
