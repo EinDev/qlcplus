@@ -40,6 +40,32 @@ private slots:
     void loadWrongRoot();
     void save();
     void saveLoadRoundTrip();
+
+    void copy();
+    void temporary();
+    void typedValues();
+    void setterSignals();
+
+    void fixturesDimmer();
+    void fixturesDimmerFanning();
+    void fixturesColor();
+    void fixturesColorFanning();
+    void fixturesPan();
+    void fixturesTilt();
+    void fixturesPanTilt();
+    void fixturesShutter();
+    void fixturesGobo();
+    void fixturesZoom();
+    void fixturesPosition3D();
+    void fixturesLayouts();
+    void fixturesMisc();
+    void fixtureGroups();
+
+    void loaderFailure();
+    void loadValueTypes();
+    void loadFanValueTypes();
+    void saveValueTypes();
+    void saveNoValue();
 };
 
 #endif
