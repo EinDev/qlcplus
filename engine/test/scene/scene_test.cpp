@@ -1462,9 +1462,9 @@ void Scene_Test::writePalettes()
     doc->addFunction(s);
     QVERIFY(s->values().isEmpty());
 
-    s->preRun(&timer);
+    s->start(&timer, FunctionParent::master()); // the stub timer runs preRun() right away
     s->write(&timer, ua);
-    QVERIFY(s->stopped() == false);
+    QVERIFY(s->stopped() == false); // palettes count as content: no engine self-stop
     QSharedPointer<GenericFader> fader = s->m_fadersMap.value(0);
     QVERIFY(!fader.isNull());
     QVERIFY(fader->channelsCount() >= 2);
