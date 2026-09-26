@@ -232,4 +232,122 @@ void ChannelsGroup_Test::inputSource()
     QCOMPARE(spy.size(), 1);
 }
 
+void ChannelsGroup_Test::copyConstructor()
+{
+    Fixture *fxi = new Fixture(m_doc);
+    fxi->setChannels(2);
+    fxi->setAddress(m_currentAddr);
+    m_currentAddr += fxi->channels();
+    m_doc->addFixture(fxi);
+
+    ChannelsGroup src(m_doc);
+    src.setId(9);
+    src.setName("Source");
+    src.addChannel(fxi->id(), 0);
+    src.addChannel(fxi->id(), 1);
+    src.setInputSource(QSharedPointer<QLCInputSource>(new QLCInputSource(1, 2)));
+
+    ChannelsGroup copy(m_doc, &src);
+    QCOMPARE(copy.id(), quint32(9));
+    QCOMPARE(copy.name(), QString("Source"));
+    QCOMPARE(copy.getChannels().size(), 2);
+    QCOMPARE(copy.getChannels().at(1).channel, quint32(1));
+    QCOMPARE(copy.inputSource().data(), src.inputSource().data());
+    QCOMPARE(copy.m_doc, m_doc);
+}
+
+void ChannelsGroup_Test::replaceInputSource()
+{
+    ChannelsGroup grp(m_doc);
+    QSignalSpy spy(&grp, SIGNAL(valueChanged(quint32,uchar)));
+    m_doc->setMode(Doc::Design);
+
+    grp.setInputSource(QSharedPointer<QLCInputSource>(new QLCInputSource(1, 2)));
+    // Replacing a valid source disconnects the previous one first
+    grp.setInputSource(QSharedPointer<QLCInputSource>(new QLCInputSource(3, 4)));
+    QCOMPARE(grp.inputSource()->universe(), quint32(3));
+    QCOMPARE(grp.inputSource()->channel(), quint32(4));
+
+    grp.slotInputValueChanged(1, 2, 100);
+    QCOMPARE(spy.size(), 0);
+    grp.slotInputValueChanged(3, 4, 100);
+    QCOMPARE(spy.size(), 1);
+
+    // Dropping the source altogether is allowed as well
+    grp.setInputSource(QSharedPointer<QLCInputSource>());
+    QVERIFY(grp.inputSource().isNull());
+}
+
+void ChannelsGroup_Test::saveMultipleChannels()
+{
+    Fixture *fxi = new Fixture(m_doc);
+    fxi->setChannels(3);
+    fxi->setAddress(m_currentAddr);
+    m_currentAddr += fxi->channels();
+    m_doc->addFixture(fxi);
+
+    ChannelsGroup grp(m_doc);
+    grp.setId(3);
+    grp.addChannel(fxi->id(), 0);
+    grp.addChannel(fxi->id(), 2);
+
+    QBuffer buffer;
+    buffer.open(QIODevice::WriteOnly | QIODevice::Text);
+    QXmlStreamWriter xmlWriter(&buffer);
+    QVERIFY(grp.saveXML(&xmlWriter));
+    xmlWriter.setDevice(nullptr);
+    buffer.close();
+
+    buffer.open(QIODevice::ReadOnly | QIODevice::Text);
+    QXmlStreamReader xmlReader(&buffer);
+    xmlReader.readNextStartElement();
+    QCOMPARE(xmlReader.name().toString(), KXMLQLCChannelsGroup);
+    QVERIFY(xmlReader.attributes().hasAttribute("InputUniverse") == false);
+    QCOMPARE(xmlReader.readElementText(),
+             QString("%1,0,%1,2").arg(fxi->id()));
+}
+
+void ChannelsGroup_Test::loadInvalid()
+{
+    ChannelsGroup grp(m_doc);
+
+    {
+        QXmlStreamReader reader(QByteArray("<Foo ID=\"1\"/>"));
+        reader.readNextStartElement();
+        QVERIFY(grp.loadXML(reader) == false);
+    }
+    {
+        QXmlStreamReader reader(QByteArray("<ChannelsGroup ID=\"abc\"/>"));
+        reader.readNextStartElement();
+        QVERIFY(grp.loadXML(reader) == false);
+        QCOMPARE(grp.id(), ChannelsGroup::invalidId());
+    }
+
+    // Channels of unknown fixtures and channels a fixture does not have are skipped
+    Fixture *fxi = new Fixture(m_doc);
+    fxi->setChannels(1);
+    fxi->setAddress(m_currentAddr);
+    m_currentAddr += fxi->channels();
+    m_doc->addFixture(fxi);
+
+    QByteArray xml = QString("<ChannelsGroup ID=\"4\">999,0,%1,5,%1,0</ChannelsGroup>").arg(fxi->id()).toUtf8();
+    QXmlStreamReader reader(xml);
+    reader.readNextStartElement();
+    QVERIFY(grp.loadXML(reader) == true);
+    QCOMPARE(grp.id(), quint32(4));
+    QCOMPARE(grp.getChannels().size(), 1);
+    QCOMPARE(grp.getChannels().first().fxi, fxi->id());
+    QCOMPARE(grp.getChannels().first().channel, quint32(0));
+}
+
+void ChannelsGroup_Test::loaderInvalid()
+{
+    QXmlStreamReader reader(QByteArray("<Foo ID=\"1\"/>"));
+    reader.readNextStartElement();
+
+    int before = m_doc->channelsGroups().count();
+    QVERIFY(ChannelsGroup::loader(reader, m_doc) == false);
+    QCOMPARE(m_doc->channelsGroups().count(), before);
+}
+
 QTEST_MAIN(ChannelsGroup_Test)

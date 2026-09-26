@@ -42,6 +42,12 @@ private slots:
     void loader();
     void inputSource();
 
+    void copyConstructor();
+    void replaceInputSource();
+    void saveMultipleChannels();
+    void loadInvalid();
+    void loaderInvalid();
+
 private:
     Doc* m_doc;
     int m_currentAddr;

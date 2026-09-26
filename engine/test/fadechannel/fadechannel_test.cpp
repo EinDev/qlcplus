@@ -374,4 +374,30 @@ void FadeChannel_Test::calculateCurrent()
     QCOMPARE(fch.calculateCurrent(200, 200), uchar(101));
 }
 
+void FadeChannel_Test::indexedAccessors()
+{
+    FadeChannel fc;
+    // A channel without any channel number still counts as one (8-bit) channel
+    QCOMPARE(fc.channelCount(), 1);
+    QCOMPARE(fc.channel(), QLCChannel::invalid());
+
+    fc.addChannel(3);
+    QCOMPARE(fc.channelCount(), 1);
+    fc.addChannel(4);
+    QCOMPARE(fc.channelCount(), 2);
+
+    // Index 0 is the coarse (high) byte, index 1 the fine (low) byte
+    fc.setStart(0xABCD);
+    fc.setTarget(0x1234);
+    fc.setCurrent(0x5678);
+    QCOMPARE(fc.start(0), uchar(0xAB));
+    QCOMPARE(fc.start(1), uchar(0xCD));
+    QCOMPARE(fc.target(0), uchar(0x12));
+    QCOMPARE(fc.target(1), uchar(0x34));
+    QCOMPARE(fc.current(0), uchar(0x56));
+    QCOMPARE(fc.current(1), uchar(0x78));
+    QCOMPARE(fc.current(0.5, 0), uchar(floor((qreal(0x56) * 0.5) + 0.5)));
+    QCOMPARE(fc.current(0.5, 1), uchar(floor((qreal(0x78) * 0.5) + 0.5)));
+}
+
 QTEST_APPLESS_MAIN(FadeChannel_Test)

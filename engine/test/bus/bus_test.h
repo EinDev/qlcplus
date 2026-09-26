@@ -37,6 +37,7 @@ private slots:
     void loadWrongRoot();
     void load();
     void loadWrongID();
+    void outOfRange();
 
     void cleanupTestCase();
 };

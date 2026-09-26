@@ -275,4 +275,38 @@ void GenericDMXSource_Test::findFeatureForFaderFailsForForeignFader()
     QVERIFY(GenericDMXSource::findFeatureForFader(nullptr, m_fxiId, 0, feature) == false);
 }
 
+void GenericDMXSource_Test::outputEnabledFlag()
+{
+    GenericDMXSource *src = new GenericDMXSource(m_doc);
+    QVERIFY(src->isOutputEnabled() == false);
+    src->setOutputEnabled(true);
+    QVERIFY(src->isOutputEnabled() == true);
+
+    src->set(m_fxiId, 0, 10);
+    src->writeDMX(nullptr, m_doc->inputOutputMap()->universes());
+    QVERIFY(src->m_fadersMap.isEmpty() == false);
+
+    // Deleting a heap instance releases its faders and unregisters it from the timer
+    int before = m_doc->masterTimer()->m_dmxSourceList.size();
+    delete src;
+    QCOMPARE(m_doc->masterTimer()->m_dmxSourceList.size(), before - 1);
+}
+
+void GenericDMXSource_Test::findFeatureForFaderUnknownChannel()
+{
+    QList<Universe*> ua = m_doc->inputOutputMap()->universes();
+
+    GenericDMXSource src(m_doc);
+    src.setOutputEnabled(true);
+    src.set(m_fxiId, 0, 10, GenericDMXSource::ColorTool);
+    src.writeDMX(nullptr, ua);
+
+    QSharedPointer<GenericFader> fader = src.m_fadersMap.value(ua[0]->id());
+    QVERIFY(!fader.isNull());
+
+    // The fader is ours, but channel 1 was never set through this source
+    GenericDMXSource::Feature feature;
+    QVERIFY(GenericDMXSource::findFeatureForFader(fader.data(), m_fxiId, 1, feature) == false);
+}
+
 QTEST_MAIN(GenericDMXSource_Test)

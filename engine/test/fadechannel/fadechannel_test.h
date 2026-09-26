@@ -38,6 +38,7 @@ private slots:
     void fadeTime();
     void nextStep();
     void calculateCurrent();
+    void indexedAccessors();
 };
 
 #endif
