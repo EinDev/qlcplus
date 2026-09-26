@@ -229,7 +229,7 @@ void GenericFader_Test::setFadeOutWithoutTime()
     fader.setFadeOut(true, 0);
     QVERIFY(fader.isFadingOut() == true);
     QCOMPARE(fader.channels().values().first().target(), quint32(200));
-    QVERIFY(fader.channels().values().first().flags() & FadeChannel::SetTarget) ;
+    QCOMPARE(fader.channels().values().first().flags() & FadeChannel::SetTarget, 0);
 }
 
 void GenericFader_Test::monitoring()

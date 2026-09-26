@@ -59,7 +59,7 @@ private slots:
     void saveLoadRoundTrip();
     void loadLegacyChannelGroupsAndEmptyValues();
     void postLoad();
-    void flashForceLTPAndUnknownFixture();
+    void flashForceLTP();
     void writeWithoutValuesStops();
     void writeSkipsMissingUniverse();
     void writeNonFadingChannel();

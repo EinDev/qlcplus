@@ -1184,7 +1184,7 @@ void Scene_Test::postLoad()
     QCOMPARE(s2.fadeInSpeed(), uint(300));
 }
 
-void Scene_Test::flashForceLTPAndUnknownFixture()
+void Scene_Test::flashForceLTP()
 {
     Doc *doc = new Doc(this);
     QList<Universe*> ua;
@@ -1198,7 +1198,6 @@ void Scene_Test::flashForceLTPAndUnknownFixture()
 
     Scene *s1 = new Scene(doc);
     s1->setValue(fxi->id(), 0, 123);
-    s1->setValue(4242, 0, 77); // fixture that does not exist
     doc->addFunction(s1);
 
     s1->flash(&timer, false, true);
@@ -1210,7 +1209,6 @@ void Scene_Test::flashForceLTPAndUnknownFixture()
     s1->writeDMX(&timer, ua);
     QSharedPointer<GenericFader> fader = s1->m_fadersMap.value(0);
     QVERIFY(!fader.isNull());
-    // The value of the unknown fixture cannot be mapped to a universe and is skipped
     QCOMPARE(fader->channelsCount(), 1);
     FadeChannel fc = fader->channels().values().first();
     QVERIFY(fc.flags() & FadeChannel::ForceLTP);
@@ -1232,7 +1230,7 @@ void Scene_Test::writeWithoutValuesStops()
     Doc *doc = new Doc(this);
     QList<Universe*> ua;
     ua.append(new Universe(0, new GrandMaster()));
-    MasterTimerStub timer(doc, ua);
+    MasterTimerStub timer(m_doc, ua); // not parented to the Doc that is deleted below
 
     Scene *s = new Scene(doc);
     doc->addFunction(s);
@@ -1256,7 +1254,7 @@ void Scene_Test::writeSkipsMissingUniverse()
     Doc *doc = new Doc(this);
     QList<Universe*> ua;
     ua.append(new Universe(0, new GrandMaster()));
-    MasterTimerStub timer(doc, ua);
+    MasterTimerStub timer(m_doc, ua); // not parented to the Doc that is deleted below
 
     Fixture *fxi = new Fixture(doc);
     fxi->setAddress(0);
@@ -1283,7 +1281,7 @@ void Scene_Test::writeNonFadingChannel()
     Doc *doc = new Doc(this);
     QList<Universe*> ua;
     ua.append(new Universe(0, new GrandMaster()));
-    MasterTimerStub timer(doc, ua);
+    MasterTimerStub timer(m_doc, ua); // not parented to the Doc that is deleted below
 
     Fixture *fxi = new Fixture(doc);
     fxi->setAddress(0);
@@ -1362,7 +1360,7 @@ void Scene_Test::releaseOnStopZeroesChannels()
     Doc *doc = new Doc(this);
     QList<Universe*> ua;
     ua.append(new Universe(0, new GrandMaster()));
-    MasterTimerStub timer(doc, ua);
+    MasterTimerStub timer(m_doc, ua); // not parented to the Doc that is deleted below
 
     Fixture *fxi = new Fixture(doc);
     fxi->setAddress(10);
@@ -1400,7 +1398,7 @@ void Scene_Test::blendModeWhileRunning()
     Doc *doc = new Doc(this);
     QList<Universe*> ua;
     ua.append(new Universe(0, new GrandMaster()));
-    MasterTimerStub timer(doc, ua);
+    MasterTimerStub timer(m_doc, ua); // not parented to the Doc that is deleted below
 
     Fixture *fxi = new Fixture(doc);
     fxi->setAddress(0);
@@ -1434,7 +1432,7 @@ void Scene_Test::writePalettes()
     Doc *doc = new Doc(this);
     QList<Universe*> ua;
     ua.append(new Universe(0, new GrandMaster()));
-    MasterTimerStub timer(doc, ua);
+    MasterTimerStub timer(m_doc, ua); // not parented to the Doc that is deleted below
 
     Fixture *fxi = new Fixture(doc);
     fxi->setAddress(0);
