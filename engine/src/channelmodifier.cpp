@@ -166,7 +166,10 @@ QFile::FileError ChannelModifier::loadXML(const QString &fileName, Type type)
     if (doc->dtdName() == KXMLQLCChannelModifierDocument)
     {
         if (doc->readNextStartElement() == false)
+        {
+            QLCFile::releaseXMLReader(doc);
             return QFile::ResourceError;
+        }
 
         if (doc->name() == KXMLQLCChannelModifierDocument)
         {
