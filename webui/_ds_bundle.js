@@ -536,6 +536,7 @@ function CustomPopupDialog({
   message,
   children,
   standardButtons = ['Cancel', 'Ok'],
+  disabledButtons = [],
   onClicked,
   onClose,
   width = '33%',
@@ -598,6 +599,7 @@ function CustomPopupDialog({
     label: b,
     width: 'calc(var(--big-item-height) * 2)',
     bgColor: 'var(--bg-light)',
+    disabled: disabledButtons.indexOf(b) !== -1,
     onClick: () => onClicked && onClicked(b)
   }))) : null));
 }
