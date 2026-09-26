@@ -66,3 +66,23 @@ merge finalizes:
 - Checked: `functions-advanced.yaml`'s RGBMatrix uses direct hex color
   slots (`colors: [Color1..Color5]`), not palette references, so the
   palette gap above is specific to Scene and doesn't recur there.
+
+## Implemented 2026-09-26: run-state feed, stopAll, pause alias (web UI slice)
+
+Server: `controlapi/src/domains/apifunctionsdomain.cpp`.
+
+- `FunctionsSummary`/`FunctionsDetail` carry `running`/`paused`
+  (additive); `functions.status.changed` is broadcast ungated from
+  `MasterTimer::functionStarted/functionStopped` (any source) and from a
+  new engine signal `Function::pauseChanged(id, paused)` (added in
+  `engine/src/function.cpp` because the engine had no pause notification).
+  Data carries both `id` and `functionId`, plus `elapsed`; the spec's
+  optional `elapsedBeats`/`attributes`/`currentStepIndex`/
+  `runningStepsNumber` are still not implemented.
+- `functions.stopAll` and `functions.pause` (alias of `functions.setPause`
+  with `{id, paused}`) added; every `functions.*` method accepts `id` as
+  an alias of `functionId` (string or number).
+- Deviation: `functions.stopAll` blocks until MasterTimer has flushed its
+  list (one or two ticks), exactly like the toolbar action; on a headless
+  server without a running MasterTimer it would spin - not a supported
+  configuration.

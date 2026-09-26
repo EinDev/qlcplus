@@ -19,6 +19,9 @@
 #define APIFUNCTIONSDOMAIN_TEST_H
 
 #include <QObject>
+#include <functional>
+
+class QSignalSpy;
 #include <QJsonObject>
 #include <QTemporaryDir>
 
@@ -72,9 +75,21 @@ private slots:
 
     void chaserStepsAddReplaceRemoveMove();
 
+    void listAndGetCarryRunningAndPaused();
+    void startAndStopBroadcastStatusChanged();
+    void pauseAliasBroadcastsPausedStatus();
+    void pauseAliasOnMissingFunctionIsNotFound();
+    void pauseWithNonBooleanIsInvalidParams();
+    void stopAllStopsEveryRunningFunction();
+
 private:
     QJsonObject sendAndWaitForReply(const QString &method, const QJsonObject &params);
     QString helloAndGetClientId();
+
+    /** Wait (up to timeoutMs) for an event frame with the given topic whose
+     *  data satisfies accept(); returns that event, or an empty object. */
+    QJsonObject waitForEvent(QSignalSpy &spy, const QString &topic,
+                             const std::function<bool(const QJsonObject &)> &accept, int timeoutMs = 3000);
 
     /** functions.create helper for the new-method tests below - returns the
      *  new function's id (as a string, matching the wire convention) or an

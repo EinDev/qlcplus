@@ -50,11 +50,27 @@ namespace {
 // unlike io.*'s plain-integer universeId - toUInt()'s ok-flag distinguishes
 // "missing/non-numeric" from a real (if unpatched) id, both of which are
 // reported as NOT_FOUND here rather than INVALID_PARAMS, matching how
-// ApiIoDomain treats an out-of-range universeId.
+// ApiIoDomain treats an out-of-range universeId. "id" is accepted as an
+// alias of "functionId" (the shorter spelling the web UI contract uses,
+// e.g. functions.pause {id, paused}); a JSON number is tolerated too.
 Function *findFunction(Doc *doc, const QJsonObject &params)
 {
+    QJsonValue value = params.value(QStringLiteral("functionId"));
+    if (value.isUndefined())
+        value = params.value(QStringLiteral("id"));
+
     bool ok = false;
-    quint32 functionId = params.value(QStringLiteral("functionId")).toString().toUInt(&ok);
+    quint32 functionId = 0;
+    if (value.isDouble())
+    {
+        double d = value.toDouble();
+        ok = d >= 0;
+        functionId = quint32(d);
+    }
+    else
+    {
+        functionId = value.toString().toUInt(&ok);
+    }
     return ok ? doc->function(functionId) : nullptr;
 }
 
@@ -424,6 +440,11 @@ QJsonObject functionSummaryToJson(Function *function)
     obj.insert(QStringLiteral("type"), Function::typeToString(function->type()));
     obj.insert(QStringLiteral("path"), function->path(true));
     obj.insert(QStringLiteral("hidden"), function->isVisible() == false);
+    // §4b live run-state, additive (functions.status.changed carries the
+    // same two flags). Read straight off the engine flags - both are plain
+    // bools MasterTimer's thread writes and anyone may read.
+    obj.insert(QStringLiteral("running"), function->isRunning());
+    obj.insert(QStringLiteral("paused"), function->isPaused());
     return obj;
 }
 
@@ -497,7 +518,72 @@ ApiFunctionsDomain::ApiFunctionsDomain(Doc *doc, ApiServer *server, QObject *par
     connect(m_doc->assets(), SIGNAL(originReloaded(quint32,QString,QString,quint32)),
             this, SLOT(slotMediaOriginReloaded(quint32,QString,QString,quint32)));
 
+    // Run-state feed for functions.status.changed. MasterTimer emits these
+    // from its own thread for every start/stop whatever the source (API,
+    // VC, UI) - Qt::AutoConnection queues them onto this thread. Engine-DLL
+    // objects, so string-based connects (see apiiodomain.cpp for why).
+    connect(m_doc->masterTimer(), SIGNAL(functionStarted(quint32)),
+            this, SLOT(slotFunctionStarted(quint32)));
+    connect(m_doc->masterTimer(), SIGNAL(functionStopped(quint32)),
+            this, SLOT(slotFunctionStopped(quint32)));
+    connect(m_doc, SIGNAL(functionAdded(quint32)),
+            this, SLOT(slotFunctionAdded(quint32)));
+    for (Function *function : m_doc->functions())
+        watchFunction(function);
+
     registerMethods();
+}
+
+void ApiFunctionsDomain::watchFunction(Function *function)
+{
+    if (function == nullptr)
+        return;
+    connect(function, SIGNAL(pauseChanged(quint32,bool)),
+            this, SLOT(slotFunctionPauseChanged(quint32,bool)), Qt::UniqueConnection);
+}
+
+void ApiFunctionsDomain::broadcastStatus(quint32 id, bool running, bool paused)
+{
+    QJsonObject data;
+    // Both spellings: "functionId" is the functions-core.yaml
+    // FunctionsStatusData field, "id" the web UI contract's.
+    data.insert(QStringLiteral("id"), QString::number(id));
+    data.insert(QStringLiteral("functionId"), QString::number(id));
+    data.insert(QStringLiteral("running"), running);
+    data.insert(QStringLiteral("paused"), paused);
+    Function *function = m_doc->function(id);
+    data.insert(QStringLiteral("elapsed"), function != nullptr && running ? int(function->elapsed()) : 0);
+    m_server->broadcast(QStringLiteral("functions.status.changed"), data, QString(), false);
+}
+
+void ApiFunctionsDomain::slotFunctionStarted(quint32 id)
+{
+    Function *function = m_doc->function(id);
+    if (function == nullptr)
+        return; // deleted between MasterTimer's emit and delivery here
+    // Re-read the flags: this slot runs queued, and the function may already
+    // have stopped again in the meantime (a stopped event follows either way).
+    broadcastStatus(id, function->isRunning(), function->isPaused());
+}
+
+void ApiFunctionsDomain::slotFunctionStopped(quint32 id)
+{
+    // Function::postRun() clears m_paused along with m_running before
+    // stopped() is emitted, so a stopped function is never paused.
+    broadcastStatus(id, false, false);
+}
+
+void ApiFunctionsDomain::slotFunctionPauseChanged(quint32 id, bool paused)
+{
+    Function *function = m_doc->function(id);
+    if (function == nullptr)
+        return;
+    broadcastStatus(id, function->isRunning(), paused);
+}
+
+void ApiFunctionsDomain::slotFunctionAdded(quint32 id)
+{
+    watchFunction(m_doc->function(id));
 }
 
 void ApiFunctionsDomain::slotMediaOriginReloaded(quint32 functionId, QString oldPath, QString newPath, quint32 oldDuration)
@@ -563,7 +649,14 @@ void ApiFunctionsDomain::registerMethods()
         session->send(ApiEnvelope::buildOkResponse(id, QJsonObject()));
     });
 
-    dispatcher->registerMethod(QStringLiteral("functions.setPause"), [doc](ApiSession *session, const QString &id, const QJsonObject &params)
+    // Registered under both names: functions.setPause is functions-core.yaml's
+    // spelling, functions.pause the web UI contract's ({id, paused}). Same
+    // handler, same semantics (findFunction() accepts either id spelling).
+    // The resulting functions.status.changed is broadcast from
+    // slotFunctionPauseChanged() via Function::pauseChanged - so it fires
+    // only when the flag actually changed, and also for pauses requested by
+    // anything other than this API.
+    ApiDispatcher::Handler setPauseHandler = [doc](ApiSession *session, const QString &id, const QJsonObject &params)
     {
         Function *function = findFunction(doc, params);
         if (function == nullptr)
@@ -573,7 +666,39 @@ void ApiFunctionsDomain::registerMethods()
             return;
         }
 
-        function->setPause(params.value(QStringLiteral("paused")).toBool());
+        QJsonValue paused = params.value(QStringLiteral("paused"));
+        if (paused.isBool() == false)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams,
+                                                            QStringLiteral("paused must be a boolean")));
+            return;
+        }
+
+        function->setPause(paused.toBool());
+        session->send(ApiEnvelope::buildOkResponse(id, QJsonObject()));
+    };
+    dispatcher->registerMethod(QStringLiteral("functions.setPause"), setPauseHandler);
+    dispatcher->registerMethod(QStringLiteral("functions.pause"), setPauseHandler);
+
+    dispatcher->registerMethod(QStringLiteral("functions.stopAll"), [doc, this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        Q_UNUSED(params)
+        // Prefer the host's own "stop everything" (qmlui's Q_INVOKABLE
+        // App::stopAllFunctions(): disables the Function Manager preview and
+        // shuts fullscreen video down before MasterTimer::stopAllFunctions())
+        // so this matches the toolbar action exactly; reached via the meta
+        // object rather than ApiProjectHost so controlapi stays App-free.
+        // Fallback for a bare Doc (tests, headless): MasterTimer directly,
+        // which stops functions started by anyone, VC widgets included.
+        // Either way the call blocks until MasterTimer has actually flushed
+        // its list (normally one or two 20ms ticks) - functions.status.changed
+        // events for each stopped function follow via slotFunctionStopped().
+        QObject *host = m_server->parent();
+        if (host != nullptr && host->metaObject()->indexOfMethod("stopAllFunctions()") >= 0)
+            QMetaObject::invokeMethod(host, "stopAllFunctions", Qt::DirectConnection);
+        else
+            doc->masterTimer()->stopAllFunctions();
+
         session->send(ApiEnvelope::buildOkResponse(id, QJsonObject()));
     });
 

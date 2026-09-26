@@ -94,3 +94,34 @@ monitoring (`io.dmx.universe.*`), and Simple Desk (`io.simpleDesk.*`).
   names) replaces `SimpleDesk::dumpDmxChannels`'s raw bitmask parameter for
   the wire format - a JSON client shouldn't need to know QLC+'s internal
   bit layout for channel groups.
+
+## Implemented 2026-09-26: plugins, patches, universe update/delete, profiles (web UI slice)
+
+Server: `controlapi/src/domains/apiiodomain.cpp`; tests load
+`engine/test/iopluginstub` as the patchable plugin.
+
+- `io.plugin.list` (with inline `inputLines`/`outputLines`, each line
+  carrying both `index` and `line`), `io.inputProfile.list`
+  (`profilesRevision` is always 0 - no profile library mutations exist
+  yet), `io.patch.set`/`io.patch.remove`, `io.universe.update`,
+  `io.universe.delete`. Every patch/universe mutation calls
+  `Doc::setModified()` (the engine doesn't on its own, qmlui does it in
+  `InputOutputManager`) and broadcasts `io.universe.updated` with the full
+  `IoUniverseDetail`; removal broadcasts `io.universe.deleted`
+  (`io.universe.created` already existed).
+- **baseRevision on the web UI methods (deviation from §4a):** these four
+  methods enforce `baseRevision` only when the client sends one (CONFLICT
+  with `details.docRevision` on mismatch, as usual). The web UI contract
+  lists none for them and requiring it would make them unusable for a
+  client written to it; `io.universe.create` keeps requiring it.
+- Parameter aliases: `direction`/`patchType`, `plugin`/`pluginName`,
+  `profile`/`profileName` - either spelling. Output `index` defaults to 0
+  (replace/create the primary patch) rather than the earlier draft's
+  "omit = append"; `io.patch.remove` without `index` removes every output
+  patch. `profile` absent keeps the current profile, `""` clears it.
+- `io.universe.delete`: only the highest id can be deleted (engine rule,
+  `INVALID_PARAMS` + `details.deletableUniverseId`), never the last one
+  (`INVALID_STATE`), and patched fixtures block it (`INVALID_STATE` +
+  `details.fixtureIds`) unless `force: true` - then they are unpatched
+  first with a `fixtures.unpatched` event. qmlui deletes them silently;
+  the API chose the explicit form.

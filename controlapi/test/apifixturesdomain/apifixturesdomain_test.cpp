@@ -26,6 +26,7 @@
 #include "qlcfixturedefcache.h"
 #include "qlcfixturedef.h"
 #include "qlcfixturemode.h"
+#include "qlccapability.h"
 #include "qlcchannel.h"
 #include "fixture.h"
 #include "doc.h"
@@ -648,6 +649,185 @@ void ApiFixturesDomain_Test::findAvailableAddressScansWhenRequestedTaken()
     QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
     QJsonObject result = reply.value(QStringLiteral("result")).toObject();
     QCOMPARE(result.value(QStringLiteral("available")).toBool(), false);
+}
+
+/*********************************************************************
+ * Fixture definition library browsing (fixtures.defs.*)
+ *********************************************************************/
+
+void ApiFixturesDomain_Test::addAcmeTestParDefinition()
+{
+    QLCFixtureDef *def = new QLCFixtureDef();
+    def->setManufacturer(QStringLiteral("Acme"));
+    def->setModel(QStringLiteral("TestPar"));
+    def->setType(QLCFixtureDef::Dimmer);
+    def->setAuthor(QStringLiteral("Test"));
+
+    QLCChannel *ch0 = new QLCChannel();
+    ch0->setName(QStringLiteral("Intensity"));
+    ch0->setGroup(QLCChannel::Intensity);
+    ch0->setControlByte(QLCChannel::MSB);
+    ch0->setDefaultValue(0);
+    QLCCapability *full = new QLCCapability(0, 255, QStringLiteral("Dimmer"));
+    ch0->addCapability(full);
+    def->addChannel(ch0);
+
+    QLCChannel *ch1 = new QLCChannel();
+    ch1->setName(QStringLiteral("Colour"));
+    ch1->setGroup(QLCChannel::Colour);
+    ch1->setDefaultValue(12);
+    def->addChannel(ch1);
+
+    QLCFixtureMode *mode = new QLCFixtureMode(def);
+    mode->setName(QStringLiteral("2-channel"));
+    mode->insertChannel(ch0, 0);
+    mode->insertChannel(ch1, 1);
+    def->addMode(mode);
+
+    QVERIFY(m_doc->fixtureDefCache()->addFixtureDef(def));
+}
+
+void ApiFixturesDomain_Test::defsListManufacturersIncludesRegisteredDefinition()
+{
+    addAcmeTestParDefinition();
+    helloAndGetClientId();
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("fixtures.defs.listManufacturers"), QJsonObject());
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QJsonArray manufacturers = reply.value(QStringLiteral("result")).toObject().value(QStringLiteral("manufacturers")).toArray();
+    QVERIFY(manufacturers.contains(QStringLiteral("Acme")));
+}
+
+void ApiFixturesDomain_Test::defsListModelsReturnsNamesAndDetails()
+{
+    addAcmeTestParDefinition();
+    helloAndGetClientId();
+    QJsonObject params;
+    params.insert(QStringLiteral("manufacturer"), QStringLiteral("Acme"));
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("fixtures.defs.listModels"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QJsonObject result = reply.value(QStringLiteral("result")).toObject();
+    QCOMPARE(result.value(QStringLiteral("manufacturer")).toString(), QStringLiteral("Acme"));
+    QJsonArray models = result.value(QStringLiteral("models")).toArray();
+    QCOMPARE(models.count(), 1);
+    QCOMPARE(models.at(0).toString(), QStringLiteral("TestPar"));
+    QJsonArray details = result.value(QStringLiteral("modelDetails")).toArray();
+    QCOMPARE(details.count(), 1);
+    QCOMPARE(details.at(0).toObject().value(QStringLiteral("model")).toString(), QStringLiteral("TestPar"));
+    QCOMPARE(details.at(0).toObject().value(QStringLiteral("isUser")).toBool(), false);
+}
+
+void ApiFixturesDomain_Test::defsListModelsUnknownManufacturerIsNotFound()
+{
+    helloAndGetClientId();
+    QJsonObject params;
+    params.insert(QStringLiteral("manufacturer"), QStringLiteral("Nobody"));
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("fixtures.defs.listModels"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("NOT_FOUND"));
+}
+
+void ApiFixturesDomain_Test::defsGetModelReturnsModesWithChannels()
+{
+    addAcmeTestParDefinition();
+    helloAndGetClientId();
+    QJsonObject params;
+    params.insert(QStringLiteral("manufacturer"), QStringLiteral("Acme"));
+    params.insert(QStringLiteral("model"), QStringLiteral("TestPar"));
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("fixtures.defs.getModel"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QJsonObject result = reply.value(QStringLiteral("result")).toObject();
+    QCOMPARE(result.value(QStringLiteral("manufacturer")).toString(), QStringLiteral("Acme"));
+    QCOMPARE(result.value(QStringLiteral("model")).toString(), QStringLiteral("TestPar"));
+    QCOMPARE(result.value(QStringLiteral("type")).toString(), QLCFixtureDef::typeToString(QLCFixtureDef::Dimmer));
+    QCOMPARE(result.value(QStringLiteral("fixtureType")).toString(), result.value(QStringLiteral("type")).toString());
+    QCOMPARE(result.value(QStringLiteral("author")).toString(), QStringLiteral("Test"));
+    QVERIFY(result.contains(QStringLiteral("physical")));
+
+    QJsonArray modes = result.value(QStringLiteral("modes")).toArray();
+    QCOMPARE(modes.count(), 1);
+    QJsonObject mode = modes.at(0).toObject();
+    QCOMPARE(mode.value(QStringLiteral("name")).toString(), QStringLiteral("2-channel"));
+    QCOMPARE(mode.value(QStringLiteral("channelCount")).toInt(), 2);
+    QJsonArray channels = mode.value(QStringLiteral("channels")).toArray();
+    QCOMPARE(channels.count(), 2);
+    QJsonObject ch0 = channels.at(0).toObject();
+    QCOMPARE(ch0.value(QStringLiteral("index")).toInt(), 0);
+    QCOMPARE(ch0.value(QStringLiteral("name")).toString(), QStringLiteral("Intensity"));
+    QCOMPARE(ch0.value(QStringLiteral("group")).toString(), QStringLiteral("Intensity"));
+    QCOMPARE(ch0.value(QStringLiteral("controlByte")).toString(), QStringLiteral("MSB"));
+    QJsonObject ch1 = channels.at(1).toObject();
+    QCOMPARE(ch1.value(QStringLiteral("index")).toInt(), 1);
+    QCOMPARE(ch1.value(QStringLiteral("group")).toString(), QStringLiteral("Colour"));
+    QCOMPARE(ch1.value(QStringLiteral("defaultValue")).toInt(), 12);
+}
+
+void ApiFixturesDomain_Test::defsGetModelUnknownIsNotFound()
+{
+    addAcmeTestParDefinition();
+    helloAndGetClientId();
+    QJsonObject params;
+    params.insert(QStringLiteral("manufacturer"), QStringLiteral("Acme"));
+    params.insert(QStringLiteral("model"), QStringLiteral("NoSuchPar"));
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("fixtures.defs.getModel"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("NOT_FOUND"));
+}
+
+void ApiFixturesDomain_Test::defsGetModeReturnsChannelDetail()
+{
+    addAcmeTestParDefinition();
+    helloAndGetClientId();
+    QJsonObject params;
+    params.insert(QStringLiteral("manufacturer"), QStringLiteral("Acme"));
+    params.insert(QStringLiteral("model"), QStringLiteral("TestPar"));
+    params.insert(QStringLiteral("mode"), QStringLiteral("2-channel"));
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("fixtures.defs.getMode"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QJsonObject result = reply.value(QStringLiteral("result")).toObject();
+    QCOMPARE(result.value(QStringLiteral("mode")).toString(), QStringLiteral("2-channel"));
+    QCOMPARE(result.value(QStringLiteral("channelCount")).toInt(), 2);
+    QCOMPARE(result.value(QStringLiteral("masterIntensityChannel")).toInt(), 0);
+    QVERIFY(result.contains(QStringLiteral("heads")));
+    QJsonArray channels = result.value(QStringLiteral("channels")).toArray();
+    QCOMPARE(channels.count(), 2);
+    QJsonArray capabilities = channels.at(0).toObject().value(QStringLiteral("capabilities")).toArray();
+    QCOMPARE(capabilities.count(), 1);
+    QCOMPARE(capabilities.at(0).toObject().value(QStringLiteral("min")).toInt(), 0);
+    QCOMPARE(capabilities.at(0).toObject().value(QStringLiteral("max")).toInt(), 255);
+    QCOMPARE(capabilities.at(0).toObject().value(QStringLiteral("name")).toString(), QStringLiteral("Dimmer"));
+
+    params.insert(QStringLiteral("mode"), QStringLiteral("9-channel"));
+    reply = sendAndWaitForReply(QStringLiteral("fixtures.defs.getMode"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("NOT_FOUND"));
+}
+
+void ApiFixturesDomain_Test::patchAcceptsFlatManufacturerModelMode()
+{
+    addAcmeTestParDefinition();
+    helloAndGetClientId();
+
+    // Web UI contract spelling: no "definition" object, the fields are flat
+    QJsonObject params;
+    params.insert(QStringLiteral("manufacturer"), QStringLiteral("Acme"));
+    params.insert(QStringLiteral("model"), QStringLiteral("TestPar"));
+    params.insert(QStringLiteral("mode"), QStringLiteral("2-channel"));
+    params.insert(QStringLiteral("universe"), 0);
+    params.insert(QStringLiteral("address"), 100);
+    params.insert(QStringLiteral("quantity"), 2);
+    params.insert(QStringLiteral("gap"), 1);
+    params.insert(QStringLiteral("name"), QStringLiteral("Flat Par"));
+    params.insert(QStringLiteral("baseRevision"), int(m_doc->docRevision()));
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("fixtures.patch"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QJsonArray fixtureIds = reply.value(QStringLiteral("result")).toObject().value(QStringLiteral("fixtureIds")).toArray();
+    QCOMPARE(fixtureIds.count(), 2);
+    QCOMPARE(m_doc->fixtures().count(), 2);
+    QList<Fixture *> patched = m_doc->fixtures();
+    QCOMPARE(patched.at(0)->fixtureDef()->model(), QStringLiteral("TestPar"));
+    QCOMPARE(patched.at(0)->fixtureMode()->name(), QStringLiteral("2-channel"));
+    QCOMPARE(patched.at(0)->address(), quint32(100));
+    QCOMPARE(patched.at(1)->address(), quint32(103)); // 2 channels + gap 1
 }
 
 QTEST_MAIN(ApiFixturesDomain_Test)

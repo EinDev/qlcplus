@@ -20,10 +20,21 @@
 #include <QJsonArray>
 #include <QWebSocket>
 #include <QtTest>
+#include <QDir>
+#include <QCoreApplication>
 
 #include "apiiodomain_test.h"
 #include "apiserver.h"
 #include "mastertimer.h"
+#include "inputoutputmap.h"
+#include "ioplugincache.h"
+#include "qlcioplugin.h"
+#include "qlcinputprofile.h"
+#include "qlcfile.h"
+#include "outputpatch.h"
+#include "inputpatch.h"
+#include "universe.h"
+#include "fixture.h"
 #include "scene.h"
 #include "doc.h"
 
@@ -703,6 +714,404 @@ void ApiIoDomain_Test::simpleDeskDumpOnMissingTargetSceneIsNotFound()
     QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
     QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(),
               QStringLiteral("NOT_FOUND"));
+}
+
+/*********************************************************************
+ * Plugins, patches, universe update/delete, input profiles
+ *********************************************************************/
+
+QString ApiIoDomain_Test::loadStubPlugin()
+{
+    // Same stub plugin engine/test/inputoutputmap uses, located relative to
+    // this binary rather than the cwd so it works from ctest (cwd = binary
+    // dir) and from a shell in build/ alike. add_dependencies() in this
+    // suite's CMakeLists.txt makes sure it has been built.
+    QDir dir(QCoreApplication::applicationDirPath() + QStringLiteral("/../../../engine/test/iopluginstub"));
+    dir.setFilter(QDir::Files);
+    dir.setNameFilters(QStringList() << QStringLiteral("*%1").arg(KExtPlugin));
+    m_doc->ioPluginCache()->load(dir);
+    QList<QLCIOPlugin *> plugins = m_doc->ioPluginCache()->plugins();
+    return plugins.isEmpty() ? QString() : plugins.first()->name();
+}
+
+QList<QJsonObject> ApiIoDomain_Test::eventsWithTopic(QSignalSpy &spy, const QString &topic)
+{
+    QList<QJsonObject> events;
+    for (const QList<QVariant> &frame : spy)
+    {
+        QJsonObject obj = QJsonDocument::fromJson(frame.at(0).toString().toUtf8()).object();
+        if (obj.value(QStringLiteral("type")).toString() == QStringLiteral("event") &&
+            obj.value(QStringLiteral("topic")).toString() == topic)
+            events.append(obj);
+    }
+    return events;
+}
+
+void ApiIoDomain_Test::pluginListDescribesStubPluginLines()
+{
+    QString stubName = loadStubPlugin();
+    QVERIFY2(stubName.isEmpty() == false, "iopluginstub DLL not found - is engine/test built?");
+    helloAndGetClientId();
+
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("io.plugin.list"), QJsonObject());
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QJsonArray plugins = reply.value(QStringLiteral("result")).toObject().value(QStringLiteral("plugins")).toArray();
+    QCOMPARE(plugins.count(), 1);
+    QJsonObject plugin = plugins.at(0).toObject();
+    QCOMPARE(plugin.value(QStringLiteral("name")).toString(), stubName);
+    QCOMPARE(plugin.value(QStringLiteral("canConfigure")).toBool(), false);
+    QCOMPARE(plugin.value(QStringLiteral("supportsFeedback")).toBool(), false);
+    QJsonArray capabilities = plugin.value(QStringLiteral("capabilities")).toArray();
+    QVERIFY(capabilities.contains(QStringLiteral("Input")));
+    QVERIFY(capabilities.contains(QStringLiteral("Output")));
+    QJsonArray inputLines = plugin.value(QStringLiteral("inputLines")).toArray();
+    QJsonArray outputLines = plugin.value(QStringLiteral("outputLines")).toArray();
+    QCOMPARE(inputLines.count(), 4);
+    QCOMPARE(outputLines.count(), 4);
+    QCOMPARE(outputLines.at(2).toObject().value(QStringLiteral("index")).toInt(), 2);
+    QCOMPARE(outputLines.at(2).toObject().value(QStringLiteral("line")).toInt(), 2);
+    QVERIFY(outputLines.at(2).toObject().value(QStringLiteral("name")).toString().isEmpty() == false);
+}
+
+void ApiIoDomain_Test::patchSetOutputBumpsRevisionAndBroadcastsUniverseUpdated()
+{
+    QString stubName = loadStubPlugin();
+    QVERIFY(stubName.isEmpty() == false);
+    QString clientId = helloAndGetClientId();
+    quint32 revisionBefore = m_doc->docRevision();
+
+    QSignalSpy spy(m_client, &QWebSocket::textMessageReceived);
+    QJsonObject params;
+    params.insert(QStringLiteral("universeId"), 0);
+    params.insert(QStringLiteral("direction"), QStringLiteral("output"));
+    params.insert(QStringLiteral("plugin"), stubName);
+    params.insert(QStringLiteral("line"), 1);
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("io.patch.set"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(quint32(reply.value(QStringLiteral("result")).toObject().value(QStringLiteral("docRevision")).toInt()), revisionBefore + 1);
+
+    Universe *universe = m_doc->inputOutputMap()->universe(0);
+    QCOMPARE(universe->outputPatchesCount(), 1);
+    QCOMPARE(universe->outputPatch(0)->pluginName(), stubName);
+    QCOMPARE(universe->outputPatch(0)->output(), quint32(1));
+
+    QVERIFY(QTest::qWaitFor([&]() { return eventsWithTopic(spy, QStringLiteral("io.universe.updated")).isEmpty() == false; }, 2000));
+    QJsonObject event = eventsWithTopic(spy, QStringLiteral("io.universe.updated")).last();
+    QCOMPARE(event.value(QStringLiteral("originClientId")).toString(), clientId);
+    QJsonObject detail = event.value(QStringLiteral("data")).toObject().value(QStringLiteral("universe")).toObject();
+    QCOMPARE(detail.value(QStringLiteral("id")).toInt(), 0);
+    QCOMPARE(detail.value(QStringLiteral("outputPatches")).toArray().count(), 1);
+    QCOMPARE(detail.value(QStringLiteral("outputPatches")).toArray().at(0).toObject().value(QStringLiteral("output")).toInt(), 1);
+
+    // Default index 0 = replace the primary patch, not append a second one
+    params.insert(QStringLiteral("line"), 3);
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("io.patch.set"), params).value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(universe->outputPatchesCount(), 1);
+    QCOMPARE(universe->outputPatch(0)->output(), quint32(3));
+
+    // io.yaml spelling (patchType/pluginName) with an explicit append index
+    QJsonObject specParams;
+    specParams.insert(QStringLiteral("universeId"), 0);
+    specParams.insert(QStringLiteral("patchType"), QStringLiteral("output"));
+    specParams.insert(QStringLiteral("pluginName"), stubName);
+    specParams.insert(QStringLiteral("line"), 0);
+    specParams.insert(QStringLiteral("index"), 1);
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("io.patch.set"), specParams).value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(universe->outputPatchesCount(), 2);
+
+    // Remove without index drops every output patch
+    QJsonObject removeParams;
+    removeParams.insert(QStringLiteral("universeId"), 0);
+    removeParams.insert(QStringLiteral("direction"), QStringLiteral("output"));
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("io.patch.remove"), removeParams).value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(universe->outputPatchesCount(), 0);
+}
+
+void ApiIoDomain_Test::patchSetInputWithProfileThenRemoveInput()
+{
+    QString stubName = loadStubPlugin();
+    QVERIFY(stubName.isEmpty() == false);
+    QLCInputProfile *profile = new QLCInputProfile();
+    profile->setManufacturer(QStringLiteral("Acme"));
+    profile->setModel(QStringLiteral("Faderbox"));
+    QVERIFY(m_doc->inputOutputMap()->addProfile(profile));
+    helloAndGetClientId();
+
+    QJsonObject params;
+    params.insert(QStringLiteral("universeId"), 2);
+    params.insert(QStringLiteral("direction"), QStringLiteral("input"));
+    params.insert(QStringLiteral("plugin"), stubName);
+    params.insert(QStringLiteral("line"), 2);
+    params.insert(QStringLiteral("profile"), profile->name());
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("io.patch.set"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+
+    Universe *universe = m_doc->inputOutputMap()->universe(2);
+    QVERIFY(universe->inputPatch() != nullptr);
+    QCOMPARE(universe->inputPatch()->pluginName(), stubName);
+    QCOMPARE(universe->inputPatch()->input(), quint32(2));
+    QCOMPARE(universe->inputPatch()->profile(), profile);
+
+    // Line change without a profile key keeps the current profile...
+    QJsonObject lineOnly;
+    lineOnly.insert(QStringLiteral("universeId"), 2);
+    lineOnly.insert(QStringLiteral("direction"), QStringLiteral("input"));
+    lineOnly.insert(QStringLiteral("plugin"), stubName);
+    lineOnly.insert(QStringLiteral("line"), 3);
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("io.patch.set"), lineOnly).value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(universe->inputPatch()->input(), quint32(3));
+    QCOMPARE(universe->inputPatch()->profile(), profile);
+    // ...while an explicit "" clears it (QML setInputProfile(universe, "") semantics)
+    lineOnly.insert(QStringLiteral("profile"), QString());
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("io.patch.set"), lineOnly).value(QStringLiteral("ok")).toBool(), true);
+    QVERIFY(universe->inputPatch()->profile() == nullptr);
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("io.patch.set"), params).value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(universe->inputPatch()->profile(), profile);
+
+    // Unknown profile name is rejected before anything is touched
+    QJsonObject badProfile = params;
+    badProfile.insert(QStringLiteral("profile"), QStringLiteral("Nope Nothing"));
+    reply = sendAndWaitForReply(QStringLiteral("io.patch.set"), badProfile);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("NOT_FOUND"));
+    QCOMPARE(universe->inputPatch()->profile(), profile);
+
+    QJsonObject removeParams;
+    removeParams.insert(QStringLiteral("universeId"), 2);
+    removeParams.insert(QStringLiteral("direction"), QStringLiteral("input"));
+    reply = sendAndWaitForReply(QStringLiteral("io.patch.remove"), removeParams);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QVERIFY(universe->inputPatch() == nullptr);
+    QJsonObject detail = sendAndWaitForReply(QStringLiteral("io.universe.get"), removeParams).value(QStringLiteral("result")).toObject();
+    QVERIFY(detail.value(QStringLiteral("inputPatch")).isNull());
+}
+
+void ApiIoDomain_Test::patchSetUnknownPluginIsNotFound()
+{
+    helloAndGetClientId();
+    QJsonObject params;
+    params.insert(QStringLiteral("universeId"), 0);
+    params.insert(QStringLiteral("direction"), QStringLiteral("output"));
+    params.insert(QStringLiteral("plugin"), QStringLiteral("No Such Plugin"));
+    params.insert(QStringLiteral("line"), 0);
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("io.patch.set"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("NOT_FOUND"));
+
+    params.insert(QStringLiteral("direction"), QStringLiteral("sideways"));
+    reply = sendAndWaitForReply(QStringLiteral("io.patch.set"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("INVALID_PARAMS"));
+}
+
+void ApiIoDomain_Test::patchSetFeedbackOnPluginWithoutFeedbackIsUnsupported()
+{
+    QString stubName = loadStubPlugin();
+    QVERIFY(stubName.isEmpty() == false);
+    helloAndGetClientId();
+    QJsonObject params;
+    params.insert(QStringLiteral("universeId"), 0);
+    params.insert(QStringLiteral("direction"), QStringLiteral("feedback"));
+    params.insert(QStringLiteral("plugin"), stubName);
+    params.insert(QStringLiteral("line"), 0);
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("io.patch.set"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("UNSUPPORTED"));
+
+    // Out-of-range line on a finite plugin
+    params.insert(QStringLiteral("direction"), QStringLiteral("output"));
+    params.insert(QStringLiteral("line"), 7);
+    reply = sendAndWaitForReply(QStringLiteral("io.patch.set"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("INVALID_PARAMS"));
+}
+
+void ApiIoDomain_Test::patchRemoveWhenNothingPatchedIsNotFound()
+{
+    helloAndGetClientId();
+    for (const QString &direction : { QStringLiteral("input"), QStringLiteral("output"), QStringLiteral("feedback") })
+    {
+        QJsonObject params;
+        params.insert(QStringLiteral("universeId"), 1);
+        params.insert(QStringLiteral("direction"), direction);
+        QJsonObject reply = sendAndWaitForReply(QStringLiteral("io.patch.remove"), params);
+        QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+        QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("NOT_FOUND"));
+    }
+}
+
+void ApiIoDomain_Test::universeUpdateRenamesAndSetsPassthrough()
+{
+    QString clientId = helloAndGetClientId();
+    quint32 revisionBefore = m_doc->docRevision();
+    QSignalSpy spy(m_client, &QWebSocket::textMessageReceived);
+
+    QJsonObject params;
+    params.insert(QStringLiteral("universeId"), 1);
+    params.insert(QStringLiteral("name"), QStringLiteral("Stage Left"));
+    params.insert(QStringLiteral("passthrough"), true);
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("io.universe.update"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(quint32(reply.value(QStringLiteral("result")).toObject().value(QStringLiteral("docRevision")).toInt()), revisionBefore + 1);
+    QCOMPARE(m_doc->inputOutputMap()->universe(1)->name(), QStringLiteral("Stage Left"));
+    QCOMPARE(m_doc->inputOutputMap()->universe(1)->passthrough(), true);
+
+    QVERIFY(QTest::qWaitFor([&]() { return eventsWithTopic(spy, QStringLiteral("io.universe.updated")).isEmpty() == false; }, 2000));
+    QJsonObject event = eventsWithTopic(spy, QStringLiteral("io.universe.updated")).last();
+    QCOMPARE(event.value(QStringLiteral("originClientId")).toString(), clientId);
+    QJsonObject detail = event.value(QStringLiteral("data")).toObject().value(QStringLiteral("universe")).toObject();
+    QCOMPARE(detail.value(QStringLiteral("id")).toInt(), 1);
+    QCOMPARE(detail.value(QStringLiteral("name")).toString(), QStringLiteral("Stage Left"));
+    QCOMPARE(detail.value(QStringLiteral("passthrough")).toBool(), true);
+}
+
+void ApiIoDomain_Test::universeUpdateWithNoFieldsIsInvalidParams()
+{
+    helloAndGetClientId();
+    QJsonObject params;
+    params.insert(QStringLiteral("universeId"), 1);
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("io.universe.update"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("INVALID_PARAMS"));
+
+    params.insert(QStringLiteral("universeId"), 99);
+    params.insert(QStringLiteral("name"), QStringLiteral("x"));
+    reply = sendAndWaitForReply(QStringLiteral("io.universe.update"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("NOT_FOUND"));
+}
+
+void ApiIoDomain_Test::universeUpdateWithStaleRevisionConflicts()
+{
+    helloAndGetClientId();
+    QJsonObject params;
+    params.insert(QStringLiteral("universeId"), 1);
+    params.insert(QStringLiteral("name"), QStringLiteral("Stale"));
+    params.insert(QStringLiteral("baseRevision"), int(m_doc->docRevision()) + 5);
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("io.universe.update"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("CONFLICT"));
+    QVERIFY(m_doc->inputOutputMap()->universe(1)->name() != QStringLiteral("Stale"));
+
+    // A matching baseRevision is accepted like the field being absent
+    params.insert(QStringLiteral("baseRevision"), int(m_doc->docRevision()));
+    reply = sendAndWaitForReply(QStringLiteral("io.universe.update"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(m_doc->inputOutputMap()->universe(1)->name(), QStringLiteral("Stale"));
+}
+
+void ApiIoDomain_Test::universeDeleteRemovesTrailingUniverseAndBroadcasts()
+{
+    QString clientId = helloAndGetClientId();
+    QCOMPARE(m_doc->inputOutputMap()->universesCount(), 4);
+    quint32 revisionBefore = m_doc->docRevision();
+    QSignalSpy spy(m_client, &QWebSocket::textMessageReceived);
+
+    QJsonObject params;
+    params.insert(QStringLiteral("universeId"), 3);
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("io.universe.delete"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(m_doc->inputOutputMap()->universesCount(), 3);
+    QCOMPARE(quint32(reply.value(QStringLiteral("result")).toObject().value(QStringLiteral("docRevision")).toInt()), revisionBefore + 1);
+
+    QVERIFY(QTest::qWaitFor([&]() { return eventsWithTopic(spy, QStringLiteral("io.universe.deleted")).isEmpty() == false; }, 2000));
+    QJsonObject event = eventsWithTopic(spy, QStringLiteral("io.universe.deleted")).last();
+    QCOMPARE(event.value(QStringLiteral("data")).toObject().value(QStringLiteral("universeId")).toInt(), 3);
+    QCOMPARE(quint32(event.value(QStringLiteral("data")).toObject().value(QStringLiteral("docRevision")).toInt()), revisionBefore + 1);
+    QCOMPARE(event.value(QStringLiteral("originClientId")).toString(), clientId);
+
+    // And it is really gone from the API's point of view too
+    reply = sendAndWaitForReply(QStringLiteral("io.universe.get"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("NOT_FOUND"));
+}
+
+void ApiIoDomain_Test::universeDeleteNonTrailingIsInvalidParams()
+{
+    helloAndGetClientId();
+    QJsonObject params;
+    params.insert(QStringLiteral("universeId"), 0);
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("io.universe.delete"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("INVALID_PARAMS"));
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("details")).toObject()
+                 .value(QStringLiteral("deletableUniverseId")).toInt(), 3);
+    QCOMPARE(m_doc->inputOutputMap()->universesCount(), 4);
+}
+
+void ApiIoDomain_Test::universeDeleteWithPatchedFixturesRequiresForce()
+{
+    helloAndGetClientId();
+    Fixture *fixture = new Fixture(m_doc);
+    fixture->setName(QStringLiteral("Par in U4"));
+    fixture->setUniverse(3);
+    fixture->setAddress(10);
+    fixture->setChannels(2);
+    QVERIFY(m_doc->addFixture(fixture));
+    quint32 fixtureId = fixture->id();
+
+    QJsonObject params;
+    params.insert(QStringLiteral("universeId"), 3);
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("io.universe.delete"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("INVALID_STATE"));
+    QJsonArray blocking = reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("details")).toObject()
+                              .value(QStringLiteral("fixtureIds")).toArray();
+    QCOMPARE(blocking.count(), 1);
+    QCOMPARE(blocking.at(0).toString(), QString::number(fixtureId));
+    QCOMPARE(m_doc->inputOutputMap()->universesCount(), 4);
+    QVERIFY(m_doc->fixture(fixtureId) != nullptr);
+
+    QSignalSpy spy(m_client, &QWebSocket::textMessageReceived);
+    params.insert(QStringLiteral("force"), true);
+    reply = sendAndWaitForReply(QStringLiteral("io.universe.delete"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(m_doc->inputOutputMap()->universesCount(), 3);
+    QVERIFY(m_doc->fixture(fixtureId) == nullptr);
+    QVERIFY(QTest::qWaitFor([&]() { return eventsWithTopic(spy, QStringLiteral("fixtures.unpatched")).isEmpty() == false; }, 2000));
+    QJsonObject unpatched = eventsWithTopic(spy, QStringLiteral("fixtures.unpatched")).first();
+    QCOMPARE(unpatched.value(QStringLiteral("data")).toObject().value(QStringLiteral("fixtureIds")).toArray().at(0).toString(),
+             QString::number(fixtureId));
+    QVERIFY(QTest::qWaitFor([&]() { return eventsWithTopic(spy, QStringLiteral("io.universe.deleted")).isEmpty() == false; }, 2000));
+}
+
+void ApiIoDomain_Test::universeDeleteLastUniverseIsInvalidState()
+{
+    helloAndGetClientId();
+    for (int universeId = 3; universeId >= 1; universeId--)
+    {
+        QJsonObject params;
+        params.insert(QStringLiteral("universeId"), universeId);
+        QCOMPARE(sendAndWaitForReply(QStringLiteral("io.universe.delete"), params).value(QStringLiteral("ok")).toBool(), true);
+    }
+    QCOMPARE(m_doc->inputOutputMap()->universesCount(), 1);
+
+    QJsonObject params;
+    params.insert(QStringLiteral("universeId"), 0);
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("io.universe.delete"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("INVALID_STATE"));
+    QCOMPARE(m_doc->inputOutputMap()->universesCount(), 1);
+}
+
+void ApiIoDomain_Test::inputProfileListReturnsLoadedProfiles()
+{
+    QLCInputProfile *profile = new QLCInputProfile();
+    profile->setManufacturer(QStringLiteral("Acme"));
+    profile->setModel(QStringLiteral("Faderbox"));
+    profile->setType(QLCInputProfile::OSC);
+    QVERIFY(m_doc->inputOutputMap()->addProfile(profile));
+    helloAndGetClientId();
+
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("io.inputProfile.list"), QJsonObject());
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QJsonArray profiles = reply.value(QStringLiteral("result")).toObject().value(QStringLiteral("profiles")).toArray();
+    QCOMPARE(profiles.count(), 1);
+    QJsonObject entry = profiles.at(0).toObject();
+    QCOMPARE(entry.value(QStringLiteral("name")).toString(), profile->name());
+    QCOMPARE(entry.value(QStringLiteral("manufacturer")).toString(), QStringLiteral("Acme"));
+    QCOMPARE(entry.value(QStringLiteral("model")).toString(), QStringLiteral("Faderbox"));
+    QCOMPARE(entry.value(QStringLiteral("type")).toString(), QStringLiteral("OSC"));
 }
 
 QTEST_MAIN(ApiIoDomain_Test)

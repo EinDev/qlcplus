@@ -89,6 +89,15 @@
       },
 
       patch: {
+        /** Server contract as implemented (2026-09-26, differs from the spec-shaped set()/remove()
+            below): params {universeId, direction: 'input'|'output'|'feedback', plugin, line: int,
+            profile?} -> {}. `line` is the plugin's line index from io.plugin.list; `profile` is an
+            input profile name (input only). InputOutput.jsx sends baseRevision alongside — harmless
+            if ignored, required if the server enforces §4a. -> {}; broadcasts io.universe.updated. */
+        assign: function (params) { return self.call('io.patch.set', params); },
+        /** Server contract as implemented: {universeId, direction: 'input'|'output'|'feedback'} -> {}.
+            No index: the web UI manages one output line per universe. */
+        clear: function (params) { return self.call('io.patch.remove', params); },
         /** params: {universeId, patchType: 'input'|'output'|'feedback', index?, baseRevision}.
             `index` required only when patchType='output' (input/feedback are singleton per
             universe). Detaches a patch. -> {docRevision}; broadcasts io.universe.updated
@@ -125,9 +134,12 @@
             things setParameters can't replicate without engine-side changes). -> ack. */
         configure: function (pluginName) { return self.call('io.plugin.configure', { pluginName: pluginName }); },
         /** pluginName: string. -> {inputs: IoPluginLine[], outputs: IoPluginLine[]}
-            (each {line, name, uid}). */
+            (each {line, name, uid}). Not registered by the server as of 2026-09-26. */
         getLines: function (pluginName) { return self.call('io.plugin.getLines', { pluginName: pluginName }); },
-        /** -> {plugins: [{name, capabilities[], description, canConfigure, supportsFeedback}]}. */
+        /** Server contract as implemented (2026-09-26): -> {plugins: [{name, inputLines: [{index,
+            name}], outputLines: [{index, name}], canConfigure}]} - lines inline, no separate
+            getLines round trip. (The spec fragment describes {name, capabilities[], description,
+            canConfigure, supportsFeedback} instead; InputOutput.jsx codes against the former.) */
         list: function () { return self.call('io.plugin.list', {}); },
         /** pluginName: string. Ask a hotplug-style plugin (DMXUSB, HID, ...) to re-enumerate its
             hardware. Not every plugin supports this. -> ack; broadcasts io.plugin.linesChanged
@@ -177,8 +189,11 @@
         /** params: {name?, baseRevision}. name omitted -> engine assigns a default ("Universe N").
             -> {universeId, docRevision}; broadcasts io.universe.created (full IoUniverseDetail). */
         create: function (params) { return self.call('io.universe.create', params || {}); },
-        /** universeId: integer (0-based). baseRevision: docRevision last observed.
-            -> {docRevision}; broadcasts io.universe.deleted ({universeId, docRevision}). */
+        /** universeId: integer (0-based). baseRevision: docRevision last observed (server contract
+            as implemented 2026-09-26 takes {universeId} only; the extra field is harmless).
+            The engine only removes the highest-id universe (InputOutputMap::removeUniverse keeps
+            ids contiguous) and refuses to remove the last one.
+            -> {}; broadcasts io.universe.deleted ({universeId, docRevision}). */
         'delete': function (universeId, baseRevision) {
           return self.call('io.universe.delete', { universeId: universeId, baseRevision: baseRevision });
         },

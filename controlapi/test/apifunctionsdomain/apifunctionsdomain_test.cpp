@@ -669,4 +669,183 @@ void ApiFunctionsDomain_Test::chaserStepsAddReplaceRemoveMove()
     QCOMPARE(chaser->stepsCount(), 1);
 }
 
+/*********************************************************************
+ * Live run-state: running/paused flags, functions.status.changed,
+ * functions.pause alias, functions.stopAll
+ *********************************************************************/
+
+QJsonObject ApiFunctionsDomain_Test::waitForEvent(QSignalSpy &spy, const QString &topic,
+                                                  const std::function<bool(const QJsonObject &)> &accept, int timeoutMs)
+{
+    QJsonObject found;
+    (void)QTest::qWaitFor([&]()
+    {
+        for (const QList<QVariant> &frame : spy)
+        {
+            QJsonObject obj = QJsonDocument::fromJson(frame.at(0).toString().toUtf8()).object();
+            if (obj.value(QStringLiteral("type")).toString() != QStringLiteral("event") ||
+                obj.value(QStringLiteral("topic")).toString() != topic)
+                continue;
+            if (accept(obj.value(QStringLiteral("data")).toObject()))
+            {
+                found = obj;
+                return true;
+            }
+        }
+        return false;
+    }, timeoutMs);
+    return found;
+}
+
+void ApiFunctionsDomain_Test::listAndGetCarryRunningAndPaused()
+{
+    helloAndGetClientId();
+    QString sceneId = QString::number(m_scene->id());
+
+    QJsonObject list = sendAndWaitForReply(QStringLiteral("functions.list"), QJsonObject());
+    QJsonArray functions = list.value(QStringLiteral("result")).toObject().value(QStringLiteral("functions")).toArray();
+    QCOMPARE(functions.count(), 1);
+    QJsonObject summary = functions.at(0).toObject();
+    QVERIFY(summary.contains(QStringLiteral("running")));
+    QVERIFY(summary.contains(QStringLiteral("paused")));
+    QCOMPARE(summary.value(QStringLiteral("running")).toBool(), false);
+    QCOMPARE(summary.value(QStringLiteral("paused")).toBool(), false);
+
+    // The "id" alias of functionId is accepted by every functions.* method
+    QJsonObject idParams;
+    idParams.insert(QStringLiteral("id"), sceneId);
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("functions.start"), idParams).value(QStringLiteral("ok")).toBool(), true);
+    QVERIFY(QTest::qWaitFor([this]() { return m_scene->isRunning(); }, 2000));
+
+    QJsonObject get = sendAndWaitForReply(QStringLiteral("functions.get"), idParams);
+    QCOMPARE(get.value(QStringLiteral("result")).toObject().value(QStringLiteral("running")).toBool(), true);
+    QCOMPARE(get.value(QStringLiteral("result")).toObject().value(QStringLiteral("paused")).toBool(), false);
+}
+
+void ApiFunctionsDomain_Test::startAndStopBroadcastStatusChanged()
+{
+    helloAndGetClientId();
+    QString sceneId = QString::number(m_scene->id());
+    QJsonObject params;
+    params.insert(QStringLiteral("functionId"), sceneId);
+
+    QSignalSpy spy(m_client, &QWebSocket::textMessageReceived);
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("functions.start"), params).value(QStringLiteral("ok")).toBool(), true);
+
+    QJsonObject started = waitForEvent(spy, QStringLiteral("functions.status.changed"), [&](const QJsonObject &data)
+    {
+        return data.value(QStringLiteral("id")).toString() == sceneId && data.value(QStringLiteral("running")).toBool();
+    });
+    QVERIFY2(started.isEmpty() == false, "no functions.status.changed {running:true} received");
+    QJsonObject data = started.value(QStringLiteral("data")).toObject();
+    // Both id spellings, per FunctionsStatusData (functionId) and the web UI contract (id)
+    QCOMPARE(data.value(QStringLiteral("functionId")).toString(), sceneId);
+    QCOMPARE(data.value(QStringLiteral("paused")).toBool(), false);
+    QVERIFY(data.contains(QStringLiteral("elapsed")));
+    // Engine-driven (MasterTimer) - not attributed to the requesting client
+    QVERIFY(started.value(QStringLiteral("originClientId")).isNull());
+
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("functions.stop"), params).value(QStringLiteral("ok")).toBool(), true);
+    QJsonObject stopped = waitForEvent(spy, QStringLiteral("functions.status.changed"), [&](const QJsonObject &d)
+    {
+        return d.value(QStringLiteral("id")).toString() == sceneId && d.value(QStringLiteral("running")).toBool() == false;
+    });
+    QVERIFY2(stopped.isEmpty() == false, "no functions.status.changed {running:false} received");
+    QVERIFY(m_scene->isRunning() == false);
+}
+
+void ApiFunctionsDomain_Test::pauseAliasBroadcastsPausedStatus()
+{
+    helloAndGetClientId();
+    QString sceneId = QString::number(m_scene->id());
+    QJsonObject startParams;
+    startParams.insert(QStringLiteral("functionId"), sceneId);
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("functions.start"), startParams).value(QStringLiteral("ok")).toBool(), true);
+    QVERIFY(QTest::qWaitFor([this]() { return m_scene->isRunning(); }, 2000));
+
+    QSignalSpy spy(m_client, &QWebSocket::textMessageReceived);
+    QJsonObject pauseParams;
+    pauseParams.insert(QStringLiteral("id"), sceneId);
+    pauseParams.insert(QStringLiteral("paused"), true);
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("functions.pause"), pauseParams).value(QStringLiteral("ok")).toBool(), true);
+    QVERIFY(m_scene->isPaused());
+
+    QJsonObject paused = waitForEvent(spy, QStringLiteral("functions.status.changed"), [&](const QJsonObject &d)
+    {
+        return d.value(QStringLiteral("id")).toString() == sceneId && d.value(QStringLiteral("paused")).toBool();
+    });
+    QVERIFY2(paused.isEmpty() == false, "no functions.status.changed {paused:true} received");
+    QCOMPARE(paused.value(QStringLiteral("data")).toObject().value(QStringLiteral("running")).toBool(), true);
+
+    // Resuming through the original spelling flips it back and notifies again
+    pauseParams.insert(QStringLiteral("paused"), false);
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("functions.setPause"), pauseParams).value(QStringLiteral("ok")).toBool(), true);
+    QJsonObject resumed = waitForEvent(spy, QStringLiteral("functions.status.changed"), [&](const QJsonObject &d)
+    {
+        return d.value(QStringLiteral("id")).toString() == sceneId && d.value(QStringLiteral("paused")).toBool() == false
+               && d.value(QStringLiteral("running")).toBool();
+    });
+    QVERIFY2(resumed.isEmpty() == false, "no functions.status.changed {paused:false} received");
+    QVERIFY(m_scene->isPaused() == false);
+}
+
+void ApiFunctionsDomain_Test::pauseAliasOnMissingFunctionIsNotFound()
+{
+    helloAndGetClientId();
+    QJsonObject params;
+    params.insert(QStringLiteral("id"), QStringLiteral("4242"));
+    params.insert(QStringLiteral("paused"), true);
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("functions.pause"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(),
+             QStringLiteral("NOT_FOUND"));
+}
+
+void ApiFunctionsDomain_Test::pauseWithNonBooleanIsInvalidParams()
+{
+    helloAndGetClientId();
+    QJsonObject params;
+    params.insert(QStringLiteral("id"), QString::number(m_scene->id()));
+    params.insert(QStringLiteral("paused"), QStringLiteral("yes"));
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("functions.pause"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(),
+             QStringLiteral("INVALID_PARAMS"));
+}
+
+void ApiFunctionsDomain_Test::stopAllStopsEveryRunningFunction()
+{
+    helloAndGetClientId();
+
+    Scene *second = new Scene(m_doc);
+    second->setName(QStringLiteral("Second Scene"));
+    second->setValue(Fixture::invalidId(), 1, 200);
+    QVERIFY(m_doc->addFunction(second));
+
+    for (Scene *scene : { m_scene, second })
+    {
+        QJsonObject params;
+        params.insert(QStringLiteral("functionId"), QString::number(scene->id()));
+        QCOMPARE(sendAndWaitForReply(QStringLiteral("functions.start"), params).value(QStringLiteral("ok")).toBool(), true);
+    }
+    QVERIFY(QTest::qWaitFor([&]() { return m_scene->isRunning() && second->isRunning(); }, 2000));
+
+    QSignalSpy spy(m_client, &QWebSocket::textMessageReceived);
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("functions.stopAll"), QJsonObject());
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QVERIFY(QTest::qWaitFor([&]() { return m_scene->isRunning() == false && second->isRunning() == false; }, 2000));
+    QCOMPARE(m_doc->masterTimer()->runningFunctions(), 0);
+
+    // One stopped notification per function
+    for (Scene *scene : { m_scene, second })
+    {
+        QString sceneId = QString::number(scene->id());
+        QJsonObject stopped = waitForEvent(spy, QStringLiteral("functions.status.changed"), [&](const QJsonObject &d)
+        {
+            return d.value(QStringLiteral("id")).toString() == sceneId && d.value(QStringLiteral("running")).toBool() == false;
+        });
+        QVERIFY2(stopped.isEmpty() == false, "missing functions.status.changed {running:false} after stopAll");
+    }
+}
+
 QTEST_MAIN(ApiFunctionsDomain_Test)

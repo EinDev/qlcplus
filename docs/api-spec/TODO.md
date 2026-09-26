@@ -131,6 +131,15 @@ Suggested order (not fixed — reorder if priorities change):
       then per-widget-type live interaction in batches. `vc.widget.preset.*`
       is already unified in the spec (MERGE-PLAN.md #2) — implement it once,
       not per widget type.
+      *Progress (2026-09-26):* `vc.page.*`/`vc.widget.*` CRUD plus the first
+      live batch (`vc.button.press`, `vc.slider.setValue`, `vc.cueList.{play,
+      stop,next,previous,setPlaybackIndex,get}`, `vc.xyPad.setPosition`,
+      `vc.speedDial.{setValue,tap}`, `vc.frame.{gotoPage,get}` and their six
+      `*Changed` events) are registered — see "Live interaction - implemented"
+      in `fragments/virtualconsole-notes.md` for the contract-driven renames.
+      Still open: presets, input sources/key sequences, `vc.slider.flash`/
+      `setLevelChannels`, xyPad floor/fixtures, speedDial factor/apply/
+      resetTap, frame PIN/cloneFirstPage, clock/animation/audioTriggers.
 - [ ] **1.5 Rest of `io.*`** (plugin config, input profiles, Simple Desk —
       only universes/patches/Grand Master/Blackout/live DMX are implemented
       so far). `io.plugin.configure` needs 2.3 resolved first or it'll ship
@@ -179,6 +188,13 @@ bite:
       `docRevision`-keyed server-side action log as the better-fitting
       alternative — but that's still just a suggestion, not a design. Only
       matters once Phase 1 domains exist to have something to undo.
+      **Update 2026-09-26:** `core.undo`/`core.redo`/`core.history.get`/
+      `core.history.changed` now exist, backed by Tardis through
+      `ApiProjectHost` (the web UI needed the toolbar's Undo/Redo, which
+      undoes *UI-made* edits). The Tardis coupling is behind the host
+      interface, not in controlapi. What remains open is exactly this
+      item: edits made *through the API* are not recorded and cannot be
+      undone - see `core-notes.md`, "Implemented 2026-09-26".
 - [ ] **2.6 `io.inputProfile.learn.signal` scoping bug.** Broadcasts to
       every connected client instead of just the one running the MIDI/OSC
       learn session — minor UX noise, not a correctness bug. `io-notes.md`.

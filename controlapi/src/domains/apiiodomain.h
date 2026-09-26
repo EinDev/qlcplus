@@ -82,8 +82,19 @@ private:
     FadeChannel *simpleDeskFader(const QList<Universe *> &universes, quint32 universeId,
                                   quint32 fixtureId, quint32 channel);
 
+    /** Broadcast io.universe.updated {universe: IoUniverseDetail, docRevision}
+     *  - the one structural event for io.universe.update AND every
+     *  io.patch.* mutation (io.yaml's own IoUniverseUpdatedEvent doc), so
+     *  clients never re-fetch after a patch change. */
+    void broadcastUniverseUpdated(Universe *universe, const QString &originClientId);
+
 private slots:
     void slotUniverseAdded(quint32 id);
+    /** InputOutputMap::universeRemoved relay (fired synchronously from
+     *  within removeUniverse(), after Doc::setModified() bumped the
+     *  revision): drops this domain's per-universe state and broadcasts
+     *  io.universe.deleted {universeId, docRevision}. */
+    void slotUniverseRemoved(quint32 id);
     void slotUniverseWritten(quint32 id, const QByteArray &postGMValues);
     void slotGrandMasterValueChanged(uchar value);
     void slotBlackoutChanged(bool blackout);

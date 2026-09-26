@@ -736,6 +736,17 @@ signals:
      */
     void stopped(quint32 id);
 
+    /**
+     * Emitted when setPause() actually flips the paused state of a running
+     * function (the engine has no other pause notification: isPaused() is a
+     * plain flag). NOT emitted by postRun()'s implicit un-pause when the
+     * function stops - listeners get stopped() for that case instead.
+     *
+     * @param id The ID of the paused/resumed function
+     * @param paused The new pause state
+     */
+    void pauseChanged(quint32 id, bool paused);
+
 protected:
     /** Map used to lookup a GenericFader instance for a Universe ID */
     QMap<quint32, QSharedPointer <GenericFader> > m_fadersMap;

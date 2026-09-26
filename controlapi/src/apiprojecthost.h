@@ -54,6 +54,34 @@ public:
 
     virtual QString workingPath() const = 0;
     virtual void setWorkingPath(QString workingPath) = 0;
+
+    /*********************************************************************
+     * Undo / redo (core.undo, core.redo, core.history.get)
+     *
+     * Backed by qmlui's Tardis (qmlui/tardis/tardis.h) in App. Non-pure
+     * with "nothing to undo" defaults so a host without an undo engine
+     * still compiles; ApiCoreDomain reports UNSUPPORTED when there is no
+     * host at all. The host QObject is also expected to emit a
+     * historyChanged() signal (no arguments) whenever canUndo()/canRedo()/
+     * undoText()/redoText() may have changed - ApiCoreDomain connects to
+     * it by name, exactly like recentFilesChanged().
+     *
+     * Known limitation, by design of Tardis: only mutations made through
+     * the qmlui UI are recorded. Edits made through this API's own
+     * structural methods bypass Tardis and are therefore NOT undoable.
+     *********************************************************************/
+
+    virtual bool canUndo() const { return false; }
+    virtual bool canRedo() const { return false; }
+
+    /** Human-readable label of the next undo/redo step (Tardis action
+     *  name, e.g. "FunctionSetName"), empty if none. */
+    virtual QString undoText() const { return QString(); }
+    virtual QString redoText() const { return QString(); }
+
+    /** Apply one undo/redo step. Returns false if there was nothing to do. */
+    virtual bool undo() { return false; }
+    virtual bool redo() { return false; }
 };
 
 #endif

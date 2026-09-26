@@ -19,6 +19,10 @@
 #define APIIODOMAIN_TEST_H
 
 #include <QObject>
+#include <QList>
+#include <QJsonObject>
+
+class QSignalSpy;
 
 class Doc;
 class ApiServer;
@@ -63,11 +67,35 @@ private slots:
     void simpleDeskDumpMergeIntoExistingSceneBroadcastsFunctionsUpdated();
     void simpleDeskDumpOnMissingTargetSceneIsNotFound();
 
+    void pluginListDescribesStubPluginLines();
+    void patchSetOutputBumpsRevisionAndBroadcastsUniverseUpdated();
+    void patchSetInputWithProfileThenRemoveInput();
+    void patchSetUnknownPluginIsNotFound();
+    void patchSetFeedbackOnPluginWithoutFeedbackIsUnsupported();
+    void patchRemoveWhenNothingPatchedIsNotFound();
+    void universeUpdateRenamesAndSetsPassthrough();
+    void universeUpdateWithNoFieldsIsInvalidParams();
+    void universeUpdateWithStaleRevisionConflicts();
+    void universeDeleteRemovesTrailingUniverseAndBroadcasts();
+    void universeDeleteNonTrailingIsInvalidParams();
+    void universeDeleteWithPatchedFixturesRequiresForce();
+    void universeDeleteLastUniverseIsInvalidState();
+    void inputProfileListReturnsLoadedProfiles();
+
 private:
     /** Send a request and wait for exactly one more text message to arrive
      *  on client, returning it parsed as a JSON object. */
     QJsonObject sendAndWaitForReply(const QString &method, const QJsonObject &params);
     QString helloAndGetClientId();
+
+    /** Load engine/test/iopluginstub's I/O plugin (4 input + 4 output
+     *  lines, Input|Output capabilities, no Feedback) into m_doc's plugin
+     *  cache - the only way a bare Doc gets a patchable plugin. Returns its
+     *  name (empty if the stub DLL wasn't found next to this build). */
+    QString loadStubPlugin();
+
+    /** Every event frame with the given topic received by spy so far */
+    QList<QJsonObject> eventsWithTopic(QSignalSpy &spy, const QString &topic);
 
 private:
     Doc *m_doc;

@@ -387,6 +387,21 @@ public:
     /** Redo an action or a batch of actions taken from history */
     Q_INVOKABLE void redoAction();
 
+    /** Whether undoAction()/redoAction() currently has anything to do.
+     *  Thread-safe (takes m_historyMutex); safe to call from any thread
+     *  EXCEPT from a slot directly connected to historyChanged() while
+     *  undoAction()/redoAction() still hold the lock - which is why those
+     *  emit historyChanged() only after releasing it. */
+    bool canUndo() const;
+    bool canRedo() const;
+
+    /** Symbolic name (actionToString()) of the action that undoAction() /
+     *  redoAction() would apply next, or an empty string if none. For a
+     *  batch of actions this is the name of the batch's most recent /
+     *  earliest entry respectively - the one processed first. */
+    QString undoActionName() const;
+    QString redoActionName() const;
+
     /** Process an action and return the reversed action if undoing */
     int processAction(TardisAction &action, bool undo);
 
@@ -402,6 +417,18 @@ public:
 
     /** @reimp */
     void run() override; // thread run function
+
+signals:
+    /** Emitted whenever the undo/redo history changes shape: an action was
+     *  recorded (from the Tardis worker thread - connect with a queued/auto
+     *  connection), undone, redone, or the history was reset. Always emitted
+     *  with m_historyMutex released, so canUndo()/canRedo()/undoActionName()
+     *  may be called from a directly connected slot. Consumers: the control
+     *  API's core.history.changed event (controlapi/src/domains/apicoredomain.cpp
+     *  via App::historyChanged). */
+    void historyChanged();
+
+public:
 
     /** Return the symbolic name of an action code, for logging purposes */
     static QString actionToString(int action);
@@ -452,7 +479,7 @@ private:
      *  on every processed action while undoAction()/redoAction()/
      *  resetHistory() (main/GUI thread) read and rewind them. See the class
      *  doc comment above for the locking-granularity rationale. */
-    QMutex m_historyMutex;
+    mutable QMutex m_historyMutex;
 
     /** The actual history of actions */
     QList<TardisAction> m_history;

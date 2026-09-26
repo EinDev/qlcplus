@@ -44,6 +44,19 @@ ApiVcDomain::ApiVcDomain(Doc *doc, ApiServer *server, QObject *parent)
     ApiDispatcher *d = m_server->dispatcher();
     registerPageMethods(d);
     registerWidgetMethods(d);
+    registerLiveMethods(d);
+
+    if (ApiVcHost *host = vcHost())
+        host->vcSetLiveListener(this);
+}
+
+ApiVcDomain::~ApiVcDomain()
+{
+    // ApiServer's parent (the host) outlives the server in both production (App deletes m_apiServer
+    // explicitly in ~App()) and the test suites (server-then-host cleanup order) - detach so the host
+    // never calls back into a destroyed listener.
+    if (ApiVcHost *host = vcHost())
+        host->vcSetLiveListener(nullptr);
 }
 
 ApiVcHost *ApiVcDomain::vcHost() const
@@ -855,5 +868,451 @@ void ApiVcDomain::registerWidgetMethods(ApiDispatcher *d)
         QJsonObject result;
         result.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
         session->send(ApiEnvelope::buildOkResponse(id, result));
+    });
+}
+
+/*****************************************************************************
+ * Live interaction - vc.button.* / vc.slider.* / vc.cueList.* / vc.xyPad.* / vc.speedDial.* / vc.frame.*
+ *****************************************************************************/
+
+namespace {
+
+const QString kWidgetId = QStringLiteral("widgetId");
+
+/** Strict integer check: QJsonValue::toInt() happily turns "abc"/true/1.5 into 0/1/1, which would let
+ *  a wrong-type field pass as a legitimate value. Live methods reject anything that isn't a whole
+ *  JSON number instead. */
+bool jsonIsInteger(const QJsonValue &v)
+{
+    if (v.isDouble() == false)
+        return false;
+    double d = v.toDouble();
+    // Stay inside the exactly-representable integer range before casting - converting e.g. 1e300 to
+    // qint64 is undefined behaviour, and nothing here legitimately needs more than 2^53 anyway.
+    if (d < -9007199254740992.0 || d > 9007199254740992.0)
+        return false;
+    return d == double(qint64(d));
+}
+
+} // namespace
+
+bool ApiVcDomain::resolveLiveWidget(ApiSession *session, const QString &id, const QJsonObject &params,
+                                    const QStringList &allowedTypes, ApiVcHost **outHost, quint32 *outId)
+{
+    ApiVcHost *host = vcHost();
+    if (host == nullptr)
+    {
+        session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInternal, kHostUnavailable));
+        return false;
+    }
+
+    quint32 wid = ApiVcHost::InvalidWidgetId;
+    if (parseWidgetId(params.value(kWidgetId).toString(), wid) == false || host->vcWidgetExists(wid) == false)
+    {
+        session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrNotFound,
+                                                        QStringLiteral("No such widget")));
+        return false;
+    }
+
+    QString type = host->vcWidgetType(wid);
+    if (allowedTypes.contains(type) == false)
+    {
+        QJsonObject details;
+        details.insert(QStringLiteral("widgetType"), type);
+        session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams,
+                                                        QStringLiteral("Widget %1 is a %2, not a %3")
+                                                            .arg(QString::number(wid), type, allowedTypes.join(QStringLiteral("/"))),
+                                                        details));
+        return false;
+    }
+
+    // The on-screen widget disables its MouseArea/TouchArea while isDisabled - refuse remote input the
+    // same way rather than letting the API bypass a deliberately disabled control.
+    if (host->vcWidgetSnapshot(wid).value(QStringLiteral("isDisabled")).toBool())
+    {
+        session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidState,
+                                                        QStringLiteral("Widget is disabled")));
+        return false;
+    }
+
+    *outHost = host;
+    *outId = wid;
+    return true;
+}
+
+void ApiVcDomain::broadcastLive(const QString &topic, quint32 widgetId, QJsonObject data)
+{
+    data.insert(kWidgetId, QString::number(widgetId));
+    // Live (§4b) but low enough volume per event (one per discrete gesture/step; a fader drag is
+    // already throttled by the sending client) that the contract delivers these to every session
+    // rather than subscribe-gating them - see docs/api-spec/fragments/virtualconsole-notes.md.
+    m_server->broadcast(topic, data, m_liveOriginClientId, false);
+}
+
+void ApiVcDomain::vcButtonStateChanged(quint32 widgetId, const QString &state)
+{
+    QJsonObject data;
+    data.insert(QStringLiteral("state"), state);
+    broadcastLive(QStringLiteral("vc.button.stateChanged"), widgetId, data);
+}
+
+void ApiVcDomain::vcSliderValueChanged(quint32 widgetId, int value)
+{
+    QJsonObject data;
+    data.insert(QStringLiteral("value"), value);
+    broadcastLive(QStringLiteral("vc.slider.valueChanged"), widgetId, data);
+}
+
+void ApiVcDomain::vcCueListPlaybackChanged(quint32 widgetId, int playbackIndex, bool running, bool paused)
+{
+    QJsonObject data;
+    data.insert(QStringLiteral("playbackIndex"), playbackIndex);
+    data.insert(QStringLiteral("running"), running);
+    data.insert(QStringLiteral("paused"), paused);
+    broadcastLive(QStringLiteral("vc.cueList.playbackChanged"), widgetId, data);
+}
+
+void ApiVcDomain::vcXyPadPositionChanged(quint32 widgetId, double x, double y)
+{
+    QJsonObject data;
+    data.insert(QStringLiteral("x"), x);
+    data.insert(QStringLiteral("y"), y);
+    broadcastLive(QStringLiteral("vc.xyPad.positionChanged"), widgetId, data);
+}
+
+void ApiVcDomain::vcSpeedDialValueChanged(quint32 widgetId, int ms)
+{
+    QJsonObject data;
+    data.insert(QStringLiteral("ms"), ms);
+    broadcastLive(QStringLiteral("vc.speedDial.valueChanged"), widgetId, data);
+}
+
+void ApiVcDomain::vcFramePageChanged(quint32 widgetId, int page)
+{
+    QJsonObject data;
+    data.insert(QStringLiteral("page"), page);
+    broadcastLive(QStringLiteral("vc.frame.pageChanged"), widgetId, data);
+}
+
+void ApiVcDomain::registerLiveMethods(ApiDispatcher *d)
+{
+    static const QStringList buttonTypes = { QStringLiteral("Button") };
+    static const QStringList sliderTypes = { QStringLiteral("Slider") };
+    static const QStringList cueListTypes = { QStringLiteral("CueList") };
+    static const QStringList xyPadTypes = { QStringLiteral("XYPad") };
+    static const QStringList speedTypes = { QStringLiteral("Speed") };
+    static const QStringList frameTypes = { QStringLiteral("Frame"), QStringLiteral("SoloFrame") };
+
+    // Every live mutation below follows the same shape: validate params -> set m_liveOriginClientId ->
+    // call the host (which reports the resulting change through the ApiVcLiveListener callbacks above,
+    // broadcasting with that origin) -> clear the origin -> ack with {} or report the host's refusal.
+    // The response is deliberately a bare {} per 00-conventions.md §4b; clients apply state from the
+    // event, never from the response.
+
+    // --- vc.button.press ---
+    d->registerMethod(QStringLiteral("vc.button.press"), [this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        QJsonValue pressedValue = params.value(QStringLiteral("pressed"));
+        if (pressedValue.isBool() == false)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams,
+                                                            QStringLiteral("pressed must be a boolean")));
+            return;
+        }
+
+        ApiVcHost *host = nullptr;
+        quint32 wid = ApiVcHost::InvalidWidgetId;
+        if (resolveLiveWidget(session, id, params, buttonTypes, &host, &wid) == false)
+            return;
+
+        QString error;
+        m_liveOriginClientId = session->clientId();
+        bool ok = host->vcButtonPress(wid, pressedValue.toBool(), &error);
+        m_liveOriginClientId.clear();
+
+        if (ok == false)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidState, error));
+            return;
+        }
+        session->send(ApiEnvelope::buildOkResponse(id, QJsonObject()));
+    });
+
+    // --- vc.slider.setValue ---
+    d->registerMethod(QStringLiteral("vc.slider.setValue"), [this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        QJsonValue v = params.value(QStringLiteral("value"));
+        if (jsonIsInteger(v) == false || v.toInt() < 0 || v.toInt() > 255)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams,
+                                                            QStringLiteral("value must be an integer 0..255")));
+            return;
+        }
+
+        ApiVcHost *host = nullptr;
+        quint32 wid = ApiVcHost::InvalidWidgetId;
+        if (resolveLiveWidget(session, id, params, sliderTypes, &host, &wid) == false)
+            return;
+
+        QString error;
+        m_liveOriginClientId = session->clientId();
+        bool ok = host->vcSliderSetValue(wid, v.toInt(), &error);
+        m_liveOriginClientId.clear();
+
+        if (ok == false)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidState, error));
+            return;
+        }
+        session->send(ApiEnvelope::buildOkResponse(id, QJsonObject()));
+    });
+
+    // --- vc.cueList.play / stop / next / previous ---
+    struct CueListMethod { const char *method; ApiVcHost::CueListAction action; };
+    static const CueListMethod cueListMethods[] = {
+        { "vc.cueList.play", ApiVcHost::CueListPlay },
+        { "vc.cueList.stop", ApiVcHost::CueListStop },
+        { "vc.cueList.next", ApiVcHost::CueListNext },
+        { "vc.cueList.previous", ApiVcHost::CueListPrevious },
+    };
+    for (const CueListMethod &m : cueListMethods)
+    {
+        ApiVcHost::CueListAction action = m.action;
+        d->registerMethod(QString::fromLatin1(m.method), [this, action](ApiSession *session, const QString &id, const QJsonObject &params)
+        {
+            ApiVcHost *host = nullptr;
+            quint32 wid = ApiVcHost::InvalidWidgetId;
+            if (resolveLiveWidget(session, id, params, cueListTypes, &host, &wid) == false)
+                return;
+
+            QString error;
+            m_liveOriginClientId = session->clientId();
+            bool ok = host->vcCueListAction(wid, action, &error);
+            m_liveOriginClientId.clear();
+
+            if (ok == false)
+            {
+                session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidState, error));
+                return;
+            }
+            session->send(ApiEnvelope::buildOkResponse(id, QJsonObject()));
+        });
+    }
+
+    // --- vc.cueList.setPlaybackIndex ---
+    d->registerMethod(QStringLiteral("vc.cueList.setPlaybackIndex"), [this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        // "index" per the web UI contract; "playbackIndex" is the spec's original spelling, kept as an
+        // accepted alias so a client written against the pre-implementation spec still works.
+        QJsonValue v = params.contains(QStringLiteral("index")) ? params.value(QStringLiteral("index"))
+                                                                : params.value(QStringLiteral("playbackIndex"));
+        if (jsonIsInteger(v) == false)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams,
+                                                            QStringLiteral("index must be an integer")));
+            return;
+        }
+
+        ApiVcHost *host = nullptr;
+        quint32 wid = ApiVcHost::InvalidWidgetId;
+        if (resolveLiveWidget(session, id, params, cueListTypes, &host, &wid) == false)
+            return;
+
+        int index = v.toInt();
+        int stepCount = host->vcCueListSnapshot(wid).value(QStringLiteral("steps")).toArray().size();
+        if (index < -1 || index >= stepCount)
+        {
+            QJsonObject details;
+            details.insert(QStringLiteral("stepCount"), stepCount);
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams,
+                                                            QStringLiteral("index must be -1 or 0..%1").arg(stepCount - 1),
+                                                            details));
+            return;
+        }
+
+        QString error;
+        m_liveOriginClientId = session->clientId();
+        bool ok = host->vcCueListSetPlaybackIndex(wid, index, &error);
+        m_liveOriginClientId.clear();
+
+        if (ok == false)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidState, error));
+            return;
+        }
+        session->send(ApiEnvelope::buildOkResponse(id, QJsonObject()));
+    });
+
+    // --- vc.cueList.get ---
+    d->registerMethod(QStringLiteral("vc.cueList.get"), [this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        ApiVcHost *host = vcHost();
+        if (host == nullptr)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInternal, kHostUnavailable));
+            return;
+        }
+
+        // Read-only: a disabled cue list can still be inspected, so this doesn't go through
+        // resolveLiveWidget()'s isDisabled refusal.
+        quint32 wid = ApiVcHost::InvalidWidgetId;
+        if (parseWidgetId(params.value(kWidgetId).toString(), wid) == false || host->vcWidgetExists(wid) == false)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrNotFound,
+                                                            QStringLiteral("No such widget")));
+            return;
+        }
+        if (host->vcWidgetType(wid) != QStringLiteral("CueList"))
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams,
+                                                            QStringLiteral("Widget is not a CueList")));
+            return;
+        }
+        session->send(ApiEnvelope::buildOkResponse(id, host->vcCueListSnapshot(wid)));
+    });
+
+    // --- vc.xyPad.setPosition ---
+    d->registerMethod(QStringLiteral("vc.xyPad.setPosition"), [this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        QJsonValue xv = params.value(QStringLiteral("x"));
+        QJsonValue yv = params.value(QStringLiteral("y"));
+        if (xv.isDouble() == false || yv.isDouble() == false ||
+            xv.toDouble() < 0.0 || xv.toDouble() > 1.0 || yv.toDouble() < 0.0 || yv.toDouble() > 1.0)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams,
+                                                            QStringLiteral("x and y must be numbers 0.0..1.0")));
+            return;
+        }
+
+        ApiVcHost *host = nullptr;
+        quint32 wid = ApiVcHost::InvalidWidgetId;
+        if (resolveLiveWidget(session, id, params, xyPadTypes, &host, &wid) == false)
+            return;
+
+        QString error;
+        m_liveOriginClientId = session->clientId();
+        bool ok = host->vcXyPadSetPosition(wid, xv.toDouble(), yv.toDouble(), &error);
+        m_liveOriginClientId.clear();
+
+        if (ok == false)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidState, error));
+            return;
+        }
+        session->send(ApiEnvelope::buildOkResponse(id, QJsonObject()));
+    });
+
+    // --- vc.speedDial.setValue ---
+    d->registerMethod(QStringLiteral("vc.speedDial.setValue"), [this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        // "ms" per the web UI contract; "valueMs" was the spec's original spelling (vc.speedDial.setCurrentTime).
+        QJsonValue v = params.contains(QStringLiteral("ms")) ? params.value(QStringLiteral("ms"))
+                                                             : params.value(QStringLiteral("valueMs"));
+        if (jsonIsInteger(v) == false || v.toDouble() < 0)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams,
+                                                            QStringLiteral("ms must be a non-negative integer")));
+            return;
+        }
+
+        ApiVcHost *host = nullptr;
+        quint32 wid = ApiVcHost::InvalidWidgetId;
+        if (resolveLiveWidget(session, id, params, speedTypes, &host, &wid) == false)
+            return;
+
+        QString error;
+        m_liveOriginClientId = session->clientId();
+        bool ok = host->vcSpeedDialSetValue(wid, v.toInt(), &error);
+        m_liveOriginClientId.clear();
+
+        if (ok == false)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidState, error));
+            return;
+        }
+        session->send(ApiEnvelope::buildOkResponse(id, QJsonObject()));
+    });
+
+    // --- vc.speedDial.tap ---
+    d->registerMethod(QStringLiteral("vc.speedDial.tap"), [this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        ApiVcHost *host = nullptr;
+        quint32 wid = ApiVcHost::InvalidWidgetId;
+        if (resolveLiveWidget(session, id, params, speedTypes, &host, &wid) == false)
+            return;
+
+        QString error;
+        m_liveOriginClientId = session->clientId();
+        bool ok = host->vcSpeedDialTap(wid, &error);
+        m_liveOriginClientId.clear();
+
+        if (ok == false)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidState, error));
+            return;
+        }
+        session->send(ApiEnvelope::buildOkResponse(id, QJsonObject()));
+    });
+
+    // --- vc.frame.gotoPage ---
+    d->registerMethod(QStringLiteral("vc.frame.gotoPage"), [this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        // "page" per the web UI contract; "pageIndex" was the spec's original spelling.
+        QJsonValue v = params.contains(QStringLiteral("page")) ? params.value(QStringLiteral("page"))
+                                                               : params.value(QStringLiteral("pageIndex"));
+        if (jsonIsInteger(v) == false)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams,
+                                                            QStringLiteral("page must be an integer")));
+            return;
+        }
+
+        ApiVcHost *host = nullptr;
+        quint32 wid = ApiVcHost::InvalidWidgetId;
+        if (resolveLiveWidget(session, id, params, frameTypes, &host, &wid) == false)
+            return;
+
+        // NOTE: unlike every other live method here, VCFrame::setCurrentPage() calls setDocModified()
+        // (the frame's current page is saved in the show file), so a successful page flip DOES bump
+        // docRevision as a side effect - other clients' next structural request will CONFLICT until
+        // they refresh. Documented in the spec; not worked around here because that is the engine's
+        // own, deliberate persistence behaviour.
+        QString error;
+        m_liveOriginClientId = session->clientId();
+        bool ok = host->vcFrameGotoPage(wid, v.toInt(), &error);
+        m_liveOriginClientId.clear();
+
+        if (ok == false)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams, error));
+            return;
+        }
+        session->send(ApiEnvelope::buildOkResponse(id, QJsonObject()));
+    });
+
+    // --- vc.frame.get ---
+    d->registerMethod(QStringLiteral("vc.frame.get"), [this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        ApiVcHost *host = vcHost();
+        if (host == nullptr)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInternal, kHostUnavailable));
+            return;
+        }
+
+        quint32 wid = ApiVcHost::InvalidWidgetId;
+        if (parseWidgetId(params.value(kWidgetId).toString(), wid) == false || host->vcWidgetExists(wid) == false)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrNotFound,
+                                                            QStringLiteral("No such widget")));
+            return;
+        }
+        if (frameTypes.contains(host->vcWidgetType(wid)) == false)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams,
+                                                            QStringLiteral("Widget is not a Frame or SoloFrame")));
+            return;
+        }
+        session->send(ApiEnvelope::buildOkResponse(id, host->vcFrameSnapshot(wid)));
     });
 }

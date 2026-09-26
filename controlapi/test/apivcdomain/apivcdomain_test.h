@@ -61,10 +61,33 @@ private slots:
     void widgetReparentRejectsCycle();
     void widgetRepositionBulkUpdatesAllOrNothing();
 
+    // Live interaction (vc.button/slider/cueList/xyPad/speedDial/frame) - see the live-interaction
+    // messages in docs/api-spec/fragments/virtualconsole.yaml.
+    void liveButtonPressTogglesOnDownEdgeAndBroadcasts();
+    void liveButtonPressFlashFollowsBothEdges();
+    void liveButtonPressRejectsUnknownWidgetWrongTypeAndBadParams();
+    void liveButtonPressRefusesDisabledWidgetAndMissingFunction();
+    void liveSliderSetValueBroadcastsAndValidates();
+    void liveCueListTransportAndGet();
+    void liveCueListSetPlaybackIndexValidatesRange();
+    void liveXyPadSetPositionBroadcastsAndValidates();
+    void liveSpeedDialSetValueAndTap();
+    void liveFrameGotoPageAndGet();
+    void liveWidgetSnapshotsExposeLiveState();
+    void liveEngineDrivenChangeBroadcastsWithNullOrigin();
+    void liveMethodsDoNotBumpDocRevision();
+
 private:
     QJsonObject sendAndWaitForReply(const QString &method, const QJsonObject &params, const QString &requestId = QStringLiteral("t-1"));
     QString helloAndGetClientId();
     int currentDocRevision();
+
+    /** vc.widget.create shortcut for the live tests: a 1x1 widget of $widgetType on page 0 with
+     *  $typeConfig, returning its wire id (empty on failure). Reads the live docRevision itself. */
+    QString createWidget(const QString &widgetType, const QJsonObject &typeConfig = QJsonObject());
+
+    /** {"widgetId": $widgetId} plus $extra. */
+    static QJsonObject widgetParams(const QString &widgetId, const QJsonObject &extra = QJsonObject());
 
 private:
     Doc *m_doc;
