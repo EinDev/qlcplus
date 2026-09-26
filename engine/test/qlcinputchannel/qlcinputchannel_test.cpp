@@ -344,10 +344,12 @@ void QLCInputChannel_Test::saveVariants()
     QVERIFY(xml.contains("<Movement Sensitivity=\"40\">Relative</Movement>"));
     QVERIFY(xml.contains("Feedback") == false);
 
-    // so does a relative knob
+    // so does a relative knob; changing the type resets the sensitivity
+    // to the default of 20 (1 for encoders)
     ch.setType(QLCInputChannel::Knob);
+    QCOMPARE(ch.movementSensitivity(), 20);
     xml = saveChannelToString(ch, 5);
-    QVERIFY(xml.contains("<Movement Sensitivity=\"40\">Relative</Movement>"));
+    QVERIFY(xml.contains("<Movement Sensitivity=\"20\">Relative</Movement>"));
 
     // an absolute knob stores no movement at all
     ch.setMovementType(QLCInputChannel::Absolute);

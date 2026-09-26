@@ -665,7 +665,7 @@ void QLCInputProfile_Test::saveLoadTables()
     QVERIFY(file.open(QIODevice::ReadOnly));
     QString content = QString::fromUtf8(file.readAll());
     file.close();
-    QVERIFY(content.contains("<InputProfile>"));
+    QVERIFY(content.contains("<InputProfile"));
     QVERIFY(content.contains("<Type>MIDI</Type>"));
     QVERIFY(content.contains("ColorTable") == false);
     QVERIFY(content.contains("MidiChannelTable") == false);
