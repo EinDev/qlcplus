@@ -16,6 +16,7 @@
 */
 
 #include <QJsonArray>
+#include <limits>
 #include <QJsonValue>
 #include <QFileInfo>
 #include <QSet>
@@ -63,9 +64,11 @@ Function *findFunction(Doc *doc, const QJsonObject &params)
     quint32 functionId = 0;
     if (value.isDouble())
     {
+        // Range-check before the cast: converting a double outside quint32's
+        // range (1e300, -1) to quint32 is undefined behaviour, not "some id".
         double d = value.toDouble();
-        ok = d >= 0;
-        functionId = quint32(d);
+        ok = d >= 0 && d <= double(std::numeric_limits<quint32>::max());
+        functionId = ok ? quint32(d) : 0;
     }
     else
     {
