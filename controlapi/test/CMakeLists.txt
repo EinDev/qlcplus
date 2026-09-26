@@ -8,6 +8,7 @@ add_subdirectory(apipalettedomain)
 add_subdirectory(apifixturesdomain)
 add_subdirectory(apifixturegroupdomain)
 add_subdirectory(apivcdomain)
+add_subdirectory(webserver)
 
 # Registered with CTest the same way engine/test/CMakeLists.txt does (see
 # that file for why enable_testing() itself only needs to be called once,
@@ -21,6 +22,7 @@ set(QLCPLUS_CONTROLAPI_TESTS
     apifixturesdomain_test
     apifixturegroupdomain_test
     apivcdomain_test
+    webserver_test
 )
 foreach(_qlcplus_test_target ${QLCPLUS_CONTROLAPI_TESTS})
     add_test(NAME ${_qlcplus_test_target}

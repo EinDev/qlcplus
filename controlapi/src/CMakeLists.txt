@@ -5,6 +5,7 @@ set(CONTROLAPI_SOURCES
     apisession.cpp apisession.h
     apidispatcher.cpp apidispatcher.h
     apiserver.cpp apiserver.h
+    webserver.cpp webserver.h
     domains/apiiodomain.cpp domains/apiiodomain.h
     domains/apicoredomain.cpp domains/apicoredomain.h
     domains/apifunctionsdomain.cpp domains/apifunctionsdomain.h
@@ -24,7 +25,10 @@ target_include_directories(${module_name} PUBLIC
     ../../engine/src
 )
 
-find_package(Qt${QT_MAJOR_VERSION} REQUIRED COMPONENTS WebSockets)
+# Network is only needed by WebServer (webserver.cpp, the plain-HTTP static
+# file server for webui/); WebSockets already depends on it, but the link is
+# spelled out so that dependency doesn't stay implicit.
+find_package(Qt${QT_MAJOR_VERSION} REQUIRED COMPONENTS Network WebSockets)
 
 # Deliberately minimal: no Quick/Widgets/Multimedia/qmlui dependency. This
 # module must build and run without qmlui (or any UI) present at all -
@@ -34,6 +38,7 @@ find_package(Qt${QT_MAJOR_VERSION} REQUIRED COMPONENTS WebSockets)
 # through App/QQuickView directly.
 target_link_libraries(${module_name} PUBLIC
     Qt${QT_MAJOR_VERSION}::Core
+    Qt${QT_MAJOR_VERSION}::Network
     Qt${QT_MAJOR_VERSION}::WebSockets
     qlcplusengine
 )
