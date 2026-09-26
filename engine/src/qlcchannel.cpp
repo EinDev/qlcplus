@@ -1181,7 +1181,13 @@ bool QLCChannel::loadXML(QXmlStreamReader &doc)
     /* Get channel name */
     QString str = attrs.value(KXMLQLCChannelName).toString();
     if (str.isEmpty() == true)
+    {
+        // Consume the whole element, or the caller's readNextStartElement()
+        // descends into this channel's children and stops at its end tag,
+        // silently dropping every element (mode, physical, ...) that follows.
+        doc.skipCurrentElement();
         return false;
+    }
     setName(str);
 
     if (attrs.hasAttribute(KXMLQLCChannelDefault))
