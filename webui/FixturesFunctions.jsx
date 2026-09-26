@@ -68,7 +68,7 @@ function useFixtureTree(qlc) {
   const D = window.QLCData;
   const data = useLiveList(qlc, () => Promise.all([qlc.call('fixtures.list'), qlc.call('io.universe.list')])
     .then(([f, u]) => ({ fixtures: f.fixtures || [], universes: u.universes || [] })),
-    ['fixtures.patched', 'fixtures.unpatched', 'fixtures.updated', 'io.universe.created', 'core.project.loaded']);
+    ['fixtures.patched', 'fixtures.unpatched', 'fixtures.updated', 'io.universe.created', 'core.project.loaded', 'core.history.changed']);
   return React.useMemo(() => {
     if (!data) return null;
     const perUniverse = {};
@@ -90,7 +90,7 @@ function useFixtureTree(qlc) {
 function useFunctionTree(qlc, extraFolders) {
   const D = window.QLCData;
   const data = useLiveList(qlc, () => qlc.call('functions.list').then(r => r.functions || []),
-    ['functions.created', 'functions.deleted', 'functions.renamed', 'functions.moved', 'functions.updated', 'core.project.loaded']);
+    ['functions.created', 'functions.deleted', 'functions.renamed', 'functions.moved', 'functions.updated', 'core.project.loaded', 'core.history.changed']);
   return React.useMemo(() => {
     if (!data) return null;
     const root = { children: [], folders: {} };
@@ -252,6 +252,8 @@ function useFunctionDetail(qlc, functionId) {
   const FF = window.FF;
   const load = React.useCallback(() => qlc.call('functions.get', { functionId: String(functionId) }).then(setDetail).catch(() => {}), [functionId, qlc.online]);
   React.useEffect(() => { setDetail(null); if (qlc.online) load(); }, [functionId, qlc.online]);
+  /* Undo/redo (from this client too) emits only core.history.changed — always refetch on it. */
+  React.useEffect(() => qlc.subscribeTo('core.history.changed', () => load()), [functionId, qlc.online]);
   const topics = ['functions.updated', 'functions.renamed', 'functions.moved', 'functions.scene.valuesChanged', 'functions.scene.membersChanged',
     'functions.chaser.stepsChanged', 'functions.chaser.changed', 'functions.sequence.stepsChanged', 'functions.sequence.changed', 'functions.collection.membersChanged'];
   FF.useForeignEvents(qlc, topics, (topic, d) => {
@@ -330,7 +332,7 @@ function FixturesFunctions() {
   const [extraFolders, setExtraFolders] = React.useState([]);
   const fixtureTree = useFixtureTree(qlc);
   const functionTree = useFunctionTree(qlc, extraFolders);
-  const palettes = useLiveList(qlc, () => qlc.call('palette.list').then(r => r.palettes || []), ['palette.created', 'palette.deleted', 'palette.updated', 'core.project.loaded']);
+  const palettes = useLiveList(qlc, () => qlc.call('palette.list').then(r => r.palettes || []), ['palette.created', 'palette.deleted', 'palette.updated', 'core.project.loaded', 'core.history.changed']);
   const fnStatus = useFunctionStatus(qlc, functionTree ? functionTree.all : null);
   const lastError = FF ? FF.useLastError() : null;
 
@@ -346,6 +348,12 @@ function FixturesFunctions() {
   const [lastSent, setLastSent] = React.useState([]);      /* fallback running guess for servers without status */
   const [dimmer, setDimmer] = React.useState(255);
   const [moveTarget, setMoveTarget] = React.useState('');
+  const [renaming, setRenaming] = React.useState(false); /* toolbar/menu Rename puts the header name into edit mode */
+  React.useEffect(() => {
+    if (!renaming) return;
+    const el = document.querySelector('[data-ff-name] input');
+    if (el) { el.focus(); el.select(); }
+  }, [renaming]);
   const [newFolderName, setNewFolderName] = React.useState('');
 
   /* Live: one root per side; mock: the prototype's flat groups. */
@@ -380,6 +388,7 @@ function FixturesFunctions() {
   const toggle = (id) => setExpanded(p => p.indexOf(id) === -1 ? p.concat([id]) : p.filter(x => x !== id));
   /* Click = select (folders also toggle); Ctrl/Cmd or multi mode = add/remove; Shift = range. */
   const pick = (id, node, e) => {
+    setRenaming(false);
     const add = multi || (e && (e.ctrlKey || e.metaKey));
     const range = e && e.shiftKey && detail && !node.children;
     if (range) {
@@ -393,22 +402,30 @@ function FixturesFunctions() {
       }
     }
     if (add && !node.children) {
+      /* Adding to the selection keeps the open editor: ctrl-clicking fixtures while a Scene is
+         open is how Fixture Tools get their "Scene" target, like qmlui's left panel selection. */
       setSelected(s => s.indexOf(id) !== -1 ? s.filter(x => x !== id) : s.concat([id]));
-      if (selected.indexOf(id) === -1) setDetail(node);
+      if (!detail) setDetail(node);
       return;
     }
     setSelected([id]);
-    setDetail(node);
+    /* Expanding a universe/root row while a function editor is open must not close the editor
+       (that is how fixtures get picked for Fixture Tools with target "Scene"). */
+    const keepEditor = node.children && detail && detail.kind === 'function' && (node.kind === 'universe' || node.kind === 'root');
+    if (!keepEditor) setDetail(node);
     if (node.children) toggle(id);
   };
   const allNodes = React.useMemo(() => flatten(fixturesRoot.concat(functionsRoot), []), [fixturesRoot, functionsRoot]);
   const selectedNodes = selected.map(id => allNodes.find(n => n.id === id)).filter(Boolean);
   const selectedFixtureIds = selectedNodes.filter(n => n.kind === 'fixture').map(n => n.fixtureId);
   const selectedFunctionIds = selectedNodes.filter(n => n.kind === 'function').map(n => n.functionId);
+  /* Select fixtures in the tree (from an editor or a group); an open function editor stays open. */
   const selectFixtures = (ids) => {
-    const nodes = allNodes.filter(n => n.kind === 'fixture' && ids.indexOf(n.fixtureId) !== -1);
+    const wanted = ids.map(String);
+    const nodes = allNodes.filter(n => n.kind === 'fixture' && wanted.indexOf(String(n.fixtureId)) !== -1);
     setSelected(nodes.map(n => n.id));
-    if (nodes.length) setDetail(nodes[nodes.length - 1]);
+    setExpanded(p => p.concat(['root-fixtures'].concat(nodes.map(n => 'u' + n.summary.universe))));
+    if (nodes.length && !(detail && detail.kind === 'function')) setDetail(nodes[nodes.length - 1]);
   };
 
   const isFunction = !!(detail && (detail.kind === 'function' || detail.type));
@@ -434,6 +451,7 @@ function FixturesFunctions() {
       .catch(e => { if (e && e.code === 'NOT_FOUND' && method === 'functions.setPause') qlc.call('functions.pause', { functionId: id, id, paused }).catch(() => {}); });
   };
   const rename = (name) => {
+    setRenaming(false);
     if (!detail || !live || !name || name === detail.name) return;
     if (isFunction) FF.mutate(qlc, 'functions.rename', { functionId: String(detail.functionId), name }).catch(() => {});
     else if (isFixture) FF.mutate(qlc, 'fixtures.update', { fixtureId: String(detail.fixtureId), name }).catch(() => {});
@@ -527,7 +545,7 @@ function FixturesFunctions() {
         <IconButton imgSource={D.icon('add')} size={26} disabled={!live} tooltip={'Add a new function' + (targetPath ? ' in ' + targetPath : '')}
           onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu({ x: r.left, y: r.bottom + 2, kind: 'new' }); }} />
         <IconButton imgSource={D.icon('rename')} size={26} disabled={!live || !detail || isFolder} tooltip="Rename the selected item (or double-click its name)"
-          onClick={() => { const el = document.querySelector('[data-ff-name]'); if (el) el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); }} />
+          onClick={() => setRenaming(true)} />
         <IconButton imgSource={D.icon('folder')} size={26} disabled={!live || !(isFunction || selectedFunctionIds.length)} tooltip="Move the selected functions to a folder"
           onClick={() => { setMoveTarget(targetPath); setDlg('move'); }} />
         <IconButton faSource="fa_trash_can" size={26} disabled={!canDelete}
@@ -550,7 +568,7 @@ function FixturesFunctions() {
       </ViewToolbar>
 
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-        <div style={{ width: 280, minWidth: 280, background: 'var(--bg-stronger)', borderRight: 'var(--border-dark)', overflow: 'auto' }}>
+        <div data-ff-tree="1" style={{ width: 280, minWidth: 280, background: 'var(--bg-stronger)', borderRight: 'var(--border-dark)', overflow: 'auto' }}>
           {shownFixtures.map(n => <TreeBranch key={n.id} node={n} selected={selected} onSelect={pick} expanded={effectiveExpanded} onToggle={toggle} decorate={decorate} checkable={multi} onContextMenu={onNodeMenu} />)}
           <div style={{ height: 1, background: 'var(--border-color-dark)', margin: '4px 0' }} />
           {shownFunctions.map(n => <TreeBranch key={n.id} node={n} selected={selected} onSelect={pick} expanded={effectiveExpanded} onToggle={toggle} decorate={decorate} checkable={multi} onContextMenu={onNodeMenu} />)}
@@ -561,7 +579,9 @@ function FixturesFunctions() {
           {detail && (isFunction || isFixture) ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, height: 38, padding: '0 10px', background: 'var(--section-header)', borderBottom: '2px solid var(--section-header-div)', flex: 'none' }}>
               <img src={detail.icon} alt="" style={{ width: 24, height: 24 }} />
-              <span data-ff-name="1" style={{ display: 'inline-flex' }}><CustomTextInput key={detail.id} text={detail.name} allowDoubleClick width={300} onTextConfirmed={rename} /></span>
+              <span data-ff-name="1" style={{ display: 'inline-flex' }} onKeyDown={(e) => { if (e.key === 'Escape') setRenaming(false); }}>
+                <CustomTextInput key={detail.id} text={detail.name} allowDoubleClick width={300} editing={renaming ? true : undefined} onTextConfirmed={rename} />
+              </span>
               {selected.length > 1 ? <RobotoText label={'+' + (selected.length - 1) + ' more'} fontSize={13} labelColor="var(--fg-light)" /> : null}
               <ToolbarSpacer />
               {isFunction ? <>
@@ -658,11 +678,11 @@ function FixturesFunctions() {
           </> : menu.node.kind === 'function' ? <>
             <MenuItem glyph="fa_play" text="Start" onClick={() => { setMenu(null); qlc.call('functions.start', { functionId: String(menu.node.functionId) }).catch(() => {}); setLastSent(p => p.concat([menu.node.functionId])); }} />
             <MenuItem glyph={FF.GLYPH.stop} text="Stop" onClick={() => { setMenu(null); qlc.call('functions.stop', { functionId: String(menu.node.functionId) }).catch(() => {}); setLastSent(p => p.filter(x => x !== menu.node.functionId)); }} />
-            <MenuItem icon="rename" text="Rename" onClick={() => { setMenu(null); setTimeout(() => { const el = document.querySelector('[data-ff-name]'); if (el) el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); }, 50); }} />
+            <MenuItem icon="rename" text="Rename" onClick={() => { setMenu(null); setRenaming(true); }} />
             <MenuItem icon="folder" text="Move to folder…" onClick={() => { setMenu(null); setMoveTarget(menu.node.path || ''); setDlg('move'); }} />
             <MenuItem glyph="fa_trash_can" text={selected.length > 1 ? 'Delete ' + selected.length + ' items' : 'Delete'} onClick={() => { setMenu(null); setDlg('delete'); }} />
           </> : menu.node.kind === 'fixture' ? <>
-            <MenuItem icon="rename" text="Rename" onClick={() => { setMenu(null); setTimeout(() => { const el = document.querySelector('[data-ff-name]'); if (el) el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); }, 50); }} />
+            <MenuItem icon="rename" text="Rename" onClick={() => { setMenu(null); setRenaming(true); }} />
             <MenuItem icon="intensity" text="Fixture tools" onClick={() => { setMenu(null); setPanel('tools'); }} />
             <MenuItem icon="scene" text="New Scene with selected fixtures" onClick={() => { setMenu(null); FF.mutate(qlc, 'functions.create', { type: 'Scene', fixtures: (selectedFixtureIds.length ? selectedFixtureIds : [menu.node.fixtureId]).map(String) }).catch(() => {}); }} />
             <MenuItem glyph="fa_trash_can" text={selectedFixtureIds.length > 1 ? 'Unpatch ' + selectedFixtureIds.length + ' fixtures' : 'Unpatch'} onClick={() => { setMenu(null); setDlg('delete'); }} />

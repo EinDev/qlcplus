@@ -123,6 +123,15 @@
     React.useEffect(() => { if (current == null && members.length) setCurrent(String(members[0].id)); if (current != null && !memberIds.some(id => String(id) === current)) setCurrent(members.length ? String(members[0].id) : null); }, [memberIds.join(',')]);
 
     const patchTd = (p) => setDetail(d => Object.assign({}, d, { typeDetail: Object.assign({}, d.typeDetail, p) }));
+    /* Fixture Tools with target "Scene" writes into this scene from outside this editor. */
+    FF.useLocalEvents('scene.value', (d) => {
+      if (!d || String(d.sceneId) !== sceneId) return;
+      setDetail(cur => {
+        const ctd = cur.typeDetail || {};
+        const fx = (ctd.fixtures || []).some(id => String(id) === d.fixture) ? ctd.fixtures : (ctd.fixtures || []).concat([d.fixture]);
+        return Object.assign({}, cur, { typeDetail: Object.assign({}, ctd, { values: Object.assign({}, ctd.values, { [d.fixture + '.' + d.channel]: d.value }), fixtures: fx }) });
+      });
+    }, [sceneId]);
     const setValue = (fid, ch, value) => {
       const key = fid + '.' + ch;
       patchTd({ values: Object.assign({}, values, { [key]: value }), fixtures: memberIds.some(id => String(id) === String(fid)) ? memberIds : memberIds.concat([String(fid)]) });

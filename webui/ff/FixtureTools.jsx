@@ -120,8 +120,12 @@
         const writes = fn(it.channels);
         if (!writes.length) return;
         if (toScene) {
-          writes.forEach(w => FF.mutate(qlc, 'functions.scene.setValue', { functionId: String(sceneId), fixture: String(it.detail.id), channel: w.channel, value: w.value },
-            { key: 'scene:' + sceneId + ':' + it.detail.id + ':' + w.channel }).catch(() => {}));
+          writes.forEach(w => {
+            FF.mutate(qlc, 'functions.scene.setValue', { functionId: String(sceneId), fixture: String(it.detail.id), channel: w.channel, value: w.value },
+              { key: 'scene:' + sceneId + ':' + it.detail.id + ':' + w.channel }).catch(() => {});
+            /* Own server echoes are filtered, so tell the open Scene editor directly. */
+            FF.notifyLocal('scene.value', { sceneId: String(sceneId), fixture: String(it.detail.id), channel: w.channel, value: w.value });
+          });
         } else {
           FF.writeLive(qlc, it.detail, writes, key + ':' + it.detail.id);
         }

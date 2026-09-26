@@ -50,7 +50,13 @@
       setModels([]); setModel(''); setModelInfo(null); setMode('');
       if (!manufacturer || manufacturer === GENERIC || !qlc.online) return undefined;
       let alive = true;
-      qlc.call('fixtures.defs.listModels', { manufacturer }).then(r => { if (alive) setModels(((r && r.models) || []).map(m => typeof m === 'string' ? { model: m } : m)); }).catch(() => {});
+      qlc.call('fixtures.defs.listModels', { manufacturer }).then(r => {
+        if (!alive) return;
+        /* models: [string] plus modelDetails: [{model, isUser}] on the merged server; older builds return [{model, isUser}] directly. */
+        const details = {};
+        ((r && r.modelDetails) || []).forEach(d => { details[d.model] = d; });
+        setModels(((r && r.models) || []).map(m => typeof m === 'string' ? Object.assign({ model: m }, details[m] || {}) : m));
+      }).catch(() => {});
       return () => { alive = false; };
     }, [manufacturer]);
     React.useEffect(() => {
@@ -176,7 +182,7 @@
     React.useEffect(() => {
       if (!qlc.online) { setGroups(null); return undefined; }
       loadList();
-      const offs = ['fixtures.group.created', 'fixtures.group.deleted', 'fixtures.group.renamed', 'fixtures.group.updated', 'core.project.loaded'].map(t => qlc.subscribeTo(t, () => { loadList(); if (current != null) loadDetail(current); }));
+      const offs = ['fixtures.group.created', 'fixtures.group.deleted', 'fixtures.group.renamed', 'fixtures.group.updated', 'core.project.loaded', 'core.history.changed'].map(t => qlc.subscribeTo(t, () => { loadList(); if (current != null) loadDetail(current); }));
       return () => offs.forEach(f => f());
     }, [qlc.online, current]);
     React.useEffect(() => { setDetail(null); if (current != null && qlc.online) loadDetail(current); }, [current, qlc.online]);
@@ -286,7 +292,7 @@
       setApplied(unsupported ? 'Applying ' + p.type + ' palettes is not available (no channel mapping)' : 'Applied "' + p.name + '" to ' + n + ' fixture' + (n === 1 ? '' : 's') + ' (live output)');
     };
     const applyCurrent = () => { if (detail) apply(detail); };
-    const update = (p) => { setDetail(d => Object.assign({}, d, p)); FF.mutate(qlc, 'palette.update', Object.assign({ paletteId: Number(current) }, p), { key: 'pal:' + current }).catch(() => {}); };
+    const update = (p) => { setDetail(d => Object.assign({}, d, p)); FF.mutate(qlc, 'palette.update', Object.assign({ paletteId: Number(current) }, p), { key: 'pal:' + current + ':' + Object.keys(p).join(',') }).catch(() => {}); };
     const create = () => { const d = draft; setDraft(null); FF.mutate(qlc, 'palette.create', { type: d.type, name: d.name || d.type + ' palette', values: d.values }).then(r => { if (r && r.paletteId != null) setCurrent(String(r.paletteId)); }).catch(() => {}); };
     const remove = () => { setConfirm(false); if (current == null) return; FF.mutate(qlc, 'palette.delete', { paletteId: Number(current) }).then(() => setCurrent(null)).catch(() => {}); };
     const defaultValues = (t) => t === 'Dimmer' ? [100] : t === 'Color' ? ['#ffffff'] : t === 'PanTilt' ? [127, 127] : [127];

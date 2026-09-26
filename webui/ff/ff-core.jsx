@@ -114,7 +114,11 @@
         let result;
         try { result = await client.call(it.method, withRevision(client, it.params)); }
         catch (e) {
-          if (e && e.code === 'CONFLICT') result = await client.call(it.method, withRevision(client, it.params));
+          /* A stale-revision CONFLICT carries the fresh docRevision (learnt by the client) and is
+             retried once; an address-overlap CONFLICT from fixtures.patch/update carries the
+             offending address and would fail again, so it is reported instead. */
+          const stale = e && e.code === 'CONFLICT' && e.details && e.details.docRevision != null && e.details.address == null;
+          if (stale) result = await client.call(it.method, withRevision(client, it.params));
           else throw e;
         }
         it.resolvers.forEach(r => r[0](result));
@@ -170,6 +174,25 @@
     fn();
   };
 
+  /* ---- local (same-page) change bus ------------------------------------------------------------ */
+  /* Own-origin server echoes are filtered below, so when one component edits a document object
+     another component is showing (Fixture Tools writing into the open Scene), it announces the
+     edit here and the other side patches its optimistic copy. */
+  const localListeners = new Map();
+  FF.notifyLocal = function (topic, data) {
+    (localListeners.get(topic) || new Set()).forEach(fn => { try { fn(data); } catch (e) { /* ignore */ } });
+  };
+  FF.useLocalEvents = function (topic, handler, deps) {
+    const ref = React.useRef(handler);
+    ref.current = handler;
+    React.useEffect(() => {
+      const fn = (d) => ref.current(d);
+      if (!localListeners.has(topic)) localListeners.set(topic, new Set());
+      localListeners.get(topic).add(fn);
+      return () => localListeners.get(topic).delete(fn);
+    }, [topic].concat(deps || []));
+  };
+
   /* ---- own-origin echo filtering -------------------------------------------------------------- */
   /**
    * Subscribe to server event topics, skipping events this very client caused (originClientId ==
@@ -203,7 +226,10 @@
     const drop = (id) => { c.fixtures.delete(String(id)); c.listeners.forEach(fn => fn(String(id))); };
     client.on('fixtures.updated', d => { if (d && d.fixture) drop(d.fixture.id); });
     client.on('fixtures.unpatched', d => ((d && d.fixtureIds) || []).forEach(drop));
-    client.on('core.project.loaded', () => { const ids = Array.from(c.fixtures.keys()); c.fixtures.clear(); c.modes.clear(); ids.forEach(id => c.listeners.forEach(fn => fn(id))); });
+    const flush = () => { const ids = Array.from(c.fixtures.keys()); c.fixtures.clear(); c.modes.clear(); ids.forEach(id => c.listeners.forEach(fn => fn(id))); };
+    client.on('core.project.loaded', flush);
+    /* Undo/redo emits no domain events, only core.history.changed — anything cached may be stale. */
+    client.on('core.history.changed', flush);
     return c;
   }
   /** fixtures.get, cached per client until that fixture changes. */
@@ -251,30 +277,34 @@
   };
 
   /**
-   * Channels with capabilities for a fixture summary/detail ({manufacturer, model, mode}). Tries
-   * fixtures.defs.getMode (spec shape: channels[{index,name,group,preset,colour,controlByte,
-   * defaultValue,capabilities[{min,max,name,preset,presetType,color1,color2}]}]), then
-   * fixtures.defs.getModel (modes[{name,channels[]}]). Resolves null when neither is available
-   * — callers then fall back to plain 0-255 controls.
+   * Channels with capabilities for a fixture summary/detail ({manufacturer, model, mode}).
+   * fixtures.get's channelList carries no capabilities, so they come from the definition library:
+   * fixtures.defs.getModel first (one call covers every mode of that model — modes[{name,
+   * channelCount, channels[{index,name,group,preset,colour,controlByte,defaultValue,
+   * capabilities[{min,max,name,preset,presetType,color1,color2}]}]}], cached per model), then
+   * fixtures.defs.getMode for servers whose getModel lists modes without channels. Resolves null
+   * when neither is available — callers then fall back to plain 0-255 controls.
    */
   FF.modeChannels = function (qlc, f) {
     const client = qlc.client && qlc.client();
     if (!client || !client.connected() || !f || !f.manufacturer || !f.model || !f.mode) return Promise.resolve(null);
     const c = cacheFor(client);
-    const key = f.manufacturer + ' ' + f.model + ' ' + f.mode;
-    if (!c.modes.has(key)) {
-      const viaGetMode = client.isUnsupported('fixtures.defs.getMode') ? Promise.reject({ code: 'NOT_FOUND' })
-        : client.call('fixtures.defs.getMode', { manufacturer: f.manufacturer, model: f.model, mode: f.mode }).then(r => (r && r.channels) || null);
-      const p = viaGetMode.catch(() => {
-        if (client.isUnsupported('fixtures.defs.getModel')) return null;
-        return client.call('fixtures.defs.getModel', { manufacturer: f.manufacturer, model: f.model }).then(r => {
-          const mode = ((r && r.modes) || []).find(m => m.name === f.mode);
-          return mode && mode.channels ? mode.channels : null;
-        }).catch(() => null);
-      });
-      c.modes.set(key, p);
+    const modelKey = f.manufacturer + ' ' + f.model;
+    if (!c.modes.has(modelKey)) {
+      const p = client.isUnsupported('fixtures.defs.getModel') ? Promise.resolve(null)
+        : client.call('fixtures.defs.getModel', { manufacturer: f.manufacturer, model: f.model }).then(r => (r && r.modes) || null).catch(() => null);
+      c.modes.set(modelKey, p);
     }
-    return c.modes.get(key);
+    return c.modes.get(modelKey).then(modes => {
+      const mode = (modes || []).find(m => m.name === f.mode);
+      if (mode && mode.channels && mode.channels.length) return mode.channels;
+      const key = modelKey + ' ' + f.mode;
+      if (!c.modes.has(key)) {
+        c.modes.set(key, client.isUnsupported('fixtures.defs.getMode') ? Promise.resolve(null)
+          : client.call('fixtures.defs.getMode', { manufacturer: f.manufacturer, model: f.model, mode: f.mode }).then(r => (r && r.channels) || null).catch(() => null));
+      }
+      return c.modes.get(key);
+    });
   };
   FF.useModeChannels = function (qlc, f) {
     const [chs, setChs] = React.useState(undefined);

@@ -226,8 +226,9 @@
     }
 
     if (frame.type === 'event') {
-      /* Every structural event (from any client) carries the new docRevision — §4a. */
-      this._trackRevision(frame.data, frame.topic === 'core.project.loaded');
+      /* Every structural event (from any client) carries the new docRevision — §4a. A project
+         load or an undo/redo (core.history.changed) may move it backwards, so those always win. */
+      this._trackRevision(frame.data, frame.topic === 'core.project.loaded' || frame.topic === 'core.history.changed');
       this._emit('event', frame);
       this._emit(frame.topic, frame.data); // generic: qlc.on('vc.widget.created', fn) always works
       this._routeEvent(frame.topic, frame.data);
