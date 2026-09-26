@@ -523,7 +523,13 @@ bool AvolitesD4Parser::parseMode(QXmlStreamReader *doc, QLCFixtureDef *fixtureDe
     QString name = doc->attributes().value(KD4TagModeName).toString();
 
     if (name.isEmpty())
+    {
+        // Consume the whole element, or the caller's readNextStartElement()
+        // descends into this mode's children and stops at its end tag,
+        // silently dropping every mode that follows.
+        doc->skipCurrentElement();
         return false;
+    }
 
     QLCFixtureMode *mode = new QLCFixtureMode(fixtureDef);
     mode->setName(name);
@@ -683,7 +689,12 @@ void AvolitesD4Parser::parseInclude(QXmlStreamReader *doc, QLCFixtureMode *mode)
                     QStringList offsetValues = offset.split(KD4TagModeChannelSeparator);
                     // if there's more than 2 addresses, or less than 2, bail out, don't know how to handle this, shouldn't happen ever.
                     if (offsetValues.size() > 2 || offsetValues.size() < 2)
+                    {
+                        // Same as below: leave the reader past this Attribute,
+                        // or the include loop ends at its end tag.
+                        doc->skipCurrentElement();
                         continue;
+                    }
 
                     // Add this one
                     channelList.insert(offsetValues.value(0).toInt(), m_channels.value(modeID));
