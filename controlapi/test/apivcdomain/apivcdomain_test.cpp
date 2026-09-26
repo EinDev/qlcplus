@@ -37,6 +37,29 @@ static QString buildRequest(const QString &method, const QJsonObject &params, co
     return QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact));
 }
 
+/** Every "event" frame with $topic captured by $spy so far, in arrival order (data objects, with the
+ *  frame's originClientId folded in as "_origin" - QJsonValue::Null when the server sent null). */
+static QList<QJsonObject> eventsWithTopic(const QSignalSpy &spy, const QString &topic)
+{
+    QList<QJsonObject> result;
+    for (const QList<QVariant> &frame : spy)
+    {
+        QJsonObject obj = QJsonDocument::fromJson(frame.at(0).toString().toUtf8()).object();
+        if (obj.value(QStringLiteral("type")).toString() != QStringLiteral("event") ||
+            obj.value(QStringLiteral("topic")).toString() != topic)
+            continue;
+        QJsonObject data = obj.value(QStringLiteral("data")).toObject();
+        data.insert(QStringLiteral("_origin"), obj.value(QStringLiteral("originClientId")));
+        result.append(data);
+    }
+    return result;
+}
+
+static QString errorCode(const QJsonObject &reply)
+{
+    return reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString();
+}
+
 void ApiVcDomain_Test::init()
 {
     m_doc = new Doc(nullptr);
@@ -819,3 +842,563 @@ void ApiVcDomain_Test::widgetRepositionBulkUpdatesAllOrNothing()
 }
 
 QTEST_MAIN(ApiVcDomain_Test)
+
+/*****************************************************************************
+ * Live interaction
+ *****************************************************************************/
+
+QString ApiVcDomain_Test::createWidget(const QString &widgetType, const QJsonObject &typeConfig)
+{
+    QJsonObject params;
+    params.insert(QStringLiteral("widgetType"), widgetType);
+    params.insert(QStringLiteral("page"), 0);
+    QJsonObject geom;
+    geom.insert(QStringLiteral("x"), 0); geom.insert(QStringLiteral("y"), 0);
+    geom.insert(QStringLiteral("width"), 1); geom.insert(QStringLiteral("height"), 1);
+    params.insert(QStringLiteral("geometry"), geom);
+    if (typeConfig.isEmpty() == false)
+        params.insert(QStringLiteral("typeConfig"), typeConfig);
+    params.insert(QStringLiteral("baseRevision"), currentDocRevision());
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("vc.widget.create"), params, QStringLiteral("t-create-") + widgetType);
+    return reply.value(QStringLiteral("result")).toObject().value(QStringLiteral("widgetId")).toString();
+}
+
+QJsonObject ApiVcDomain_Test::widgetParams(const QString &widgetId, const QJsonObject &extra)
+{
+    QJsonObject params = extra;
+    params.insert(QStringLiteral("widgetId"), widgetId);
+    return params;
+}
+
+void ApiVcDomain_Test::liveButtonPressTogglesOnDownEdgeAndBroadcasts()
+{
+    QString clientId = helloAndGetClientId();
+    QJsonObject cfg;
+    cfg.insert(QStringLiteral("actionType"), QStringLiteral("Toggle"));
+    cfg.insert(QStringLiteral("functionID"), QStringLiteral("7"));
+    QString buttonId = createWidget(QStringLiteral("Button"), cfg);
+    QVERIFY(buttonId.isEmpty() == false);
+
+    QSignalSpy spy(m_client, &QWebSocket::textMessageReceived);
+
+    // Down-edge: toggles on -> exactly one stateChanged(active) with our clientId as origin.
+    QJsonObject down;
+    down.insert(QStringLiteral("pressed"), true);
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("vc.button.press"), widgetParams(buttonId, down), QStringLiteral("t-down"));
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QVERIFY(reply.value(QStringLiteral("result")).toObject().isEmpty()); // bare ack per §4b
+
+    QList<QJsonObject> events = eventsWithTopic(spy, QStringLiteral("vc.button.stateChanged"));
+    QCOMPARE(events.size(), 1);
+    QCOMPARE(events.at(0).value(QStringLiteral("widgetId")).toString(), buttonId);
+    QCOMPARE(events.at(0).value(QStringLiteral("state")).toString(), QStringLiteral("active"));
+    QCOMPARE(events.at(0).value(QStringLiteral("_origin")).toString(), clientId);
+
+    // Up-edge: a no-op for Toggle - no second event, still active.
+    QJsonObject up;
+    up.insert(QStringLiteral("pressed"), false);
+    reply = sendAndWaitForReply(QStringLiteral("vc.button.press"), widgetParams(buttonId, up), QStringLiteral("t-up"));
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(eventsWithTopic(spy, QStringLiteral("vc.button.stateChanged")).size(), 1);
+
+    QJsonObject get = sendAndWaitForReply(QStringLiteral("vc.widget.get"), widgetParams(buttonId), QStringLiteral("t-get1"));
+    QCOMPARE(get.value(QStringLiteral("result")).toObject().value(QStringLiteral("state")).toString(), QStringLiteral("active"));
+
+    // Second down-edge toggles back off.
+    reply = sendAndWaitForReply(QStringLiteral("vc.button.press"), widgetParams(buttonId, down), QStringLiteral("t-down2"));
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    events = eventsWithTopic(spy, QStringLiteral("vc.button.stateChanged"));
+    QCOMPARE(events.size(), 2);
+    QCOMPARE(events.at(1).value(QStringLiteral("state")).toString(), QStringLiteral("inactive"));
+}
+
+void ApiVcDomain_Test::liveButtonPressFlashFollowsBothEdges()
+{
+    helloAndGetClientId();
+    QJsonObject cfg;
+    cfg.insert(QStringLiteral("actionType"), QStringLiteral("Flash"));
+    cfg.insert(QStringLiteral("functionID"), QStringLiteral("7"));
+    QString buttonId = createWidget(QStringLiteral("Button"), cfg);
+
+    QSignalSpy spy(m_client, &QWebSocket::textMessageReceived);
+    QJsonObject down; down.insert(QStringLiteral("pressed"), true);
+    QJsonObject up; up.insert(QStringLiteral("pressed"), false);
+
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("vc.button.press"), widgetParams(buttonId, down), QStringLiteral("t-fd")).value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("vc.button.press"), widgetParams(buttonId, up), QStringLiteral("t-fu")).value(QStringLiteral("ok")).toBool(), true);
+
+    QList<QJsonObject> events = eventsWithTopic(spy, QStringLiteral("vc.button.stateChanged"));
+    QCOMPARE(events.size(), 2);
+    QCOMPARE(events.at(0).value(QStringLiteral("state")).toString(), QStringLiteral("active"));
+    QCOMPARE(events.at(1).value(QStringLiteral("state")).toString(), QStringLiteral("inactive"));
+}
+
+void ApiVcDomain_Test::liveButtonPressRejectsUnknownWidgetWrongTypeAndBadParams()
+{
+    helloAndGetClientId();
+    QString sliderId = createWidget(QStringLiteral("Slider"));
+    QJsonObject down; down.insert(QStringLiteral("pressed"), true);
+
+    // Unknown id -> NOT_FOUND
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("vc.button.press"), widgetParams(QStringLiteral("9999"), down), QStringLiteral("t-nf"));
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(errorCode(reply), QStringLiteral("NOT_FOUND"));
+
+    // Unparseable id -> NOT_FOUND too
+    reply = sendAndWaitForReply(QStringLiteral("vc.button.press"), widgetParams(QStringLiteral("not-an-id"), down), QStringLiteral("t-nf2"));
+    QCOMPARE(errorCode(reply), QStringLiteral("NOT_FOUND"));
+
+    // Exists but is a Slider -> INVALID_PARAMS, details name the actual type
+    reply = sendAndWaitForReply(QStringLiteral("vc.button.press"), widgetParams(sliderId, down), QStringLiteral("t-wt"));
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(errorCode(reply), QStringLiteral("INVALID_PARAMS"));
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("details")).toObject()
+                 .value(QStringLiteral("widgetType")).toString(), QStringLiteral("Slider"));
+
+    // Missing / non-boolean pressed -> INVALID_PARAMS (checked before the widget lookup)
+    QString buttonId = createWidget(QStringLiteral("Button"));
+    reply = sendAndWaitForReply(QStringLiteral("vc.button.press"), widgetParams(buttonId), QStringLiteral("t-np"));
+    QCOMPARE(errorCode(reply), QStringLiteral("INVALID_PARAMS"));
+    QJsonObject stringy; stringy.insert(QStringLiteral("pressed"), QStringLiteral("true"));
+    reply = sendAndWaitForReply(QStringLiteral("vc.button.press"), widgetParams(buttonId, stringy), QStringLiteral("t-sp"));
+    QCOMPARE(errorCode(reply), QStringLiteral("INVALID_PARAMS"));
+}
+
+void ApiVcDomain_Test::liveButtonPressRefusesDisabledWidgetAndMissingFunction()
+{
+    helloAndGetClientId();
+    QJsonObject down; down.insert(QStringLiteral("pressed"), true);
+
+    // Toggle button without a function: the engine's requestStateChange() would silently do nothing.
+    QJsonObject cfg;
+    cfg.insert(QStringLiteral("actionType"), QStringLiteral("Toggle"));
+    QString orphanId = createWidget(QStringLiteral("Button"), cfg);
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("vc.button.press"), widgetParams(orphanId, down), QStringLiteral("t-orphan"));
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(errorCode(reply), QStringLiteral("INVALID_STATE"));
+
+    // Disabled widget: the on-screen button ignores input, so must the API.
+    cfg.insert(QStringLiteral("functionID"), QStringLiteral("7"));
+    QString buttonId = createWidget(QStringLiteral("Button"), cfg);
+    QJsonObject update;
+    update.insert(QStringLiteral("widgetId"), buttonId);
+    update.insert(QStringLiteral("isDisabled"), true);
+    update.insert(QStringLiteral("baseRevision"), currentDocRevision());
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("vc.widget.update"), update, QStringLiteral("t-dis")).value(QStringLiteral("ok")).toBool(), true);
+
+    reply = sendAndWaitForReply(QStringLiteral("vc.button.press"), widgetParams(buttonId, down), QStringLiteral("t-dis2"));
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(errorCode(reply), QStringLiteral("INVALID_STATE"));
+}
+
+void ApiVcDomain_Test::liveSliderSetValueBroadcastsAndValidates()
+{
+    QString clientId = helloAndGetClientId();
+    QString sliderId = createWidget(QStringLiteral("Slider"));
+    QString buttonId = createWidget(QStringLiteral("Button"));
+
+    QSignalSpy spy(m_client, &QWebSocket::textMessageReceived);
+    QJsonObject v; v.insert(QStringLiteral("value"), 200);
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("vc.slider.setValue"), widgetParams(sliderId, v), QStringLiteral("t-sv"));
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QVERIFY(reply.value(QStringLiteral("result")).toObject().isEmpty());
+
+    QList<QJsonObject> events = eventsWithTopic(spy, QStringLiteral("vc.slider.valueChanged"));
+    QCOMPARE(events.size(), 1);
+    QCOMPARE(events.at(0).value(QStringLiteral("widgetId")).toString(), sliderId);
+    QCOMPARE(events.at(0).value(QStringLiteral("value")).toInt(), 200);
+    QCOMPARE(events.at(0).value(QStringLiteral("_origin")).toString(), clientId);
+
+    // Same value again: no change, no second event (last-write-wins, but nothing to report).
+    reply = sendAndWaitForReply(QStringLiteral("vc.slider.setValue"), widgetParams(sliderId, v), QStringLiteral("t-sv2"));
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(eventsWithTopic(spy, QStringLiteral("vc.slider.valueChanged")).size(), 1);
+
+    QJsonObject get = sendAndWaitForReply(QStringLiteral("vc.widget.get"), widgetParams(sliderId), QStringLiteral("t-sg"));
+    QJsonObject w = get.value(QStringLiteral("result")).toObject();
+    QCOMPARE(w.value(QStringLiteral("value")).toInt(), 200);
+    QCOMPARE(w.value(QStringLiteral("min")).toDouble(), 0.0);
+    QCOMPARE(w.value(QStringLiteral("max")).toDouble(), 255.0);
+
+    // Out of range / wrong type / missing -> INVALID_PARAMS
+    QJsonObject big; big.insert(QStringLiteral("value"), 256);
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.slider.setValue"), widgetParams(sliderId, big), QStringLiteral("t-big"))), QStringLiteral("INVALID_PARAMS"));
+    QJsonObject neg; neg.insert(QStringLiteral("value"), -1);
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.slider.setValue"), widgetParams(sliderId, neg), QStringLiteral("t-neg"))), QStringLiteral("INVALID_PARAMS"));
+    QJsonObject frac; frac.insert(QStringLiteral("value"), 12.5);
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.slider.setValue"), widgetParams(sliderId, frac), QStringLiteral("t-frac"))), QStringLiteral("INVALID_PARAMS"));
+    QJsonObject str; str.insert(QStringLiteral("value"), QStringLiteral("100"));
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.slider.setValue"), widgetParams(sliderId, str), QStringLiteral("t-str"))), QStringLiteral("INVALID_PARAMS"));
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.slider.setValue"), widgetParams(sliderId), QStringLiteral("t-miss"))), QStringLiteral("INVALID_PARAMS"));
+
+    // Wrong widget type / unknown widget
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.slider.setValue"), widgetParams(buttonId, v), QStringLiteral("t-swt"))), QStringLiteral("INVALID_PARAMS"));
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.slider.setValue"), widgetParams(QStringLiteral("4242"), v), QStringLiteral("t-snf"))), QStringLiteral("NOT_FOUND"));
+}
+
+void ApiVcDomain_Test::liveCueListTransportAndGet()
+{
+    QString clientId = helloAndGetClientId();
+    QJsonObject cfg;
+    cfg.insert(QStringLiteral("chaserID"), QStringLiteral("3"));
+    QString cueListId = createWidget(QStringLiteral("CueList"), cfg);
+    QString orphanId = createWidget(QStringLiteral("CueList"));
+    QString buttonId = createWidget(QStringLiteral("Button"));
+
+    // Initial get: 3 fake steps, stopped, nothing selected.
+    QJsonObject get = sendAndWaitForReply(QStringLiteral("vc.cueList.get"), widgetParams(cueListId), QStringLiteral("t-cg"));
+    QCOMPARE(get.value(QStringLiteral("ok")).toBool(), true);
+    QJsonObject r = get.value(QStringLiteral("result")).toObject();
+    QJsonArray steps = r.value(QStringLiteral("steps")).toArray();
+    QCOMPARE(steps.size(), 3);
+    QJsonObject step0 = steps.at(0).toObject();
+    QCOMPARE(step0.value(QStringLiteral("index")).toInt(), 0);
+    QVERIFY(step0.contains(QStringLiteral("name")));
+    QVERIFY(step0.contains(QStringLiteral("functionId")));
+    QVERIFY(step0.contains(QStringLiteral("fadeIn")));
+    QVERIFY(step0.contains(QStringLiteral("fadeOut")));
+    QVERIFY(step0.contains(QStringLiteral("hold")));
+    QVERIFY(step0.contains(QStringLiteral("notes")));
+    QCOMPARE(r.value(QStringLiteral("playbackIndex")).toInt(), -1);
+    QCOMPARE(r.value(QStringLiteral("running")).toBool(), false);
+    QCOMPARE(r.value(QStringLiteral("paused")).toBool(), false);
+
+    QSignalSpy spy(m_client, &QWebSocket::textMessageReceived);
+
+    // play -> running at step 0
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("vc.cueList.play"), widgetParams(cueListId), QStringLiteral("t-play"));
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QList<QJsonObject> events = eventsWithTopic(spy, QStringLiteral("vc.cueList.playbackChanged"));
+    QCOMPARE(events.size(), 1);
+    QCOMPARE(events.at(0).value(QStringLiteral("widgetId")).toString(), cueListId);
+    QCOMPARE(events.at(0).value(QStringLiteral("playbackIndex")).toInt(), 0);
+    QCOMPARE(events.at(0).value(QStringLiteral("running")).toBool(), true);
+    QCOMPARE(events.at(0).value(QStringLiteral("paused")).toBool(), false);
+    QCOMPARE(events.at(0).value(QStringLiteral("_origin")).toString(), clientId);
+
+    // next / previous move the index
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("vc.cueList.next"), widgetParams(cueListId), QStringLiteral("t-next")).value(QStringLiteral("ok")).toBool(), true);
+    events = eventsWithTopic(spy, QStringLiteral("vc.cueList.playbackChanged"));
+    QCOMPARE(events.size(), 2);
+    QCOMPARE(events.at(1).value(QStringLiteral("playbackIndex")).toInt(), 1);
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("vc.cueList.previous"), widgetParams(cueListId), QStringLiteral("t-prev")).value(QStringLiteral("ok")).toBool(), true);
+    events = eventsWithTopic(spy, QStringLiteral("vc.cueList.playbackChanged"));
+    QCOMPARE(events.size(), 3);
+    QCOMPARE(events.at(2).value(QStringLiteral("playbackIndex")).toInt(), 0);
+
+    // play while running = pause (PlayPauseStop layout), stop -> stopped
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("vc.cueList.play"), widgetParams(cueListId), QStringLiteral("t-pause")).value(QStringLiteral("ok")).toBool(), true);
+    events = eventsWithTopic(spy, QStringLiteral("vc.cueList.playbackChanged"));
+    QCOMPARE(events.size(), 4);
+    QCOMPARE(events.at(3).value(QStringLiteral("running")).toBool(), true);
+    QCOMPARE(events.at(3).value(QStringLiteral("paused")).toBool(), true);
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("vc.cueList.stop"), widgetParams(cueListId), QStringLiteral("t-stop")).value(QStringLiteral("ok")).toBool(), true);
+    events = eventsWithTopic(spy, QStringLiteral("vc.cueList.playbackChanged"));
+    QCOMPARE(events.size(), 5);
+    QCOMPARE(events.at(4).value(QStringLiteral("running")).toBool(), false);
+    QCOMPARE(events.at(4).value(QStringLiteral("paused")).toBool(), false);
+
+    // widget.get mirrors the live state (no steps there - those are cueList.get only)
+    get = sendAndWaitForReply(QStringLiteral("vc.widget.get"), widgetParams(cueListId), QStringLiteral("t-cwg"));
+    r = get.value(QStringLiteral("result")).toObject();
+    QCOMPARE(r.value(QStringLiteral("playbackIndex")).toInt(), 0);
+    QCOMPARE(r.value(QStringLiteral("running")).toBool(), false);
+    QVERIFY(r.contains(QStringLiteral("steps")) == false);
+
+    // No Chaser attached -> INVALID_STATE; wrong type -> INVALID_PARAMS; unknown -> NOT_FOUND
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.cueList.play"), widgetParams(orphanId), QStringLiteral("t-orph"))), QStringLiteral("INVALID_STATE"));
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.cueList.play"), widgetParams(buttonId), QStringLiteral("t-cwt"))), QStringLiteral("INVALID_PARAMS"));
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.cueList.get"), widgetParams(buttonId), QStringLiteral("t-cgt"))), QStringLiteral("INVALID_PARAMS"));
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.cueList.stop"), widgetParams(QStringLiteral("777")), QStringLiteral("t-cnf"))), QStringLiteral("NOT_FOUND"));
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.cueList.get"), widgetParams(QStringLiteral("777")), QStringLiteral("t-cgnf"))), QStringLiteral("NOT_FOUND"));
+    // get on a chaser-less cue list is fine (read-only) and just has no steps
+    get = sendAndWaitForReply(QStringLiteral("vc.cueList.get"), widgetParams(orphanId), QStringLiteral("t-og"));
+    QCOMPARE(get.value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(get.value(QStringLiteral("result")).toObject().value(QStringLiteral("steps")).toArray().size(), 0);
+}
+
+void ApiVcDomain_Test::liveCueListSetPlaybackIndexValidatesRange()
+{
+    helloAndGetClientId();
+    QJsonObject cfg;
+    cfg.insert(QStringLiteral("chaserID"), QStringLiteral("3"));
+    QString cueListId = createWidget(QStringLiteral("CueList"), cfg);
+
+    QSignalSpy spy(m_client, &QWebSocket::textMessageReceived);
+    QJsonObject idx; idx.insert(QStringLiteral("index"), 2);
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("vc.cueList.setPlaybackIndex"), widgetParams(cueListId, idx), QStringLiteral("t-spi"));
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QList<QJsonObject> events = eventsWithTopic(spy, QStringLiteral("vc.cueList.playbackChanged"));
+    QCOMPARE(events.size(), 1);
+    QCOMPARE(events.at(0).value(QStringLiteral("playbackIndex")).toInt(), 2);
+    QCOMPARE(events.at(0).value(QStringLiteral("running")).toBool(), true);
+
+    // -1 is allowed (clears the selection)
+    QJsonObject none; none.insert(QStringLiteral("index"), -1);
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("vc.cueList.setPlaybackIndex"), widgetParams(cueListId, none), QStringLiteral("t-spn")).value(QStringLiteral("ok")).toBool(), true);
+
+    // Out of range / non-integer -> INVALID_PARAMS with the step count in details
+    QJsonObject big; big.insert(QStringLiteral("index"), 3);
+    reply = sendAndWaitForReply(QStringLiteral("vc.cueList.setPlaybackIndex"), widgetParams(cueListId, big), QStringLiteral("t-spb"));
+    QCOMPARE(errorCode(reply), QStringLiteral("INVALID_PARAMS"));
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("details")).toObject().value(QStringLiteral("stepCount")).toInt(), 3);
+    QJsonObject tooLow; tooLow.insert(QStringLiteral("index"), -2);
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.cueList.setPlaybackIndex"), widgetParams(cueListId, tooLow), QStringLiteral("t-spl"))), QStringLiteral("INVALID_PARAMS"));
+    QJsonObject str; str.insert(QStringLiteral("index"), QStringLiteral("1"));
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.cueList.setPlaybackIndex"), widgetParams(cueListId, str), QStringLiteral("t-sps"))), QStringLiteral("INVALID_PARAMS"));
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.cueList.setPlaybackIndex"), widgetParams(cueListId), QStringLiteral("t-spm"))), QStringLiteral("INVALID_PARAMS"));
+
+    // The spec's original "playbackIndex" spelling is accepted as an alias
+    QJsonObject alias; alias.insert(QStringLiteral("playbackIndex"), 1);
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("vc.cueList.setPlaybackIndex"), widgetParams(cueListId, alias), QStringLiteral("t-spa")).value(QStringLiteral("ok")).toBool(), true);
+    events = eventsWithTopic(spy, QStringLiteral("vc.cueList.playbackChanged"));
+    QCOMPARE(events.last().value(QStringLiteral("playbackIndex")).toInt(), 1);
+}
+
+void ApiVcDomain_Test::liveXyPadSetPositionBroadcastsAndValidates()
+{
+    QString clientId = helloAndGetClientId();
+    QString padId = createWidget(QStringLiteral("XYPad"));
+    QString buttonId = createWidget(QStringLiteral("Button"));
+
+    QSignalSpy spy(m_client, &QWebSocket::textMessageReceived);
+    QJsonObject pos; pos.insert(QStringLiteral("x"), 0.25); pos.insert(QStringLiteral("y"), 1.0);
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("vc.xyPad.setPosition"), widgetParams(padId, pos), QStringLiteral("t-xy"));
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+
+    QList<QJsonObject> events = eventsWithTopic(spy, QStringLiteral("vc.xyPad.positionChanged"));
+    QCOMPARE(events.size(), 1);
+    QCOMPARE(events.at(0).value(QStringLiteral("widgetId")).toString(), padId);
+    QCOMPARE(events.at(0).value(QStringLiteral("x")).toDouble(), 0.25);
+    QCOMPARE(events.at(0).value(QStringLiteral("y")).toDouble(), 1.0);
+    QCOMPARE(events.at(0).value(QStringLiteral("_origin")).toString(), clientId);
+
+    QJsonObject get = sendAndWaitForReply(QStringLiteral("vc.widget.get"), widgetParams(padId), QStringLiteral("t-xg"));
+    QCOMPARE(get.value(QStringLiteral("result")).toObject().value(QStringLiteral("x")).toDouble(), 0.25);
+    QCOMPARE(get.value(QStringLiteral("result")).toObject().value(QStringLiteral("y")).toDouble(), 1.0);
+
+    // Out of 0..1 / missing / non-numeric -> INVALID_PARAMS
+    QJsonObject big; big.insert(QStringLiteral("x"), 1.5); big.insert(QStringLiteral("y"), 0.5);
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.xyPad.setPosition"), widgetParams(padId, big), QStringLiteral("t-xb"))), QStringLiteral("INVALID_PARAMS"));
+    QJsonObject neg; neg.insert(QStringLiteral("x"), 0.5); neg.insert(QStringLiteral("y"), -0.1);
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.xyPad.setPosition"), widgetParams(padId, neg), QStringLiteral("t-xn"))), QStringLiteral("INVALID_PARAMS"));
+    QJsonObject onlyX; onlyX.insert(QStringLiteral("x"), 0.5);
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.xyPad.setPosition"), widgetParams(padId, onlyX), QStringLiteral("t-xo"))), QStringLiteral("INVALID_PARAMS"));
+    QJsonObject str; str.insert(QStringLiteral("x"), QStringLiteral("0.5")); str.insert(QStringLiteral("y"), 0.5);
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.xyPad.setPosition"), widgetParams(padId, str), QStringLiteral("t-xs"))), QStringLiteral("INVALID_PARAMS"));
+
+    // Wrong type / unknown
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.xyPad.setPosition"), widgetParams(buttonId, pos), QStringLiteral("t-xwt"))), QStringLiteral("INVALID_PARAMS"));
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.xyPad.setPosition"), widgetParams(QStringLiteral("555"), pos), QStringLiteral("t-xnf"))), QStringLiteral("NOT_FOUND"));
+}
+
+void ApiVcDomain_Test::liveSpeedDialSetValueAndTap()
+{
+    QString clientId = helloAndGetClientId();
+    QString dialId = createWidget(QStringLiteral("Speed"));
+    QString buttonId = createWidget(QStringLiteral("Button"));
+
+    QSignalSpy spy(m_client, &QWebSocket::textMessageReceived);
+    QJsonObject ms; ms.insert(QStringLiteral("ms"), 500);
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("vc.speedDial.setValue"), widgetParams(dialId, ms), QStringLiteral("t-sd"));
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+
+    QList<QJsonObject> events = eventsWithTopic(spy, QStringLiteral("vc.speedDial.valueChanged"));
+    QCOMPARE(events.size(), 1);
+    QCOMPARE(events.at(0).value(QStringLiteral("widgetId")).toString(), dialId);
+    QCOMPARE(events.at(0).value(QStringLiteral("ms")).toInt(), 500);
+    QCOMPARE(events.at(0).value(QStringLiteral("_origin")).toString(), clientId);
+
+    QJsonObject get = sendAndWaitForReply(QStringLiteral("vc.widget.get"), widgetParams(dialId), QStringLiteral("t-sdg"));
+    QCOMPARE(get.value(QStringLiteral("result")).toObject().value(QStringLiteral("ms")).toInt(), 500);
+
+    // Negative / non-integer / missing -> INVALID_PARAMS; wrong type; unknown
+    QJsonObject neg; neg.insert(QStringLiteral("ms"), -5);
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.speedDial.setValue"), widgetParams(dialId, neg), QStringLiteral("t-sdn"))), QStringLiteral("INVALID_PARAMS"));
+    QJsonObject str; str.insert(QStringLiteral("ms"), QStringLiteral("500"));
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.speedDial.setValue"), widgetParams(dialId, str), QStringLiteral("t-sds"))), QStringLiteral("INVALID_PARAMS"));
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.speedDial.setValue"), widgetParams(dialId), QStringLiteral("t-sdm"))), QStringLiteral("INVALID_PARAMS"));
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.speedDial.setValue"), widgetParams(buttonId, ms), QStringLiteral("t-sdwt"))), QStringLiteral("INVALID_PARAMS"));
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.speedDial.setValue"), widgetParams(QStringLiteral("888"), ms), QStringLiteral("t-sdnf"))), QStringLiteral("NOT_FOUND"));
+
+    // tap: first tap arms (no event), a quick second tap sets the interval -> valueChanged
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("vc.speedDial.tap"), widgetParams(dialId), QStringLiteral("t-tap1")).value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(eventsWithTopic(spy, QStringLiteral("vc.speedDial.valueChanged")).size(), 1);
+    QTest::qWait(60);
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("vc.speedDial.tap"), widgetParams(dialId), QStringLiteral("t-tap2")).value(QStringLiteral("ok")).toBool(), true);
+    events = eventsWithTopic(spy, QStringLiteral("vc.speedDial.valueChanged"));
+    QCOMPARE(events.size(), 2);
+    int tapped = events.at(1).value(QStringLiteral("ms")).toInt();
+    QVERIFY2(tapped > 0 && tapped < 1500, qPrintable(QString::number(tapped)));
+    QCOMPARE(events.at(1).value(QStringLiteral("_origin")).toString(), clientId);
+
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.speedDial.tap"), widgetParams(buttonId), QStringLiteral("t-tapwt"))), QStringLiteral("INVALID_PARAMS"));
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.speedDial.tap"), widgetParams(QStringLiteral("888")), QStringLiteral("t-tapnf"))), QStringLiteral("NOT_FOUND"));
+}
+
+void ApiVcDomain_Test::liveFrameGotoPageAndGet()
+{
+    QString clientId = helloAndGetClientId();
+    QJsonObject cfg;
+    cfg.insert(QStringLiteral("multiPageMode"), true);
+    cfg.insert(QStringLiteral("totalPagesNumber"), 3);
+    QString frameId = createWidget(QStringLiteral("Frame"), cfg);
+    QString soloId = createWidget(QStringLiteral("SoloFrame"));
+    QString buttonId = createWidget(QStringLiteral("Button"));
+
+    QJsonObject get = sendAndWaitForReply(QStringLiteral("vc.frame.get"), widgetParams(frameId), QStringLiteral("t-fg"));
+    QCOMPARE(get.value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(get.value(QStringLiteral("result")).toObject().value(QStringLiteral("pages")).toInt(), 3);
+    QCOMPARE(get.value(QStringLiteral("result")).toObject().value(QStringLiteral("currentPage")).toInt(), 0);
+    QCOMPARE(get.value(QStringLiteral("result")).toObject().value(QStringLiteral("multipage")).toBool(), true);
+
+    QSignalSpy spy(m_client, &QWebSocket::textMessageReceived);
+    QJsonObject page; page.insert(QStringLiteral("page"), 2);
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("vc.frame.gotoPage"), widgetParams(frameId, page), QStringLiteral("t-gp"));
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QList<QJsonObject> events = eventsWithTopic(spy, QStringLiteral("vc.frame.pageChanged"));
+    QCOMPARE(events.size(), 1);
+    QCOMPARE(events.at(0).value(QStringLiteral("widgetId")).toString(), frameId);
+    QCOMPARE(events.at(0).value(QStringLiteral("page")).toInt(), 2);
+    QCOMPARE(events.at(0).value(QStringLiteral("_origin")).toString(), clientId);
+
+    // Same page again: ack, no event
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("vc.frame.gotoPage"), widgetParams(frameId, page), QStringLiteral("t-gp2")).value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(eventsWithTopic(spy, QStringLiteral("vc.frame.pageChanged")).size(), 1);
+
+    get = sendAndWaitForReply(QStringLiteral("vc.widget.get"), widgetParams(frameId), QStringLiteral("t-fwg"));
+    QCOMPARE(get.value(QStringLiteral("result")).toObject().value(QStringLiteral("currentPage")).toInt(), 2);
+    QCOMPARE(get.value(QStringLiteral("result")).toObject().value(QStringLiteral("pages")).toInt(), 3);
+
+    // Out of range -> INVALID_PARAMS; non-integer; SoloFrame is a valid target (single page: only 0)
+    QJsonObject big; big.insert(QStringLiteral("page"), 3);
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.frame.gotoPage"), widgetParams(frameId, big), QStringLiteral("t-gpb"))), QStringLiteral("INVALID_PARAMS"));
+    QJsonObject neg; neg.insert(QStringLiteral("page"), -1);
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.frame.gotoPage"), widgetParams(frameId, neg), QStringLiteral("t-gpn"))), QStringLiteral("INVALID_PARAMS"));
+    QJsonObject str; str.insert(QStringLiteral("page"), QStringLiteral("1"));
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.frame.gotoPage"), widgetParams(frameId, str), QStringLiteral("t-gps"))), QStringLiteral("INVALID_PARAMS"));
+    QJsonObject zero; zero.insert(QStringLiteral("page"), 0);
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("vc.frame.gotoPage"), widgetParams(soloId, zero), QStringLiteral("t-solo")).value(QStringLiteral("ok")).toBool(), true);
+    QJsonObject one; one.insert(QStringLiteral("page"), 1);
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.frame.gotoPage"), widgetParams(soloId, one), QStringLiteral("t-solo1"))), QStringLiteral("INVALID_PARAMS"));
+
+    // The spec's original "pageIndex" spelling is accepted as an alias
+    QJsonObject alias; alias.insert(QStringLiteral("pageIndex"), 1);
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("vc.frame.gotoPage"), widgetParams(frameId, alias), QStringLiteral("t-gpa")).value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(eventsWithTopic(spy, QStringLiteral("vc.frame.pageChanged")).last().value(QStringLiteral("page")).toInt(), 1);
+
+    // Wrong type / unknown
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.frame.gotoPage"), widgetParams(buttonId, zero), QStringLiteral("t-gpwt"))), QStringLiteral("INVALID_PARAMS"));
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.frame.get"), widgetParams(buttonId), QStringLiteral("t-fgwt"))), QStringLiteral("INVALID_PARAMS"));
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.frame.gotoPage"), widgetParams(QStringLiteral("999"), zero), QStringLiteral("t-gpnf"))), QStringLiteral("NOT_FOUND"));
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.frame.get"), widgetParams(QStringLiteral("999")), QStringLiteral("t-fgnf"))), QStringLiteral("NOT_FOUND"));
+}
+
+void ApiVcDomain_Test::liveWidgetSnapshotsExposeLiveState()
+{
+    helloAndGetClientId();
+    QJsonObject buttonCfg; buttonCfg.insert(QStringLiteral("functionID"), QStringLiteral("7"));
+    QString buttonId = createWidget(QStringLiteral("Button"), buttonCfg);
+    QString sliderId = createWidget(QStringLiteral("Slider"));
+    QJsonObject cueCfg; cueCfg.insert(QStringLiteral("chaserID"), QStringLiteral("3"));
+    QString cueListId = createWidget(QStringLiteral("CueList"), cueCfg);
+    QString padId = createWidget(QStringLiteral("XYPad"));
+    QString dialId = createWidget(QStringLiteral("Speed"));
+    QString frameId = createWidget(QStringLiteral("Frame"));
+    QString labelId = createWidget(QStringLiteral("Label"));
+
+    QJsonObject list = sendAndWaitForReply(QStringLiteral("vc.widget.list"), QJsonObject(), QStringLiteral("t-list"));
+    QCOMPARE(list.value(QStringLiteral("ok")).toBool(), true);
+    QHash<QString, QJsonObject> byId;
+    for (const QJsonValue &v : list.value(QStringLiteral("result")).toObject().value(QStringLiteral("widgets")).toArray())
+        byId.insert(v.toObject().value(QStringLiteral("id")).toString(), v.toObject());
+    QCOMPARE(byId.size(), 7);
+
+    // Every pre-existing field is still there (additive extension)...
+    for (const QJsonObject &w : byId)
+    {
+        for (const char *key : { "id", "widgetType", "page", "geometry", "zIndex", "allowResize", "isDisabled", "isVisible", "style", "typeConfig" })
+            QVERIFY2(w.contains(QLatin1String(key)), key);
+    }
+
+    // ...plus the per-type live seed state in its initial values.
+    QCOMPARE(byId.value(buttonId).value(QStringLiteral("state")).toString(), QStringLiteral("inactive"));
+    QCOMPARE(byId.value(sliderId).value(QStringLiteral("value")).toInt(), 0);
+    QVERIFY(byId.value(sliderId).contains(QStringLiteral("min")));
+    QVERIFY(byId.value(sliderId).contains(QStringLiteral("max")));
+    QCOMPARE(byId.value(cueListId).value(QStringLiteral("playbackIndex")).toInt(), -1);
+    QCOMPARE(byId.value(cueListId).value(QStringLiteral("running")).toBool(), false);
+    QCOMPARE(byId.value(cueListId).value(QStringLiteral("paused")).toBool(), false);
+    QCOMPARE(byId.value(padId).value(QStringLiteral("x")).toDouble(), 0.0);
+    QCOMPARE(byId.value(padId).value(QStringLiteral("y")).toDouble(), 0.0);
+    QCOMPARE(byId.value(dialId).value(QStringLiteral("ms")).toInt(), 0);
+    QCOMPARE(byId.value(frameId).value(QStringLiteral("currentPage")).toInt(), 0);
+    QCOMPARE(byId.value(frameId).value(QStringLiteral("pages")).toInt(), 1);
+    QCOMPARE(byId.value(frameId).value(QStringLiteral("multipage")).toBool(), false);
+    // A Label has no live state and gets none of these keys
+    for (const char *key : { "state", "value", "playbackIndex", "x", "ms", "currentPage" })
+        QVERIFY2(byId.value(labelId).contains(QLatin1String(key)) == false, key);
+}
+
+void ApiVcDomain_Test::liveEngineDrivenChangeBroadcastsWithNullOrigin()
+{
+    helloAndGetClientId();
+    QJsonObject buttonCfg; buttonCfg.insert(QStringLiteral("functionID"), QStringLiteral("7"));
+    QString buttonId = createWidget(QStringLiteral("Button"), buttonCfg);
+    QString sliderId = createWidget(QStringLiteral("Slider"));
+    QJsonObject cueCfg; cueCfg.insert(QStringLiteral("chaserID"), QStringLiteral("3"));
+    QString cueListId = createWidget(QStringLiteral("CueList"), cueCfg);
+
+    // Nobody asked over the API - the "engine" (QML UI / external input / Function stopping) did.
+    QSignalSpy spy(m_client, &QWebSocket::textMessageReceived);
+    m_vcHost->simulateButtonState(buttonId.toUInt(), QStringLiteral("monitoring"));
+    m_vcHost->simulateSliderValue(sliderId.toUInt(), 42);
+    m_vcHost->simulateCueListAdvance(cueListId.toUInt(), 2);
+    QVERIFY(QTest::qWaitFor([&]() { return spy.count() >= 3; }, 2000));
+
+    QList<QJsonObject> events = eventsWithTopic(spy, QStringLiteral("vc.button.stateChanged"));
+    QCOMPARE(events.size(), 1);
+    QCOMPARE(events.at(0).value(QStringLiteral("widgetId")).toString(), buttonId);
+    QCOMPARE(events.at(0).value(QStringLiteral("state")).toString(), QStringLiteral("monitoring"));
+    QVERIFY(events.at(0).value(QStringLiteral("_origin")).isNull());
+
+    events = eventsWithTopic(spy, QStringLiteral("vc.slider.valueChanged"));
+    QCOMPARE(events.size(), 1);
+    QCOMPARE(events.at(0).value(QStringLiteral("value")).toInt(), 42);
+    QVERIFY(events.at(0).value(QStringLiteral("_origin")).isNull());
+
+    events = eventsWithTopic(spy, QStringLiteral("vc.cueList.playbackChanged"));
+    QCOMPARE(events.size(), 1);
+    QCOMPARE(events.at(0).value(QStringLiteral("playbackIndex")).toInt(), 2);
+    QCOMPARE(events.at(0).value(QStringLiteral("running")).toBool(), true);
+    QVERIFY(events.at(0).value(QStringLiteral("_origin")).isNull());
+
+    // The seed state a late-joining client reads back matches
+    QJsonObject get = sendAndWaitForReply(QStringLiteral("vc.widget.get"), widgetParams(buttonId), QStringLiteral("t-eg"));
+    QCOMPARE(get.value(QStringLiteral("result")).toObject().value(QStringLiteral("state")).toString(), QStringLiteral("monitoring"));
+}
+
+void ApiVcDomain_Test::liveMethodsDoNotBumpDocRevision()
+{
+    helloAndGetClientId();
+    QJsonObject buttonCfg; buttonCfg.insert(QStringLiteral("functionID"), QStringLiteral("7"));
+    QString buttonId = createWidget(QStringLiteral("Button"), buttonCfg);
+    QString sliderId = createWidget(QStringLiteral("Slider"));
+    QString padId = createWidget(QStringLiteral("XYPad"));
+    QString dialId = createWidget(QStringLiteral("Speed"));
+    int rev = currentDocRevision();
+
+    QJsonObject down; down.insert(QStringLiteral("pressed"), true);
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("vc.button.press"), widgetParams(buttonId, down), QStringLiteral("t-r1")).value(QStringLiteral("ok")).toBool(), true);
+    QJsonObject v; v.insert(QStringLiteral("value"), 10);
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("vc.slider.setValue"), widgetParams(sliderId, v), QStringLiteral("t-r2")).value(QStringLiteral("ok")).toBool(), true);
+    QJsonObject pos; pos.insert(QStringLiteral("x"), 0.5); pos.insert(QStringLiteral("y"), 0.5);
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("vc.xyPad.setPosition"), widgetParams(padId, pos), QStringLiteral("t-r3")).value(QStringLiteral("ok")).toBool(), true);
+    QJsonObject ms; ms.insert(QStringLiteral("ms"), 250);
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("vc.speedDial.setValue"), widgetParams(dialId, ms), QStringLiteral("t-r4")).value(QStringLiteral("ok")).toBool(), true);
+
+    // §4b: live/runtime state never touches docRevision. (vc.frame.gotoPage is the documented
+    // exception in the real engine - VCFrame::setCurrentPage() persists the page - and is not covered
+    // by the headless fake either way.)
+    QCOMPARE(currentDocRevision(), rev);
+}

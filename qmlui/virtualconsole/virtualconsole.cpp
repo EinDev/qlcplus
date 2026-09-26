@@ -545,6 +545,7 @@ void VirtualConsole::addWidgetToMap(VCWidget* widget)
         if (!m_widgetsMap.contains(widget->id()))
         {
             m_widgetsMap.insert(widget->id(), widget);
+            emit widgetRegistered(widget);
             return;
         }
 
@@ -564,6 +565,7 @@ void VirtualConsole::addWidgetToMap(VCWidget* widget)
     qDebug() << Q_FUNC_INFO << "id=" << wid;
     widget->setID(wid);
     m_widgetsMap.insert(wid, widget);
+    emit widgetRegistered(widget);
 }
 
 void VirtualConsole::removeWidgetFromMap(VCWidget *widget)

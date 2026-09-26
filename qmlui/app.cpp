@@ -228,6 +228,9 @@ void App::startup()
     m_paletteManager = new PaletteManager(this, m_doc, m_contextManager);
 
     m_virtualConsole = new VirtualConsole(this, m_doc, m_contextManager);
+    // Control API live events (ApiVcHost, app_apivchost.cpp): observe every widget that ever enters
+    // the VC - hooked here, before any show file is loaded, so loaded widgets are covered too.
+    connect(m_virtualConsole, &VirtualConsole::widgetRegistered, this, &App::slotVcWidgetRegistered);
     m_showManager = new ShowManager(this, m_doc);
     connect(m_showManager, &ShowManager::itemClicked, m_contextManager, &ContextManager::setLastClickedType);
     // track headers / the Video editor show live Spout sender sizes. The

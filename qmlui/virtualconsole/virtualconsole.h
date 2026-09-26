@@ -176,6 +176,16 @@ public:
     /** Remove $widget from the global VC widgets map */
     void removeWidgetFromMap(VCWidget* widget);
 
+signals:
+    /** Emitted from addWidgetToMap() every time a widget actually enters the map (freshly created,
+     *  loaded from XML, pasted, or re-registered under a new id after an id clash) - the single hook
+     *  for anything that must observe every VC widget regardless of how it came into existence (see
+     *  App::slotVcWidgetRegistered(), which wires the control API's live-state events). Pages
+     *  (VCPage derives VCFrame and is registered here too) are included; receivers filter them. */
+    void widgetRegistered(VCWidget *widget);
+
+public:
+
     /** Return a reference to the VC widget with the specified $id.
      *  On invalid $id, NULL is returned */
     VCWidget *widget(quint32 id) const;
