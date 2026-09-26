@@ -81,6 +81,24 @@ private slots:
     /** applyRemap updates MonitorProperties fixture entries. */
     void testApplyRemapMonitor();
 
+    /** autoConnectFixtures: null arguments and definition-less fixtures. */
+    void testAutoConnectNullAndUntyped();
+
+    /** autoConnectFixtures: one typed, one definition-less fixture. */
+    void testAutoConnectMixedTyped();
+
+    /** autoConnectFixtures: 1:1 remap carries fade flags and modifiers. */
+    void testAutoConnectOneToOneFlags();
+
+    /** autoConnectFixtures: semantic matching skips group/byte mismatches. */
+    void testAutoConnectSemanticMisses();
+
+    /** applyRemap moves EFX heads to pan/tilt capable targets only. */
+    void testApplyRemapEFX();
+
+    /** applyRemap leaves invalid group heads alone. */
+    void testApplyRemapGroupInvalidHead();
+
 private:
     Doc *m_doc;
 };

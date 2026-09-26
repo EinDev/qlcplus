@@ -38,6 +38,12 @@ private slots:
     void load();
     void defDirectories();
     void storeDef();
+    void storeDefFailure();
+    void reloadFailures();
+    void reloadOrAdd();
+    void loadDirectory();
+    void loadMapFailures();
+    void loadMapContent();
 
 private:
     QLCFixtureDefCache cache;

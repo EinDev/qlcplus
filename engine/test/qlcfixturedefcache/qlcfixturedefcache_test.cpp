@@ -20,15 +20,55 @@
 #include <QtTest>
 
 #define private public
+#define protected public
 #include "qlcfixturedefcache.h"
+#include "qlcfixturedef.h"
+#undef protected
 #undef private
 
 #include "qlcfixturedefcache_test.h"
-#include "qlcfixturedef.h"
+#include "qlcfixturemode.h"
+#include "qlcchannel.h"
 #include "qlcconfig.h"
 #include "qlcfile.h"
 
 #include "../common/resource_paths.h"
+
+/** Write @p content into @p path, creating/truncating the file */
+static bool writeTextFile(const QString &path, const QString &content)
+{
+    QFile file(path);
+    if (file.open(QIODevice::WriteOnly | QIODevice::Text) == false)
+        return false;
+    file.write(content.toUtf8());
+    file.close();
+    return true;
+}
+
+/** Build a bare "Manufacturer / Model" definition with one channel and,
+    optionally, one mode using that channel */
+static QLCFixtureDef *makeDef(const QString &manufacturer, const QString &model,
+                              bool withMode)
+{
+    QLCFixtureDef *def = new QLCFixtureDef();
+    def->setManufacturer(manufacturer);
+    def->setModel(model);
+
+    QLCChannel *ch = new QLCChannel();
+    ch->setName("Dimmer");
+    ch->setGroup(QLCChannel::Intensity);
+    def->addChannel(ch);
+
+    if (withMode)
+    {
+        QLCFixtureMode *mode = new QLCFixtureMode(def);
+        mode->setName("Mode 1");
+        mode->insertChannel(ch, 0);
+        def->addMode(mode);
+    }
+
+    return def;
+}
 
 void QLCFixtureDefCache_Test::init()
 {
@@ -263,6 +303,212 @@ void QLCFixtureDefCache_Test::storeDef()
     QDir dir = QLCFixtureDefCache::userDefinitionDirectory();
     QFile file (dir.absoluteFilePath("storeTest.qxf"));
     file.remove();
+}
+
+void QLCFixtureDefCache_Test::storeDefFailure()
+{
+    // The file name is resolved inside the user definition directory: a
+    // sub-directory that doesn't exist there can't be opened for writing
+    QLCFixtureDefCache c;
+    QVERIFY(c.storeFixtureDef("no-such-subdir/storeTest.qxf", "<Foo/>") == false);
+    QVERIFY(c.m_defs.isEmpty());
+}
+
+void QLCFixtureDefCache_Test::reloadFailures()
+{
+    QTemporaryDir tmp;
+    QVERIFY(tmp.isValid());
+    QLCFixtureDefCache c;
+
+    /* A definition the cache doesn't know */
+    QLCFixtureDef *stranger = makeDef("Foo", "Stranger", true);
+    QVERIFY(c.reloadFixtureDef(stranger) == false);
+    delete stranger;
+
+    /* Cached, but its source file has gone: the stale instance is dropped */
+    QLCFixtureDef *missing = makeDef("Foo", "Missing", true);
+    missing->setDefinitionSourceFile(tmp.filePath("missing.qxf"));
+    QVERIFY(c.addFixtureDef(missing) == true);
+    QVERIFY(c.reloadFixtureDef(missing) == false);
+    QVERIFY(c.fixtureDef("Foo", "Missing") == NULL);
+    QVERIFY(c.m_defs.isEmpty());
+
+    /* Cached and the file exists, but it defines no mode any more */
+    QScopedPointer<QLCFixtureDef> noModes(makeDef("Foo", "NoModes", false));
+    QCOMPARE(noModes->saveXML(tmp.filePath("nomodes.qxf")), QFile::NoError);
+
+    QLCFixtureDef *cached = makeDef("Foo", "NoModes", true);
+    cached->setDefinitionSourceFile(tmp.filePath("nomodes.qxf"));
+    QVERIFY(c.addFixtureDef(cached) == true);
+    QVERIFY(c.reloadFixtureDef(cached) == false);
+    QVERIFY(c.fixtureDef("Foo", "NoModes") == NULL);
+    QVERIFY(c.m_defs.isEmpty());
+
+    QVERIFY(tmp.remove());
+}
+
+void QLCFixtureDefCache_Test::reloadOrAdd()
+{
+    QLCFixtureDefCache c;
+    QScopedPointer<QLCFixtureDef> editor(makeDef("Foo", "Bar", true));
+
+    /* 1. Not cached yet: a detached copy is added, flagged as a loaded user def */
+    QVERIFY(c.reloadOrAddFixtureDef(editor.data()) == true);
+    QCOMPARE(c.m_defs.size(), 1);
+    QLCFixtureDef *cached = c.m_defs.first();
+    QVERIFY(cached != editor.data());
+    QVERIFY(cached->isUser() == true);
+    QVERIFY(cached->m_isLoaded == true);
+    QCOMPARE(cached->manufacturer(), QString("Foo"));
+    QCOMPARE(cached->model(), QString("Bar"));
+    QCOMPARE(cached->channels().size(), 1);
+    QCOMPARE(cached->modes().size(), 1);
+
+    /* 2. A different instance with the same manufacturer/model is cached:
+          its contents are replaced in place, the instance survives */
+    QLCChannel *pan = new QLCChannel();
+    pan->setName("Pan");
+    pan->setGroup(QLCChannel::Pan);
+    editor->addChannel(pan);
+    QVERIFY(c.reloadOrAddFixtureDef(editor.data()) == true);
+    QCOMPARE(c.m_defs.size(), 1);
+    QVERIFY(c.m_defs.first() == cached);
+    QVERIFY(cached->isUser() == true);
+    QVERIFY(cached->m_isLoaded == true);
+    QCOMPARE(cached->channels().size(), 2);
+    QVERIFY(cached->channel("Pan") != NULL);
+    QVERIFY(cached->channel("Pan") != pan);
+
+    /* 3. The very instance handed in already sits in the cache: it is
+          swapped for a detached copy so editor and cache never share it */
+    c.clear();
+    QLCFixtureDef *shared = new QLCFixtureDef(editor.data());
+    QVERIFY(c.addFixtureDef(shared) == true);
+    QVERIFY(c.reloadOrAddFixtureDef(shared) == true);
+    QCOMPARE(c.m_defs.size(), 1);
+    QVERIFY(c.m_defs.first() != shared);
+    QVERIFY(c.m_defs.first()->isUser() == true);
+    QVERIFY(c.m_defs.first()->m_isLoaded == true);
+    QCOMPARE(c.m_defs.first()->model(), QString("Bar"));
+    QCOMPARE(c.m_defs.first()->channels().size(), 2);
+    delete shared;
+}
+
+void QLCFixtureDefCache_Test::loadDirectory()
+{
+    QTemporaryDir tmp;
+    QVERIFY(tmp.isValid());
+    QDir dir(tmp.path());
+    dir.setFilter(QDir::Files);
+
+    /* A complete definition, one without modes, two identical Avolites
+       personalities and a file with an unknown extension */
+    QScopedPointer<QLCFixtureDef> full(makeDef("Foo", "Full", true));
+    QCOMPARE(full->saveXML(dir.absoluteFilePath("full.qxf")), QFile::NoError);
+    QScopedPointer<QLCFixtureDef> noModes(makeDef("Foo", "NoModes", false));
+    QCOMPARE(noModes->saveXML(dir.absoluteFilePath("nomodes.qxf")), QFile::NoError);
+
+    const QString d4("<Fixture Name=\"Mini\" Company=\"Avo\"/>\n");
+    QVERIFY(writeTextFile(dir.absoluteFilePath("one.d4"), d4));
+    QVERIFY(writeTextFile(dir.absoluteFilePath("two.d4"), d4));
+    QVERIFY(writeTextFile(dir.absoluteFilePath("three.txt"), "not a fixture"));
+
+    QLCFixtureDefCache c;
+    QVERIFY(c.load(dir) == true);
+    QCOMPARE(c.m_defs.size(), 2);
+
+    QLCFixtureDef *def = c.fixtureDef("Foo", "Full");
+    QVERIFY(def != NULL);
+    QVERIFY(def->isUser() == true);
+    QCOMPARE(def->definitionSourceFile(), dir.absoluteFilePath("full.qxf"));
+    QVERIFY(c.fixtureDef("Foo", "NoModes") == NULL);
+
+    def = c.fixtureDef("Avo", "Mini");
+    QVERIFY(def != NULL);
+    QVERIFY(def->isUser() == true);
+    QCOMPARE(def->definitionSourceFile(), dir.absoluteFilePath("one.d4"));
+
+    /* The duplicate personality must not be added a second time */
+    QVERIFY(c.loadD4(dir.absoluteFilePath("two.d4")) == true);
+    QCOMPARE(c.m_defs.size(), 2);
+
+    /* A definition without modes is refused on its own as well */
+    QVERIFY(c.loadQXF(dir.absoluteFilePath("nomodes.qxf")) == false);
+    QCOMPARE(c.m_defs.size(), 2);
+
+    // every loader must have released its file, or the directory can't go
+    c.clear();
+    QVERIFY(tmp.remove());
+}
+
+void QLCFixtureDefCache_Test::loadMapFailures()
+{
+    QLCFixtureDefCache c;
+    QVERIFY(c.loadMap(QDir("/just/kidding/stoopid")) == false);
+
+    QTemporaryDir tmp;
+    QVERIFY(tmp.isValid());
+    QDir dir(tmp.path());
+    const QString mapPath(dir.absoluteFilePath("FixturesMap.xml"));
+
+    /* The directory exists but holds no map at all */
+    QVERIFY(c.loadMap(dir) == false);
+    QCOMPARE(c.m_mapAbsolutePath, dir.absolutePath());
+
+    /* Malformed XML: the error surfaces before any DTD is found */
+    QVERIFY(writeTextFile(mapPath, "<?xml version=\"1.0\"?>\n<<<"));
+    QVERIFY(c.loadMap(dir) == false);
+
+    /* Some other document type */
+    QVERIFY(writeTextFile(mapPath, "<!DOCTYPE Workspace>\n<Workspace/>\n"));
+    QVERIFY(c.loadMap(dir) == false);
+
+    /* The right document type but no root element at all */
+    QVERIFY(writeTextFile(mapPath, "<!DOCTYPE FixtureMap>\n"));
+    QVERIFY(c.loadMap(dir) == false);
+
+    /* The right document type with a foreign root element */
+    QVERIFY(writeTextFile(mapPath, "<!DOCTYPE FixtureMap>\n<Foo/>\n"));
+    QVERIFY(c.loadMap(dir) == false);
+
+    QVERIFY(c.m_defs.isEmpty());
+    QVERIFY(tmp.remove());
+}
+
+void QLCFixtureDefCache_Test::loadMapContent()
+{
+    QTemporaryDir tmp;
+    QVERIFY(tmp.isValid());
+    QDir dir(tmp.path());
+
+    /* A duplicate entry, an entry without a model, an unknown tag inside a
+       manufacturer and an unknown top-level tag must all be tolerated */
+    const QString map(
+        "<!DOCTYPE FixtureMap>\n"
+        "<FixtureMap>\n"
+        " <M n=\"Foo_Bar\">\n"
+        "  <F n=\"Foo-Bar-One\" m=\"One\"/>\n"
+        "  <F n=\"Foo-Bar-One\" m=\"One\"/>\n"
+        "  <F n=\"NoModel\"/>\n"
+        "  <Unknown/>\n"
+        " </M>\n"
+        " <Bogus/>\n"
+        "</FixtureMap>\n");
+    QVERIFY(writeTextFile(dir.absoluteFilePath("FixturesMap.xml"), map));
+
+    QLCFixtureDefCache c;
+    QVERIFY(c.loadMap(dir) == true);
+    QCOMPARE(c.m_defs.size(), 1);
+
+    QLCFixtureDef *def = c.m_defs.first();
+    QCOMPARE(def->manufacturer(), QString("Foo Bar"));
+    QCOMPARE(def->model(), QString("One"));
+    QCOMPARE(def->definitionSourceFile(), QString("Foo_Bar/Foo-Bar-One.qxf"));
+    QVERIFY(def->isUser() == false);
+
+    // the map file must have been released again
+    c.clear();
+    QVERIFY(tmp.remove());
 }
 
 // QLCFixtureDefCache::systemDefinitionDirectory()/userDefinitionDirectory()
