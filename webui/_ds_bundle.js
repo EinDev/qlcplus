@@ -1547,6 +1547,13 @@ function CustomSpinBox({
     const c = Math.min(to, Math.max(from, v));
     if (onValueModified) onValueModified(c);
   };
+  /* While focused the field shows what was typed (text != null), not the clamped/committed value:
+     a controlled input bound straight to `value` snapped back after every keystroke that was not a
+     number - clearing the field was impossible and typing "128" into "105" produced "1051" -> 1000.
+     Every parsable intermediate value is still committed immediately (clamped); blur/Enter/Escape
+     re-syncs the text with the committed value. */
+  const [text, setText] = React.useState(null);
+  const { onKeyDown: restKeyDown, onFocus: restFocus, onBlur: restBlur, ...inputRest } = rest;
   const arrow = dir => React.createElement('button', {
     key: dir,
     type: 'button',
@@ -1581,11 +1588,21 @@ function CustomSpinBox({
       ...style
     }
   }, React.createElement('input', {
-    value: value + suffix,
+    value: text != null ? text : value + suffix,
     disabled,
     inputMode: 'numeric',
+    onFocus: e => { setText(String(value)); if (restFocus) restFocus(e); },
+    onBlur: e => { setText(null); if (restBlur) restBlur(e); },
+    onKeyDown: e => {
+      if (e.key === 'Enter' || e.key === 'Escape') setText(null);
+      else if (e.key === 'ArrowUp') { e.preventDefault(); set(value + stepSize); setText(String(Math.min(to, value + stepSize))); }
+      else if (e.key === 'ArrowDown') { e.preventDefault(); set(value - stepSize); setText(String(Math.max(from, value - stepSize))); }
+      if (restKeyDown) restKeyDown(e);
+    },
     onChange: e => {
-      const n = parseInt(String(e.target.value).replace(suffix, ''), 10);
+      const t = String(e.target.value);
+      setText(t);
+      const n = parseInt(t.replace(suffix, ''), 10);
       if (!isNaN(n)) set(n);
     },
     style: {
@@ -1601,7 +1618,7 @@ function CustomSpinBox({
       fontFamily: 'var(--font-roboto)',
       fontSize: 'var(--text-size-default)'
     },
-    ...rest
+    ...inputRest
   }), showControls ? React.createElement('div', {
     style: {
       display: 'flex',
