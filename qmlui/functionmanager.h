@@ -157,6 +157,10 @@ public:
      *  of function $fID (the editor object itself must already exist) */
     void requestEditorUI(quint32 fID);
 
+    /** Unload the editor QML from the right panels of the tabs currently
+     *  hidden, so none stays bound to an editor about to be deleted */
+    void closeHiddenEditorPanels();
+
     /** Return a reference of the currently open Function editor */
     FunctionEditor *currentEditor() const;
 

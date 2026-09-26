@@ -711,6 +711,7 @@ void FunctionManager::setEditorFunction(quint32 fID, bool requestUI, bool back)
         if (!back)
             previousID = m_currentEditor->functionID();
 
+        closeHiddenEditorPanels();
         delete m_currentEditor;
         m_currentEditor = nullptr;
     }
@@ -719,6 +720,7 @@ void FunctionManager::setEditorFunction(quint32 fID, bool requestUI, bool back)
         if (m_sceneEditor->functionID() == fID && !back)
             return;
 
+        closeHiddenEditorPanels();
         delete m_sceneEditor;
         m_sceneEditor = nullptr;
     }
@@ -813,6 +815,27 @@ void FunctionManager::setEditorFunction(quint32 fID, bool requestUI, bool back)
         requestEditorUI(f->id());
 
     emit isEditingChanged(true);
+}
+
+void FunctionManager::closeHiddenEditorPanels()
+{
+    // The editor objects are shared by every tab's right panel, so editor
+    // QML left loaded in a hidden tab's panel would stay bound to an editor
+    // that is about to be deleted; pressing Back there later rebuilt an
+    // editor with that stale QML still alive and crashed inside the QML
+    // engine. Send those panels back to the function list before the
+    // editor goes, the same way the visible one is unloaded first when the
+    // user navigates away from an editor (see SidePanel.qml).
+    const QList<QQuickItem *> panels = m_view->rootObject()->findChildren<QQuickItem *>("funcRightPanel");
+    for (QQuickItem *panel : panels)
+    {
+        QQuickItem *parent = panel->parentItem();
+        if (parent != nullptr && parent->isVisible())
+            continue;
+        if (panel->property("itemID").toInt() == -1)
+            continue;
+        QMetaObject::invokeMethod(panel, "closeEditor");
+    }
 }
 
 void FunctionManager::requestEditorUI(quint32 fID)
