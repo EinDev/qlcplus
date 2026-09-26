@@ -4,11 +4,12 @@ Grounded in `qmlui/virtualconsole/*.h/.cpp` (every header read in full; .cpp
 read for `vcbutton`, `vcslider`, `vcxypad`, `vcspeeddial`, `vcframe` to
 confirm behaviour the headers alone didn't make clear) and cross-checked
 against `qmlui/qml/virtualconsole/*.qml`. Component-key prefix `Vc`,
-method/topic prefix `vc.`. 178 messages / 28 schemas / 170 operations (per a
-fresh `merge.py` run - re-derive with the same command if this fragment
-changes again, rather than trusting this number indefinitely; it has
-drifted from an original 190/25/182 at least once already, via
-MERGE-PLAN #2's consolidation passes).
+method/topic prefix `vc.`. 184 messages / 31 schemas / 174 operations (per a
+fresh `merge.py` run on 2026-09-26 - re-derive with the same command if this
+fragment changes again, rather than trusting this number indefinitely; it has
+drifted from an original 190/25/182 via MERGE-PLAN #2's consolidation passes,
+then to 178/28/170, then to the current count when the live-interaction slice
+was implemented).
 
 ## Channel message keys to add at merge time
 
