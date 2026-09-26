@@ -31,6 +31,7 @@
 #include "chaser.h"
 #include "chaserstep.h"
 #include "audio.h"
+#include "video.h"
 #include "fixture.h"
 #include "doc.h"
 #include "inputoutputmap.h"
@@ -1345,6 +1346,185 @@ void ShowRunner_Test::stopOfHeldSceneFadesOut()
     for (int i = 0; i < 12; i++)
         ls.processFaders();
     QCOMPARE(ls.dmx(0), uchar(0));
+}
+
+/****************************************************************************
+ * Remaining edge paths
+ ****************************************************************************/
+
+void ShowRunner_Test::runnerWithoutShow()
+{
+    // a runner built for something that is not a Show gets an empty
+    // schedule and finishes on its first tick without touching anything
+    ShowRunner runner(m_doc, m_scene->id());
+    QVERIFY(runner.m_show == NULL);
+    QVERIFY(runner.m_schedule.isNull() == false);
+    QCOMPARE(runner.m_schedule->clips.count(), 0);
+    QCOMPARE(runner.m_totalRunTime, 0u);
+
+    runner.applyPendingSchedule();   // nothing to pick a snapshot up from
+    runner.adjustIntensity(0.5, NULL);
+    QVERIFY(runner.m_intensityMap.isEmpty());
+
+    QSignalSpy finishedSpy(&runner, SIGNAL(showFinished()));
+    runner.write(m_doc->masterTimer());
+    QCOMPARE(finishedSpy.count(), 1);
+    QCOMPARE(runner.m_elapsedTime, 0u);
+}
+
+void ShowRunner_Test::stopUnpausesHeldClip()
+{
+    ShowRunner runner(m_doc, m_show->id());
+    ShowRunner::RunningClip rc;
+    rc.sfId = 0;
+    rc.functionId = m_scene->id();
+    rc.trackId = m_track->id();
+    rc.start = 0;
+    rc.stopTime = 1000;
+    rc.function = m_scene;
+    rc.overrideId = -1;
+    runner.m_runningQueue.append(rc);
+
+    // a clip held by scrub mode is paused: stop() releases the pause first
+    // so that the Scene's fade-out can complete
+    m_scene->m_running = true;
+    m_scene->m_paused = true;
+    m_scene->m_stop = false;
+    runner.stop();
+    QCOMPARE(runner.m_runningQueue.count(), 0);
+    QVERIFY(m_scene->isPaused() == false);
+    QVERIFY(m_scene->stopped());
+    m_scene->m_running = false;
+}
+
+void ShowRunner_Test::sharedFunctionClipsStopTogether()
+{
+    ShowRunner runner(m_doc, m_show->id());
+    ShowRunner::RunningClip a;
+    a.sfId = 1;
+    a.functionId = m_scene->id();
+    a.trackId = m_track->id();
+    a.start = 0;
+    a.stopTime = 1000;
+    a.function = m_scene;
+    a.overrideId = -1;
+    ShowRunner::RunningClip b = a;
+    b.sfId = 2;
+    b.start = 500;
+    b.stopTime = 1500;
+    runner.m_runningQueue << a << b;
+
+    m_scene->m_stop = false;
+    m_scene->m_paused = false;
+    QVERIFY(runner.isFunctionShared(m_scene, 1));
+    QVERIFY(runner.isFunctionShared(m_scene, 2));
+    QVERIFY(runner.isFunctionShared(m_scene, 3));
+
+    // Function::start() dedups by parent, so the two clips share one run:
+    // stopping the first leaves the Function to the second
+    runner.stopClip(0);
+    QCOMPARE(runner.m_runningQueue.count(), 1);
+    QVERIFY(m_scene->stopped() == false);
+    QVERIFY(runner.isFunctionShared(m_scene, 2) == false);
+
+    runner.stopClip(0);
+    QCOMPARE(runner.m_runningQueue.count(), 0);
+    QVERIFY(m_scene->stopped());
+}
+
+void ShowRunner_Test::spoutVideoSeekAndTimeChanged()
+{
+    LiveShow ls(this, 0, 1000, 5000);
+    Video *video = new Video(ls.doc);
+    video->setSourceUrl("http://example.com/clip.mp4");
+    video->setOutputMode(Video::Spout);
+    ls.doc->addFunction(video);
+    Track *screen = new Track(Function::invalidId(), ls.show);
+    screen->setName("Screen L");
+    ls.show->addTrack(screen);
+    ShowFunction *vsf = screen->createShowFunction(video->id());
+    vsf->setStartTime(0);
+    vsf->setDuration(3000);
+    ls.commitEdit();
+
+    ShowRunner runner(ls.doc, ls.show->id());
+    QSignalSpy timeSpy(&runner, SIGNAL(timeChanged(quint32)));
+    QSignalSpy seekSpy(video, SIGNAL(requestSeek(qint64)));
+    QSignalSpy playSpy(video, SIGNAL(requestPlayback(QString)));
+
+    // started from a Show track, a Spout Video publishes under the track's name
+    ls.advanceTo(runner, 100);
+    QVERIFY(queueHas(runner, vsf->id()));
+    QCOMPARE(video->runtimeSenderName(), QString("QLC+ Screen L"));
+    QVERIFY(video->isRunning());
+    QCOMPARE(playSpy.count(), 1);
+    QCOMPARE(playSpy.at(0).at(0).toString(), QString("QLC+ Screen L"));
+
+    // a seek while playing (not scrubbing) moves the Video in place rather
+    // than restarting it, and reports the new playhead position right away
+    int before = timeSpy.count();
+    ls.show->requestSeek(700);
+    runner.write(ls.timer());
+    QCOMPARE(seekSpy.count(), 1);
+    QCOMPARE(seekSpy.at(0).at(0).toLongLong(), qint64(700));
+    QVERIFY(queueHas(runner, vsf->id()));
+    QVERIFY(timeSpy.count() > before);
+    QCOMPARE(timeSpy.at(before).at(0).toUInt(), 700u);
+    QCOMPARE(runner.m_elapsedTime, 700u + MasterTimer::tick());
+
+    runner.stop();
+    ls.timer()->timerTick();
+    QVERIFY(video->isRunning() == false);
+    QVERIFY(video->runtimeSenderName().isEmpty());
+}
+
+void ShowRunner_Test::startPassSkipsDeletedFunction()
+{
+    LiveShow ls(this, 0, 1000, 5000);
+    ShowRunner runner(ls.doc, ls.show->id());
+    QCOMPARE(runner.m_schedule->clips.count(), 2);
+
+    // the Function is deleted before the snapshot is rebuilt: the start
+    // pass and the due-clip scan both skip the orphaned clip
+    QVERIFY(ls.doc->deleteFunction(ls.scene->id()));
+    ls.scene = NULL;
+    runner.m_startPassPending = true;
+    runner.write(ls.timer());
+    QVERIFY(queueHas(runner, ls.sf->id()) == false);
+    QVERIFY(queueHas(runner, ls.fillerSf->id()));
+    QCOMPARE(runner.m_runningQueue.count(), 1);
+
+    runner.stop();
+    ls.timer()->timerTick();
+}
+
+void ShowRunner_Test::adjustIntensityOnRunningClip()
+{
+    ShowRunner runner(m_doc, m_show->id());
+    ShowRunner::RunningClip rc;
+    rc.sfId = 0;
+    rc.functionId = m_scene->id();
+    rc.trackId = m_track->id();
+    rc.start = 0;
+    rc.stopTime = 1000;
+    rc.function = m_scene;
+    rc.overrideId = m_scene->requestAttributeOverride(Function::Intensity, 1.0);
+    QVERIFY(rc.overrideId != Function::invalidAttributeId());
+    runner.m_runningQueue.append(rc);
+
+    // the track's intensity reaches the running clip through its override
+    runner.adjustIntensity(0.3, m_track);
+    QCOMPARE(runner.m_intensityMap[m_track->id()], 0.3);
+    QCOMPARE(m_scene->getAttributeValue(Function::Intensity), 0.3);
+
+    // clips on other tracks are left alone
+    Track other;
+    other.setId(m_track->id() + 100);
+    runner.adjustIntensity(0.9, &other);
+    QCOMPARE(m_scene->getAttributeValue(Function::Intensity), 0.3);
+
+    m_scene->releaseAttributeOverride(rc.overrideId);
+    QCOMPARE(m_scene->getAttributeValue(Function::Intensity), 1.0);
 }
 
 // Guiless rather than appless: Chaser::createRunner() moves its runner to
