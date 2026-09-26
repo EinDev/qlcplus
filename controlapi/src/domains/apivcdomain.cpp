@@ -887,6 +887,10 @@ bool jsonIsInteger(const QJsonValue &v)
     if (v.isDouble() == false)
         return false;
     double d = v.toDouble();
+    // Stay inside the exactly-representable integer range before casting - converting e.g. 1e300 to
+    // qint64 is undefined behaviour, and nothing here legitimately needs more than 2^53 anyway.
+    if (d < -9007199254740992.0 || d > 9007199254740992.0)
+        return false;
     return d == double(qint64(d));
 }
 
