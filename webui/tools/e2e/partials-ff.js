@@ -115,11 +115,11 @@ async function pickCombo(page, sel, wanted) {
 }
 /** FF.Row whose first child reads `label`, inside `root`; returns an expression for `inner` in it. */
 const rowPart = (label, inner, root) => `(function(){ const r = [...(${root ? q(root) : 'document'} || document).querySelectorAll('div')].filter(d => d.children.length >= 2 && (d.children[0].textContent || '').trim() === ${JSON.stringify(label)}).pop(); return r ? r.querySelectorAll(${JSON.stringify(inner)}) : []; })()`;
-async function selectInTree(page, name, opts) {
+async function selectInTree(page, name, opts, search) {
   const searchOpen = await page.eval(`!![...document.querySelectorAll('input')].find(i => i.placeholder === 'Search…')`);
   if (!searchOpen) await clickFn(page, `[...document.querySelectorAll('[title="Search fixtures and functions"]')].pop()`, 'search button');
   await page.eval(`(function(){ const el = [...document.querySelectorAll('input')].find(i => i.placeholder === 'Search…');
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, ${JSON.stringify(name)});
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, ${JSON.stringify(search || name)});
     el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true })); })()`);
   await sleep(500);
   await clickFn(page, leafText(name, '[data-ff-tree]'), 'tree node ' + name, opts);
@@ -468,6 +468,259 @@ async function main() {
       check(!!await soon(async () => (await api.call('fixtures.monitor.get')).stage.backgroundImage === '', 'reset'), 'Reset clears it');
       check(!!await soon(() => page.eval(`!document.querySelector('[data-ff-bg-image]')`), 'gone'), 'and the view stops drawing it');
       await settings(page, false);
+    }
+
+    /* ================= Highlight, colour tool, single-axis tool ================= */
+    if (want('tools')) {
+      console.log('\n[Highlight / colour / single axis]');
+      const bar = fixtures.find(f => f.model === 'Tilt Bar');
+      const d = await api.call('fixtures.get', { fixtureId: bar.id });
+      const idx = (g, c) => d.channelList.find(ch => ch.group === g && (c === undefined || ch.colour === c)).index;
+      const dim = idx('Intensity', undefined), red = idx('Intensity', 'Red'), green = idx('Intensity', 'Green'), blue = idx('Intensity', 'Blue'), tilt = idx('Tilt');
+      const dmx = async () => { const v = (await api.call('io.dmx.universe.get', { universeId: d.universe })).values; return (i) => v[d.address + i]; };
+      await selectInTree(page, bar.name);
+      await panel(page, 'Fixture tools');
+      await page.waitFor(`/1 fixture/.test((document.querySelector('[data-ff-tools-title]') || {}).textContent || '')`, 8000);
+      const before = await dmx();
+      await clickFn(page, `document.querySelector('[data-ff-highlight] button')`, 'Highlight');
+      let v = await soon(async () => { const g = await dmx(); return g(dim) === 255 && g(red) === 255 && g(green) === 255 && g(blue) === 255 ? g : null; }, 'highlight');
+      check(!!v, 'Highlight: full intensity + white on ' + bar.name);
+      await shot(page, 'highlight');
+      await clickFn(page, `document.querySelector('[data-ff-highlight] button')`, 'Highlight off');
+      v = await soon(async () => { const g = await dmx(); return g(dim) === before(dim) && g(red) === before(red) ? g : null; }, 'released');
+      check(!!v, 'Highlight off releases exactly those channels (back to ' + before(dim) + ')');
+      // colour tool: basic palette and typed hex (full picker)
+      await clickFn(page, `[...document.querySelectorAll('img[alt="red"]')].pop()`, 'basic colour red');
+      v = await soon(async () => { const g = await dmx(); return g(red) === 255 && g(green) === 0 && g(blue) === 0 ? g : null; }, 'red');
+      check(!!v, 'basic colour red writes 255 / 0 / 0');
+      await setInput(page, `[...document.querySelectorAll('input[title^="Hex colour"]')].pop()`, '#00ff80');
+      v = await soon(async () => { const g = await dmx(); return g(red) === 0 && g(green) === 255 && g(blue) === 128 ? g : null; }, 'hex');
+      check(!!v, 'typed hex #00ff80 writes 0 / 255 / 128');
+      await page.eval('document.activeElement && document.activeElement.blur()');
+      // single-axis tool: the Tilt Bar has Tilt but no Pan
+      check(await page.eval(`!!document.querySelector('[data-single-axis="tilt"]') && !document.querySelector('[data-single-axis="pan"]')`), 'a tilt-only fixture gets the single-axis (tilt) tool');
+      const half = await page.eval(`[...document.querySelectorAll('[data-single-axis="tilt"] button')].map(b => b.textContent.trim()).filter(t => /°$/.test(t))`);
+      await clickFn(page, `[...document.querySelectorAll('[data-single-axis="tilt"] button')].find(b => b.textContent.trim() === ${JSON.stringify(half[2])})`, 'tilt ' + half[2]);
+      v = await soon(async () => { const g = await dmx(); return near(g(tilt), 127.5, 1) ? g : null; }, 'tilt');
+      check(!!v, 'single-axis ' + half[2] + ' writes tilt ~127 (' + (v ? v(tilt) : (await dmx())(tilt)) + ')');
+      await shot(page, 'single-axis');
+      await clickFn(page, byText('button', 'Release fixtures'), 'Release fixtures');
+    }
+
+    /* ================= palettes ================= */
+    if (want('palettes')) {
+      console.log('\n[palettes]');
+      /* setup: drop palettes an earlier run against the same sandbox left behind */
+      for (const old of (await api.call('palette.list')).palettes.filter(x => /^E2E /.test(x.name))) await api.edit('palette.delete', { paletteId: old.id });
+      await panel(page, 'Palettes');
+      const create = async (typeLabel, name, fill) => {
+        await clickFn(page, byTitle('Create a palette'), 'create palette');
+        await page.waitFor(`!!document.querySelector('[data-e2e=palette-create]')`, 5000);
+        const typeRow = rowPart('Type', 'button', '[data-e2e=palette-create]');
+        await clickFn(page, `${typeRow}[0]`, 'type combo');
+        await clickFn(page, `[...(${rowPart('Type', 'button', '[data-e2e=palette-create]')})].find(b => b.textContent.trim() === ${JSON.stringify(typeLabel)})`, 'type ' + typeLabel);
+        await setInput(page, q('[data-e2e=palette-name]'), name);
+        await fill();
+        await shot(page, 'palette-' + typeLabel.replace(/\W/g, ''));
+        await clickFn(page, dialogBtn('Create'), 'Create');
+        const p = await soon(async () => (await api.call('palette.list')).palettes.find(x => x.name === name), name);
+        return p ? api.call('palette.get', { paletteId: p.id }) : null;
+      };
+      const spinRow = async (label, value) => { await setInput(page, `${rowPart(label, 'input', '[data-e2e=palette-create]')}[0]`, value, true); };
+      let p = await create('Position 3D', 'E2E Pos3D', async () => { await spinRow('X', 1000); await spinRow('Y', 2000); await spinRow('Z', -500); });
+      check(p && p.type === 'Position3D' && p.values.map(Number).join(',') === '1000,2000,-500', 'Position 3D palette 1000 / 2000 / -500 mm', p && p.values);
+      p = await create('Shutter', 'E2E Shutter', async () => {
+        await clickFn(page, `${rowPart('Effect', 'button', '[data-e2e=palette-create]')}[0]`, 'effect combo');
+        await clickFn(page, `[...(${rowPart('Effect', 'button', '[data-e2e=palette-create]')})].find(b => b.textContent.trim() === 'Strobe random')`, 'Strobe random');
+        await spinRow('Amount', 60);
+      });
+      check(p && p.type === 'Shutter' && Number(p.values[0]) === 11 && Number(p.values[1]) === 60, 'Shutter palette: Strobe random at 60%', p && p.values);
+      p = await create('Gobo', 'E2E Gobo', async () => { await spinRow('DMX', 64); });
+      check(p && p.type === 'Gobo' && Number(p.values[0]) === 64, 'Gobo palette DMX 64', p && p.values);
+      const zoom = await create('Zoom', 'E2E Zoom', async () => { await spinRow('Zoom', 30); });
+      check(zoom && zoom.type === 'Zoom' && Number(zoom.values[0]) === 30, 'Zoom palette 30%', zoom && zoom.values);
+      // edit: rename + change value
+      if (zoom) {
+        await clickFn(page, leafText('E2E Zoom'), 'E2E Zoom in the list');
+        await page.waitFor(`!!${rowPart('Zoom', 'input')}[0]`, 5000);
+        const nameEl = `[...document.querySelectorAll('input')].find(i => i.value === 'E2E Zoom')`;
+        await page.waitFor("!!(" + nameEl + ")", 5000);
+        const r = await page.rectOf(new Function('return ' + nameEl));
+        const x = r.x + r.w / 2, y = r.y + r.h / 2;
+        await page.mouse('mouseMoved', x, y);
+        await page.mouse('mousePressed', x, y, { clickCount: 1 }); await page.mouse('mouseReleased', x, y, { clickCount: 1 });
+        await page.mouse('mousePressed', x, y, { clickCount: 2 }); await page.mouse('mouseReleased', x, y, { clickCount: 2 });
+        await sleep(300);
+        const editing = await page.eval(`document.activeElement && document.activeElement.tagName === 'INPUT' && document.activeElement.value === 'E2E Zoom'`);
+        check(editing, 'double-click puts the palette name into edit mode');
+        await page.eval(`document.activeElement && document.activeElement.select && document.activeElement.select()`);
+        await page.s.send('Input.insertText', { text: 'E2E Zoom Wide' });
+        await page.key('Enter');
+        check(!!await soon(async () => (await api.call('palette.get', { paletteId: zoom.id })).name === 'E2E Zoom Wide', 'renamed'), 'palette renamed to "E2E Zoom Wide"');
+        await setInput(page, `${rowPart('Zoom', 'input')}[0]`, 75, true);
+        check(!!await soon(async () => Number((await api.call('palette.get', { paletteId: zoom.id })).values[0]) === 75, 'value'), 'palette value changed to 75%');
+        await shot(page, 'palette-edit');
+      }
+      console.log('  (Pan / Tilt / Pan+Tilt palettes: left to the degrees fix in FixtureDialogs.jsx, not driven here)');
+      await panel(page, 'Palettes', false);
+    }
+
+    /* ================= Sequence: bound Scene picker ================= */
+    if (want('sequence')) {
+      console.log('\n[Sequence bound scene]');
+      const fns = (await api.call('functions.list')).functions;
+      const seq = fns.find(f => f.type === 'Sequence');
+      const seqD = await api.call('functions.get', { functionId: String(seq.id) });
+      const orig = String(seqD.typeDetail.boundSceneId);
+      const other = fns.find(f => f.type === 'Scene' && String(f.id) !== orig && !f.hidden);
+      await view(page, 'list');
+      await selectInTree(page, seq.name);
+      await page.waitFor(`!!document.querySelector('[data-e2e=seq-bound-scene]')`, 10000);
+      await setInput(page, q('[data-e2e=seq-bound-scene]'), String(other.id));
+      check(!!await soon(async () => String((await api.call('functions.get', { functionId: String(seq.id) })).typeDetail.boundSceneId) === String(other.id), 'bound'), 'the picker binds "' + seq.name + '" to "' + other.name + '"');
+      await shot(page, 'sequence-bound');
+      await setInput(page, q('[data-e2e=seq-bound-scene]'), orig);
+      check(!!await soon(async () => String((await api.call('functions.get', { functionId: String(seq.id) })).typeDetail.boundSceneId) === orig, 'restored'), 'and back to its original scene');
+    }
+
+    /* ================= RGB Matrix editor ================= */
+    if (want('rgb')) {
+      console.log('\n[RGB Matrix: typed script properties, font, offsets, image]');
+      const fns = (await api.call('functions.list')).functions;
+      const rgb = fns.find(f => f.type === 'RGBMatrix' && f.name === 'New RGB Matrix 117') || fns.find(f => f.type === 'RGBMatrix');
+      const cfg = async () => (await api.call('functions.get', { functionId: String(rgb.id) })).typeDetail.config;
+      const algos = (await api.call('functions.rgbmatrix.listAlgorithms')).algorithms;
+      await view(page, 'list');
+      await selectInTree(page, rgb.name);
+      await page.waitFor(`!!document.querySelector('[data-rgb=editor]')`, 10000);
+      if (!algos.some(a => a.name === 'E2E Typed Props')) {
+        check(false, 'the test script "E2E Typed Props" is loaded (restart the sandbox once after the first run)');
+      } else {
+        await setInput(page, q('[data-rgb="algorithm"]'), 'E2E Typed Props');
+        await page.waitFor(`!!document.querySelector('[data-rgb="prop-gain"]') && !!document.querySelector('[data-rgb="prop-label"]')`, 8000);
+        await setInput(page, q('[data-rgb="prop-gain"]'), '2.75', true);
+        await setInput(page, q('[data-rgb="prop-label"]'), 'world', true);
+        const c = await soon(async () => { const a = (await cfg()).algorithm; const pv = (n) => (a.scriptProperties.find(p => p.name === n) || {}).value; return Number(pv('gain')) === 2.75 && pv('label') === 'world' ? a : null; }, 'props');
+        check(!!c, 'float property gain = 2.75 and string property label = "world"', c ? c.scriptProperties : (await cfg()).algorithm.scriptProperties);
+        await shot(page, 'rgb-typed-props');
+      }
+      await setInput(page, q('[data-rgb="algorithm"]'), 'Text');
+      await page.waitFor(`!!document.querySelector('[data-rgb=text]')`, 8000);
+      await sleep(400);
+      await setInput(page, `${rowPart('Font', 'input', '[data-rgb=editor]')}[1]`, 24, true);
+      await clickFn(page, `document.querySelector('[data-rgb=editor] button[title="Bold"]')`, 'Bold');
+      await clickFn(page, `document.querySelector('[data-rgb=editor] button[title="Italic"]')`, 'Italic');
+      await setInput(page, `${rowPart('Offset', 'input', '[data-rgb=editor]')}[0]`, 3, true);
+      await setInput(page, `${rowPart('Offset', 'input', '[data-rgb=editor]')}[1]`, -2, true);
+      let a = await soon(async () => { const x = (await cfg()).algorithm; return x.font && x.font.pointSize === 24 && x.font.bold && x.font.italic && x.xOffset === 3 && x.yOffset === -2 ? x : null; }, 'text');
+      check(!!a, 'Text: font 24 pt bold italic, offset 3 / -2', a || (await cfg()).algorithm);
+      await shot(page, 'rgb-text');
+      await setInput(page, q('[data-rgb="algorithm"]'), 'Image');
+      await page.waitFor(`!!document.querySelector('[data-rgb="image-browse"] button')`, 8000);
+      await clickFn(page, `document.querySelector('[data-rgb="image-browse"] button')`, 'Browse…');
+      await page.waitFor(`!!document.querySelector('.qlc-file-browser')`, 5000);
+      await clickFn(page, `[...document.querySelectorAll('.qlc-file-browser div[title]')].find(d => /[\\\\/]Gobos$/.test(d.title))`, 'Gobos place');
+      await clickFn(page, leafText('Others', '.qlc-fb-list'), 'Others');
+      await clickFn(page, dialogBtn('Open'), 'Open folder');
+      await page.waitFor(`!![...document.querySelectorAll('.qlc-fb-list *')].find(e => e.children.length === 0 && e.textContent.trim() === 'gobo00003.png')`, 5000);
+      await clickFn(page, leafText('gobo00003.png', '.qlc-fb-list'), 'gobo00003.png');
+      await clickFn(page, dialogBtn('Open'), 'Open');
+      a = await soon(async () => { const x = (await cfg()).algorithm; return x.type === 'image' && /gobo00003\.png$/.test(x.imagePath || '') ? x : null; }, 'image');
+      check(!!a, 'Image: picked picture ' + (a && a.imagePath));
+      await setInput(page, `${rowPart('Offset', 'input', '[data-rgb=editor]')}[0]`, -4, true);
+      a = await soon(async () => { const x = (await cfg()).algorithm; return x.xOffset === -4 ? x : null; }, 'image offset');
+      check(!!a, 'Image: X offset -4');
+      await sleep(800);
+      await shot(page, 'rgb-image');
+    }
+
+    /* ================= rename fixtures with numbering ================= */
+    if (want('rename')) {
+      console.log('\n[rename fixtures with numbering]');
+      await view(page, 'list');
+      const lights = fixtures.filter(f => f.model === 'Mobile Light').slice(0, 3);
+      await selectInTree(page, lights[0].name, undefined, "Mobile Light");
+      for (const f of lights.slice(1)) await clickFn(page, leafText(f.name, '[data-ff-tree]'), 'ctrl ' + f.name, { modifiers: CTRL });
+      await clickFn(page, byTitle('Rename the selected item'), 'Rename');
+      await page.waitFor(`!!document.querySelector('[data-e2e=rename-numbered]')`, 5000);
+      await setInput(page, q('[data-e2e=rename-base]'), 'E2E Light');
+      await setInput(page, `${rowPart('Start number', 'input', '[data-e2e=rename-numbered]')}[0]`, 5, true);
+      await setInput(page, `${rowPart('Digits', 'input', '[data-e2e=rename-numbered]')}[0]`, 2, true);
+      await shot(page, 'rename-fixtures');
+      await clickFn(page, dialogBtn('Rename'), 'Rename');
+      const names = await soon(async () => { const l = (await api.call('fixtures.list')).fixtures; const n = lights.map(f => l.find(x => x.id === f.id).name); return n.join(',') === 'E2E Light 05,E2E Light 06,E2E Light 07' ? n : null; }, 'renamed');
+      check(!!names, 'three fixtures renamed E2E Light 05 / 06 / 07', names || lights.map(f => f.name));
+    }
+
+    /* ================= save and grep the project ================= */
+    if (want('save')) {
+      console.log('\n[saveAs]');
+      const out = path.join(SANDBOX, 'partials-out.qxw');
+      await api.call('core.project.saveAs', { target: 'serverPath', path: out });
+      const xml = fs.readFileSync(out, 'utf8');
+      if (want('palettes')) check(/<Palette [^>]*Type="Zoom"[^>]*Name="E2E Zoom Wide"|<Palette [^>]*Name="E2E Zoom Wide"[^>]*Type="Zoom"/.test(xml) && /Name="E2E Pos3D"/.test(xml), 'out.qxw holds the new palettes');
+      if (want('dmxt')) check(/PositionRange="1200"/.test(xml), 'out.qxw holds the drone position range');
+      if (want('rename')) check(/<Name>E2E Light 06<\/Name>/.test(xml), 'out.qxw holds the renamed fixtures');
+    }
+
+    /* ================= Fixture Editor: gobo picture ================= */
+    if (want('gobo')) {
+      console.log('\n[Fixture Editor gobo picture]');
+      await page.goto(WEB + '?ctx=fxeditor');
+      await page.waitFor(`!!document.querySelector('[data-fe="tb-new"]')`, 30000);
+      await sleep(800);
+      const sessionsBefore = (await api.call('fixturedefs.session.list')).sessions.map(s => s.sessionId);
+      await clickSel(page, '[data-fe="tb-new"]');
+      const sid = (await soon(async () => (await api.call('fixturedefs.session.list')).sessions.find(s => sessionsBefore.indexOf(s.sessionId) === -1), 'session')).sessionId;
+      await clickSel(page, '[data-fe-tab="channels"]');
+      await pickCombo(page, '[data-fe="add-channel-preset"]', 'Gobo Wheel');
+      await clickSel(page, '[data-fe="add-channel"]');
+      const def = await soon(async () => { const d = (await api.call('fixturedefs.session.get', { sessionId: sid })).definition; return d.channels.length ? d : null; }, 'channel');
+      const goboCh = def && def.channels.find(c => c.group === 'Gobo' || /gobo/i.test(c.name));
+      check(!!goboCh, 'the new definition has a Gobo channel (' + (goboCh && goboCh.name) + ')');
+      await clickSel(page, '[data-channel-name="' + goboCh.name + '"]');
+      /* a preset channel's capabilities are generated; Custom makes them editable (keeps group Gobo) */
+      await pickCombo(page, '[data-fe="channel-preset"]', 'Custom');
+      await soon(async () => (await api.call('fixturedefs.session.get', { sessionId: sid })).definition.channels[0].preset === 'Custom', 'custom');
+      await clickSel(page, '[data-cap-index="0"] [data-fe="cap-name"]');
+      await pickCombo(page, '[data-fe="cap-preset"]', 'Gobo Macro');
+      await clickFn(page, `document.querySelector('[data-fe="cap-picture-browse"] button')`, 'Browse…');
+      const where = await soon(() => page.eval(`(document.querySelector('.qlc-fb-path') || {}).value`), 'browser path');
+      check(/[\\/]Gobos$/.test(where || ''), 'the picker opens in the gobo folder (' + where + ')');
+      await clickFn(page, leafText('Others', '.qlc-fb-list'), 'Others');
+      await clickFn(page, dialogBtn('Open'), 'Open folder');
+      await page.waitFor(`!![...document.querySelectorAll('.qlc-fb-list *')].find(e => e.children.length === 0 && e.textContent.trim() === 'gobo00003.png')`, 5000);
+      await clickFn(page, leafText('gobo00003.png', '.qlc-fb-list'), 'gobo00003.png');
+      await shot(page, 'gobo-browser');
+      await clickFn(page, dialogBtn('Open'), 'Open');
+      const cap = await soon(async () => { const c = (await api.call('fixturedefs.session.get', { sessionId: sid })).definition.channels.find(x => x.name === goboCh.name).capabilities[0]; return c.preset === 'GoboMacro' && /Gobos\/Others\/gobo00003\.png$/.test(String(c.resources[0])) ? c : null; }, 'picture');
+      check(!!cap, 'the capability picture is the picked gobo (' + (cap && cap.resources[0]) + ')');
+      const xml = await api.call('fixturedefs.export', { sessionId: sid }).catch(() => null);
+      const text = xml && (xml.qxf || (xml.qxfBase64 && Buffer.from(xml.qxfBase64, 'base64').toString('utf8')) || '');
+      if (text) check(/Res1="Others\/gobo00003\.png"|Res="Others\/gobo00003\.png"/.test(text), 'the exported .qxf stores it relative to the gobo folder', (text.match(/<Capability[^>]*gobo00003[^>]*>/) || [''])[0]);
+      await shot(page, 'gobo-picture');
+      await api.call('fixturedefs.session.close', { sessionId: sid, discard: true }).catch(() => api.call('fixturedefs.session.close', { sessionId: sid }).catch(() => {}));
+      await page.goto(WEB + '?ctx=fx');
+      await page.waitFor(`!!document.querySelector('[data-ff-view-button="2d"]')`, 30000);
+    }
+
+    /* ================= initial point of view prompt (new, empty project) ================= */
+    if (want('pov')) {
+      console.log('\n[initial point of view prompt]');
+      await api.call('core.project.new');
+      await sleep(1000);
+      await page.goto(WEB + '?ctx=fx');
+      await page.waitFor(`!!document.querySelector('[data-ff-view-button="2d"]')`, 30000);
+      await view(page, '2d');
+      const st0 = (await api.call('fixtures.monitor.get')).stage;
+      check(st0.pointOfView === 'Undefined', 'a new project has no point of view yet (' + st0.pointOfView + ')');
+      await page.waitFor(`!!document.querySelector('[data-ff-pov]')`, 8000).catch(() => {});
+      check(await page.eval(`!!document.querySelector('[data-ff-pov]')`), 'the 2D view asks for the initial point of view');
+      await shot(page, 'pov-prompt');
+      await clickFn(page, byText('button', 'Front view', '[data-ff-pov]'), 'Front view');
+      const st = await soon(async () => { const s = (await api.call('fixtures.monitor.get')).stage; return s.pointOfView === 'FrontView' ? s : null; }, 'pov');
+      check(!!st, 'picking Front view sets the point of view', st);
+      check(await soon(() => page.eval(`!document.querySelector('[data-ff-pov]')`), 'closed'), 'the prompt closes');
     }
   } catch (e) {
     await shot(page, 'failure').catch(() => {});

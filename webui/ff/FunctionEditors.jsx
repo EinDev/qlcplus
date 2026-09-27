@@ -470,6 +470,9 @@
     const [picker, setPicker] = React.useState(false);
     const [preview, setPreview] = React.useState(false);
     const [busy, setBusy] = React.useState('');
+    /* A Sequence's own Scene is hidden, so it is not in the (visible) function list: remember every
+       hidden scene this editor has shown as bound, or rebinding would lose the way back to it. */
+    const [hiddenSeen, setHiddenSeen] = React.useState({});
     const loadScene = React.useCallback(() => { if (sceneId) qlc.call('functions.get', { functionId: sceneId }).then(setScene).catch(() => setScene(null)); }, [sceneId, qlc.online]);
     React.useEffect(() => { setScene(null); loadScene(); }, [sceneId, qlc.online]);
     React.useEffect(() => qlc.subscribeTo('functions.scene.membersChanged', d => { if (d && String(d.functionId) === sceneId) loadScene(); }), [sceneId, qlc.online]);
@@ -517,6 +520,10 @@
     const bindScene = (id) => FF.mutate(qlc, 'functions.sequence.setBoundScene', { functionId: fid, sceneId: String(id) }).then(reload).catch(() => reload());
     const sceneItems = (functions || []).filter(f => f.type === 'Scene').map(f => ({ mLabel: f.name + (String(f.id) === sceneId ? '' : ''), mValue: String(f.id) }));
     const hiddenBound = sceneId && !sceneItems.some(m => m.mValue === sceneId);
+    React.useEffect(() => {
+      if (hiddenBound && scene && String(scene.id) === sceneId && !hiddenSeen[sceneId]) setHiddenSeen(h => Object.assign({}, h, { [sceneId]: scene.name }));
+    }, [hiddenBound, sceneId, scene && scene.id]);
+    const hiddenOthers = Object.keys(hiddenSeen).filter(id => id !== sceneId && !sceneItems.some(m => m.mValue === id));
     const fixtureItems = (fixtures || []).filter(f => members.indexOf(String(f.id)) === -1).map(f => ({ id: String(f.id), name: f.name, icon: D.icon(Icons.FIXTURE_TYPE_ICONS[f.fixtureType] || 'fixture'), hint: 'U' + (f.universe + 1) + '.' + (f.address + 1) }));
     const valueFixtureIds = curStep ? Object.keys(curStep.values || {}).map(k => k.split('.')[0]) : [];
     const shownIds = Array.from(new Set(members.concat(valueFixtureIds)));
@@ -527,6 +534,7 @@
           <RobotoText label="Bound scene" fontSize={13} labelColor="var(--fg-light)" />
           <select value={sceneId || ''} onChange={e => { if (e.target.value && e.target.value !== sceneId) bindScene(e.target.value); }} style={Object.assign({ width: 200 }, inputStyle)} data-e2e="seq-bound-scene">
             {hiddenBound ? <option value={sceneId}>{(scene && scene.name) || 'Scene ' + sceneId} (hidden)</option> : null}
+            {hiddenOthers.map(id => <option key={id} value={id}>{hiddenSeen[id]} (hidden)</option>)}
             {sceneItems.map(m => <option key={m.mValue} value={m.mValue}>{m.mLabel}</option>)}
           </select>
           <IconButton imgSource={D.icon('fixture')} size={24} tooltip="Add fixtures to the bound scene" disabled={!sceneId} onClick={() => setPicker(true)} />
