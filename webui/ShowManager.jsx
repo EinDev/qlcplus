@@ -182,10 +182,8 @@
   const glyphButton = (glyph, tooltip, disabled, onClick, extra) => (
     <IconButton faSource={glyph} size={26} tooltip={tooltip} disabled={!!disabled} onClick={onClick} {...(extra || {})} />
   );
-  /** Font Awesome has no free "stop" in the bundle: a square in the same style */
-  function StopGlyph({ color = 'var(--fg-main)' }) {
-    return <span style={{ display: 'inline-block', width: 11, height: 11, background: color, borderRadius: 1 }} />;
-  }
+  /** Font Awesome has no free "stop" in the bundle: a square, as an image the IconButton can show */
+  const STOP_ICON = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2" fill="#f0f0f0"/></svg>');
 
   /* ---- the screen ------------------------------------------------------------------------------ */
   function ShowManager() {
@@ -496,7 +494,9 @@
       const up = () => {
         window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up);
         setDrag(null);
-        if (!moved) return;
+        /* ShowManager::selectItemByClick: a plain click on one item of a multi-selection makes it
+           the only selected item (a drag that started on it moved the whole group instead) */
+        if (!moved) { if (wasSelected && ids.length > 1) setSelection([String(it.id)]); return; }
         const wanted = it.startTime + pxToMs(last.dx);
         moveItems(group, String(it.id), wanted, Math.max(0, Math.min(tracks.length, it.trackIndex + last.dTrack)), false);
       };
@@ -561,7 +561,7 @@
               bgColor={run.paused ? 'green' : run.running ? 'darkorange' : undefined}
               tooltip={run.running && !run.paused ? 'Pause' : run.paused ? 'Resume' : 'Play from the cursor'} onClick={play} />
           </ShortcutHint>
-          <IconButton size={26} disabled={!detail} tooltip={run.running ? 'Stop' : 'Rewind'} onClick={stop} bgColor={run.running ? 'red' : undefined} data-show="stop"><StopGlyph /></IconButton>
+          <IconButton imgSource={STOP_ICON} size={26} disabled={!detail} tooltip={run.running ? 'Stop' : 'Rewind'} onClick={stop} bgColor={run.running ? 'red' : undefined} data-show="stop" />
           <ToolbarSpacer />
           <RobotoText label="Markers" fontSize={14} height={30} />
           <CustomComboBox width={110} height={26} currValue={division} onValueChanged={v => { if (v !== division) setDivision(v); }} model={DIVISIONS.map(([v, l]) => ({ mLabel: l, mValue: v }))} />
