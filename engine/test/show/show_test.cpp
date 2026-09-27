@@ -623,18 +623,25 @@ void Show_Test::running()
     // only picks up timeline edits
     show->setPause(true);
     QVERIFY(show->isPaused());
+    // handed to the runner by the next write on the MasterTimer thread
+    QCOMPARE(show->m_pendingRunnerPause.loadAcquire(), 1);
     show->markScheduleDirty();
     show->rebuildSchedule();
     QVERIFY(show->takePendingSchedule().isNull() == false);
     show->rebuildSchedule();
     show->write(timer, universes);
     QVERIFY(show->takePendingSchedule().isNull());   // consumed by the runner
+    QCOMPARE(show->m_pendingRunnerPause.loadAcquire(), -1);
     show->setPause(false);
     QVERIFY(show->isPaused() == false);
 
-    // the per-track attribute reaches the live runner
+    // the per-track attribute reaches the live runner - on the MasterTimer
+    // thread (next write), never by walking the runner's clip queue from
+    // the caller's thread
     int index = show->adjustAttribute(0.25, 0);
     QCOMPARE(index, 0);
+    QVERIFY(show->m_runner->m_intensityMap.value(track->id()) != 0.25);
+    show->applyPendingRunnerRequests();
     QCOMPARE(show->m_runner->m_intensityMap.value(track->id()), 0.25);
     QVERIFY(show->isScheduleDirty());
 

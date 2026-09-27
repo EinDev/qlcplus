@@ -554,13 +554,18 @@ void ShowRunner::adjustIntensity(qreal fraction, const Track *track)
     if (track == NULL)
         return;
 
-    qDebug() << Q_FUNC_INFO << "Track ID: " << track->id() << ", val:" << fraction;
-    m_intensityMap[track->id()] = fraction;
+    adjustIntensity(fraction, track->id());
+}
+
+void ShowRunner::adjustIntensity(qreal fraction, quint32 trackId)
+{
+    qDebug() << Q_FUNC_INFO << "Track ID: " << trackId << ", val:" << fraction;
+    m_intensityMap[trackId] = fraction;
 
     for (int i = 0; i < m_runningQueue.count(); i++)
     {
         const RunningClip &rc = m_runningQueue.at(i);
-        if (rc.trackId == track->id() && rc.overrideId != Function::invalidAttributeId())
+        if (rc.trackId == trackId && rc.overrideId != Function::invalidAttributeId())
             rc.function->adjustAttribute(fraction, rc.overrideId);
     }
 }

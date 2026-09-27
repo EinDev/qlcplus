@@ -23,6 +23,7 @@
 #include <QSharedPointer>
 #include <QAtomicInteger>
 #include <QMutex>
+#include <QMap>
 #include <QList>
 #include <QSet>
 
@@ -296,6 +297,15 @@ protected:
     ShowRunner *m_runner;
     /** Number of currently running children */
     QSet <quint32> m_runningChildren;
+
+    /** Pause/resume and per-track intensity requests made from another
+     *  thread (the GUI, the Control API, the Virtual Console), applied to
+     *  the runner by write() on the MasterTimer thread: the runner's
+     *  running-clip queue is only ever touched there. -1 = no request. */
+    QAtomicInteger<int> m_pendingRunnerPause;
+    QMutex m_pendingIntensityMutex;
+    QMap<quint32, qreal> m_pendingIntensity;
+    void applyPendingRunnerRequests();
 
     /*************************************************************************
      * Attributes

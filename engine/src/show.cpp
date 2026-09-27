@@ -50,6 +50,7 @@ Show::Show(Doc* doc) : Function(doc, Function::ShowType)
     , m_scrubMode(0)
     , m_seekRequest(-1)
     , m_runner(NULL)
+    , m_pendingRunnerPause(-1)
 {
     setName(tr("New Show"));
 
@@ -694,13 +695,34 @@ void Show::preRun(MasterTimer* timer)
 
 void Show::setPause(bool enable)
 {
-    if (m_runner != NULL)
-        m_runner->setPause(enable);
+    // The runner's clip queue belongs to the MasterTimer thread (it adds,
+    // removes and reconciles clips every tick, and postRun() deletes the
+    // runner): iterating it from here raced both. Hand the request over;
+    // write() applies it on the next tick.
+    if (isRunning())
+        m_pendingRunnerPause.storeRelease(enable ? 1 : 0);
     Function::setPause(enable);
+}
+
+void Show::applyPendingRunnerRequests()
+{
+    const int pause = m_pendingRunnerPause.fetchAndStoreOrdered(-1);
+    if (pause >= 0)
+        m_runner->setPause(pause == 1);
+
+    QMap<quint32, qreal> intensity;
+    {
+        QMutexLocker locker(&m_pendingIntensityMutex);
+        intensity.swap(m_pendingIntensity);
+    }
+    for (auto it = intensity.constBegin(); it != intensity.constEnd(); ++it)
+        m_runner->adjustIntensity(it.value(), it.key());
 }
 
 void Show::write(MasterTimer* timer, QList<Universe *> universes)
 {
+    applyPendingRunnerRequests();
+
     if (isPaused())
     {
         // Timeline edits still apply while paused so that a clip removed or
@@ -726,6 +748,11 @@ void Show::postRun(MasterTimer* timer, QList<Universe *> universes)
     // the Virtual Console, say) must not find a stale flag and freeze.
     m_scrubMode.storeRelease(0);
     m_seekRequest.storeRelease(-1);
+    m_pendingRunnerPause.storeRelease(-1);
+    {
+        QMutexLocker locker(&m_pendingIntensityMutex);
+        m_pendingIntensity.clear();
+    }
 
     Function::postRun(timer, universes);
 }
@@ -743,15 +770,19 @@ int Show::adjustAttribute(qreal fraction, int attributeId)
 {
     int attrIndex = Function::adjustAttribute(fraction, attributeId);
 
-    if (m_runner != NULL)
+    if (isRunning())
     {
         QList<Track*> trkList = m_tracks.values();
         if (trkList.isEmpty() == false &&
             attrIndex >= 0 && attrIndex < trkList.count())
         {
             Track *track = trkList.at(attrIndex);
+            // applied to the runner on the MasterTimer thread, see setPause()
             if (track != NULL)
-                m_runner->adjustIntensity(getAttributeValue(attrIndex), track);
+            {
+                QMutexLocker locker(&m_pendingIntensityMutex);
+                m_pendingIntensity[track->id()] = getAttributeValue(attrIndex);
+            }
         }
     }
 
