@@ -257,7 +257,27 @@
          * @returns {Promise<object>} result - {docRevision}
          * @see docs/api-spec/fragments/functions-core.yaml (method: functions.efx.reorderFixture)
          */
-        reorderFixture: function (params) { return self.call('functions.efx.reorderFixture', params); }
+        reorderFixture: function (params) { return self.call('functions.efx.reorderFixture', params); },
+
+        /**
+         * Bulk start-offset assignment over every participant (the Qt editor's "Set an offset on
+         * all fixtures" popup).
+         * @param {object} params - {functionId: string, offset: int (0-360),
+         *   mode?: 'Absolute'|'Increasing'|'Random' (default Increasing), baseRevision: int}
+         * @returns {Promise<object>} result - {docRevision}
+         * @see docs/api-spec/fragments/functions-core.yaml (method: functions.efx.setFixturesOffset)
+         */
+        setFixturesOffset: function (params) { return self.call('functions.efx.setFixturesOffset', params); },
+
+        /**
+         * Read-only preview data: the 512-point pattern polygon in 0-255 pan/tilt space plus each
+         * participant's start index / walking direction along it (what EFXPreview.qml animates).
+         * @param {object} params - {functionId: string, includeFixturePaths?: boolean}
+         * @returns {Promise<object>} result - {functionId, pattern: [[x, y], ...],
+         *   fixtures: [{fixture, head, startIndex, step: 1|-1, path?: [[x, y], ...]}]}
+         * @see docs/api-spec/fragments/functions-core.yaml (method: functions.efx.getPreview)
+         */
+        getPreview: function (params) { return self.call('functions.efx.getPreview', params); }
       },
 
       collection: {
