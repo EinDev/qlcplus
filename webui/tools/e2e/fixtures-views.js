@@ -91,9 +91,29 @@ async function setInput(page, selectorFn, value) {
   await sleep(150);
 }
 const selectedOnStage = (page) => page.eval(`[...document.querySelectorAll('[data-ff-stage] g[data-selected]')].map(g => g.getAttribute('data-fx-id'))`);
+/** Design-system CustomComboBox: click the current label, then the wanted entry (it renders after the label). */
+async function pickCombo(page, scope, currentLabel, wantedLabel) {
+  const leaf = (text, last) => `(function(){ const all = [...document.querySelectorAll(${JSON.stringify(scope)} + ' *')].filter(el => el.children.length === 0 && el.textContent.trim() === ${JSON.stringify(text)}); return all[${last ? 'all.length - 1' : '0'}]; })()`;
+  await clickFn(page, leaf(currentLabel, false), 'combo ' + currentLabel);
+  await sleep(250);
+  await clickFn(page, leaf(wantedLabel, true), 'combo entry ' + wantedLabel);
+}
+/** Highest free block of `channels` in universe `uid` (ignoring fixture `exceptId`), or -1. */
+async function freeBlock(api, uid, channels, exceptId) {
+  const fx = (await api.call('fixtures.list')).fixtures.filter(f => f.universe === uid && f.id !== exceptId);
+  const used = new Array(512).fill(false); fx.forEach(f => { for (let i = 0; i < f.channels; i++) used[f.address + i] = true; });
+  for (let a = 512 - channels; a >= 0; a--) { let ok = true; for (let i = 0; i < channels; i++) if (used[a + i]) { ok = false; break; } if (ok) return a; }
+  return -1;
+}
+async function universeWithRoom(api, channels, exceptUid) {
+  const unis = (await api.call('io.universe.list')).universes.sort((a, b) => a.id - b.id);
+  for (const u of unis) if (u.id !== exceptUid && await freeBlock(api, u.id, channels) >= 0) return u;
+  return null;
+}
 async function shot(page, name) { const f = path.join(SHOTS, 'fixtures-' + name + '.png'); await page.screenshot(f); console.log('  shot ' + f); }
 
 /* ---------------------------------------------------------------- the run */
+let placedId = null;
 async function main() {
   fs.mkdirSync(SHOTS, { recursive: true });
   const api = new Api(API);
@@ -107,6 +127,14 @@ async function main() {
   const mon0 = await api.call('fixtures.monitor.get');
   check(mon0.stage && mon0.items.length >= fixtures.length, 'fixtures.monitor.get lists every fixture', { items: mon0.items.length, fixtures: fixtures.length });
   const stage = mon0.stage;
+  /* Test setup (API, not UI): put the four Gobo Spots 1.5 m apart in a row so every one of them is
+     clickable - earlier runs against the same sandbox may have left two of them stacked. */
+  const base = mon0.items.find(i => i.fixtureId === four[0]).position;
+  const spread = async () => {
+    const r = await api.call('fixtures.monitor.setPlacement', { baseRevision: api.rev, items: four.map((id, i) => ({ fixtureId: id, position: { x: 20000 + i * 1500, y: base.y, z: 20000 }, locked: false })) });
+    return r;
+  };
+  await spread();
   console.log('stage', JSON.stringify(stage));
 
   const browser = await launch({ headless: true });
@@ -147,13 +175,29 @@ async function main() {
     check(!!aligned, 'align top: equal depth for all 4');
 
     // drag one alone by +80 px horizontally
-    const target = four[1];
-    for (const fid of four.filter(id => id !== target)) await clickItem(page, fid, { modifiers: CTRL }); // ctrl-click deselects
-    check(await until(async () => { const s = await selectedOnStage(page); return s.length === 1 && s[0] === target; }, 'single selection').catch(() => false), 'ctrl-click deselects, leaving one Gobo Spot selected');
+    /* The 0-degree item: in a 4-item circle the 90 and 270 degree items share an X, so after
+       align-top they sit exactly on top of each other. */
+    const target = four[0];
+    placedId = target;
+    await clickItem(page, four[2], { modifiers: CTRL }); // ctrl-click toggles one off
+    check(await until(async () => { const s = await selectedOnStage(page); return s.length === 3 && s.indexOf(four[2]) === -1; }, 'ctrl deselect').catch(() => false), 'ctrl-click on a selected fixture deselects it');
+    /* A click on empty stage clears the selection (like the Qt view), then a plain click selects one. */
+    const empty = await page.eval(`(function(){ const svg = document.querySelector('[data-ff-stage]'), wrap = svg.parentElement.getBoundingClientRect();
+      for (let y = wrap.top + 20; y < wrap.bottom - 20; y += 23) for (let x = wrap.left + 20; x < wrap.right - 20; x += 23) {
+        const el = document.elementFromPoint(x, y); if (el && svg.contains(el) && !el.closest('g[data-item]')) return { x, y }; }
+      return null; })()`);
+    await page.mouse('mouseMoved', empty.x, empty.y); await page.mouse('mousePressed', empty.x, empty.y); await page.mouse('mouseReleased', empty.x, empty.y);
+    check(await until(async () => (await selectedOnStage(page)).length === 0, 'cleared').catch(() => false), 'a click on empty stage clears the selection');
+    await clickItem(page, target);
+    check(await until(async () => { const s = await selectedOnStage(page); return s.length === 1 && s[0] === target; }, 'single selection').catch(() => false), 'a plain click selects one Gobo Spot');
     const pre = await api.monitorItem(target);
     const r = await page.rectOf(new Function(`return document.querySelector('[data-ff-stage] g[data-item="${target}:0:0"] circle')`));
+    console.log('  drag start ' + JSON.stringify(r) + ' hits ' + await page.eval(`(function(){ const el = document.elementFromPoint(${r.x + r.w / 2}, ${r.y + r.h / 2}); const g = el && el.closest('g[data-item]'); return el ? el.tagName + ' ' + (g ? g.getAttribute('data-item') : '-') : 'nothing'; })()`)
+      + '; stage selection ' + JSON.stringify(await selectedOnStage(page)) + '; tree ' + await page.eval(`[...document.querySelectorAll('[data-ff-tree] [aria-selected="true"], [data-ff-tree] .selected')].map(e => e.textContent.trim()).join(',')`));
     const pxPerMm = await page.eval(`(function(){ const s = document.querySelector('[data-ff-stage]'); return s.getBoundingClientRect().width / s.viewBox.baseVal.width; })()`);
     await page.drag(r.x + r.w / 2, r.y + r.h / 2, r.x + r.w / 2 + 80, r.y + r.h / 2, 10);
+    console.log('  after drag, stage status: ' + await page.eval(`document.querySelector('[data-status]').textContent`));
+    await shot(page, 'after-drag');
     const moved = await until(async () => { const it = await api.monitorItem(target); return Math.abs(it.position.x - pre.position.x) > 10 ? it : null; }, 'drag commit').catch(() => null);
     check(moved && near(moved.position.x - pre.position.x, 80 / pxPerMm, 3 / pxPerMm), 'drag moves the fixture by 80 px = ' + (80 / pxPerMm).toFixed(0) + ' mm', moved && moved.position.x - pre.position.x);
     const others = await Promise.all(four.filter(id => id !== target).map(id => api.monitorItem(id)));
@@ -181,6 +225,8 @@ async function main() {
     console.log('\n[selection tools]');
     await clickFn(page, `document.querySelector('[data-ff-view-button="2d"]')`, '2D view button');
     await page.waitFor(`!!document.querySelector('[data-ff-stage]')`);
+    await spread();
+    await sleep(500);
     for (let i = 0; i < 6; i++) await clickFn(page, toolBtn('zoom-in'), 'zoom in');
     await clickItem(page, four[0]);
     for (const fid of four.slice(1)) await clickItem(page, fid, { modifiers: CTRL });
@@ -251,7 +297,7 @@ async function main() {
     await clickFn(page, `document.querySelector('[data-ff-view-button="dmx"]')`, 'DMX view button');
     await page.waitFor(`document.querySelectorAll('[data-ff-view="dmx"] [data-fx-id]').length > 0`, 10000);
     await sleep(1500);
-    const card = await page.eval(`(function(){ const c = document.querySelector('[data-ff-view="dmx"] [data-fx-id="${aimFx.id}"]'); if (!c) return null; return [...c.querySelectorAll('[data-channel]')].map(e => ({ ch: e.getAttribute('data-channel'), v: e.getAttribute('data-value') })); })()`);
+    const card = await page.eval(`(function(){ const c = document.querySelector('[data-ff-view="dmx"] [data-fx-id="${aimFx.id}"]'); if (!c) return null; return [...c.querySelectorAll('[data-channel]')].map(e => ({ ch: e.getAttribute('data-channel'), v: (e.querySelector('[data-value]') || e).getAttribute('data-value') })); })()`);
     const panIdx = aimDetail.channelList.find(c => c.group === 'Pan').index;
     const panCell = card && card.find(c => Number(c.ch) === panIdx);
     check(!!card, 'DMX view shows a card for ' + aimFx.name);
@@ -265,10 +311,15 @@ async function main() {
     const moveFx = gobos[3];
     await clickFn(page, `document.querySelector('[data-ff-view="grid"] [data-address="${moveFx.address}"]')`, 'grid cell of ' + moveFx.name);
     await clickFn(page, `document.querySelector('[data-ff-view="grid"] [data-action="cut"]')`, 'Cut');
+    const unis = (await api.call('io.universe.list')).universes.sort((a, b) => a.id - b.id);
+    const destUni = await universeWithRoom(api, moveFx.channels, moveFx.universe);
+    check(!!destUni, 'a universe has room for ' + moveFx.name, destUni && destUni.name);
+    await pickCombo(page, '[data-ff-view="grid"]', unis.find(x => x.id === moveFx.universe).name, destUni.name);
+    await sleep(500);
     await clickFn(page, `document.querySelector('[data-ff-view="grid"] [data-action="paste"]')`, 'Paste');
-    const pasted = await until(async () => { const d = await api.call('fixtures.get', { fixtureId: moveFx.id }); return d.address !== moveFx.address ? d : null; }, 'paste').catch(() => null);
-    check(!!pasted, 'grid cut / paste re-addresses ' + moveFx.name, pasted ? (moveFx.address + 1) + ' -> ' + (pasted.address + 1) : 'unchanged');
-    if (pasted) check(await page.eval(`!!document.querySelector('[data-ff-view="grid"] [data-address="${pasted.address}"][data-fx-id="${moveFx.id}"]')`), 'the grid shows it at its new address');
+    const pasted = await until(async () => { const d = await api.call('fixtures.get', { fixtureId: moveFx.id }); return d.universe === destUni.id ? d : null; }, 'paste').catch(() => null);
+    check(!!pasted, 'grid cut / paste moves ' + moveFx.name + ' into ' + destUni.name, pasted ? 'U' + (pasted.universe + 1) + '.' + (pasted.address + 1) : 'unchanged');
+    if (pasted) check(await until(() => page.eval(`!!document.querySelector('[data-ff-view="grid"] [data-address="${pasted.address}"][data-fx-id="${moveFx.id}"]')`), 'grid refresh').catch(() => false), 'the grid shows it at its new address');
     await shot(page, 'grid');
 
     /* ---- Remap ---- */
@@ -286,6 +337,14 @@ async function main() {
     await page.waitFor(`!!document.querySelector('[data-ff-remap-dialog]')`, 5000);
     await clickFn(page, `document.querySelector('[data-remap-source="${remapFx.id}"] [data-action="clone"]')`, 'clone ' + remapFx.name);
     await page.waitFor(`!!document.querySelector('[data-remap-row][data-source-id="${remapFx.id}"]')`);
+    /* SF3's first universes are fully patched: remap into the first universe with room. */
+    const remapUni = await universeWithRoom(api, remapFx.channels, -1);
+    const freeAt = remapUni ? await freeBlock(api, remapUni.id, remapFx.channels) : -1;
+    check(freeAt >= 0, 'a free ' + remapFx.channels + '-channel block exists for the remap target', remapUni && (remapUni.name + ' @' + (freeAt + 1)));
+    const unisAll = (await api.call('io.universe.list')).universes;
+    if (remapUni.id !== remapFx.universe) await pickCombo(page, `[data-remap-row][data-source-id="${remapFx.id}"]`, unisAll.find(x => x.id === remapFx.universe).name, remapUni.name);
+    await setInput(page, `document.querySelector('[data-remap-row][data-source-id="${remapFx.id}"] input[inputmode="numeric"]')`, freeAt + 1);
+    await page.eval(`document.activeElement && document.activeElement.blur()`);
     await shot(page, 'remap');
     const fxBefore = (await api.call('fixtures.list')).fixtures.map(f => f.id);
     await clickFn(page, byText('button', 'Apply remap'), 'Apply remap');
@@ -299,6 +358,8 @@ async function main() {
       const keys = Object.keys(s2.typeDetail.values);
       check(!keys.some(k => k.split('.')[0] === remapFx.id) && beforeKeys.every(k => s2.typeDetail.values[created[0].id + '.' + k.split('.')[1]] === scene.typeDetail.values[k]),
         'Scene "' + scene.name + '" now references the new fixture with the same values', { before: beforeKeys.length });
+      check(created[0].address === freeAt && created[0].universe === remapUni.id, 'the new fixture sits at the chosen universe / address', 'U' + (created[0].universe + 1) + '.' + (created[0].address + 1));
+      if (remapFx.id === target) placedId = created[0].id;
       const mi = await api.monitorItem(created[0].id);
       check(mi && mi.placed, 'the monitor placement moved to the new fixture');
     }
@@ -310,11 +371,17 @@ async function main() {
     const xml = fs.readFileSync(OUT, 'utf8');
     const monitorXml = (xml.match(/<Monitor[\s\S]*?<\/Monitor>/) || [''])[0];
     check(/<Grid [^>]*POV="\d"/.test(monitorXml), 'out.qxw has the <Monitor> grid');
-    check(new RegExp(`<FxItem ID="${target}"[^>]*YRot="45"[^>]*GelColor="#00ff80"`, 'i').test(monitorXml) || new RegExp(`<FxItem ID="${target}"[^>]*GelColor="#00ff80"[^>]*`, 'i').test(monitorXml) && new RegExp(`<FxItem ID="${target}"[^>]*YRot="45"`).test(monitorXml),
-      'out.qxw FxItem of the edited fixture carries YRot 45 and the gel', (monitorXml.match(new RegExp(`<FxItem ID="${target}"[^>]*>`)) || [''])[0]);
+    const fxItem = (monitorXml.match(new RegExp(`<FxItem ID="${placedId}"[^>]*>`)) || [''])[0];
+    check(/YRot="45"/.test(fxItem) && /GelColor="#00ff80"/i.test(fxItem), 'out.qxw FxItem of the edited (then remapped) fixture ' + placedId + ' carries YRot 45 and the gel', fxItem);
+    const circleItems = four.filter(id => id !== target && id !== remapFx.id).map(id => (monitorXml.match(new RegExp(`<FxItem ID="${id}"[^>]*>`)) || [''])[0]);
+    check(circleItems.every(x => /XPos=/.test(x)), 'out.qxw FxItems of the other arranged Gobo Spots', circleItems);
     console.log('  FxItems: ' + (monitorXml.match(/<FxItem /g) || []).length);
 
     await shot(page, 'final');
+  } catch (e) {
+    await shot(page, 'failure').catch(() => {});
+    console.log('  page text: ' + (await page.eval(() => document.body.innerText.slice(0, 600)).catch(() => '')).replace(/\s+/g, ' '));
+    throw e;
   } finally {
     const errs = page.consoleErrors.filter(e => !/favicon/i.test(e));
     check(errs.length === 0, 'no console errors', errs.slice(0, 5));
