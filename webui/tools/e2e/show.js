@@ -86,7 +86,6 @@ async function settle(ms = 600) { await sleep(ms); }
     /* 2. two Scenes from the picker, added back to back at the cursor (0) on the new track */
     const scenes = (list.functions || []).filter(f => f.type === 'Scene' && !f.hidden).slice(0, 2);
     eq(scenes.length, 2, 'two Scenes available');
-    await page.click(() => document.querySelector('[data-show=track][data-track-id="' + '__T__' + '"]'), {}).catch(() => {});
     await page.click(new Function('return document.querySelector(\'[data-show=track][data-track-id="' + track2.id + '"]\')'));
     for (const s of scenes) {
       await page.eval('(function(){ const el = document.querySelector(\'[data-show=picker-row][data-function-id="' + s.id + '"]\'); el.scrollIntoView({block:"nearest"}); })()');
