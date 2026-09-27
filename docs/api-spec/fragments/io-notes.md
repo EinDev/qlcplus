@@ -157,7 +157,15 @@ sendKeypadCommand`, `commandHistory` on `io.simpleDesk.get`, the
   parameters are saved with the patch), `io.universe.updated` with the
   patch's `parameters`, `baseRevision` enforced only when sent (same
   deviation as the other web-UI methods). Result also echoes the plugin's
-  current `parameters`.
+  current `parameters`. Driven end to end 2026-09-27 against the engine's
+  I/O stub plugin (`webui/tools/e2e/plugin-params.js`). Behaviour worth
+  knowing for clients: a key missing from the echoed `parameters` right
+  after a set was not kept - ArtNet and OSC drop a value equal to their
+  default, and ArtNet / E1.31 / OSC ignore keys they do not know; the
+  `.qxw` stores every value as text (`<PluginParameters key="value"/>`),
+  so after `core.project.open` numbers and booleans come back as strings;
+  output lines always carry `UniverseChannels`, which the engine itself
+  sets from the universe's channel count.
 - **`io.patch.output.setState`**: live only, `io.patch.output.stateChanged`.
   Only API-driven changes are broadcast; a pause toggled in the desktop UI
   is not relayed (no per-patch signal wiring yet - `io.universe.get` is the
