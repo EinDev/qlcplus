@@ -33,6 +33,7 @@ class ApiPaletteDomain;
 class ApiFixturesDomain;
 class ApiFixtureGroupDomain;
 class ApiVcDomain;
+class ApiEfxCollectionDomain;
 class Doc;
 
 /** Default port for the control API's WebSocket server. Distinct from
@@ -143,6 +144,7 @@ private:
     ApiFixturesDomain *m_fixturesDomain;
     ApiFixtureGroupDomain *m_fixtureGroupDomain;
     ApiVcDomain *m_vcDomain;
+    ApiEfxCollectionDomain *m_efxCollectionDomain;
 };
 
 #endif
