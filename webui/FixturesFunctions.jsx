@@ -714,8 +714,11 @@ function FixturesFunctions() {
             <IconButton imgSource={D.icon('palette')} checked={panel === 'palettes'} onClick={() => setPanel(panel === 'palettes' ? null : 'palettes')} tooltip="Palettes" />
             <IconButton imgSource={D.icon('group')} checked={panel === 'groups'} onClick={() => setPanel(panel === 'groups' ? null : 'groups')} tooltip="Fixture Groups" />
             {window.QLCWizard ? <IconButton faSource={''} faColor="yellow" disabled={!live} onClick={window.QLCWizard.open} tooltip="Show Wizard" data-wizard="open" /> : null}
-            <IconButton imgSource={D.icon('fixture-editor')} disabled tooltip="Fixture editor — not available in the web UI" />
-            <IconButton imgSource={D.icon('uniview')} disabled tooltip="Universe view — not available in the web UI" />
+            <IconButton imgSource={D.icon('fixture-editor')} disabled={!live}
+              onClick={() => window.dispatchEvent(new CustomEvent('qlc-set-context', { detail: 'fxeditor' }))} tooltip="Fixture Editor" />
+            {(window.QLCFFViews || {}).grid ? (
+              <IconButton imgSource={D.icon('uniview')} checked={view === 'grid'} onClick={() => setView(view === 'grid' ? 'list' : 'grid')} tooltip="Universe view" />
+            ) : null}
           </div>}>
           <div style={{ height: '100%', overflow: 'auto' }}>
             {!live ? (

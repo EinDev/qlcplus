@@ -86,7 +86,7 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | Fixture search filter (group / fixture / channel) | fixturesfunctions/FixtureGroupManager.qml | live | - ; client-side filter |
 | Toggle multiple selection, Ctrl / Shift click | fixturesfunctions/LeftPanel.qml | live | - |
 | Select / deselect all fixtures | fixturesfunctions/LeftPanel.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/fixtures-views.js |
-| Select every odd / even / Nth fixture of the selection | fixturesfunctions/FixturesAndFunctions.qml, popup/PopupInputNumber.qml | partial | U; even live (sandbox 2026-09-27); odd and every-Nth built, not clicked |
+| Select every odd / even / Nth fixture of the selection | fixturesfunctions/FixturesAndFunctions.qml, popup/PopupInputNumber.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-ff.js |
 | Add fixtures (manufacturer / model / mode / universe / address / quantity / gap / name, overlap check) | fixturesfunctions/FixtureBrowser.qml, fixturesfunctions/FixtureProperties.qml | live | - ; Add is blocked while the range overlaps |
 | Add a generic dimmer | fixturesfunctions/FixtureBrowser.qml | live | - |
 | Add a generic RGB panel (columns, component order, displacement, start corner) | fixturesfunctions/RGBPanelProperties.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/fixtures-misc.js; rows that do not fit roll into the next existing universe (no universe creation) |
@@ -98,14 +98,14 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | Channel modifier templates editor | popup/PopupChannelModifiers.qml | live | - ; sandbox 2026-09-27 (adds rename and delete) |
 | Apply changes to fixtures of the same type | fixturesfunctions/FixtureGroupManager.qml | live | - ; sandbox 2026-09-27 |
 | Invert Pan / Invert Tilt per fixture | fixturesfunctions/FixtureNodeRow.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/fixtures-views.js |
-| Lock / unlock fixture position, show / hide fixture in the views | fixturesfunctions/FixtureNodeRow.qml | partial | U; implemented, unit-tested only |
+| Lock / unlock fixture position, show / hide fixture in the views | fixturesfunctions/FixtureNodeRow.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-ff.js |
 | Fixture summary (definition, physical block, address range) and print | fixturesfunctions/FixtureSummary.qml | live | - ; sandbox 2026-09-27, print via the browser |
 | Universe summary (channels used, power, weight, DIP switch) and print | fixturesfunctions/UniverseSummary.qml | live | - ; sandbox 2026-09-27, print via the browser |
 | Fixture groups: create / rename / assign / unassign / delete | fixturesfunctions/FixtureGroupManager.qml | live | - |
-| Multi-head fixtures: select individual heads for live tools and group assignment | fixturesfunctions/FixtureHeadDelegate.qml, fixturesfunctions/FixtureNodeDelegate.qml | partial | U; alt-click head selection implemented, not exercised (SF3 Gobo Spots are single-head) |
+| Multi-head fixtures: select individual heads for live tools and group assignment | fixturesfunctions/FixtureHeadDelegate.qml, fixturesfunctions/FixtureNodeDelegate.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-ff.js; heads are picked with alt-click in the 2D view (the desktop picks them in the tree); live tools and group assignment act on the selected heads only |
 | Fixture group grid editor (group size / rows, rotate, flip, regenerate, reset, swap heads, per-head assign) | fixturesfunctions/FixtureGroupEditor.qml, fixturesfunctions/GridEditor.qml | live | - ; sandbox 2026-09-27 |
 | Invert selection in group(s) | MainView.qml, popup/PopupInvertGroupSelection.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/fixtures-views.js |
-| Rename items with numbering (start number, digits) | popup/PopupRenameItems.qml | partial | U; functions live (sandbox 2026-09-27); the same dialog for fixtures not browser-driven |
+| Rename items with numbering (start number, digits) | popup/PopupRenameItems.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-ff.js (functions and fixtures) |
 | Fixture remap (drag new fixtures, map channels, clone, apply and save) | fixturesfunctions/FixtureRemap.qml, fixturesfunctions/RemapRowDelegate.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/fixtures-views.js; Scene references and 2D placement follow the remap |
 | Create / edit a fixture definition (opens the Fixture Editor) | fixturesfunctions/FixtureBrowser.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/fixture-editor.js |
 | Live tool: Intensity | fixturesfunctions/IntensityTool.qml, fixturesfunctions/LeftPanel.qml | live | - ; writes Simple Desk overrides at the fixture addresses |
@@ -113,18 +113,18 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | Live tool: Colour filters tab (named colour filter lists) | ColorToolFilters.qml | live | - ; sandbox 2026-09-27 (read-only list, no filter-file editing) |
 | Live tool: Position (pan / tilt XY pad, spin boxes, centre, snap, rotate preview) | fixturesfunctions/PositionTool.qml | live | - ; snap-to-next / rotate-preview not checked |
 | Live tool: Colour wheel / Gobos / Shutter / Beam / Speed / Prism / Effect / Maintenance capability presets | fixturesfunctions/PresetsTool.qml, fixturesfunctions/BeamTool.qml, fixturesfunctions/ShutterAnimator.qml, fixturesfunctions/MaintenanceTool.qml | live | - ; grouped presets from fixtures.defs.getMode; the Beam tool's projected-diameter maths is not ported |
-| Live tool: Highlight (locate selected fixtures) | fixturesfunctions/LeftPanel.qml | partial | U; implemented, not exercised |
+| Live tool: Highlight (locate selected fixtures) | fixturesfunctions/LeftPanel.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-ff.js |
 | Live tool: Pick a 3D point (aim fixtures at a stage position) | fixturesfunctions/Position3DTool.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/fixtures-views.js (fixtures.monitor.aimAt writes pan / tilt) |
 | Release fixtures / reset dump channels | fixturesfunctions/RightPanel.qml ("Reset dump channels"), fixturesfunctions/LeftPanel.qml | live | - |
 | Bottom-panel fixture console (plain per-channel faders for the selection) | fixturesfunctions/BottomPanel.qml, FixtureConsole.qml | live | - ; Fixture Tools show a plain slider per channel |
-| Bottom-panel extras: copy values to all fixtures of the same type, pan-tilt fader mode, multi-channel selection, fader window shift | fixturesfunctions/BottomPanel.qml | partial | U; copy to same type and multi-channel selection live (sandbox 2026-09-27); pan-tilt mode and fader window shift exist as on-screen navigation only (in the desktop they belong to the external controller mapping) |
+| Bottom-panel extras: copy values to all fixtures of the same type, pan-tilt fader mode, multi-channel selection, fader window shift | fixturesfunctions/BottomPanel.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-ff.js (copy to same type, multi-channel selection, fader window shift, Pan & Tilt mode) |
 | Bottom-panel external controller mapping of the fixture faders | fixturesfunctions/BottomPanel.qml | n/a | - ; the desktop's mapping lives entirely in the qmlui SceneEditor on inputValueChanged with no engine hook; external controllers drive the rig through VC input sources, which the web UI configures |
 | Palettes: list and search | fixturesfunctions/PaletteManager.qml | live | - ; search box not checked |
 | Palettes: create Dimmer / Colour palette | popup/PopupCreatePalette.qml, PaletteFanningBox.qml | live | - |
-| Palettes: create Position / Pan / Tilt / Shutter / Gobo / Position 3D palette | popup/PopupCreatePalette.qml | partial | U; Pan palette live (sandbox 2026-09-27); Tilt / Pan+Tilt / Position 3D / Shutter / Gobo / Zoom forms present, not driven; Pan / Tilt units fix in progress (degrees) |
+| Palettes: create Position / Pan / Tilt / Shutter / Gobo / Position 3D palette | popup/PopupCreatePalette.qml | partial | U; Pan, Position 3D, Shutter, Gobo, Zoom live (sandbox 2026-09-27, Pan in degrees); Tilt and Pan+Tilt forms not driven yet |
 | Palettes: "Also create a Scene" on create | popup/PopupCreatePalette.qml | live | - ; sandbox 2026-09-27 |
 | Palettes: apply to the selected fixtures | fixturesfunctions/PaletteManager.qml | live | - ; double-click |
-| Palettes: edit (rename, change value) | fixturesfunctions/PaletteManager.qml | partial | U; fanning edit live through palette.update (sandbox 2026-09-27); rename / change value not driven |
+| Palettes: edit (rename, change value) | fixturesfunctions/PaletteManager.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-ff.js |
 | Palettes: delete | fixturesfunctions/PaletteManager.qml | live | - |
 | Palette fanning (type, layout, amount, per-axis ordering) | PaletteFanningBox.qml | live | - ; sandbox 2026-09-27 (colour palette fanned Linear 60%, saved in the .qxw) |
 
@@ -157,12 +157,12 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | Chaser editor: randomize step order, auto-set step durations from total, print steps | fixturesfunctions/ChaserEditor.qml | live | - ; sandbox 2026-09-27 |
 | Sequence editor: steps and per-channel step values via the bound Scene | fixturesfunctions/SequenceEditor.qml | live | - ; sandbox 2026-09-27 |
 | Sequence editor: add / remove fixtures of the bound Scene | fixturesfunctions/SequenceEditor.qml | live | - ; sandbox 2026-09-27 |
-| Sequence editor: capture live output into a step, preview channel changes on the output | fixturesfunctions/SequenceEditor.qml | partial | U; capture live and preview on output live (sandbox 2026-09-27); the bound-Scene picker is server-tested only |
+| Sequence editor: capture live output into a step, preview channel changes on the output | fixturesfunctions/SequenceEditor.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-ff.js (bound-Scene picker rebinds and back) |
 | Collection editor: add / remove member functions | fixturesfunctions/CollectionEditor.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/efx-collection.js; add via picker, remove, move up / down; loops and self-membership refused by the server |
 | EFX editor: pattern, width / height / rotation / offsets / frequencies / phases, speed, relative movement, preview | fixturesfunctions/EFXEditor.qml, fixturesfunctions/EFXPreview.qml | live | - ; sandbox 2026-09-27; 2D preview only (no fake-3D sphere view); preview data from functions.efx.getPreview so it matches the Qt canvas |
 | EFX editor: fixture list (add / remove / reorder heads, per-fixture mode / direction / offset / reverse / dimmer control) and fixture order (parallel / serial / asymmetric) | fixturesfunctions/EFXEditor.qml | live | - ; sandbox 2026-09-27; adding a fixture adds every head (no per-head picker); Asymmetric and raise not clicked in the sandbox run |
 | RGB Matrix editor: fixture group, algorithm, colours, blend / control mode, speed, preview | fixturesfunctions/RGBMatrixEditor.qml, fixturesfunctions/RGBMatrixPreview.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/rgbmatrix.js; Beats tempo preview approximated at 500 ms |
-| RGB Matrix editor: script algorithm properties, text / image / animation parameters, font | fixturesfunctions/RGBMatrixEditor.qml | partial | U; list/range script properties, text, font family and text animation live (sandbox 2026-09-27); Image parameters, font size/bold/italic, offsets, float/string properties implemented + server-tested, not exercised in the browser; image path / font are server-side text fields |
+| RGB Matrix editor: script algorithm properties, text / image / animation parameters, font | fixturesfunctions/RGBMatrixEditor.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-ff.js (float / string script properties, text font size / bold / italic / offsets, image path via the file browser) |
 | RGB Matrix editor: save this matrix to a Sequence | fixturesfunctions/RGBMatrixEditor.qml | live | - ; sandbox 2026-09-27 (functions.rgbmatrix.saveToSequence) |
 | Script editor: edit source, syntax check, insert command at cursor, fixture / function trees | fixturesfunctions/ScriptEditor.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/media.js; the QML side trees are replaced by function / fixture ID pickers |
 | Audio editor: file, output device, volume, fade in / out, looped / single shot, mute, file info | fixturesfunctions/AudioEditor.qml | live | - ; sandbox 2026-09-27, mute now settable (functions.audio.setMuted) |
@@ -178,15 +178,15 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | Qt UI action | Where in qmlui (file) | Web UI status | Blocker / notes |
 | --- | --- | --- | --- |
 | 2D top-down view of the rig with live colour / intensity per fixture | fixturesfunctions/2DView.qml, fixturesfunctions/Fixture2DItem.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/fixtures-views.js; head colouring drawn, not asserted |
-| 2D / 3D: move and rotate fixtures (drag, position / rotation fields, invert axes, rotation scale) | fixturesfunctions/SettingsView2D.qml, fixturesfunctions/3DView/SettingsView3D.qml | partial | U; drag and rotation fields live (sandbox 2026-09-27); per-axis inverts and rotation scale are API-only (fixtures.monitor.setPlacement), no UI control |
-| 2D / 3D: align left / top, distribute horizontally / vertically | fixturesfunctions/SettingsView2D.qml, fixturesfunctions/3DView/SettingsView3D.qml | partial | U; align top live (sandbox 2026-09-27); align left and distribute built, not clicked |
-| 2D / 3D: arrange fixtures (circle / grid / line, detect from placement, face centre, summon) | popup/PopupArrangeFixtures.qml | partial | U; circle live (sandbox 2026-09-27); grid, line, detect from placement, face centre built, not clicked |
-| 2D / 3D: environment size, grid units (metres / feet), position range | fixturesfunctions/SettingsView2D.qml | partial | U; size / units controls built, not exercised; no position-range control |
-| 2D: point of view (top / front / left / right) and initial POV prompt | fixturesfunctions/SettingsView2D.qml, popup/PopupMonitor.qml | partial | U; POV setting built; the initial prompt was not triggered (SF3 already has a point of view) |
-| 2D: custom background image, reset background | fixturesfunctions/SettingsView2D.qml | partial | U; reset works; setting an image needs a file already on the QLC+ host (no upload) |
+| 2D / 3D: move and rotate fixtures (drag, position / rotation fields, invert axes, rotation scale) | fixturesfunctions/SettingsView2D.qml, fixturesfunctions/3DView/SettingsView3D.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-ff.js (drag, fields, per-axis inverts, rotation scale) |
+| 2D / 3D: align left / top, distribute horizontally / vertically | fixturesfunctions/SettingsView2D.qml, fixturesfunctions/3DView/SettingsView3D.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-ff.js |
+| 2D / 3D: arrange fixtures (circle / grid / line, detect from placement, face centre, summon) | popup/PopupArrangeFixtures.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-ff.js (circle / grid / line, detect, face centre, rotate, move to centre) |
+| 2D / 3D: environment size, grid units (metres / feet), position range | fixturesfunctions/SettingsView2D.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-ff.js (metres / feet, position range) |
+| 2D: point of view (top / front / left / right) and initial POV prompt | fixturesfunctions/SettingsView2D.qml, popup/PopupMonitor.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-ff.js (including the initial prompt on an empty project) |
+| 2D: custom background image, reset background | fixturesfunctions/SettingsView2D.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-ff.js; the image is picked from files on the QLC+ host (no browser upload) |
 | 2D: gel colour per fixture | fixturesfunctions/SettingsView2D.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/fixtures-views.js |
 | 2D / 3D: show fixture groups overlay | fixturesfunctions/SettingsView2D.qml, fixturesfunctions/3DView/SettingsView3D.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/fixtures-views.js |
-| 2D / 3D: DMX-driven position / rotation | fixturesfunctions/SettingsView2D.qml, fixturesfunctions/3DView/SettingsView3D.qml | partial | U; API flags only (fixtures.monitor.setPlacement), no UI control |
+| 2D / 3D: DMX-driven position / rotation | fixturesfunctions/SettingsView2D.qml, fixturesfunctions/3DView/SettingsView3D.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-ff.js |
 | 2D: fixed zoom, zoom in / out | fixturesfunctions/SettingsView2D.qml, ZoomItem.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/fixtures-views.js; fixed zoom is API-only |
 | 3D rendering (stage type, ambient light, smoke, quality, FPS, custom meshes, lock / normalize items) | fixturesfunctions/3DView/3DView.qml, fixturesfunctions/3DView/SettingsView3D.qml | n/a | - ; Qt3D rendering is desktop-only; parity is the 2D view plus the position / rotation editing rows above |
 | DMX view (per-fixture channel values, show addresses, relative addresses) | fixturesfunctions/DMXView.qml, fixturesfunctions/FixtureDMXItem.qml, fixturesfunctions/SettingsViewDMX.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/fixtures-views.js |
@@ -345,7 +345,7 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | General: manufacturer, model, type, author | fixtureeditor/EditorView.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/fixture-editor.js |
 | Channels: add / remove / edit (name, group, preset, default value, coarse / fine, colours) | fixtureeditor/EditorView.qml, fixtureeditor/ChannelEditor.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/fixture-editor.js |
 | Capabilities: add / remove / edit (range, description, preset, values, colours) | fixtureeditor/ChannelEditor.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/fixture-editor.js |
-| Capabilities: gobo picture | fixtureeditor/ChannelEditor.qml | partial | U; the picture path on the QLC+ host can be typed and is saved (sandbox 2026-09-27); uploading a picture from the browser is not offered |
+| Capabilities: gobo picture | fixtureeditor/ChannelEditor.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-ff.js; picked from the host's Gobos folder, as the desktop editor does |
 | Capabilities: automatic colour assignment | fixtureeditor/ChannelEditor.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/fixture-editor.js |
 | Channel / capability wizard | popup/PopupChannelWizard.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/fixture-editor.js |
 | Modes: add / remove / rename, channel list, per-mode physical override | fixtureeditor/EditorView.qml, fixtureeditor/ModeEditor.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/fixture-editor.js; ordering driven by up / down arrows |
@@ -372,23 +372,23 @@ duplicate a feature row above say so.
 | Audio configuration | popup/PopupAudioConfiguration.qml | n/a | - ; host audio devices |
 | Channel modifiers editor | popup/PopupChannelModifiers.qml | live | - ; sandbox 2026-09-27 |
 | Channel wizard | popup/PopupChannelWizard.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/fixture-editor.js |
-| Create palette | popup/PopupCreatePalette.qml | partial | U; see the palette rows |
+| Create palette | popup/PopupCreatePalette.qml | partial | U; see the palette create row (Tilt / Pan+Tilt not driven) |
 | Custom feedback | popup/PopupCustomFeedback.qml | partial | U; lower / upper / monitor values live (sandbox 2026-09-27); colour table and MIDI routing need a patched input profile |
 | DMX channel dump | popup/PopupDMXDump.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/tools-misc.js |
 | Disclaimer | popup/PopupDisclaimer.qml | n/a | - ; desktop first-run notice |
 | Folder browser (server-side file picker) | popup/PopupFolderBrowser.qml | live | - ; sandbox 2026-09-27 as window.ServerFileBrowser over core.fs.list, used by the Audio / Video editors; the Open-project dialog still takes a typed path plus recent files |
 | Import from project | popup/PopupImportProject.qml | live | - ; sandbox 2026-09-27 (server path, browse or upload; imported scenes reference the imported fixtures) |
 | Input channel editor | popup/PopupInputChannelEditor.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/vc-show-leftovers.js (type-dependent sensitivity ranges, extra press, movement, custom feedback, MIDI mapping) |
-| Enter a number (select every Nth) | popup/PopupInputNumber.qml | partial | U; built, not clicked |
+| Enter a number (select every Nth) | popup/PopupInputNumber.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-ff.js |
 | Invert selection in group(s) | popup/PopupInvertGroupSelection.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/fixtures-views.js |
 | Manual input source selection | popup/PopupManualInputSource.qml | live | - ; sandbox 2026-09-27 (universe / channel); picking a profile channel needs a patched profile, not driven |
-| 2D point of view selection | popup/PopupMonitor.qml | partial | U; see the 2D point of view row |
+| 2D point of view selection | popup/PopupMonitor.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-ff.js |
 | Network client setup | popup/PopupNetworkClient.qml | n/a | - ; the web UI is the remote |
 | Client access request | popup/PopupNetworkConnect.qml | n/a | - ; host session |
 | Network server setup | popup/PopupNetworkServer.qml | n/a | - ; host process settings |
 | Page / frame PIN request | popup/PopupPINRequest.qml | live | - ; sandbox 2026-09-27 |
 | PIN setup | popup/PopupPINSetup.qml | live | - ; sandbox 2026-09-27 (frame via dialog, page via vc.page.setPin) |
-| Rename items with numbering | popup/PopupRenameItems.qml | partial | U; functions live (sandbox 2026-09-27); the same dialog for fixtures not browser-driven |
+| Rename items with numbering | popup/PopupRenameItems.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-ff.js (functions and fixtures) |
 | Spout size mismatch | popup/PopupSpoutSizeMismatch.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/vc-show-leftovers.js |
 | Track Spout output size | popup/PopupTrackSpoutSize.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/vc-show-leftovers.js; document state, header label and mismatch prompt verified; resizing a running Spout sender not observed |
 | DMX Address tool | DMXAddressTool.qml, DMXAddressWidget.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/tools-misc.js |
@@ -397,13 +397,13 @@ duplicate a feature row above say so.
 | Shortcuts editor | ShortcutsEditor.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/tools-misc.js (rebind, collision warning, defaults, import / export in the desktop format, hints toggle) |
 | External controls panel (input sources + key sequences of a widget) | ExternalControls.qml, ExternalControlDelegate.qml, KeyboardSequenceDelegate.qml | live | - ; sandbox 2026-09-27, webui/vc/vc-external.jsx |
 | Beat generators panel | BeatGeneratorsPanel.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/tools-misc.js |
-| Colour tool (basic / full / filters) | ColorTool.qml, ColorToolBasic.qml, ColorToolFull.qml, ColorToolFilters.qml, ColorToolPrimary.qml, MultiColorBox.qml | partial | U; filters tab missing, see the fixture-side row |
+| Colour tool (basic / full / filters) | ColorTool.qml, ColorToolBasic.qml, ColorToolFull.qml, ColorToolFilters.qml, ColorToolPrimary.qml, MultiColorBox.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-ff.js |
 | Time edit tool (typed time, tap, infinite) | TimeEditTool.qml | live | - ; inline "500, 1.5s, 2m, inf" fields |
 | Day-time tool (clock schedule times) | DayTimeTool.qml | live | - ; sandbox 2026-09-27 |
 | Keypad | KeyPad.qml | live | - |
 | Fixture console (per-channel faders) | FixtureConsole.qml, ChannelToolLoader.qml | live | - ; see the bottom-panel rows |
 | Palette fanning box | PaletteFanningBox.qml | live | - ; sandbox 2026-09-27 (colour palette fanned Linear 60%, saved in the .qxw) |
-| Single-axis tool (pan or tilt only fixtures) | SingleAxisTool.qml | partial | U; pan / tilt spin boxes exist, a single-axis layout is not checked |
+| Single-axis tool (pan or tilt only fixtures) | SingleAxisTool.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-ff.js |
 | Chaser step widget (per-step times popup) | ChaserWidget.qml, ChaserStepDelegate.qml | live | - |
 | Zoom item (view zoom controls) | ZoomItem.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/fixtures-views.js |
 | Feedback toast | FeedbackToast.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/tools-misc.js |
@@ -425,8 +425,8 @@ the total is larger than the number of distinct actions). Recompute after editin
 
 | Status | Rows |
 | --- | --- |
-| live | 238 |
-| partial | 55 |
+| live | 260 |
+| partial | 33 |
 | missing | 0 |
 | n/a | 21 |
 | total | 314 |
