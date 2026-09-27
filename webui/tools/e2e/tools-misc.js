@@ -359,8 +359,12 @@ function snapshotDir(dir) { try { return fs.readdirSync(dir).map(f => { const s 
 
     /* ================= 9. .qxf drop ================= */
     console.log('Fixture definition drop');
-    const src = fs.readFileSync(path.join(USER_DIR, 'Generic-RGB-PAR-4ch-DIP.qxf'), 'utf8')
-      .replace(/<Manufacturer>[^<]*<\/Manufacturer>/, '<Manufacturer>E2E</Manufacturer>').replace(/<Model>[^<]*<\/Model>/, '<Model>Dropped Par</Model>');
+    const src = '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE FixtureDefinition>\n<FixtureDefinition xmlns="http://www.qlcplus.org/FixtureDefinition">\n'
+      + ' <Creator><Name>Q Light Controller Plus</Name><Version>5.0.0</Version><Author>e2e</Author></Creator>\n'
+      + ' <Manufacturer>E2E</Manufacturer>\n <Model>Dropped Par</Model>\n <Type>Color Changer</Type>\n'
+      + ' <Channel Name="Dimmer"><Group Byte="0">Intensity</Group><Capability Min="0" Max="255">Intensity</Capability></Channel>\n'
+      + ' <Channel Name="Red"><Group Byte="0">Intensity</Group><Colour>Red</Colour><Capability Min="0" Max="255">Red</Capability></Channel>\n'
+      + ' <Mode Name="2 Channel">\n  <Channel Number="0">Dimmer</Channel>\n  <Channel Number="1">Red</Channel>\n </Mode>\n</FixtureDefinition>\n';
     const dest = path.join(USER_DIR, 'E2E-Dropped-Par.qxf');
     if (fs.existsSync(dest)) fs.unlinkSync(dest);
     await dropFile(page, 'E2E-Dropped-Par.qxf', Buffer.from(src, 'utf8').toString('base64'));
