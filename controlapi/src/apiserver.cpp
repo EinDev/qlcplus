@@ -67,7 +67,7 @@ ApiServer::ApiServer(QObject *parent, Doc *doc)
     m_ioDomain = new ApiIoDomain(m_doc, this, this);
     m_coreDomain = new ApiCoreDomain(m_doc, this, this);
     m_functionsDomain = new ApiFunctionsDomain(m_doc, this, this);
-    m_paletteDomain = new ApiPaletteDomain(m_doc, this, this);
+    m_paletteDomain = new ApiPaletteDomain(m_doc, this, m_ioDomain, this);
     m_fixturesDomain = new ApiFixturesDomain(m_doc, this, this);
     m_fixtureGroupDomain = new ApiFixtureGroupDomain(m_doc, this, this);
     m_vcDomain = new ApiVcDomain(m_doc, this, this);

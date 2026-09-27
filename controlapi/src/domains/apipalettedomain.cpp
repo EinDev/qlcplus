@@ -22,7 +22,10 @@
 #include "apiserver.h"
 #include "apisession.h"
 #include "apienvelope.h"
+#include "apiiodomain.h"
 #include "qlcpalette.h"
+#include "scenevalue.h"
+#include "fixture.h"
 #include "doc.h"
 
 namespace {
@@ -162,10 +165,11 @@ void applyValuesFromJson(QLCPalette *palette, const QJsonArray &values)
 
 } // namespace
 
-ApiPaletteDomain::ApiPaletteDomain(Doc *doc, ApiServer *server, QObject *parent)
+ApiPaletteDomain::ApiPaletteDomain(Doc *doc, ApiServer *server, ApiIoDomain *ioDomain, QObject *parent)
     : QObject(parent)
     , m_doc(doc)
     , m_server(server)
+    , m_ioDomain(ioDomain)
 {
     Q_ASSERT(m_doc != nullptr);
     Q_ASSERT(m_server != nullptr);
@@ -391,6 +395,82 @@ void ApiPaletteDomain::registerMethods()
 
         QJsonObject result;
         result.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
+        session->send(ApiEnvelope::buildOkResponse(id, result));
+    });
+
+    // palette.apply {paletteId, fixtureIds} -> {channels} (live, §4b)
+    dispatcher->registerMethod(QStringLiteral("palette.apply"), [doc, this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        quint32 paletteId = quint32(params.value(QStringLiteral("paletteId")).toInt());
+        QLCPalette *palette = doc->palette(paletteId);
+        if (palette == nullptr)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrNotFound,
+                                                            QStringLiteral("No such palette")));
+            return;
+        }
+
+        const QJsonArray idsJson = params.value(QStringLiteral("fixtureIds")).toArray();
+        if (idsJson.isEmpty())
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams,
+                                                            QStringLiteral("fixtureIds must be a non-empty array")));
+            return;
+        }
+
+        // Every id must resolve: valuesFromFixtures() skips a missing fixture
+        // before advancing its fanning progress, which would silently shift
+        // the fan over the remaining fixtures.
+        QList<quint32> fixtureIds;
+        for (const QJsonValue &v : idsJson)
+        {
+            bool ok = false;
+            quint32 fxId = Fixture::invalidId();
+            if (v.isString())
+                fxId = v.toString().toUInt(&ok);
+            else if (v.isDouble() && v.toDouble() >= 0)
+            {
+                fxId = quint32(v.toDouble());
+                ok = true;
+            }
+            if (ok == false || doc->fixture(fxId) == nullptr)
+            {
+                session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrNotFound,
+                                                                QStringLiteral("No such fixture: %1")
+                                                                .arg(v.isString() ? v.toString() : QString::number(v.toDouble()))));
+                return;
+            }
+            if (fixtureIds.contains(fxId) == false)
+                fixtureIds.append(fxId);
+        }
+
+        // The desktop's PaletteManager::previewPalette(): the engine computes
+        // every palette type and the fanning itself.
+        QList<SceneValue> values = palette->valuesFromFixtures(doc, fixtureIds);
+
+        QJsonArray channelsJson;
+        QList<QPair<quint32, uchar>> entries;
+        for (const SceneValue &sv : values)
+        {
+            Fixture *fixture = doc->fixture(sv.fxi);
+            if (fixture == nullptr)
+                continue;
+            quint32 address = fixture->universeAddress() + sv.channel;
+            entries.append(qMakePair(address, sv.value));
+
+            QJsonObject ch;
+            ch.insert(QStringLiteral("fixtureId"), QString::number(sv.fxi));
+            ch.insert(QStringLiteral("channel"), int(sv.channel));
+            ch.insert(QStringLiteral("address"), int(address));
+            ch.insert(QStringLiteral("value"), int(sv.value));
+            channelsJson.append(ch);
+        }
+
+        if (m_ioDomain != nullptr)
+            m_ioDomain->overrideChannels(entries, session->clientId());
+
+        QJsonObject result;
+        result.insert(QStringLiteral("channels"), channelsJson);
         session->send(ApiEnvelope::buildOkResponse(id, result));
     });
 }
