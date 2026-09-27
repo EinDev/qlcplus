@@ -157,7 +157,9 @@ async function shot(page, name) { const f = path.join(OUT, name + '.png'); await
     await sleep(300);
     let d = await api.call('functions.get', { functionId: SCRIPT_ID });
     check(d.typeDetail.source === finalScript, 'functions.get: script source saved (' + JSON.stringify(d.typeDetail.source) + ')');
-    check(Array.isArray(d.typeDetail.syntaxErrors) && d.typeDetail.syntaxErrors.length === 0, 'functions.get: no syntax errors after the fix');
+    check(d.typeDetail.syntaxErrors === undefined, 'functions.get does not evaluate the script (no syntaxErrors in typeDetail)');
+    const v = await api.call('functions.script.validate', { functionId: SCRIPT_ID });
+    check(Array.isArray(v.syntaxErrors) && v.syntaxErrors.length === 0 && v.functionRefs.length === 1 && v.functionRefs[0].functionId === '4', 'functions.script.validate: no errors, one function ref (' + JSON.stringify(v) + ')');
     const okText = await page.eval('document.querySelector(".qlc-script-editor").textContent');
     check(okText.indexOf('No errors found') !== -1, 'editor shows "No errors found." after save');
     await shot(page, '02-script-saved');
