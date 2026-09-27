@@ -86,3 +86,51 @@ Server: `controlapi/src/domains/apifunctionsdomain.cpp`.
   list (one or two ticks), exactly like the toolbar action; on a headless
   server without a running MasterTimer it would spin - not a supported
   configuration.
+
+## Implemented 2026-09-27: functions.collection.* and functions.efx.* (web UI slice)
+
+Server: `controlapi/src/domains/apiefxcollectiondomain.cpp` (one domain for both
+types), tests in `controlapi/test/apiefxcollectiondomain/`. Registers the
+`functions.get` typeDetail providers for Collection and EFX through
+`ApiFunctionsDomain::setTypeDetailProvider()`.
+
+- `functions.collection.addFunction` / `removeFunction` / `setMembers` as specified.
+  Rejections (all `INVALID_PARAMS`): self-membership, duplicates, and any member
+  whose `Function::contains()` already reaches the collection (Collection, Chaser
+  and Show override it, so every nesting type the engine has is walked).
+  `setMembers` validates the whole list before touching anything. `removeFunction`
+  of a non-member is `NOT_FOUND`. Event `functions.collection.membersChanged`
+  carries the full member list.
+- `functions.efx.setParameters` / `addFixture` / `removeFixture` /
+  `setFixtureParameters` / `reorderFixture` as specified, plus two additions:
+  `functions.efx.setFixturesOffset` (the Qt editor's "Set an offset on all
+  fixtures" popup, Absolute / Increasing / Random) and `functions.efx.getPreview`
+  (read-only: the 512-point pattern polygon in 0-255 space plus each head's start
+  index and walking direction, i.e. `EFXEditor::algorithmData` / `fixturesData`;
+  `includeFixturePaths` adds `EFX::previewFixtures()` per head). `addFixture`
+  gained `allHeads` (add every head of the fixture, what dropping a fixture on the
+  Qt editor does) because `fixtures.list` summaries carry no head count for a
+  client to offer a per-head picker. `FunctionsEfxDetail` gained `algorithms`
+  (`EFX::algorithmList()`) and `docRevision`; `FunctionsEfxFixture` gained
+  `availableModes` (`EFXFixture::modeList()`, mapped Position->PanTilt).
+- Revision bumping: the engine is uneven (Collection add/remove and most EFX
+  setters emit `changed()` -> `Doc::setModified()`; `EFXFixture`'s setters,
+  `EFX::setDimmerControlEnabled()` and `EFX::removeFixture(id, head)` do not), so
+  every mutation compares `docRevision` before/after and calls
+  `Doc::setModified()` itself when nothing bumped it. A multi-parameter
+  `setParameters` may bump more than once; the response carries the final value.
+- `removeFixture` frees the `EFXFixture` when the EFX is not running (the engine
+  never does; the Qt editor keeps the pointer for undo). While running it is
+  leaked like the Qt editor does, rather than freed under MasterTimer's feet.
+- Duplicate heads are rejected here (`EFX::addFixture()` itself never does - its
+  own `@todo`). `head` is range-checked against `Fixture::heads()`; a fixture
+  without a mode counts as one head (`Fixture::heads()` dereferences the mode
+  unguarded).
+- Engine flag, not fixed: `EFX::removeFixture(quint32, int)` neither emits
+  `changed()` nor frees the object; only the `EFXFixture*` overload emits.
+
+Web UI: `webui/ff/EfxEditor.jsx`, `webui/ff/CollectionEditor.jsx`; e2e driver
+`webui/tools/e2e/efx-collection.js`. Found while driving it: the design-system
+`CustomComboBox` (`_ds_bundle.js`) never closes on an outside click, so a stale
+open dropdown swallows the next click that lands on it - left as is (bundle
+file), noted for the next re-import.

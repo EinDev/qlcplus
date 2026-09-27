@@ -49,7 +49,10 @@ default until "Use server default" is pressed.
 | `FixturesFunctions.jsx` | Fixture tree (per universe) + function tree (per folder), multi-select, context menus, start/pause/stop, create/rename/move/delete, fixture re-addressing. |
 | `ff/ff-core.jsx` | Shared F&F plumbing: serial revision-gated mutation queue (CONFLICT retry, per-key coalescing), cached `fixtures.get`, capability lookup via `fixtures.defs.*`, channel classification and colour/position DMX maths, own-echo event filter. |
 | `ff/FixtureTools.jsx` | Live fixture tools for the selected fixtures (intensity, colour, pan/tilt, capability presets) writing through `io.simpleDesk.setChannels`, or into the open Scene. |
-| `ff/FunctionEditors.jsx` | Scene editor (channel console, members, palettes), Chaser/Sequence step editor, timing/run-order editor, Collection editor (marked unavailable). |
+| `ff/FunctionEditors.jsx` | Scene editor (channel console, members, palettes), Chaser/Sequence step editor, timing/run-order editor, the shared picker dialog. |
+| `ff/CollectionEditor.jsx` | Collection editor (`window.QLCEditors.Collection`): ordered member list, add via picker, remove, move up/down over `functions.collection.*`. |
+| `ff/EfxEditor.jsx` | EFX editor (`window.QLCEditors.EFX`): live preview canvas fed by `functions.efx.getPreview`, fixture heads (mode / reverse / start offset, add / remove / reorder, offset on all), pattern parameters, propagation, timing. |
+| `tools/e2e/*.js` | Headless-Chrome end-to-end drivers per slice (`node webui/tools/e2e/efx-collection.js` against a `dev-webui-sandbox.ps1` instance). |
 | `ff/FixtureDialogs.jsx` | Add Fixtures dialog (`fixtures.defs.*` + `fixtures.patch`), Fixture Groups panel, Palettes panel (create/edit/apply). |
 | `VirtualConsole.jsx` | Pages + widgets at their real geometry, live interaction, Design-mode layout editing, Grand Master. |
 | `vc/vc-shared.jsx`, `vc/vc-widgets.jsx`, `vc/vc-edit.jsx` | VC context + pointer-event fader/knob; one body per widget type (button, slider/knob, cue list, XY pad, speed dial, frame, label); selection/move/resize wrapper, widget palette and properties panel. |
@@ -86,8 +89,16 @@ and a second tab checked for the pushed event:
   desktop app); RGB Matrix editor (2026-09-27: fixture group, algorithm incl. every installed RGB
   script, colour slots per `acceptedColors`, script properties, Text and Image parameters, blend /
   control mode, animated preview polled from `functions.rgbmatrix.getPreview` - all verified by
-  `functions.get` read-backs and the saved `.qxw`, driver `tools/e2e/rgbmatrix.js`). Editors for
-  Collection, EFX, Script, Audio, Video and Show are still placeholders (no server methods yet).
+  `functions.get` read-backs and the saved `.qxw`, driver `tools/e2e/rgbmatrix.js`). Collection
+  editor (add members through the picker, remove, move up / down; loops and self-membership refused
+  by the server) and EFX editor (add every head of a fixture, per-head mode / reverse / start offset,
+  reorder, "set an offset on all fixtures", algorithm, relative, width / height / offsets / rotation /
+  start offset, Lissajous frequency and phase, propagation, dimmer control, duration; the preview
+  canvas draws the server-computed pattern and animates the heads along it) - both exercised end to
+  end on 2026-09-27 in a sandbox instance by `tools/e2e/efx-collection.js`, with the saved `.qxw`
+  checked. Not in the EFX editor: the fake-3D sphere preview and adding one specific head of a
+  multi-head fixture (every head is added). Editors for Script, Audio, Video and Show are still
+  placeholders.
 - **Virtual Console**: page switch; Toggle and Flash buttons with state colouring from
   `vc.button.stateChanged`; slider and knob with the value pushed to every tab; cue list
   play / next / previous / stop / jump with the current step highlighted; XY pad; speed dial

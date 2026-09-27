@@ -1,6 +1,7 @@
 /**
- * FunctionEditors.jsx — Scene, Chaser/Sequence and Collection editors plus the shared timing
- * section, modelled on qmlui/qml/fixturesfunctions/{SceneEditor,ChaserEditor,CollectionEditor}.qml.
+ * FunctionEditors.jsx — Scene and Chaser/Sequence editors plus the shared timing section and the
+ * picker dialog, modelled on qmlui/qml/fixturesfunctions/{SceneEditor,ChaserEditor}.qml. The
+ * Collection and EFX editors live in ff/CollectionEditor.jsx and ff/EfxEditor.jsx (window.QLCEditors).
  *
  * Every edit is optimistic: the local copy of functions.get's detail is patched immediately and
  * the mutation goes through FF.mutate (serial, revision-gated, key-coalesced). The parent only
@@ -10,8 +11,8 @@
  * Server coverage (controlapi/src/domains/apifunctionsdomain.cpp): functions.update,
  * functions.scene.setValue/unsetValue/setValues/setMembers, functions.steps.add/remove/replace/
  * moveStep are registered. functions.chaser.setSpeedModes, functions.chaser.setAction,
- * functions.sequence.applyDumpValues and functions.collection.* are in the spec but not
- * registered - those controls are marked and disabled once the server says so.
+ * functions.sequence.applyDumpValues are in the spec but not registered - those controls are
+ * marked and disabled once the server says so.
  */
 (function () {
   'use strict';
@@ -409,46 +410,5 @@
     );
   }
 
-  /* ---- collection editor -------------------------------------------------------------------- */
-  function CollectionEditor({ qlc, detail, reload, setDetail, functions }) {
-    const D = window.QLCData;
-    const td = detail.typeDetail || {};
-    const members = td.functions || td.members || null;
-    const fid = String(detail.id);
-    const [picker, setPicker] = React.useState(false);
-    const unsupported = qlc.isUnsupported('functions.collection.addFunction') || qlc.isUnsupported('functions.collection.setMembers');
-    const add = (ids) => FF.mutateSeq(qlc, ids.map(id => ['functions.collection.addFunction', { functionId: fid, memberFunctionId: String(id) }])).then(reload).catch(() => reload());
-    const remove = (id) => FF.mutate(qlc, 'functions.collection.removeFunction', { functionId: fid, memberFunctionId: String(id) }).then(reload).catch(() => reload());
-    const funcItems = functions.filter(f => String(f.id) !== fid).map(f => ({ id: String(f.id), name: f.name, icon: D.icon(Icons.FUNCTION_ICONS[f.type] || 'functions'), hint: f.type }));
-    return (
-      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', background: 'var(--bg-strong)', flex: 'none' }}>
-          <IconButton faSource="fa_plus" size={26} tooltip="Add functions to the collection" disabled={unsupported} onClick={() => setPicker(true)} />
-          <div style={{ flex: 1 }} />
-          <RobotoText label={members ? members.length + ' functions' : 'member list not reported'} fontSize={13} labelColor="var(--fg-light)" />
-        </div>
-        <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-          <div style={{ flex: 1, overflow: 'auto', padding: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {members ? members.map(id => {
-              const f = functions.find(x => String(x.id) === String(id));
-              return (
-                <div key={id} style={{ display: 'flex', alignItems: 'center', gap: 6, height: 26 }}>
-                  <img src={D.icon(f ? (Icons.FUNCTION_ICONS[f.type] || 'functions') : 'functions')} alt="" style={{ width: 18, height: 18 }} />
-                  <RobotoText label={f ? f.name : 'Function ' + id} fontSize={14} height={26} style={{ flex: 1 }} />
-                  <IconButton faSource="fa_xmark" size={22} tooltip="Remove from the collection" disabled={unsupported} onClick={() => remove(id)} />
-                </div>
-              );
-            }) : null}
-            <FF.Note text={'Collection editing is not available yet: the server registers no functions.collection.* methods' + (members ? '' : ' and functions.get returns no member list for a Collection') + '. Start/stop, rename, move and delete work.'} style={{ marginTop: 8 }} />
-          </div>
-          <div style={{ width: 300, flex: 'none', borderLeft: 'var(--border-dark)', padding: 10 }}>
-            <TimingEditor qlc={qlc} detail={detail} setDetail={setDetail} reload={reload} showRun={false} />
-          </div>
-        </div>
-        <PickerDialog open={picker} title="Add functions to the collection" items={funcItems} onPick={add} onClose={() => setPicker(false)} />
-      </div>
-    );
-  }
-
-  Object.assign(FF, { TimingEditor, SceneEditor, ChaserEditor, CollectionEditor, PickerDialog });
+  Object.assign(FF, { TimingEditor, SceneEditor, ChaserEditor, PickerDialog });
 })();

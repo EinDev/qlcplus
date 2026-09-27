@@ -552,6 +552,16 @@ channels:
         $ref: '#/components/messages/FunctionsEfxFixturesMutationOkResponse'
       functionsEfxFixturesChangedEvent:
         $ref: '#/components/messages/FunctionsEfxFixturesChangedEvent'
+      functionsEfxSetFixturesOffsetRequest:
+        $ref: '#/components/messages/FunctionsEfxSetFixturesOffsetRequest'
+      functionsEfxSetFixturesOffsetResponse:
+        $ref: '#/components/messages/FunctionsEfxSetFixturesOffsetResponse'
+      functionsEfxGetPreviewRequest:
+        $ref: '#/components/messages/FunctionsEfxGetPreviewRequest'
+      functionsEfxGetPreviewResponse:
+        $ref: '#/components/messages/FunctionsEfxGetPreviewResponse'
+      functionsEfxGetPreviewOkResponse:
+        $ref: '#/components/messages/FunctionsEfxGetPreviewOkResponse'
       functionsCollectionSetMembersRequest:
         $ref: '#/components/messages/FunctionsCollectionSetMembersRequest'
       functionsCollectionSetMembersResponse:
@@ -2864,6 +2874,30 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/functionsEfxFixturesChangedEvent'
+  sendFunctionsEfxSetFixturesOffset:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsEfxSetFixturesOffsetRequest'
+  receiveFunctionsEfxSetFixturesOffsetResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsEfxSetFixturesOffsetResponse'
+  sendFunctionsEfxGetPreview:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsEfxGetPreviewRequest'
+  receiveFunctionsEfxGetPreviewResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsEfxGetPreviewResponse'
   sendFunctionsCollectionSetMembers:
     action: send
     channel:
@@ -11543,6 +11577,12 @@ components:
                 type: integer
                 default: 0
                 description: Fixture head index (see GroupHead).
+              allHeads:
+                type: boolean
+                default: false
+                description: Add every head of the fixture instead of just `head` (what the Qt editor
+                  does when a whole fixture is dropped on it - EFXEditor::addFixture). Heads already participating
+                  are skipped; INVALID_PARAMS only if none could be added.
               baseRevision:
                 type: integer
     FunctionsEfxAddFixtureResponse:
@@ -11721,6 +11761,105 @@ components:
                   $ref: '#/components/schemas/FunctionsEfxFixture'
               docRevision:
                 type: integer
+    FunctionsEfxSetFixturesOffsetRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: functions.efx.setFixturesOffset
+          params:
+            type: object
+            required:
+            - functionId
+            - offset
+            - baseRevision
+            description: Bulk start-offset assignment over every participant, mirroring the Qt EFX editor's
+              "Set an offset on all fixtures" popup (EFXEditor::setFixturesOffset). Broadcasts functions.efx.fixturesChanged
+              like the other fixture mutations.
+            properties:
+              functionId:
+                type: string
+              offset:
+                type: integer
+                minimum: 0
+                maximum: 360
+              mode:
+                type: string
+                default: Increasing
+                enum:
+                - Absolute
+                - Increasing
+                - Random
+                description: Absolute = the same offset on every fixture; Increasing = 0, offset, 2*offset,
+                  ... (mod 360) in list order; Random = the Increasing set shuffled over the fixtures.
+              baseRevision:
+                type: integer
+    FunctionsEfxSetFixturesOffsetResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/FunctionsEfxFixturesMutationOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    FunctionsEfxGetPreviewRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: functions.efx.getPreview
+          params:
+            type: object
+            required:
+            - functionId
+            description: Read-only (no baseRevision). The same data the Qt editor's preview canvas draws
+              (EFXEditor::algorithmData/fixturesData), so a client can render the pattern and animate
+              the heads along it without re-implementing EFX::calculatePoint.
+            properties:
+              functionId:
+                type: string
+              includeFixturePaths:
+                type: boolean
+                default: false
+                description: Also return each participant's own 512-point path (EFX::previewFixtures,
+                  which adds the Serial/Asymmetric propagation offset). Off by default - N x 512 points.
+    FunctionsEfxGetPreviewResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/FunctionsEfxGetPreviewOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    FunctionsEfxGetPreviewOkResponse:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - ok
+        - result
+        properties:
+          type:
+            const: response
+          id:
+            type: string
+          ok:
+            const: true
+          result:
+            $ref: '#/components/schemas/FunctionsEfxPreview'
     FunctionsCollectionSetMembersRequest:
       payload:
         type: object
@@ -23711,6 +23850,13 @@ components:
           description: Phase offset in degrees, used by Serial/Asymmetric propagation.
         mode:
           $ref: '#/components/schemas/FunctionsEfxFixtureModeEnum'
+        availableModes:
+          type: array
+          description: The modes this head can actually animate (EFXFixture::modeList - PanTilt needs
+            a Pan/Tilt channel, Dimmer an intensity channel, RGB three colour channels). Empty when the
+            fixture is no longer patched.
+          items:
+            $ref: '#/components/schemas/FunctionsEfxFixtureModeEnum'
     FunctionsEfxDetail:
       type: object
       required:
@@ -23766,6 +23912,66 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/FunctionsEfxFixture'
+        algorithms:
+          type: array
+          description: EFX::algorithmList() - the algorithm names in the engine's own order, for the editor's
+            combo box (so a client never hardcodes FunctionsEfxAlgorithmEnum).
+          items:
+            $ref: '#/components/schemas/FunctionsEfxAlgorithmEnum'
+        docRevision:
+          type: integer
+    FunctionsEfxPreview:
+      type: object
+      required:
+      - functionId
+      - pattern
+      - fixtures
+      description: functions.efx.getPreview result. Coordinates are in the EFX's own 0-255 pan/tilt space
+        (EFX::preview), so a square canvas maps x,y with the same scale on both axes, exactly like EFXPreview.qml.
+      properties:
+        functionId:
+          type: string
+        pattern:
+          type: array
+          description: The pattern polygon (512 points, Forward direction, start offset 0) as [x, y] pairs.
+          items:
+            type: array
+            minItems: 2
+            maxItems: 2
+            items:
+              type: number
+        fixtures:
+          type: array
+          description: One entry per participant, in EFX fixture-list order.
+          items:
+            type: object
+            required:
+            - fixture
+            - head
+            - startIndex
+            - step
+            properties:
+              fixture:
+                type: string
+              head:
+                type: integer
+              startIndex:
+                type: integer
+                description: Index into `pattern` of the point this head starts from (its startOffset
+                  applied, nearest point by manhattan distance - EFXEditor::updateAlgorithmData).
+              step:
+                type: integer
+                enum:
+                - 1
+                - -1
+                description: +1 walks `pattern` forward, -1 backward (the head's direction).
+              path:
+                type: array
+                description: Only with includeFixturePaths - this head's own polygon (EFX::previewFixtures).
+                items:
+                  type: array
+                  items:
+                    type: number
     FunctionsCollectionDetail:
       type: object
       required:
