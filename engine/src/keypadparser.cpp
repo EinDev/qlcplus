@@ -113,7 +113,9 @@ QList<SceneValue> KeyPadParser::parseCommand(Doc *doc, QString command,
 
                     fromChannel = number;
                     toChannel = fromChannel;
-                    fromValue = uchar(uniData.at(number - 1));
+                    // a channel beyond the universe data reads as 0 (it is
+                    // skipped below anyway) - at() would assert
+                    fromValue = number <= uniData.length() ? uchar(uniData.at(number - 1)) : 0;
                     toValue = fromValue;
                     channelSet = true;
                 break;
@@ -137,7 +139,10 @@ QList<SceneValue> KeyPadParser::parseCommand(Doc *doc, QString command,
                     toValue = 0;
                 break;
                 case CommandBY:
-                    byChannel = number;
+                    // BY 0 (or a value wrapping negative) would never advance
+                    // the channel loop below
+                    if (number > 0)
+                        byChannel = number;
                 break;
                 case CommandPlus:
                 case CommandMinus:
@@ -175,12 +180,22 @@ QList<SceneValue> KeyPadParser::parseCommand(Doc *doc, QString command,
         m_channels.clear();
     }
 
+    // A range ending before it starts selects nothing (and "THRU 0" would
+    // make toChannel - 1 wrap to UINT_MAX: an endless loop below).
+    if (toChannel < fromChannel)
+        return values;
+
     float valueDelta = 0;
     if (toValue != fromValue)
     {
         valueDelta = (float(toChannel) - float(fromChannel)) / float(byChannel);
         valueDelta = (float(toValue) - float(fromValue)) / valueDelta;
     }
+
+    // Channels past the universe end are skipped anyway: stop iterating
+    // there (after valueDelta, so a fade's slope is unchanged).
+    if (toChannel > UNIVERSE_SIZE)
+        toChannel = UNIVERSE_SIZE;
 
     for (quint32 i = fromChannel - 1; i <= toChannel - 1; i += byChannel)
     {

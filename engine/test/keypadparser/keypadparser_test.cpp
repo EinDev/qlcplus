@@ -327,6 +327,36 @@ void KeyPadParser_Test::outOfUniverse()
     QCOMPARE(scvList.at(5).value, uchar(5));
 }
 
+void KeyPadParser_Test::malformedRanges()
+{
+    // Crash audit (io.simpleDesk.sendKeypadCommand passes operator input
+    // straight through): these used to abort on QByteArray::at()'s bounds
+    // assert, or loop forever appending values.
+    KeyPadParser parser;
+    QByteArray universeValues;
+    universeValues.fill(0, 512);
+
+    /* A bare channel beyond the universe data: nothing to set, no crash */
+    QCOMPARE(parser.parseCommand(m_doc, "513", universeValues).count(), 0);
+    QCOMPARE(parser.parseCommand(m_doc, "600 AT 50", universeValues).count(), 0);
+
+    /* BY 0 would never advance: treated as the default step of 1 */
+    QList<SceneValue> scvList = parser.parseCommand(m_doc, "1 BY 0", universeValues);
+    QCOMPARE(scvList.count(), 1);
+    scvList = parser.parseCommand(m_doc, "1 THRU 4 BY 0 AT 9", universeValues);
+    QCOMPARE(scvList.count(), 4);
+
+    /* A range ending before it starts selects nothing (THRU 0 used to
+     * wrap to UINT_MAX and loop forever) */
+    QCOMPARE(parser.parseCommand(m_doc, "1 THRU 0 AT 5", universeValues).count(), 0);
+    QCOMPARE(parser.parseCommand(m_doc, "10 THRU 3 AT 5", universeValues).count(), 0);
+
+    /* A huge THRU stops at the universe end instead of iterating ~4e9 times */
+    scvList = parser.parseCommand(m_doc, "510 THRU 4294967295 AT 5", universeValues);
+    QCOMPARE(scvList.count(), 3);
+    QCOMPARE(scvList.last().channel, quint32(511));
+}
+
 void KeyPadParser_Test::cleanupTestCase()
 {
     delete m_doc;
