@@ -393,6 +393,8 @@ QJsonObject videoConfigToJson(Video *video)
     spout.insert(QStringLiteral("width"), video->spoutSize().width());
     spout.insert(QStringLiteral("height"), video->spoutSize().height());
     cfg.insert(QStringLiteral("spoutSize"), spout);
+    // read-only: derived from the function name (Video::defaultSpoutSenderName)
+    cfg.insert(QStringLiteral("spoutSenderName"), video->defaultSpoutSenderName());
 
     cfg.insert(QStringLiteral("volume"), video->volume());
     cfg.insert(QStringLiteral("muted"), video->muted());
@@ -730,6 +732,16 @@ void ApiFunctionsDomain::setTypeDetailProvider(int functionType, TypeDetailProvi
 QJsonObject ApiFunctionsDomain::typeDetail(Function *function)
 {
     return typeDetailToJson(function);
+}
+
+QJsonObject ApiFunctionsDomain::summary(Function *function)
+{
+    return functionSummaryToJson(function);
+}
+
+QJsonArray ApiFunctionsDomain::attributes(Function *function)
+{
+    return attributesToJson(function);
 }
 
 bool ApiFunctionsDomain::applyMediaSource(Doc *doc, Function *function, const QString &source, QString *error)

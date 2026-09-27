@@ -41,6 +41,7 @@ class ApiShowDomain;
 class ApiFixtureDefsDomain;
 class ApiIoConfigDomain;
 class ApiVcInputDomain;
+class ApiFunctionsMiscDomain;
 class Doc;
 
 /** Default port for the control API's WebSocket server. Distinct from
@@ -159,6 +160,7 @@ private:
     ApiFixtureDefsDomain *m_fixtureDefsDomain;
     ApiIoConfigDomain *m_ioConfigDomain;
     ApiVcInputDomain *m_vcInputDomain;
+    ApiFunctionsMiscDomain *m_functionsMiscDomain;
 };
 
 #endif

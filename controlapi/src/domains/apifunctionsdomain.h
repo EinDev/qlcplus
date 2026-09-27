@@ -20,6 +20,7 @@
 
 #include <QObject>
 #include <QJsonObject>
+#include <QJsonArray>
 #include <functional>
 
 class ApiServer;
@@ -73,6 +74,12 @@ public:
      *  Exposed so other domains broadcast exactly the shape functions.get
      *  returns. */
     static QJsonObject typeDetail(Function *function);
+
+    /** FunctionsSummary / FunctionsDetail.attributes for one function,
+     *  exactly as functions.list / functions.get return them (shared with
+     *  ApiFunctionsMiscDomain's functions.clone / adjustAttribute). */
+    static QJsonObject summary(Function *function);
+    static QJsonArray attributes(Function *function);
 
     /** Apply a new media source to an Audio or Video the way
      *  functions.create/update {source} do: a host file is copied into the

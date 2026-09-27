@@ -36,7 +36,16 @@
 #include "rgbaudio.h"
 #include "rgbtext.h"
 #include "universe.h"
+#include "qlcfixturehead.h"
+#include "qlcchannel.h"
+#include "chaserstep.h"
+#include "scenevalue.h"
+#include "sequence.h"
+#include "fixture.h"
+#include "chaser.h"
+#include "scene.h"
 #include "doc.h"
+#include <algorithm>
 
 /*****************************************************************************
  * JSON helpers (file-local)
@@ -269,6 +278,7 @@ ApiRgbMatrixDomain::ApiRgbMatrixDomain(Doc *doc, ApiServer *server, QObject *par
     });
 
     registerMethods();
+    registerSaveToSequence();
 }
 
 QJsonObject ApiRgbMatrixDomain::configToJson(Doc *doc, RGBMatrix *matrix)
@@ -757,5 +767,238 @@ void ApiRgbMatrixDomain::registerMethods()
         data.insert(QStringLiteral("value"), matrix->property(name));
         data.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
         m_server->broadcast(QStringLiteral("functions.rgbmatrix.scriptPropertyChanged"), data, session->clientId(), false);
+    });
+}
+
+/*****************************************************************************
+ * Save to Sequence
+ *****************************************************************************/
+
+namespace
+{
+
+/** The channels RGBMatrixEditor::saveToSequence() writes for one head in
+ *  the matrix's control mode (RGB also writes CMY when the head has it) */
+QList<quint32> saveChannelsFor(Fixture *fxi, int head, RGBMatrix::ControlMode mode, QList<quint32> *cmy)
+{
+    QList<quint32> list;
+    if (mode == RGBMatrix::ControlModeRgb)
+    {
+        QVector<quint32> rgb = fxi->rgbChannels(head);
+        if (rgb.count() == 3)
+            list << rgb.at(0) << rgb.at(1) << rgb.at(2);
+        QVector<quint32> c = fxi->cmyChannels(head);
+        if (c.count() == 3 && cmy != nullptr)
+            *cmy << c.at(0) << c.at(1) << c.at(2);
+        return list;
+    }
+
+    quint32 channel = QLCChannel::invalid();
+    if (mode == RGBMatrix::ControlModeDimmer)
+    {
+        channel = fxi->masterIntensityChannel();
+        if (channel == QLCChannel::invalid())
+            channel = fxi->channelNumber(QLCChannel::Intensity, QLCChannel::MSB, head);
+    }
+    else if (mode == RGBMatrix::ControlModeWhite)
+        channel = fxi->channelNumber(QLCChannel::White, QLCChannel::MSB, head);
+    else if (mode == RGBMatrix::ControlModeAmber)
+        channel = fxi->channelNumber(QLCChannel::Amber, QLCChannel::MSB, head);
+    else if (mode == RGBMatrix::ControlModeUV)
+        channel = fxi->channelNumber(QLCChannel::UV, QLCChannel::MSB, head);
+    else if (mode == RGBMatrix::ControlModeShutter)
+    {
+        QVector<quint32> shutters = fxi->head(head).shutterChannels();
+        if (shutters.count())
+            channel = shutters.first();
+    }
+    if (channel != QLCChannel::invalid())
+        list << channel;
+    return list;
+}
+
+} // namespace
+
+void ApiRgbMatrixDomain::registerSaveToSequence()
+{
+    ApiDispatcher *dispatcher = m_server->dispatcher();
+    Doc *doc = m_doc;
+
+    dispatcher->registerMethod(QStringLiteral("functions.rgbmatrix.saveToSequence"), [doc, this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        RGBMatrix *matrix = findMatrixOrRespond(doc, params, session, id);
+        if (matrix == nullptr)
+            return;
+        FixtureGroup *grp = doc->fixtureGroup(matrix->fixtureGroup());
+        if (grp == nullptr)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidState,
+                                                            QStringLiteral("The RGB Matrix has no fixture group")));
+            return;
+        }
+        if (checkBaseRevision(doc, params, session, id) == false)
+            return;
+
+        RGBMatrix::ControlMode mode = matrix->controlMode();
+        QColor startColor = matrix->getColor(0);
+        QColor endColor = matrix->getColor(1);
+        RGBAlgorithm *algo = nullptr;
+        int matrixSteps = 0;
+        {
+            QMutexLocker locker(&matrix->algorithmMutex());
+            algo = matrix->algorithm();
+            if (algo != nullptr)
+                matrixSteps = algo->rgbMapStepCount(grp->size());
+        }
+        if (algo == nullptr || matrixSteps <= 0)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidState,
+                                                            QStringLiteral("The RGB Matrix renders no steps")));
+            return;
+        }
+
+        // 1 - the hidden Scene holding every channel the steps write
+        Scene *grpScene = new Scene(doc);
+        grpScene->setName(grp->name());
+        grpScene->setVisible(false);
+        for (const GroupHead &head : grp->headList())
+        {
+            Fixture *fxi = doc->fixture(head.fxi);
+            if (fxi == nullptr)
+                continue;
+            QList<quint32> cmy;
+            QList<quint32> channels = saveChannelsFor(fxi, head.head, mode, &cmy);
+            for (quint32 ch : channels + cmy)
+                grpScene->setValue(head.fxi, ch, 0);
+        }
+        if (doc->addFunction(grpScene) == false)
+        {
+            delete grpScene;
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInternal, QStringLiteral("Could not add the Scene")));
+            return;
+        }
+
+        // 2 - one step per matrix step, rendered through a private step
+        // handler (the running matrix keeps its own)
+        RGBMatrixStep handler;
+        handler.setStepColor(startColor);
+        int currentStep = 0;
+        int increment = 1;
+        if (matrix->direction() == Function::Backward)
+        {
+            currentStep = matrixSteps - 1;
+            increment = -1;
+            if (endColor.isValid())
+                handler.setStepColor(endColor);
+        }
+        handler.calculateColorDelta(startColor, endColor, algo);
+
+        int totalSteps = matrixSteps;
+        if (matrix->runOrder() == Function::PingPong)
+            totalSteps = qMax(1, matrixSteps * 2 - 2);
+
+        Sequence *sequence = new Sequence(doc);
+        sequence->setName(QStringLiteral("%1 %2").arg(matrix->name(), QStringLiteral("Sequence")));
+        sequence->setBoundSceneID(grpScene->id());
+        sequence->setDurationMode(Chaser::PerStep);
+        sequence->setDuration(matrix->duration());
+        if (matrix->fadeInSpeed() != 0)
+        {
+            sequence->setFadeInMode(Chaser::PerStep);
+            sequence->setFadeInSpeed(matrix->fadeInSpeed());
+        }
+        if (matrix->fadeOutSpeed() != 0)
+        {
+            sequence->setFadeOutMode(Chaser::PerStep);
+            sequence->setFadeOutSpeed(matrix->fadeOutSpeed());
+        }
+
+        for (int i = 0; i < totalSteps; i++)
+        {
+            handler.updateStepColor(currentStep, startColor, matrixSteps);
+            matrix->previewMap(currentStep, &handler);
+
+            ChaserStep step;
+            step.fid = grpScene->id();
+            step.fadeIn = matrix->fadeInSpeed();
+            step.hold = matrix->duration() > matrix->fadeInSpeed() ? matrix->duration() - matrix->fadeInSpeed() : 0;
+            step.duration = matrix->duration();
+            step.fadeOut = matrix->fadeOutSpeed();
+
+            for (int y = 0; y < handler.m_map.size(); y++)
+            {
+                for (int x = 0; x < handler.m_map[y].size(); x++)
+                {
+                    uint col = handler.m_map[y][x];
+                    GroupHead head = grp->head(QLCPoint(x, y));
+                    Fixture *fxi = doc->fixture(head.fxi);
+                    if (fxi == nullptr)
+                        continue;
+                    QList<quint32> cmy;
+                    QList<quint32> channels = saveChannelsFor(fxi, head.head, mode, &cmy);
+                    if (mode == RGBMatrix::ControlModeRgb)
+                    {
+                        if (channels.count() == 3)
+                        {
+                            step.values.append(SceneValue(head.fxi, channels.at(0), uchar(qRed(col))));
+                            step.values.append(SceneValue(head.fxi, channels.at(1), uchar(qGreen(col))));
+                            step.values.append(SceneValue(head.fxi, channels.at(2), uchar(qBlue(col))));
+                        }
+                        if (cmy.count() == 3)
+                        {
+                            QColor cmyCol(col);
+                            step.values.append(SceneValue(head.fxi, cmy.at(0), uchar(cmyCol.cyan())));
+                            step.values.append(SceneValue(head.fxi, cmy.at(1), uchar(cmyCol.magenta())));
+                            step.values.append(SceneValue(head.fxi, cmy.at(2), uchar(cmyCol.yellow())));
+                        }
+                    }
+                    else if (channels.isEmpty() == false)
+                    {
+                        step.values.append(SceneValue(head.fxi, channels.first(), RGBMatrix::rgbToGrey(col)));
+                    }
+                }
+            }
+            // heads can be placed anywhere in the grid, a Sequence needs its
+            // values ordered (same as the Qt editor)
+            std::sort(step.values.begin(), step.values.end());
+            sequence->addStep(step);
+
+            // advance, bouncing at the ends for Ping Pong (the Qt editor
+            // compared against the doubled step count, so it never bounced)
+            currentStep += increment;
+            if (currentStep >= matrixSteps || currentStep < 0)
+            {
+                if (matrix->runOrder() == Function::PingPong && matrixSteps > 1)
+                {
+                    increment = -increment;
+                    currentStep += 2 * increment;
+                }
+                else
+                {
+                    currentStep = increment > 0 ? 0 : matrixSteps - 1;
+                }
+            }
+        }
+
+        if (doc->addFunction(sequence) == false)
+        {
+            delete sequence;
+            doc->deleteFunction(grpScene->id());
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInternal, QStringLiteral("Could not add the Sequence")));
+            return;
+        }
+
+        QJsonObject result = docRevisionResult(doc);
+        result.insert(QStringLiteral("sequenceId"), QString::number(sequence->id()));
+        result.insert(QStringLiteral("sceneId"), QString::number(grpScene->id()));
+        result.insert(QStringLiteral("stepsCount"), sequence->stepsCount());
+        session->send(ApiEnvelope::buildOkResponse(id, result));
+
+        // like functions.create of a Sequence: only the Sequence is announced,
+        // its hidden bound Scene is an implementation detail
+        QJsonObject data;
+        data.insert(QStringLiteral("function"), ApiFunctionsDomain::summary(sequence));
+        data.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
+        m_server->broadcast(QStringLiteral("functions.created"), data, session->clientId(), false);
     });
 }

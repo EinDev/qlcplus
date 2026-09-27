@@ -70,6 +70,18 @@ private:
     void registerAudioMethods();
     void registerVideoMethods();
 
+    /** The fork's media store actions and the remaining Audio/Video
+     *  setters (functions-advanced.yaml, "media store" section):
+     *  functions.media.status / collect / removeUnused,
+     *  functions.audio.detectBpm / setMuted,
+     *  functions.video.setVolume / setMuted / setSpoutSize. */
+    void registerAssetMethods();
+
+private slots:
+    /** Audio::bpmChanged relay (string-based connect, engine DLL):
+     *  broadcasts functions.audio.bpmChanged with the analysis state. */
+    void slotAudioBpmChanged();
+
     /** Resolve params.functionId to a Function of the given type, sending
      *  NOT_FOUND / INVALID_PARAMS and returning nullptr otherwise. */
     Function *requireFunctionOfType(ApiSession *session, const QString &id, const QJsonObject &params, int type) const;
