@@ -556,13 +556,13 @@ void ApiFixtureDefsDomain_Test::channelRemoveCascadesToModesAndAliases()
     QString modeId = callOk(QStringLiteral("fixturedefs.mode.add"), p).value(QStringLiteral("modeId")).toString();
 
     // Mode A, B(acts on A), C with a head over [B, C]
-    QJsonArray slots;
-    QJsonObject sa; sa.insert(QStringLiteral("channelId"), ids[0]); slots.append(sa);
-    QJsonObject sb; sb.insert(QStringLiteral("channelId"), ids[1]); sb.insert(QStringLiteral("actsOnChannelId"), ids[0]); slots.append(sb);
-    QJsonObject sc; sc.insert(QStringLiteral("channelId"), ids[2]); slots.append(sc);
+    QJsonArray slotArray;
+    QJsonObject sa; sa.insert(QStringLiteral("channelId"), ids[0]); slotArray.append(sa);
+    QJsonObject sb; sb.insert(QStringLiteral("channelId"), ids[1]); sb.insert(QStringLiteral("actsOnChannelId"), ids[0]); slotArray.append(sb);
+    QJsonObject sc; sc.insert(QStringLiteral("channelId"), ids[2]); slotArray.append(sc);
     p = params(sid, rev++);
     p.insert(QStringLiteral("modeId"), modeId);
-    p.insert(QStringLiteral("channels"), slots);
+    p.insert(QStringLiteral("channels"), slotArray);
     callOk(QStringLiteral("fixturedefs.mode.setChannels"), p);
     p = params(sid, rev++);
     p.insert(QStringLiteral("modeId"), modeId);
@@ -735,7 +735,7 @@ void ApiFixtureDefsDomain_Test::capabilityWizardCreatesRangesAndRejectsOverlap()
     p.insert(QStringLiteral("amount"), 3);
     p.insert(QStringLiteral("label"), QStringLiteral("Gobo #"));
     QJsonObject result = callOk(QStringLiteral("fixturedefs.channel.capability.wizard"), p);
-    QCOMPARE(result.value(QStringLiteral("capabilityIndexes")).toArray(), QJsonArray{ 1, 2, 3 });
+    QCOMPARE(result.value(QStringLiteral("capabilityIndexes")).toArray(), (QJsonArray{ 1, 2, 3 }));
     QVERIFY(QTest::qWaitFor([&]() { return findChannel(lastUpdatedDefinition(spy), chId).value(QStringLiteral("capabilities")).toArray().count() == 4; }, 3000));
     QJsonArray caps = findChannel(lastUpdatedDefinition(spy), chId).value(QStringLiteral("capabilities")).toArray();
     QCOMPARE(caps.at(1).toObject().value(QStringLiteral("name")).toString(), QStringLiteral("Gobo 1"));
@@ -876,11 +876,11 @@ void ApiFixtureDefsDomain_Test::aliasAddUpdateRemoveApplyToAllModes()
     // Basic and Extended contain Function; NoFunction does not.
     for (int i = 0; i < 2; i++)
     {
-        QJsonArray slots;
-        for (const QString &chId : ids) { QJsonObject s; s.insert(QStringLiteral("channelId"), chId); slots.append(s); }
+        QJsonArray slotArray;
+        for (const QString &chId : ids) { QJsonObject s; s.insert(QStringLiteral("channelId"), chId); slotArray.append(s); }
         QJsonObject p = params(sid, rev++);
         p.insert(QStringLiteral("modeId"), modeIds[i]);
-        p.insert(QStringLiteral("channels"), slots);
+        p.insert(QStringLiteral("channels"), slotArray);
         callOk(QStringLiteral("fixturedefs.mode.setChannels"), p);
     }
 
@@ -985,12 +985,12 @@ void ApiFixtureDefsDomain_Test::modeAddRenameSetChannelsRemove()
     p.insert(QStringLiteral("name"), QStringLiteral("16 bit"));
     QCOMPARE(callError(QStringLiteral("fixturedefs.mode.add"), p), QStringLiteral("INVALID_PARAMS"));
 
-    QJsonArray slots;
-    QJsonObject s0; s0.insert(QStringLiteral("channelId"), ids[0]); slots.append(s0);
-    QJsonObject s1; s1.insert(QStringLiteral("channelId"), ids[1]); s1.insert(QStringLiteral("actsOnChannelId"), ids[0]); slots.append(s1);
+    QJsonArray slotArray;
+    QJsonObject s0; s0.insert(QStringLiteral("channelId"), ids[0]); slotArray.append(s0);
+    QJsonObject s1; s1.insert(QStringLiteral("channelId"), ids[1]); s1.insert(QStringLiteral("actsOnChannelId"), ids[0]); slotArray.append(s1);
     p = params(sid, rev++);
     p.insert(QStringLiteral("modeId"), modeId);
-    p.insert(QStringLiteral("channels"), slots);
+    p.insert(QStringLiteral("channels"), slotArray);
     callOk(QStringLiteral("fixturedefs.mode.setChannels"), p);
     QVERIFY(QTest::qWaitFor([&]() { return findMode(lastUpdatedDefinition(spy), modeId).value(QStringLiteral("channels")).toArray().count() == 2; }, 3000));
     QJsonArray modeSlots = findMode(lastUpdatedDefinition(spy), modeId).value(QStringLiteral("channels")).toArray();
@@ -1087,11 +1087,11 @@ void ApiFixtureDefsDomain_Test::headsSurviveChannelReorder()
     QString modeId = callOk(QStringLiteral("fixturedefs.mode.add"), params(sid, rev++)).value(QStringLiteral("modeId")).toString();
     auto setChannels = [&](const QStringList &order)
     {
-        QJsonArray slots;
-        for (const QString &chId : order) { QJsonObject s; s.insert(QStringLiteral("channelId"), chId); slots.append(s); }
+        QJsonArray slotArray;
+        for (const QString &chId : order) { QJsonObject s; s.insert(QStringLiteral("channelId"), chId); slotArray.append(s); }
         QJsonObject p = params(sid, rev++);
         p.insert(QStringLiteral("modeId"), modeId);
-        p.insert(QStringLiteral("channels"), slots);
+        p.insert(QStringLiteral("channels"), slotArray);
         return callOk(QStringLiteral("fixturedefs.mode.setChannels"), p);
     };
     setChannels({ ids[0], ids[1], ids[2] });
@@ -1336,18 +1336,18 @@ void ApiFixtureDefsDomain_Test::fullRoundTrip()
     p = params(sid, rev++);
     p.insert(QStringLiteral("name"), QStringLiteral("Standard"));
     QString modeId = callOk(QStringLiteral("fixturedefs.mode.add"), p).value(QStringLiteral("modeId")).toString();
-    QJsonArray slots;
+    QJsonArray slotArray;
     for (const QString &chId : { dimmer, pan, panFine, color })
     {
         QJsonObject s;
         s.insert(QStringLiteral("channelId"), chId);
         if (chId == panFine)
             s.insert(QStringLiteral("actsOnChannelId"), pan);
-        slots.append(s);
+        slotArray.append(s);
     }
     p = params(sid, rev++);
     p.insert(QStringLiteral("modeId"), modeId);
-    p.insert(QStringLiteral("channels"), slots);
+    p.insert(QStringLiteral("channels"), slotArray);
     callOk(QStringLiteral("fixturedefs.mode.setChannels"), p);
     p = params(sid, rev++);
     p.insert(QStringLiteral("modeId"), modeId);
@@ -1488,9 +1488,10 @@ void ApiFixtureDefsDomain_Test::fullRoundTrip()
     QCOMPARE(entries.count(), 1); // only the seeded system definition remains
 
     // The still-open sessions are untouched, and saving one again re-creates
-    // the library entry with the counter continuing past the deleted one.
+    // the library entry with the counter continuing past the deleted one
+    // (delete itself bumped it to 3, so the re-created entry is 4).
     save.insert(QStringLiteral("baseRevision"), QJsonValue::Null);
-    QCOMPARE(callOk(QStringLiteral("fixturedefs.save"), save).value(QStringLiteral("defRevision")).toInt(), 3);
+    QCOMPARE(callOk(QStringLiteral("fixturedefs.save"), save).value(QStringLiteral("defRevision")).toInt(), 4);
     QVERIFY(QFile::exists(file));
 }
 

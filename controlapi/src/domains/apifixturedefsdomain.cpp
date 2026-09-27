@@ -852,7 +852,7 @@ QJsonObject ApiFixtureDefsDomain::definitionToJson(Session *s) const
         m.insert(QStringLiteral("name"), mode->name());
 
         const QVector<QLCChannel *> modeChannels = mode->channels();
-        QJsonArray slots;
+        QJsonArray slotArray;
         for (int i = 0; i < modeChannels.count(); i++)
         {
             QJsonObject slot;
@@ -862,9 +862,9 @@ QJsonObject ApiFixtureDefsDomain::definitionToJson(Session *s) const
                 slot.insert(QStringLiteral("actsOnChannelId"), s->channelId(modeChannels.at(int(actsOn))));
             else
                 slot.insert(QStringLiteral("actsOnChannelId"), QJsonValue::Null);
-            slots.append(slot);
+            slotArray.append(slot);
         }
-        m.insert(QStringLiteral("channels"), slots);
+        m.insert(QStringLiteral("channels"), slotArray);
 
         QJsonArray heads;
         const QVector<QLCFixtureHead> modeHeads = mode->heads();
@@ -2275,10 +2275,10 @@ void ApiFixtureDefsDomain::registerMethods()
             sendInvalid(client, id, QStringLiteral("channels must be an array"));
             return;
         }
-        const QJsonArray slots = params.value(QStringLiteral("channels")).toArray();
+        const QJsonArray slotArray = params.value(QStringLiteral("channels")).toArray();
         QList<QLCChannel *> channels;
         QList<QString> actsOnIds;
-        for (const QJsonValue &v : slots)
+        for (const QJsonValue &v : slotArray)
         {
             const QJsonObject slot = v.toObject();
             QLCChannel *channel = s->channelById(slot.value(QStringLiteral("channelId")).toString());
