@@ -27,6 +27,16 @@ window.QLCIcons = { FUNCTION_ICONS, FIXTURE_TYPE_ICONS, CHANNEL_GROUP_ICONS, COL
    at render time, never at file scope. */
 function ff(name) { return (window.FF && window.FF[name]) || null; }
 
+/* Centre-area view registry (2D / DMX / Universe grid, mirroring FixturesAndFunctions.qml's view
+   buttons). A view registers itself from its own file (webui/ff/View*.jsx, loaded after this one):
+     window.QLCFFViews = Object.assign(window.QLCFFViews || {}, { '2d': { id, icon, label, order, component } });
+   Props received: qlc, fixtures, universes, selectedFixtureIds, onSelectFixtures, universeFilter,
+   setUniverseFilter. The built-in 'list' view is the tree's detail / editor area. */
+function ffViews() {
+  const r = window.QLCFFViews || {};
+  return Object.keys(r).map(k => r[k]).filter(v => v && v.component).sort((a, b) => (a.order || 0) - (b.order || 0));
+}
+
 /* Function editor registry. `window.QLCEditors[<Function type as the server spells it>]` wins over
    the built-in editors below (Scene / Chaser / Sequence / Collection live in ff/FunctionEditors.jsx).
    A new editor registers itself from its own file, loaded after this one in index.html:
@@ -84,7 +94,7 @@ function useFixtureTree(qlc) {
   const D = window.QLCData;
   const data = useLiveList(qlc, () => Promise.all([qlc.call('fixtures.list'), qlc.call('io.universe.list')])
     .then(([f, u]) => ({ fixtures: f.fixtures || [], universes: u.universes || [] })),
-    ['fixtures.patched', 'fixtures.unpatched', 'fixtures.updated', 'io.universe.created', 'core.project.loaded', 'core.history.changed']);
+    ['fixtures.patched', 'fixtures.unpatched', 'fixtures.updated', 'fixtures.remap.applied', 'io.universe.created', 'core.project.loaded', 'core.history.changed']);
   return React.useMemo(() => {
     if (!data) return null;
     const perUniverse = {};
@@ -106,7 +116,7 @@ function useFixtureTree(qlc) {
 function useFunctionTree(qlc, extraFolders) {
   const D = window.QLCData;
   const data = useLiveList(qlc, () => qlc.call('functions.list').then(r => r.functions || []),
-    ['functions.created', 'functions.deleted', 'functions.renamed', 'functions.moved', 'functions.updated', 'core.project.loaded', 'core.history.changed']);
+    ['functions.created', 'functions.deleted', 'functions.renamed', 'functions.moved', 'functions.updated', 'fixtures.remap.applied', 'core.project.loaded', 'core.history.changed']);
   return React.useMemo(() => {
     if (!data) return null;
     const root = { children: [], folders: {} };
@@ -203,9 +213,10 @@ function useFunctionStatus(qlc, functions) {
 function Row(props) { const R = ff('Row'); return R ? <R {...props} /> : null; }
 function Note(props) { const N = ff('Note'); return N ? <N {...props} /> : null; }
 
-function FixtureDetail({ node, qlc, universes }) {
+function FixtureDetail({ node, qlc, universes, fixtures }) {
   const D = window.QLCData;
   const FF = window.FF;
+  const Placement = ff('FixturePlacementProps'); /* webui/ff/View2D.jsx: position / rotation / gel / flags */
   const detail = FF.useFixtureDetail(qlc, node.fixtureId);
   const f = detail || node.summary;
   const uni = (universes || []).find(u => u.id === f.universe);
@@ -240,7 +251,8 @@ function FixtureDetail({ node, qlc, universes }) {
         <Row label="Model">{f.model || '—'}</Row>
         <Row label="Mode">{f.mode || '—'}</Row>
         <Row label="Type">{f.fixtureType || (f.isGeneric ? 'Generic' : '—')}</Row>
-        <Note text="Changing the mode of a patched fixture is not available: fixtures.update only takes universe, address and name. Unpatch and add the fixture again in the wanted mode." style={{ marginTop: 8 }} />
+        <Note text="Changing the mode of a patched fixture is not available: fixtures.update only takes universe, address and name. Unpatch and add the fixture again in the wanted mode, or use Remap." style={{ marginTop: 8 }} />
+        {Placement ? <Placement qlc={qlc} fixtureId={f.id} fixtures={fixtures} /> : null}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         <RobotoText label={'Channels' + (detail ? ' (' + detail.channelList.length + ')' : '')} fontBold fontSize={14} />
@@ -374,6 +386,10 @@ function FixturesFunctions() {
     if (el) { el.focus(); el.select(); }
   }, [renaming]);
   const [newFolderName, setNewFolderName] = React.useState('');
+  const [view, setView] = React.useState('list');            /* 'list' | a window.QLCFFViews id */
+  const [universeFilter, setUniverseFilter] = React.useState(null); /* shared by the 2D / DMX / grid views */
+  const views = ffViews();
+  const ActiveView = view !== 'list' ? (views.find(v => v.id === view) || {}).component : null;
 
   /* Live: one root per side; mock: the prototype's flat groups. */
   const fixturesRoot = live && fixtureTree
@@ -550,6 +566,7 @@ function FixturesFunctions() {
 
   const PopupMenu = ff('PopupMenu'), MenuItem = ff('MenuItem');
   const FixtureTools = ff('FixtureTools'), PalettePanel = ff('PalettePanel'), GroupsPanel = ff('FixtureGroupsPanel'), AddFixtureDialog = ff('AddFixtureDialog');
+  const RemapDialog = ff('FixtureRemapDialog');
   const canDelete = live && (selectedFunctionIds.length + selectedFixtureIds.length > 0 || isFunction || isFixture);
   const folderModel = functionTree ? [{ mLabel: '/ (top level)', mValue: '' }].concat(functionTree.paths.map(p => ({ mLabel: p, mValue: p }))) : [];
 
@@ -561,7 +578,8 @@ function FixturesFunctions() {
             tooltip={live ? 'Add fixtures' : 'Add fixtures — connect first'} />
         </ShortcutHint>
         <IconButton imgSource={D.icon('group')} size={26} disabled={!live} checked={panel === 'groups'} onClick={() => setPanel(panel === 'groups' ? null : 'groups')} tooltip="Fixture Groups" />
-        <IconButton imgSource={D.icon('remap')} size={26} disabled tooltip="Remap addresses — not available: the server has no fixtures.remap.* yet" />
+        <IconButton imgSource={D.icon('remap')} size={26} disabled={!live || !RemapDialog} tooltip={RemapDialog ? 'Remap fixtures: replace fixtures by new definitions / addresses and carry every function over' : 'Remap addresses — not loaded'}
+          onClick={() => setDlg('remap')} data-ff-remap="1" />
         <div style={{ width: 1, height: 20, background: 'var(--border-color-dark)', margin: '0 3px' }} />
         <IconButton imgSource={D.icon('add')} size={26} disabled={!live} tooltip={'Add a new function' + (targetPath ? ' in ' + targetPath : '')}
           onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu({ x: r.left, y: r.bottom + 2, kind: 'new' }); }} />
@@ -597,7 +615,18 @@ function FixturesFunctions() {
         </div>
 
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg-medium)' }}>
-          {detail && (isFunction || isFixture) ? (
+          {live && views.length ? (
+            <div data-ff-views="1" style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '2px 6px', height: 30, background: 'var(--bg-stronger)', borderBottom: 'var(--border-dark)', flex: 'none' }}>
+              <IconButton imgSource={D.icon('functions')} size={24} checked={view === 'list'} tooltip="Fixture / function details and editors" onClick={() => setView('list')} data-ff-view-button="list" />
+              {views.map(v => <IconButton key={v.id} imgSource={D.icon(v.icon)} size={24} checked={view === v.id} tooltip={v.label} onClick={() => setView(v.id)} data-ff-view-button={v.id} />)}
+              <RobotoText label={view === 'list' ? 'Details' : (views.find(v => v.id === view) || {}).label || ''} fontSize={13} labelColor="var(--fg-light)" style={{ marginLeft: 6 }} />
+            </div>
+          ) : null}
+          {ActiveView && live ? (
+            <ActiveView qlc={qlc} fixtures={fixtureTree ? fixtureTree.fixtures : []} universes={fixtureTree ? fixtureTree.universes : []}
+              selectedFixtureIds={selectedFixtureIds.map(String)} onSelectFixtures={selectFixtures} universeFilter={universeFilter} setUniverseFilter={setUniverseFilter} />
+          ) : null}
+          {detail && (isFunction || isFixture) && !(ActiveView && live) ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, height: 38, padding: '0 10px', background: 'var(--section-header)', borderBottom: '2px solid var(--section-header-div)', flex: 'none' }}>
               <img src={detail.icon} alt="" style={{ width: 24, height: 24 }} />
               <span data-ff-name="1" style={{ display: 'inline-flex' }} onKeyDown={(e) => { if (e.key === 'Escape') setRenaming(false); }}>
@@ -618,9 +647,9 @@ function FixturesFunctions() {
             </div>
           ) : null}
 
-          {!detail ? (
+          {ActiveView && live ? null : !detail ? (
             <div style={{ padding: 20 }}>
-              <RobotoText label={live ? 'Select a fixture or function in the tree. Right-click a row for actions.' : 'Select a fixture or function.'} fontSize={14} labelColor="var(--fg-medium)" />
+              <RobotoText label={live ? 'Select a fixture or function in the tree, or pick a view above (2D stage, DMX, universe grid). Right-click a row for actions.' : 'Select a fixture or function.'} fontSize={14} labelColor="var(--fg-medium)" />
             </div>
           ) : live && isFolder ? (
             <FolderDetail node={detail} count={flatten(detail.children || [], []).filter(n => n.kind === 'function').length}
@@ -628,7 +657,7 @@ function FixturesFunctions() {
           ) : live && (detail.kind === 'root' || detail.kind === 'universe') ? (
             <BranchDetail node={detail} onSelectFixtures={selectFixtures} />
           ) : live && detail.kind === 'fixture' ? (
-            <FixtureDetail node={detail} qlc={qlc} universes={fixtureTree ? fixtureTree.universes : []} />
+            <FixtureDetail node={detail} qlc={qlc} universes={fixtureTree ? fixtureTree.universes : []} fixtures={fixtureTree ? fixtureTree.fixtures : []} />
           ) : live && detail.kind === 'function' ? (
             <FunctionDetail key={detail.functionId} node={detail} qlc={qlc} functions={functionTree ? functionTree.functions : []}
               fixtures={fixtureTree ? fixtureTree.fixtures : []} selectedFixtureIds={selectedFixtureIds} palettes={palettes || []} onSelectFixtures={selectFixtures} />
@@ -715,6 +744,8 @@ function FixturesFunctions() {
       ) : null}
 
       {AddFixtureDialog ? <AddFixtureDialog open={dlg === 'addFixture'} qlc={qlc} universes={fixtureTree ? fixtureTree.universes : []} fixtures={fixtureTree ? fixtureTree.fixtures : []} onClose={() => setDlg(null)} /> : null}
+      {RemapDialog ? <RemapDialog open={dlg === 'remap'} qlc={qlc} universes={fixtureTree ? fixtureTree.universes : []} fixtures={fixtureTree ? fixtureTree.fixtures : []}
+        selectedFixtureIds={selectedFixtureIds.map(String)} onClose={() => setDlg(null)} /> : null}
 
       <CustomPopupDialog open={dlg === 'move'} title="Move to folder" width={380}
         standardButtons={['Cancel', 'Move']} onClicked={(b) => { if (b === 'Move') moveFunctions(); else setDlg(null); }} onClose={() => setDlg(null)}>
