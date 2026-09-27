@@ -254,6 +254,61 @@
          * @see docs/api-spec/fragments/fixtures.yaml (method: fixtures.remap.apply)
          */
         apply: function (params) { return self.call('fixtures.remap.apply', params); }
+      },
+
+      monitor: {
+        /**
+         * Stage settings of the 2D/3D preview plus every fixture preview item (position mm,
+         * rotation deg, gel colour, flags) — fixtures without a monitor entry come back as
+         * placed=false at the stage centre so the whole patch can be drawn.
+         * @param {object} [params] - {}
+         * @returns {Promise<object>} result - {stage: {gridSize, gridUnits, pointOfView, stageType, showLabels, backgroundImage, gridCenter}, items: [FixturesMonitorItem], docRevision}
+         * @see docs/api-spec/fragments/fixtures.yaml (method: fixtures.monitor.get)
+         */
+        get: function (params) { return self.call('fixtures.monitor.get', params); },
+        /**
+         * Partial update of the stage settings (grid size / units, point of view, stage type,
+         * labels, background image). Broadcasts fixtures.monitor.changed {stage}.
+         * @param {object} params - {gridSize?: {x,y,z}, gridUnits?: 'Meters'|'Feet', pointOfView?: 'TopView'|'FrontView'|'RightSideView'|'LeftSideView', stageType?, showLabels?, backgroundImage?, baseRevision}
+         * @returns {Promise<object>} result - {docRevision}
+         * @see docs/api-spec/fragments/fixtures.yaml (method: fixtures.monitor.setStage)
+         */
+        setStage: function (params) { return self.call('fixtures.monitor.setStage', params); },
+        /**
+         * Bulk partial update of fixture preview items (position, rotation, gelColor, flags,
+         * linked copies via linkedIndex >= 1 / remove). Locked items ignore position/rotation
+         * (reported in result.skippedLocked) unless the entry also sets locked=false.
+         * @param {object} params - {items: [{fixtureId, headIndex?, linkedIndex?, position?, rotation?, gelColor?, hidden?, invertPan?, invertTilt?, locked?, remove?, ...}], baseRevision}
+         * @returns {Promise<object>} result - {items: [FixturesMonitorItem], skippedLocked: [key], docRevision}
+         * @see docs/api-spec/fragments/fixtures.yaml (method: fixtures.monitor.setPlacement)
+         */
+        setPlacement: function (params) { return self.call('fixtures.monitor.setPlacement', params); },
+        /**
+         * Server-side arrange tools (the Qt UI's own MonitorLayout code): op circle {diameter,
+         * lookAtCenter}, grid {width, height, columns, angle}, line {length, angle, lookAtCenter},
+         * rotate {angle}, center {}, align {edge: 'left'|'top'}, distribute {direction:
+         * 'horizontal'|'vertical'}. Millimetres / degrees, in the stage's point of view.
+         * @param {object} params - {items: [{fixtureId, headIndex?, linkedIndex?}], op, args?, baseRevision}
+         * @returns {Promise<object>} result - {items: [FixturesMonitorItem], skippedLocked, docRevision}
+         * @see docs/api-spec/fragments/fixtures.yaml (method: fixtures.monitor.arrange)
+         */
+        arrange: function (params) { return self.call('fixtures.monitor.arrange', params); },
+        /**
+         * "Detect from placement": circle diameter, best-fit line length/angle and centroid of
+         * the items' current positions. Read-only.
+         * @param {object} params - {items: [{fixtureId, headIndex?, linkedIndex?}]}
+         * @returns {Promise<object>} result - {circleDiameter, lineLength, lineAngle, centroid}
+         * @see docs/api-spec/fragments/fixtures.yaml (method: fixtures.monitor.detectArrangement)
+         */
+        detectArrangement: function (params) { return self.call('fixtures.monitor.detectArrangement', params); },
+        /**
+         * "Pick a 3D point": aims the fixtures' Pan/Tilt at a stage point (mm) from their
+         * monitor positions and writes the values as Simple Desk overrides (live, no revision).
+         * @param {object} params - {items: [{fixtureId, headIndex?}], point: {x, y, z}}
+         * @returns {Promise<object>} result - {fixtures: [{fixtureId, headIndex, panDegrees?, tiltDegrees?}], channels: [{address, value}]}
+         * @see docs/api-spec/fragments/fixtures.yaml (method: fixtures.monitor.aimAt)
+         */
+        aimAt: function (params) { return self.call('fixtures.monitor.aimAt', params); }
       }
     };
   }
@@ -278,6 +333,7 @@
     'fixtures.group.renamed',  // {groupId, name, docRevision} — after fixtures.group.rename
     'fixtures.group.deleted',  // {groupId, docRevision} — after fixtures.group.delete, or a group emptied by fixtures.unpatch
     'fixtures.group.updated',  // {group, docRevision} — shared broadcast for setSize/assignFixture/assignHead/unassignHead/unassignFixture/swapHeads/reset
-    'fixtures.remap.applied'   // {fixtures, replacedFixtureIds, deletedFixtureIds, docRevision} — after fixtures.remap.apply
+    'fixtures.remap.applied',  // {fixtures, replacedFixtureIds, deletedFixtureIds, docRevision} — after fixtures.remap.apply
+    'fixtures.monitor.changed' // {stage?, items?, removed?, docRevision} — after fixtures.monitor.setStage / setPlacement / arrange
   ];
 })();

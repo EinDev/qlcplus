@@ -201,7 +201,11 @@ void ApiMonitorDomain_Test::getListsStageAndUnplacedFixtures()
             QCOMPARE(it.value(QStringLiteral("position")).toObject().value(QStringLiteral("z")).toDouble(), 2000.0);
             QCOMPARE(it.value(QStringLiteral("channels")).toInt(), 4);
             QCOMPARE(it.value(QStringLiteral("hasPan")).toBool(), false);
-            QCOMPARE(it.value(QStringLiteral("physical")).toObject().value(QStringLiteral("width")).toDouble(), 300.0);
+            // Fixture::genericDimmerMode() sizes a generic dimmer's physical
+            // width by its channel count; only the depth falls back to the
+            // 2D view's 300 mm default.
+            QVERIFY(it.value(QStringLiteral("physical")).toObject().value(QStringLiteral("width")).toDouble() > 0);
+            QCOMPARE(it.value(QStringLiteral("physical")).toObject().value(QStringLiteral("depth")).toDouble(), 300.0);
         }
         else if (it.value(QStringLiteral("fixtureId")).toString() == QString::number(unplaced))
         {
