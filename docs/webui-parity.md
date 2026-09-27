@@ -216,13 +216,13 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | Speed dial: plus / minus buttons, multiplier factors, apply, reset tap, preset buttons | virtualconsole/VCSpeedDialItem.qml, virtualconsole/VCSpeedDialPresets.qml | live | - ; sandbox 2026-09-27; the stray speedDial.setCurrentTime wrapper is deprecated (preset.apply covers it) |
 | Frame / Solo frame: multipage next / previous | virtualconsole/VCFrameItem.qml | live | - |
 | Frame: enable / disable, expand / collapse | virtualconsole/VCFrameItem.qml | partial | U; enable button + header configured and exercised (sandbox 2026-09-27); Collapsed toggle server-tested only |
-| Frame: page shortcuts by keyboard | virtualconsole/VCFrameProperties.qml | missing | S: vc.widget.keySequence.set; see editing section |
+| Frame: page shortcuts by keyboard | virtualconsole/VCFrameProperties.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/vc-input.js; F flips the frame in Operate mode |
 | Label | virtualconsole/VCLabelItem.qml | live | - |
 | Clock: clock / stopwatch / countdown display, play / pause, reset, enable schedule | virtualconsole/VCClockItem.qml | missing | S: vc.clock.playPause, vc.clock.reset, vc.clock.timeChanged; view-only body |
 | Animation: level fader, preset buttons, colour knobs | virtualconsole/VCAnimationItem.qml | missing | S: vc.animation.setFaderLevel, vc.animation.setPresetKnobValue, vc.animation.activePresetChanged, vc.animation.faderLevelChanged; view-only body |
 | Audio triggers: enable / disable capture, live bars | virtualconsole/VCAudioTriggersItem.qml | missing | S: vc.audioTriggers.setCaptureEnabled, vc.audioTriggers.levelsChanged, vc.audioTriggers.captureEnabledChanged; capture runs on the host, which is fine |
 | Grand Master value | virtualconsole/VirtualConsole.qml | live | - |
-| Fire widgets by keyboard sequences in Operate mode | virtualconsole/VirtualConsole.qml, KeyboardSequenceDelegate.qml | missing | S: vc.widget.keySequence.set, vc.widget.keySequence.remove, vc.widget.keySequencesChanged; the browser would map keys client-side to vc.button.press etc. once the bindings are readable |
+| Fire widgets by keyboard sequences in Operate mode | virtualconsole/VirtualConsole.qml, KeyboardSequenceDelegate.qml | partial | U; the web UI honours widget key bindings itself (the server cannot see browser keys); Button and Frame driven in the sandbox 2026-09-27, cue list / speed dial / slider flash built but not driven |
 | Fire widgets from an external controller (input sources) | ExternalControls.qml | n/a | - ; input lines are patched on the host and drive the engine directly; the web UI only needs to *configure* them (editing section) |
 
 ## Virtual Console - editing
@@ -246,9 +246,9 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | Distribute selected widgets horizontally / vertically | virtualconsole/VCWidgetProperties.qml | partial | U; horizontal exercised (sandbox 2026-09-27), vertical server-tested only |
 | Bulk style on a multi-selection (caption, colours, font) | virtualconsole/VCWidgetProperties.qml | partial | U; caption exercised via one vc.widget.bulkStyle (sandbox 2026-09-27); colours / font server-tested only |
 | Widget presets (save / apply / remove a style preset) | virtualconsole/VCWidgetProperties.qml | partial | U; generic vc.widget.preset.add/apply/remove + per-type host dispatch live for Speed (sandbox 2026-09-27); XYPad / Animation preset payloads are stubs (INVALID_STATE) until the live-widgets slice fills them |
-| External controls: add / remove an input source, auto-detect, manual selection | ExternalControls.qml, ExternalControlDelegate.qml, popup/PopupManualInputSource.qml | missing | S: vc.widget.inputSource.set, vc.widget.inputSource.remove, vc.widget.inputDetect.start, vc.widget.inputDetect.stop |
-| External controls: custom feedback values / colours per input source | popup/PopupCustomFeedback.qml | missing | S: vc.widget.inputSource.set (carries feedback fields) |
-| External controls: add / remove a keyboard combination, auto-detect | ExternalControls.qml, KeyboardSequenceDelegate.qml | missing | S: vc.widget.keySequence.set, vc.widget.keySequence.remove |
+| External controls: add / remove an input source, auto-detect, manual selection | ExternalControls.qml, ExternalControlDelegate.qml, popup/PopupManualInputSource.qml | partial | U; manual add / remove live (sandbox 2026-09-27); auto-detect arm / refuse-second-client / cancel verified in the browser, the actual binding from a controller signal unit-tested only (no input plugin in the sandbox) |
+| External controls: custom feedback values / colours per input source | popup/PopupCustomFeedback.qml | partial | U; values live (sandbox 2026-09-27); colour table and MIDI routing need a patched input profile |
+| External controls: add / remove a keyboard combination, auto-detect | ExternalControls.qml, KeyboardSequenceDelegate.qml | live | - ; sandbox 2026-09-27 (keys recorded by pressing them in the browser; re-recording leaves exactly one entry) |
 | Button properties: attached function, pressure behaviour (Toggle / Flash / Blackout / Stop all) | virtualconsole/VCButtonProperties.qml | live | - |
 | Button properties: flash override priority / force LTP, stop-all fade out, adjust function intensity | virtualconsole/VCButtonProperties.qml | live | - ; sandbox 2026-09-27, every VcButtonConfig field exercised |
 | Slider properties: display style (DMX / percent, normal / inverted, slider / knob), mode (Level / Adjust / Submaster / Grand Master), value limits | virtualconsole/VCSliderProperties.qml | partial | U; Level and Adjust modes exercised (sandbox 2026-09-27); Submaster / Grand Master, knob / percent / inverted radios and range limits server-tested only |
@@ -373,7 +373,7 @@ duplicate a feature row above say so.
 | Channel modifiers editor | popup/PopupChannelModifiers.qml | missing | spec+S+U; duplicate |
 | Channel wizard | popup/PopupChannelWizard.qml | missing | spec+S+U; duplicate |
 | Create palette | popup/PopupCreatePalette.qml | partial | U; Dimmer / Colour live, other types and "Also create a Scene" missing |
-| Custom feedback | popup/PopupCustomFeedback.qml | missing | S: vc.widget.inputSource.set, io.inputProfile.save |
+| Custom feedback | popup/PopupCustomFeedback.qml | partial | U; lower / upper / monitor values live (sandbox 2026-09-27); colour table and MIDI routing need a patched input profile |
 | DMX channel dump | popup/PopupDMXDump.qml | partial | U for the target Scene, spec+S+U for the filters |
 | Disclaimer | popup/PopupDisclaimer.qml | n/a | - ; desktop first-run notice |
 | Folder browser (server-side file picker) | popup/PopupFolderBrowser.qml | live | - ; sandbox 2026-09-27 as window.ServerFileBrowser over core.fs.list, used by the Audio / Video editors; the Open-project dialog still takes a typed path plus recent files |
@@ -381,7 +381,7 @@ duplicate a feature row above say so.
 | Input channel editor | popup/PopupInputChannelEditor.qml | missing | S: io.inputProfile.save |
 | Enter a number (select every Nth) | popup/PopupInputNumber.qml | missing | U |
 | Invert selection in group(s) | popup/PopupInvertGroupSelection.qml | missing | U |
-| Manual input source selection | popup/PopupManualInputSource.qml | missing | S: vc.widget.inputSource.set |
+| Manual input source selection | popup/PopupManualInputSource.qml | live | - ; sandbox 2026-09-27 (universe / channel); picking a profile channel needs a patched profile, not driven |
 | 2D point of view selection | popup/PopupMonitor.qml | missing | spec+S+U |
 | Network client setup | popup/PopupNetworkClient.qml | n/a | - ; the web UI is the remote |
 | Client access request | popup/PopupNetworkConnect.qml | n/a | - ; host session |
@@ -395,7 +395,7 @@ duplicate a feature row above say so.
 | Usage list | UsageList.qml | missing | spec+S+U; duplicate of the function usage row |
 | UI Settings editor | UISettingsEditor.qml, UISettings.qml | missing | U |
 | Shortcuts editor | ShortcutsEditor.qml | missing | U |
-| External controls panel (input sources + key sequences of a widget) | ExternalControls.qml, ExternalControlDelegate.qml, KeyboardSequenceDelegate.qml | missing | S: vc.widget.inputSource.*, vc.widget.inputDetect.*, vc.widget.keySequence.* |
+| External controls panel (input sources + key sequences of a widget) | ExternalControls.qml, ExternalControlDelegate.qml, KeyboardSequenceDelegate.qml | live | - ; sandbox 2026-09-27, webui/vc/vc-external.jsx |
 | Beat generators panel | BeatGeneratorsPanel.qml | missing | U; core.bpm.set generator enum |
 | Colour tool (basic / full / filters) | ColorTool.qml, ColorToolBasic.qml, ColorToolFull.qml, ColorToolFilters.qml, ColorToolPrimary.qml, MultiColorBox.qml | partial | U; filters tab missing, see the fixture-side row |
 | Time edit tool (typed time, tap, infinite) | TimeEditTool.qml | live | - ; inline "500, 1.5s, 2m, inf" fields |
@@ -425,8 +425,8 @@ the total is larger than the number of distinct actions). Recompute after editin
 
 | Status | Rows |
 | --- | --- |
-| live | 128 |
-| partial | 58 |
-| missing | 108 |
+| live | 132 |
+| partial | 62 |
+| missing | 100 |
 | n/a | 20 |
 | total | 314 |
