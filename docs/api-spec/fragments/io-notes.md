@@ -249,3 +249,16 @@ sendKeypadCommand`, `commandHistory` on `io.simpleDesk.get`, the
   every Universe without `universeRemoved`) left ApiIoDomain holding the deleted Universe's fader, so
   every web Simple Desk override silently stopped reaching the output until the universe was reset.
   Both covered by `apiiodomain_test`.
+
+## Implemented 2026-09-27: DMX delta diff only when watched (performance plan P7, partial)
+
+`io.dmx.universe.<id>.changed` is subscribe-gated, but the server still built
+the per-channel JSON diff for every universe on every changed output frame,
+on the main thread, even with no subscriber (measured: about 21 ms per 5 s
+on SF3). `ApiIoDomain::slotUniverseWritten()` now asks the new
+`ApiServer::hasSubscriber(topic)` first and, with no subscriber, only stores
+the frame (an implicitly shared copy) as the diff base. Nothing changes for
+clients: the first delta after `subscribe` is still relative to the current
+output, so changes made while nobody listened are not replayed (fetch
+`io.dmx.universe.get` for the full frame, as before). Test:
+`dmxDiffWithoutSubscriberKeepsSnapshotCurrent` (real ticks).

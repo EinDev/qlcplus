@@ -135,6 +135,11 @@ public:
      */
     void broadcast(const QString &topic, const QJsonObject &data, const QString &originClientId, bool subscribeGated);
 
+    /** True when at least one connected session subscribed to exactly this
+     *  topic: lets a subscribe-gated producer skip building a payload that
+     *  nobody would receive. */
+    bool hasSubscriber(const QString &topic) const;
+
 signals:
     /** A client's connection closed (tab closed, network dropped): domains
      *  holding per-client runtime state (a Show preview) release it. */

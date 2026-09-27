@@ -290,6 +290,73 @@ void ApiIoDomain_Test::dmxEventOnlyDeliveredAfterSubscribe()
     QCOMPARE(spy2.count(), 0);
 }
 
+void ApiIoDomain_Test::dmxDiffWithoutSubscriberKeepsSnapshotCurrent()
+{
+    // slotUniverseWritten() skips the per-channel diff while no session
+    // follows the universe, but must still track the frame: the first delta
+    // after subscribing is relative to the CURRENT output, so a change made
+    // while nobody listened is not replayed. Real MasterTimer/Universe ticks.
+    helloAndGetClientId();
+    const QString topic = QStringLiteral("io.dmx.universe.0.changed");
+    QCOMPARE(m_apiServer->hasSubscriber(topic), false);
+
+    QJsonObject getParams;
+    getParams.insert(QStringLiteral("universeId"), 0);
+    auto outputIs = [&](int channel, int value)
+    {
+        return QTest::qWaitFor([&]()
+        {
+            QJsonObject dmxReply = sendAndWaitForReply(QStringLiteral("io.dmx.universe.get"), getParams);
+            QJsonArray values = dmxReply.value(QStringLiteral("result")).toObject().value(QStringLiteral("values")).toArray();
+            return values.size() > channel && values.at(channel).toInt() == value;
+        }, 2000);
+    };
+
+    // Change A while unsubscribed, and let the written frame reach the domain.
+    QJsonObject setA;
+    setA.insert(QStringLiteral("address"), 40);
+    setA.insert(QStringLiteral("value"), 111);
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("io.simpleDesk.setChannel"), setA).value(QStringLiteral("ok")).toBool(), true);
+    QVERIFY(outputIs(40, 111));
+    QTest::qWait(200);
+
+    QJsonObject subParams;
+    subParams.insert(QStringLiteral("topics"), QJsonArray{topic});
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("subscribe"), subParams).value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(m_apiServer->hasSubscriber(topic), true);
+    QCOMPARE(m_apiServer->hasSubscriber(QStringLiteral("io.dmx.universe.1.changed")), false);
+
+    // Change B while subscribed: the delta carries B only.
+    QSignalSpy spy(m_client, &QWebSocket::textMessageReceived);
+    QJsonObject setB;
+    setB.insert(QStringLiteral("address"), 41);
+    setB.insert(QStringLiteral("value"), 77);
+    m_client->sendTextMessage(buildRequest(QStringLiteral("io.simpleDesk.setChannel"), setB, QStringLiteral("t-b")));
+    QJsonObject delta;
+    QVERIFY(QTest::qWaitFor([&]()
+    {
+        for (const QList<QVariant> &frame : std::as_const(spy))
+        {
+            QJsonObject obj = QJsonDocument::fromJson(frame.at(0).toString().toUtf8()).object();
+            if (obj.value(QStringLiteral("type")).toString() == QStringLiteral("event")
+                && obj.value(QStringLiteral("topic")).toString() == topic)
+            {
+                delta = obj.value(QStringLiteral("data")).toObject();
+                return true;
+            }
+        }
+        return false;
+    }, 3000));
+    QMap<int, int> changes;
+    for (const QJsonValue &v : delta.value(QStringLiteral("changes")).toArray())
+        changes.insert(v.toObject().value(QStringLiteral("channel")).toInt(), v.toObject().value(QStringLiteral("value")).toInt());
+    QCOMPARE(changes.value(41, -1), 77);
+    QVERIFY2(changes.contains(40) == false, "a change made while nobody subscribed was replayed");
+
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("unsubscribe"), subParams).value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(m_apiServer->hasSubscriber(topic), false);
+}
+
 void ApiIoDomain_Test::simpleDeskSetChannelIsReflectedInGet()
 {
     helloAndGetClientId();
