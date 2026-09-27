@@ -88,6 +88,7 @@ FunctionManager::FunctionManager(QQuickView *view, Doc *doc, QObject *parent)
 
     connect(m_doc, SIGNAL(loaded()), this, SLOT(slotDocLoaded()));
     connect(m_doc, SIGNAL(functionAdded(quint32)), this, SLOT(slotFunctionAdded(quint32)));
+    connect(m_doc, SIGNAL(functionRemoved(quint32)), this, SLOT(slotFunctionRemoved(quint32)));
 }
 
 
@@ -2094,4 +2095,22 @@ void FunctionManager::slotFunctionAdded(quint32 fid)
 
     Function *func = m_doc->function(fid);
     addFunctionTreeItem(func);
+}
+
+void FunctionManager::slotFunctionRemoved(quint32 fid)
+{
+    // A function deleted behind our back (the Control API, a script) while
+    // it is open in an editor: close the editor now, like deleteFunction()
+    // does, while the Function object still exists (Doc emits this right
+    // before deleting it) - otherwise the editor, e.g. the RGBMatrix
+    // preview timer, keeps using the freed function.
+    if ((m_currentEditor != nullptr && m_currentEditor->functionID() == fid) ||
+        (m_sceneEditor != nullptr && m_sceneEditor->functionID() == fid))
+    {
+        setEditorFunction(-1, false, false);
+
+        QQuickItem *rightPanel = findVisibleContextItem(m_view->rootObject(), "funcRightPanel");
+        if (rightPanel != nullptr)
+            QMetaObject::invokeMethod(rightPanel, "closeEditor");
+    }
 }

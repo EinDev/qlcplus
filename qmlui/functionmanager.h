@@ -281,6 +281,7 @@ signals:
 public slots:
     void slotDocLoaded();
     void slotFunctionAdded(quint32 fid);
+    void slotFunctionRemoved(quint32 fid);
 
 private slots:
     /** Invoked when a Function being previewed (list-preview, i.e. no
