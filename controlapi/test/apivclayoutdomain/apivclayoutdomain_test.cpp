@@ -216,8 +216,8 @@ void ApiVcLayoutDomain_Test::frameSetPinRequiresCurrentPinAndBroadcasts()
     QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.frame.setPin"), widgetParams(frameId, bad), QStringLiteral("t-p5"))), QStringLiteral("INVALID_PARAMS"));
     QJsonObject letters; letters.insert(QStringLiteral("newPIN"), QStringLiteral("12ab")); letters.insert(QStringLiteral("baseRevision"), currentDocRevision());
     QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.frame.setPin"), widgetParams(frameId, letters), QStringLiteral("t-p6"))), QStringLiteral("INVALID_PARAMS"));
-    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.frame.setPin"), widgetParams(buttonId, set), QStringLiteral("t-p7"))), QStringLiteral("INVALID_PARAMS"));
     set.insert(QStringLiteral("baseRevision"), currentDocRevision());
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.frame.setPin"), widgetParams(buttonId, set), QStringLiteral("t-p7"))), QStringLiteral("INVALID_PARAMS"));
     QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.frame.setPin"), widgetParams(QStringLiteral("999"), set), QStringLiteral("t-p8"))), QStringLiteral("NOT_FOUND"));
 }
 
