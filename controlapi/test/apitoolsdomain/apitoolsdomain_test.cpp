@@ -159,6 +159,9 @@ Show *ApiToolsDomain_Test::addShow(const QString &name, const QList<QPair<quint3
 
     Show *show = new Show(m_doc);
     show->setName(name);
+    // Only beat-based Shows (or ones holding Beats-tempo items) can carry
+    // the legacy beat-pseudo-count values (Doc::possiblyAffectedLegacyBeatShows)
+    show->setTimeDivision(Show::BPM_4_4, 120);
     m_doc->addFunction(show);
     Track *track = new Track(Function::invalidId(), show);
     show->addTrack(track);
