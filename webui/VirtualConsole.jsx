@@ -455,6 +455,8 @@ function VirtualConsole() {
         </ViewToolbar>
 
         <VCNotice text={notice} onDismiss={() => setNotice('')} />
+        {/* Registry: window.QLCVCScreenAddons = [Component, ...] - always-mounted screen helpers reading useVC() (key bindings: vc/vc-external.jsx). */}
+        {live ? (window.QLCVCScreenAddons || []).map((A, i) => <A key={'addon' + i} />) : null}
 
         <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
           <div ref={areaRef} style={{ flex: 1, minWidth: 0, overflow: 'auto', padding: 12, background: 'var(--bg-medium)', position: 'relative' }}>
