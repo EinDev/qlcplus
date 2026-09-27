@@ -1008,6 +1008,7 @@ bool QLCPalette::loadXML(QXmlStreamReader &doc)
         {
             case Pan:
             case Tilt:
+            case Gobo:
                 setValue(strVal.toInt());
             break;
             case Color:
@@ -1038,7 +1039,6 @@ bool QLCPalette::loadXML(QXmlStreamReader &doc)
                     setValue(parts.at(0).toInt(), parts.at(1).toInt());
             }
             break;
-            case Gobo:      break;
             case Undefined: break;
         }
     }
@@ -1103,6 +1103,9 @@ bool QLCPalette::saveXML(QXmlStreamWriter *doc) const
         case Tilt:
         case Zoom:
         case Color:
+        case Gobo:
+            // Gobo: the wheel's DMX value (valuesFromFixtures writes it as-is);
+            // it used to be written nowhere, so a Gobo palette came back empty
             doc->writeAttribute(KXMLQLCPaletteValue, value().toString());
         break;
         case PanTilt:
@@ -1125,7 +1128,6 @@ bool QLCPalette::saveXML(QXmlStreamWriter *doc) const
                 doc->writeAttribute(KXMLQLCPaletteValue,
                                     QString("%1,%2").arg(m_values.at(0).toInt()).arg(m_values.at(1).toInt()));
         break;
-        case Gobo:      break;
         case Undefined: break;
     }
 

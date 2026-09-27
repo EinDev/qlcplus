@@ -66,6 +66,7 @@ private slots:
     void loadFanValueTypes();
     void saveValueTypes();
     void saveNoValue();
+    void saveLoadEveryType();
     void enumRegistrations();
 };
 

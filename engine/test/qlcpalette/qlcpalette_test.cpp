@@ -1582,14 +1582,15 @@ void QLCPalette_Test::loadValueTypes()
         QCOMPARE(p.values().count(), 0);
     }
 
-    /* Gobo values are not (yet) serialised */
+    /* Gobo: the wheel's DMX value, one integer */
     {
         QLCPalette p(QLCPalette::Undefined);
         attrs["Type"] = "Gobo";
         attrs["Value"] = "3";
         QVERIFY(loadPalette(p, attrs) == true);
         QCOMPARE(p.type(), QLCPalette::Gobo);
-        QCOMPARE(p.values().count(), 0);
+        QCOMPARE(p.values().count(), 1);
+        QCOMPARE(p.intValue1(), 3);
     }
 
     /* unknown type strings load as Undefined without a value */
@@ -1788,14 +1789,14 @@ void QLCPalette_Test::saveValueTypes()
         QVERIFY(attrs.contains("Value") == false);
     }
 
-    /* Gobo and Undefined write no value */
+    /* Gobo writes its DMX value, Undefined none */
     {
         QLCPalette p(QLCPalette::Gobo);
         p.setValue(3);
         attrs = savePalette(p, &ok);
         QVERIFY(ok);
         QCOMPARE(attrs.value("Type"), QString("Gobo"));
-        QVERIFY(attrs.contains("Value") == false);
+        QCOMPARE(attrs.value("Value"), QString("3"));
     }
     {
         QLCPalette p(QLCPalette::Undefined);
@@ -1847,6 +1848,51 @@ void QLCPalette_Test::saveNoValue()
     xmlWriter.setDevice(NULL);
     buffer.close();
     QVERIFY(buffer.data().isEmpty());
+}
+
+/* Every palette type survives saveXML() -> loadXML() with its value(s)
+   intact - a Gobo palette used to come back empty (no case on either side). */
+void QLCPalette_Test::saveLoadEveryType()
+{
+    struct Case { QLCPalette::PaletteType type; QVariantList values; };
+    const QList<Case> cases = {
+        { QLCPalette::Dimmer,     { 128 } },
+        { QLCPalette::Color,      { QString("#112233aabbcc") } },
+        { QLCPalette::Pan,        { 270 } },
+        { QLCPalette::Tilt,       { -45 } },
+        { QLCPalette::PanTilt,    { 90, 135 } },
+        { QLCPalette::Shutter,    { 7, 50 } },
+        { QLCPalette::Gobo,       { 42 } },
+        { QLCPalette::Zoom,       { 37.5 } },
+        { QLCPalette::Position3D, { 1.5, -2.25, 3 } },
+    };
+
+    for (const Case &c : cases)
+    {
+        const QString typeName = QLCPalette::typeToString(c.type);
+        QLCPalette p(c.type);
+        p.setID(11);
+        p.setName(typeName + " palette");
+        p.setValues(c.values);
+
+        bool ok = false;
+        QMap<QString, QString> attrs = savePalette(p, &ok);
+        QVERIFY2(ok, qPrintable(typeName));
+        QVERIFY2(attrs.contains("Value"), qPrintable(typeName));
+
+        QLCPalette back(QLCPalette::Undefined);
+        QVERIFY2(loadPalette(back, attrs) == true, qPrintable(typeName));
+        QCOMPARE(back.type(), c.type);
+        QCOMPARE(back.name(), typeName + " palette");
+        QCOMPARE(back.values().count(), c.values.count());
+        for (int i = 0; i < c.values.count(); i++)
+        {
+            if (c.type == QLCPalette::Color)
+                QCOMPARE(back.values().at(i).toString(), c.values.at(i).toString());
+            else
+                QCOMPARE(back.values().at(i).toDouble(), c.values.at(i).toDouble());
+        }
+    }
 }
 
 /** Call the Q_ENUM helpers with a value the compiler can't fold: with a
