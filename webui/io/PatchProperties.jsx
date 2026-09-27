@@ -52,6 +52,9 @@
     'E1.31': { universe: 'sACN universe 1-63999 (default = the QLC+ universe index + 1)', transmitMode: '"Full" (default: all 512 channels) or "Partial" (only the used channels)' },
     OSC: { outputIP: 'Destination IP address (the 127.0.0.1 line defaults to 127.0.0.1)', feedbackIP: 'Feedback destination IP address (the 127.0.0.1 line defaults to 127.0.0.1)' }
   };
+  /* Keys QLC+ itself sets on every output line (Universe::dumpOutput re-sends it whenever the universe's
+     channel count changes): shown, not editable. */
+  const ENGINE_KEYS = { UniverseChannels: 'Set by QLC+ itself: how many channels this universe uses (Art-Net and SPI size their frames with it)' };
   const hintFor = (plugin, key) => (PLUGIN_HINTS[plugin] || {})[key] || HINTS[key] || '';
 
   /** Typed text -> the JSON value the server stores: keep the previous type when it still parses. */
@@ -118,7 +121,9 @@
     const add = () => {
       const key = newKey.trim();
       if (!key) return;
-      setTyped(key, newValue, undefined).then(ok => { if (ok) { setNewKey(''); setNewValue(''); } });
+      const typed = newValue;
+      /* clear only what still holds the submitted text: the operator may already be typing the next one */
+      setTyped(key, typed, undefined).then(ok => { if (ok) { setNewKey(k => k.trim() === key ? '' : k); setNewValue(v => v === typed ? '' : v); } });
     };
     const configure = () => {
       setBusy(true);
@@ -149,6 +154,11 @@
 
           <div style={{ border: '1px solid var(--bg-light)', borderRadius: 4, background: 'var(--bg-stronger)', padding: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
             {keys.length ? keys.map(k => (
+              ENGINE_KEYS[k] ? (
+              <Row key={k} label={k} width={130} title={ENGINE_KEYS[k]} style={{ minHeight: 28 }}>
+                <RobotoText label={String(params[k])} fontSize={14} height={24} style={{ width: 260 }} data-engine-param={k} />
+                <RobotoText label="set by QLC+" fontSize={12} labelColor={NOTE} height={24} title={ENGINE_KEYS[k]} />
+              </Row>) :
               <Row key={k} label={k} width={130} title={hintFor(pluginName, k)} style={{ minHeight: 28 }}>
                 {typeof params[k] === 'boolean'
                   ? <CustomCheckBox checked={!!params[k]} size={22} disabled={busy || setParamsUnsupported} onToggled={v => setOne(k, v)} data-param={k} />
@@ -156,7 +166,8 @@
                 <RobotoText label={typeof params[k]} fontSize={12} labelColor={NOTE} height={24} style={{ width: 56 }} />
                 <IconButton faSource="fa_trash_can" faColor="var(--bg-strong)" size={24} tooltip="Remove: revert to the plugin default" disabled={busy || setParamsUnsupported} onClick={() => remove(k)} data-remove-param={k} />
               </Row>
-            )) : <RobotoText label="No parameters set on this line — the plugin uses its defaults." fontSize={12} labelColor={NOTE} height={24} />}
+            )) : null}
+            {keys.some(k => !ENGINE_KEYS[k]) ? null : <RobotoText label="No parameters set on this line — the plugin uses its defaults." fontSize={12} labelColor={NOTE} height={24} />}
           </div>
 
           <Row label="Add parameter" width={130}>
