@@ -270,6 +270,62 @@ facts and deviations:
   QML UI never checks a *frame's* PIN on screen at all (only pages prompt);
   the web UI does lock a PIN-protected frame behind a prompt.
 
+## External controls slice - implemented (2026-09-27)
+
+`controlapi/src/domains/apivcinputdomain.cpp` (a third class next to ApiVcDomain /
+ApiVcLayoutDomain, same ApiVcHost seam) registers `vc.widget.inputSource.set` /
+`.remove`, `vc.widget.keySequence.set` / `.remove` and `vc.widget.inputDetect.start` /
+`.stop`; the host side is `qmlui/app_apivcinput.cpp`, and `vc.widget.get` / `vc.widget.list`
+/ every widget event now carry real `externalControls`, `inputSources` and `keySequences`
+(they were empty placeholders before). Unit tests: `controlapi/test/apivcinputdomain`
+(FakeVcHost + real Doc + `engine/test/iopluginstub` for detection). Browser: `webui/vc/vc-external.jsx`,
+driver `webui/tools/e2e/vc-input.js` (sandbox `vcinput`, 9220/9221). Facts and deviations:
+
+- **`externalControls`** is `VCWidget`'s registered control table (new public accessors
+  `externalControlIds()` / `externalControlAllowsKeyboard()` on VCWidget), in ascending id
+  order. Frames add one "page shortcut" control (id 20 + page) per page while multipage;
+  speed dials / XY pads / animations add one per preset (id 30 + presetId). Label and Clock
+  have none.
+- **An input source is identified by (universe, channel) within a widget**, like
+  `VCWidget::inputSource(universe, channel)`: `set` on an existing pair re-targets it to the
+  requested control and applies the feedback fields in place; otherwise a new source is
+  added, the input profile's defaults applied, then the request's explicit feedback values
+  (so the request wins), and it is mapped on every page. Unknown `controlId` ->
+  `INVALID_PARAMS` with `details.externalControls`. `remove` needs the exact
+  (controlId, universe, channel) -> `NOT_FOUND` otherwise.
+- **Multipage frame pages**: when `channel` has no page bits and the widget sits on frame
+  page > 0, the widget's page is folded into the channel (what the engine's own learn does;
+  the desktop's manual popup does not, and such a source never fires). Send a composited
+  channel to override.
+- **Custom feedback**: `lowerValue` / `upperValue` / `monitorValue` 0..255 (`INVALID_PARAMS`
+  otherwise); `lowerChannel` / `upperChannel` / `monitorChannel` are the MIDI channel-table
+  combo index of PopupCustomFeedback.qml (1-based, 0 = "from plugin settings", stored as
+  index-1 exactly like `VCWidget::updateInputSourceExtraParams()`); only the keys sent are
+  written, so an OSC profile's path string in the extra params is left alone. The snapshot
+  reports a routing only when it is an integer >= 0 (+1). The additive read-only fields
+  `universeName`, `channelName`, `supportsCustomFeedback`, `invalid` were added to
+  `VcInputSource` (display text the QML delegate shows).
+- **Key sequences**: validated with `QKeySequence::fromString(text, PortableText)`, a single
+  chord only (`"Ctrl+X, Ctrl+C"` -> `INVALID_PARAMS`), the control must have
+  `allowKeyboard`; stored and reported in portable spelling (`"ctrl+shift+k"` comes back as
+  `"Ctrl+Shift+K"`), which is also what `saveXML()` writes. Setting a sequence already bound
+  on the widget to another control unmaps the old (sequence, control) pair from every page
+  first - `VCPage::mapKeySequence()` only dedupes identical pairs, so without that the widget
+  would fire twice (the 2026-09-26 duplicate-entry class of bug). `remove` takes no
+  `controlId` (per the spec) and looks the bound control up itself.
+- **Auto-detection** is the domain's own slot, not VirtualConsole's (see the start request's
+  description for the exact semantics): second client refused with `INVALID_STATE`,
+  re-arm by the holder allowed, stop from anyone, released on disconnect, first signal on any
+  line bound + broadcast to everyone (the task brief said "to the requester only"; the spec's
+  §4a `vc.widget.inputSourcesChanged` broadcast won - the requester recognises its result by
+  `originClientId`). Not live-verified with a real controller: the sandbox has no IO plugins,
+  the binding path is covered by `apivcinputdomain_test` through the IO plugin stub.
+- **Browser key bindings**: the server never sees browser keys, so the web UI dispatches the
+  widgets' key sequences itself while the VC screen is shown (not in edit mode, no text field
+  focused), mirroring `VCPage::handleKeyEvent()` - see `webui/README.md`.
+- **Not covered**: VC *page* key bindings / input sources (VCPage's own "activate page"
+  control, `m_pagesKeySequencesMap`) have no spec surface and pages are not widgets in API
+  terms - a future `vc.page.inputSource.*` / `vc.page.keySequence.*` pair would be needed.
 ## XY Pad / Clock / Animation / Audio Triggers - implemented (2026-09-27)
 
 `controlapi/src/domains/apivclivedomain.cpp` (a third class on the same ApiVcHost seam, with its own

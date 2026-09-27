@@ -110,6 +110,15 @@ public:
                                         bool soloFrame, QString *error) override;
     QList<quint32> vcWidgetsUsingFunction(quint32 functionId) const override;
 
+    // --- External controls slice (ApiVcInputDomain) ---
+    QJsonArray vcWidgetExternalControls(quint32 id) const override;
+    QJsonArray vcWidgetInputSources(quint32 id) const override;
+    QJsonArray vcWidgetKeySequences(quint32 id) const override;
+    bool vcWidgetInputSourceSet(quint32 id, quint32 controlId, quint32 universe, quint32 channel,
+                                const QJsonObject &feedback, QString *error) override;
+    bool vcWidgetInputSourceRemove(quint32 id, quint32 controlId, quint32 universe, quint32 channel, QString *error) override;
+    bool vcWidgetKeySequenceSet(quint32 id, quint32 controlId, const QString &keySequence, QString *error) override;
+    bool vcWidgetKeySequenceRemove(quint32 id, const QString &keySequence, QString *error) override;
     // --- XY Pad fixtures / presets / floor, Clock, Animation, Audio Triggers (ApiVcLiveDomain) ---
     void vcSetLiveListenerExt(ApiVcLiveListenerExt *listener) override;
     bool vcXyPadSetFloorPosition(quint32 id, double x, double y, double z, QString *error) override;
@@ -190,6 +199,8 @@ private:
         int nextPresetId = 16;                            // first id VCSpeedDial/VCXYPad assign
         QString framePin;                                 // Frame/SoloFrame: empty = no PIN set
         bool flashing = false;                            // Slider (Adjust): vc.slider.flash state
+        QJsonArray inputSources;                          // VcInputSource entries (ApiVcInputDomain)
+        QJsonArray keySequences;                          // {keySequence, controlId} entries (ApiVcInputDomain)
         // XY Pad / Clock / Animation / AudioTriggers slice (ApiVcLiveDomain)
         QJsonArray xyFixtures;                            // XYPad: VcXyPadFixtureEntry entries
         double floorX = 5.0, floorY = 0.0, floorZ = 5.0;  // XYPad: floor target (metres)
@@ -200,6 +211,12 @@ private:
         bool captureEnabled = false;                      // AudioTriggers
         QJsonArray bars;                                  // AudioTriggers: VcAudioTriggersBar entries
     };
+
+    /** The external control table VCWidget subclasses register in their constructors, per wire
+     *  type (vcbutton.cpp / vcslider.cpp / vccuelist.cpp / vcframe.cpp / vcspeeddial.cpp / ...):
+     *  [{controlId, name, allowKeyboard}]. Frames add one "page shortcut" control per page
+     *  (INPUT_SHORTCUT_BASE_ID = 20 + page) while in multipage mode. */
+    static QJsonArray externalControlsFor(const VcWidgetState &w);
 
     static const QStringList PresetWidgetTypes; // Speed, XYPad, Animation
 

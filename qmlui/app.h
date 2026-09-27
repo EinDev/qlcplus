@@ -613,6 +613,17 @@ public:
                                         bool soloFrame, QString *error) override;
     QList<quint32> vcWidgetsUsingFunction(quint32 functionId) const override;
 
+    // External controls slice (vc.widget.inputSource.set/remove, vc.widget.keySequence.set/remove
+    // and the externalControls / inputSources / keySequences snapshot fields) - implemented in
+    // app_apivcinput.cpp, see apivchost.h for each method's contract.
+    QJsonArray vcWidgetExternalControls(quint32 id) const override;
+    QJsonArray vcWidgetInputSources(quint32 id) const override;
+    QJsonArray vcWidgetKeySequences(quint32 id) const override;
+    bool vcWidgetInputSourceSet(quint32 id, quint32 controlId, quint32 universe, quint32 channel,
+                                const QJsonObject &feedback, QString *error) override;
+    bool vcWidgetInputSourceRemove(quint32 id, quint32 controlId, quint32 universe, quint32 channel, QString *error) override;
+    bool vcWidgetKeySequenceSet(quint32 id, quint32 controlId, const QString &keySequence, QString *error) override;
+    bool vcWidgetKeySequenceRemove(quint32 id, const QString &keySequence, QString *error) override;
     // XY Pad fixtures / presets / floor, Clock, Animation and Audio Triggers (vc.xyPad.*, vc.clock.*,
     // vc.animation.*, vc.audioTriggers.*) - implemented in app_apivchost_live.cpp; the typeConfig /
     // preset shaping lives in app_apivcconfig_live.cpp. See apivchost.h for each method's contract.

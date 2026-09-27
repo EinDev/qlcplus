@@ -53,6 +53,7 @@ default until "Use server default" is pressed.
 | `ff/CollectionEditor.jsx` | Collection editor (`window.QLCEditors.Collection`): ordered member list, add via picker, remove, move up/down over `functions.collection.*`. |
 | `ff/EfxEditor.jsx` | EFX editor (`window.QLCEditors.EFX`): live preview canvas fed by `functions.efx.getPreview`, fixture heads (mode / reverse / start offset, add / remove / reorder, offset on all), pattern parameters, propagation, timing. |
 | `tools/e2e/*.js` | Headless-Chrome end-to-end drivers per slice (`node webui/tools/e2e/efx-collection.js` against a `dev-webui-sandbox.ps1` instance). |
+| `tools/coverage/` | Dev-only JS coverage of this directory: `hook.js` (preloaded into an e2e driver, records V8 coverage through `cdp.js`) and `report.js` (maps it back to the `.jsx` sources via Babel's inline source maps). Run `.\dev-webui-coverage.ps1 -Open` from the repo root: every browser driver against its own sandbox, report in `coverage/webui/index.html`. |
 | `ff/FixtureDialogs.jsx` | Add Fixtures dialog (`fixtures.defs.*` + `fixtures.patch`), Fixture Groups panel, Palettes panel (create/edit/apply). |
 | `VirtualConsole.jsx` | Pages + widgets at their real geometry, live interaction, Design-mode layout editing, Grand Master. |
 | `vc/vc-shared.jsx`, `vc/vc-widgets.jsx`, `vc/vc-edit.jsx` | VC context + pointer-event fader/knob; one body per widget type (button, slider/knob, cue list, XY pad, speed dial, frame, label); selection/move/resize wrapper, widget palette and properties panel. |
@@ -147,6 +148,26 @@ and a second tab checked for the pushed event:
   picker, Function, VC widget) and thresholds, capture toggle and the live bars meter
   (`vc.audioTriggers.levelsChanged`; capture runs on the QLC+ host). Opening the page on
   `http://[::1]:<port>/` now works (the connection split IPv6 literals at their first colon).
+- **External controls + key bindings** (`webui/vc/vc-external.jsx`, added 2026-09-27, verified
+  against a `vcinput` sandbox on ports 9220/9221 by `webui/tools/e2e/vc-input.js`): every widget's
+  property panel has an "External controls" section (ExternalControls.qml): input sources picked
+  by hand (universe + channel, or a channel of the input profile patched on that universe), the
+  control each one drives, custom feedback values (lower / upper / monitor, plus the profile's
+  colour table and MIDI channel routing when it has them), remove; keyboard combinations recorded
+  by pressing them in the browser (re-record, change control, remove); auto-detection of a
+  controller input (`vc.widget.inputDetect.*` - arming, the single server-wide slot and cancel were
+  exercised; a real controller signal cannot reach the plugin-less sandbox, so the binding itself
+  is only unit-tested). All of it is saved in the `.qxw` (`<Input .../>`, `<Key>...</Key>`).
+  **Key bindings are honoured by the browser**: the server cannot see the browser's keyboard, so
+  while the Virtual Console screen is shown, edit mode is off and no text field has focus, a key
+  combination bound on a widget of the current page triggers it through the normal live methods -
+  button press / release (`vc.button.press`), cue list next / previous / play / stop, frame
+  next / previous page, page shortcut, enable, collapse, speed dial tap / factor / reset / apply /
+  preset, slider flash, XY pad / animation presets. A matched key is swallowed, so a widget
+  binding wins over the App shortcuts (Ctrl+1..5, Space tap, Ctrl+B/S/Z/Y), like the desktop VC;
+  unbound keys fall through. A small key-cast strip shows which combination fired what. Not
+  mapped in the browser: animation intensity and audio-trigger capture bindings (no live method
+  yet), and VC page activation keys (no API for page bindings).
 - **Cue List + Speed dial** (`webui/vc/vc-props-cue.jsx`, added 2026-09-27, verified against a
   `vccue` sandbox on ports 9170/9171 by `webui/tools/e2e/vc-cue.js`): cue list properties (attach /
   detach a Chaser or Sequence, Play/Pause+Stop vs Play/Stop+Pause layout, next/previous behaviour,

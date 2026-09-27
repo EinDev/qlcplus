@@ -210,9 +210,9 @@ QJsonObject FakeVcHost::widgetDetailToJson(const VcWidgetState &w) const
         typeConfig.insert(QStringLiteral("barsNumber"), w.bars.size());
     }
     obj.insert(QStringLiteral("typeConfig"), typeConfig);
-    obj.insert(QStringLiteral("inputSources"), QJsonArray());
-    obj.insert(QStringLiteral("keySequences"), QJsonArray());
-    obj.insert(QStringLiteral("externalControls"), QJsonArray());
+    obj.insert(QStringLiteral("inputSources"), w.inputSources);
+    obj.insert(QStringLiteral("keySequences"), w.keySequences);
+    obj.insert(QStringLiteral("externalControls"), externalControlsFor(w));
     return obj;
 }
 
@@ -1660,4 +1660,224 @@ void FakeVcHost::simulateAudioLevels(quint32 id, const QList<int> &levels)
         return;
     if (m_liveListenerExt != nullptr)
         m_liveListenerExt->vcAudioTriggersLevelsChanged(id, levels);
+}
+
+/*****************************************************************************
+ * External controls slice (ApiVcInputDomain)
+ *****************************************************************************/
+
+namespace {
+QJsonObject control(int id, const char *name, bool allowKeyboard)
+{
+    QJsonObject c;
+    c.insert(QStringLiteral("controlId"), id);
+    c.insert(QStringLiteral("name"), QString::fromLatin1(name));
+    c.insert(QStringLiteral("allowKeyboard"), allowKeyboard);
+    return c;
+}
+}
+
+QJsonArray FakeVcHost::externalControlsFor(const VcWidgetState &w)
+{
+    QJsonArray arr;
+    const QString &t = w.widgetType;
+    if (t == QStringLiteral("Button"))
+    {
+        arr.append(control(0, "Pressure", true));
+    }
+    else if (t == QStringLiteral("Slider"))
+    {
+        arr.append(control(0, "Slider Control", false));
+        arr.append(control(1, "Reset Control", false));
+        arr.append(control(2, "Flash Control", true));
+    }
+    else if (t == QStringLiteral("CueList"))
+    {
+        arr.append(control(0, "Next Cue", true));
+        arr.append(control(1, "Previous Cue", true));
+        arr.append(control(2, "Play/Stop/Pause", true));
+        arr.append(control(3, "Stop/Pause", true));
+        arr.append(control(4, "Side Fader", false));
+    }
+    else if (ContainerWidgetTypes.contains(t))
+    {
+        arr.append(control(0, "Next Page", true));
+        arr.append(control(1, "Previous Page", true));
+        arr.append(control(2, "Enable", true));
+        arr.append(control(3, "Collapse", true));
+        if (w.typeConfig.value(QStringLiteral("multiPageMode")).toBool())
+        {
+            for (int i = 0; i < frameTotalPages(w); i++)
+                arr.append(control(20 + i, QString(QStringLiteral("Page %1")).arg(i + 1).toLatin1().constData(), true));
+        }
+    }
+    else if (t == QStringLiteral("Speed"))
+    {
+        arr.append(control(0, "Time wheel", false));
+        arr.append(control(1, "Tap Button", true));
+        arr.append(control(2, "Multiply Button", true));
+        arr.append(control(3, "Divide Button", true));
+        arr.append(control(4, "Reset Button", true));
+        arr.append(control(5, "Apply Button", true));
+    }
+    else if (t == QStringLiteral("XYPad"))
+    {
+        arr.append(control(0, "Pan / Horizontal axis", false));
+        arr.append(control(2, "Tilt / Vertical axis", false));
+    }
+    else if (t == QStringLiteral("Animation"))
+    {
+        arr.append(control(0, "Intensity", true));
+    }
+    else if (t == QStringLiteral("AudioTriggers"))
+    {
+        arr.append(control(0, "Enable Capture", true));
+        arr.append(control(1, "Volume Control", false));
+    }
+    // Label / Clock: no external controls, like the real widgets.
+    return arr;
+}
+
+QJsonArray FakeVcHost::vcWidgetExternalControls(quint32 id) const
+{
+    auto it = m_widgets.constFind(id);
+    return it == m_widgets.constEnd() ? QJsonArray() : externalControlsFor(it.value());
+}
+
+QJsonArray FakeVcHost::vcWidgetInputSources(quint32 id) const
+{
+    auto it = m_widgets.constFind(id);
+    return it == m_widgets.constEnd() ? QJsonArray() : it.value().inputSources;
+}
+
+QJsonArray FakeVcHost::vcWidgetKeySequences(quint32 id) const
+{
+    auto it = m_widgets.constFind(id);
+    return it == m_widgets.constEnd() ? QJsonArray() : it.value().keySequences;
+}
+
+bool FakeVcHost::vcWidgetInputSourceSet(quint32 id, quint32 controlId, quint32 universe, quint32 channel,
+                                        const QJsonObject &feedback, QString *error)
+{
+    Q_UNUSED(error)
+    auto it = m_widgets.find(id);
+    if (it == m_widgets.end())
+        return false;
+
+    QJsonArray &sources = it.value().inputSources;
+    int index = -1;
+    for (int i = 0; i < sources.size(); i++)
+    {
+        QJsonObject s = sources.at(i).toObject();
+        if (quint32(s.value(QStringLiteral("universe")).toDouble()) == universe &&
+            quint32(s.value(QStringLiteral("channel")).toDouble()) == channel)
+        {
+            index = i;
+            break;
+        }
+    }
+
+    QJsonObject s;
+    if (index >= 0)
+        s = sources.at(index).toObject();
+    else
+    {
+        // QLCInputSource defaults: lower 0, upper 255, monitor 255, no extra params.
+        s.insert(QStringLiteral("lowerValue"), 0);
+        s.insert(QStringLiteral("upperValue"), 255);
+        s.insert(QStringLiteral("monitorValue"), 255);
+        s.insert(QStringLiteral("universeName"), QStringLiteral("Universe %1").arg(universe + 1));
+        s.insert(QStringLiteral("channelName"), QStringLiteral("Channel %1").arg((channel & 0xFFFF) + 1));
+        s.insert(QStringLiteral("supportsCustomFeedback"), false);
+        s.insert(QStringLiteral("invalid"), false);
+    }
+    s.insert(QStringLiteral("controlId"), int(controlId));
+    s.insert(QStringLiteral("universe"), double(universe));
+    s.insert(QStringLiteral("channel"), double(channel));
+    for (const QString &key : { QStringLiteral("lowerValue"), QStringLiteral("upperValue"), QStringLiteral("monitorValue") })
+    {
+        if (feedback.contains(key))
+            s.insert(key, feedback.value(key).toInt());
+    }
+    for (const QString &key : { QStringLiteral("lowerChannel"), QStringLiteral("upperChannel"), QStringLiteral("monitorChannel") })
+    {
+        if (feedback.contains(key) == false)
+            continue;
+        // Wire 1-based, 0 = "from plugin settings" (stored -1, reported as absent) - see App.
+        if (feedback.value(key).toInt() > 0)
+            s.insert(key, feedback.value(key).toInt());
+        else
+            s.remove(key);
+    }
+
+    if (index >= 0)
+        sources.replace(index, s);
+    else
+        sources.append(s);
+    return true;
+}
+
+bool FakeVcHost::vcWidgetInputSourceRemove(quint32 id, quint32 controlId, quint32 universe, quint32 channel, QString *error)
+{
+    auto it = m_widgets.find(id);
+    if (it == m_widgets.end())
+        return false;
+
+    QJsonArray &sources = it.value().inputSources;
+    for (int i = 0; i < sources.size(); i++)
+    {
+        QJsonObject s = sources.at(i).toObject();
+        if (quint32(s.value(QStringLiteral("controlId")).toInt()) == controlId &&
+            quint32(s.value(QStringLiteral("universe")).toDouble()) == universe &&
+            quint32(s.value(QStringLiteral("channel")).toDouble()) == channel)
+        {
+            sources.removeAt(i);
+            return true;
+        }
+    }
+    if (error) *error = QStringLiteral("No such input source on this widget");
+    return false;
+}
+
+bool FakeVcHost::vcWidgetKeySequenceSet(quint32 id, quint32 controlId, const QString &keySequence, QString *error)
+{
+    Q_UNUSED(error)
+    auto it = m_widgets.find(id);
+    if (it == m_widgets.end())
+        return false;
+
+    QJsonArray &keys = it.value().keySequences;
+    QJsonObject entry;
+    entry.insert(QStringLiteral("keySequence"), keySequence);
+    entry.insert(QStringLiteral("controlId"), int(controlId));
+    // A sequence is unique per widget (VCWidget::m_keySequenceMap is keyed by it): re-target in place.
+    for (int i = 0; i < keys.size(); i++)
+    {
+        if (keys.at(i).toObject().value(QStringLiteral("keySequence")).toString() == keySequence)
+        {
+            keys.replace(i, entry);
+            return true;
+        }
+    }
+    keys.append(entry);
+    return true;
+}
+
+bool FakeVcHost::vcWidgetKeySequenceRemove(quint32 id, const QString &keySequence, QString *error)
+{
+    auto it = m_widgets.find(id);
+    if (it == m_widgets.end())
+        return false;
+
+    QJsonArray &keys = it.value().keySequences;
+    for (int i = 0; i < keys.size(); i++)
+    {
+        if (keys.at(i).toObject().value(QStringLiteral("keySequence")).toString() == keySequence)
+        {
+            keys.removeAt(i);
+            return true;
+        }
+    }
+    if (error) *error = QStringLiteral("No such key sequence on this widget");
+    return false;
 }

@@ -113,6 +113,23 @@ function Invoke-MsysBash([string]$Command) {
     return $LASTEXITCODE
 }
 
+# gcovr logs its INFO/WARNING lines on stderr. Under Windows PowerShell 5.1 (what the root
+# CMake `coverage` target runs this script with) a native command's stderr turns into a
+# terminating NativeCommandError while $ErrorActionPreference is Stop, which aborted the
+# report step. Every gcovr call therefore goes through here with Continue and passes its
+# output on as plain text; the exit code is what decides success.
+function Invoke-Gcovr([string[]]$GcovrArgs, [switch]$Quiet) {
+    $saved = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        if ($Quiet) { & $Python -m gcovr @GcovrArgs *> $null }
+        else { & $Python -m gcovr @GcovrArgs 2>&1 | ForEach-Object { "$_" } | Out-Host }
+        return $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $saved
+    }
+}
+
 # --- 1./2. Configure + build the instrumented test binaries -------------------------
 if (-not $NoBuild) {
     if (-not (Test-Path (Join-Path $BuildPath "build.ninja"))) {
@@ -191,6 +208,39 @@ if (-not $NoTests) {
     }
 }
 
+# --- 5b. Drop instrumented objects whose source file is gone --------------------------
+# Ninja never deletes the object of a source file that was moved or removed, and gcovr then
+# fails the whole report with "source file(s) not found" after every test passed (hit when
+# showmovehelper.cpp moved from qmlui/ to engine/src/). CMake names each object
+# <target>.dir/<source path relative to that directory>.gcno, spelling ".." as "__". If that
+# source exists neither in the source tree nor in the build tree (moc/qrc/autogen output),
+# the object is stale: delete it with its counters. Runs with -NoTests too, so a report-only
+# rerun heals the same way.
+$repoFull  = (Resolve-Path $RepoRoot).Path.TrimEnd('\')
+$buildFull = (Resolve-Path $BuildPath).Path.TrimEnd('\')
+Get-ChildItem -Path $buildFull -Recurse -Filter *.gcno -File | ForEach-Object {
+    # <binDir>\CMakeFiles\<target>.dir\<rel>.gcno - plain string ops, no path regex.
+    $full   = $_.FullName
+    $marker = '\CMakeFiles\'
+    $i = $full.IndexOf($marker)
+    if ($i -lt 0) { return }
+    $binDir = $full.Substring(0, $i)
+    $rest   = $full.Substring($i + $marker.Length)
+    $j = $rest.IndexOf('.dir\')
+    if ($j -lt 0) { return }
+    $relRaw   = $rest.Substring($j + '.dir\'.Length)
+    $segments = $relRaw.Substring(0, $relRaw.Length - '.gcno'.Length).Split([char]'\')
+    if ($segments[0] -match '^[A-Za-z]_$') { return }   # absolute source path (C_/...): leave alone
+    $rel    = ($segments | ForEach-Object { if ($_ -eq '__') { '..' } else { $_ } }) -join '\'
+    $srcDir = $repoFull + $binDir.Substring($buildFull.Length)
+    if ((Test-Path -LiteralPath (Join-Path $srcDir $rel)) -or (Test-Path -LiteralPath (Join-Path $binDir $rel))) { return }
+    $base = $_.FullName.Substring(0, $_.FullName.Length - '.gcno'.Length)
+    Write-Host "    stale object, source gone: $rel (in $($binDir.Substring($buildFull.Length).TrimStart('\')))" -ForegroundColor Yellow
+    foreach ($ext in '.gcno', '.gcda', '.obj', '.o') {
+        if (Test-Path -LiteralPath ($base + $ext)) { Remove-Item -LiteralPath ($base + $ext) -Force }
+    }
+}
+
 # --- 6. gcovr ------------------------------------------------------------------------
 Write-Host "==> Generating coverage reports..." -ForegroundColor Cyan
 New-Item -ItemType Directory -Force -Path (Join-Path $CoverageDir "html") | Out-Null
@@ -210,19 +260,20 @@ $gcovrCommon = @(
 
 # One tracefile over every area of interest; the per-area summaries and the
 # HTML/XML reports are derived from it without re-running gcov.
-& $Python -m gcovr @gcovrCommon `
-    --object-directory $BuildPath `
-    --gcov-executable $Gcov `
-    --gcov-ignore-errors=no_working_dir_found `
-    --filter "engine/src/" --filter "controlapi/src/" --filter "qmlui/" `
-    --json $TraceFile
-if ($LASTEXITCODE -ne 0) { Write-Error "gcovr failed while collecting coverage data (exit $LASTEXITCODE)." }
+$rc = Invoke-Gcovr ($gcovrCommon + @(
+    "--object-directory", $BuildPath,
+    "--gcov-executable", $Gcov,
+    "--gcov-ignore-errors=no_working_dir_found",
+    "--filter", "engine/src/", "--filter", "controlapi/src/", "--filter", "qmlui/",
+    "--json", $TraceFile))
+if ($rc -ne 0) { Write-Error "gcovr failed while collecting coverage data (exit $rc)." }
 
-& $Python -m gcovr @gcovrCommon --add-tracefile $TraceFile `
-    --html-details (Join-Path $CoverageDir "html\index.html") `
-    --cobertura (Join-Path $CoverageDir "coverage.xml") `
-    --cobertura-pretty
-if ($LASTEXITCODE -ne 0) { Write-Error "gcovr failed while writing the HTML/XML reports (exit $LASTEXITCODE)." }
+$rc = Invoke-Gcovr ($gcovrCommon + @(
+    "--add-tracefile", $TraceFile,
+    "--html-details", (Join-Path $CoverageDir "html\index.html"),
+    "--cobertura", (Join-Path $CoverageDir "coverage.xml"),
+    "--cobertura-pretty"))
+if ($rc -ne 0) { Write-Error "gcovr failed while writing the HTML/XML reports (exit $rc)." }
 
 # Per-area numbers: gcovr's --filter also applies when reading a tracefile, so
 # each area is a cheap re-summarise of coverage.json (no gcov re-run).
@@ -235,8 +286,8 @@ foreach ($area in @(
     $areaJson  = Join-Path $CoverageDir "summary-$($area.Name).json"
     $gcovrArgs = @("--add-tracefile", $TraceFile, "--json-summary", $areaJson) + $gcovrCommon
     if ($area.Filter) { $gcovrArgs += @("--filter", $area.Filter) }
-    & $Python -m gcovr @gcovrArgs *> $null
-    if ($LASTEXITCODE -ne 0) { Write-Error "gcovr failed while summarising $($area.Name) (exit $LASTEXITCODE)." }
+    $rc = Invoke-Gcovr $gcovrArgs -Quiet
+    if ($rc -ne 0) { Write-Error "gcovr failed while summarising $($area.Name) (exit $rc)." }
     $s = Get-Content $areaJson -Raw | ConvertFrom-Json
     # Invariant culture: "70.7%" regardless of the machine's locale, so the
     # summary is greppable/diffable across machines (the -f operator would

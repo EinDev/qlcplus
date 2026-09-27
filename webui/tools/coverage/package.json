@@ -1,0 +1,8 @@
+{
+  "name": "qlcplus-webui-coverage",
+  "private": true,
+  "description": "Dev-only: JS coverage of webui/ collected while the tools/e2e drivers run. Not needed to serve or use the web UI. See dev-webui-coverage.ps1.",
+  "dependencies": {
+    "monocart-coverage-reports": "^2.13.0"
+  }
+}

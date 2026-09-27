@@ -683,6 +683,18 @@ QString VCWidget::externalControlName(quint8 id) const
     return m_externalControlList.value(id).name;
 }
 
+QList<quint8> VCWidget::externalControlIds() const
+{
+    return m_externalControlList.keys();
+}
+
+bool VCWidget::externalControlAllowsKeyboard(quint8 id) const
+{
+    if (m_externalControlList.contains(id) == false)
+        return false;
+    return m_externalControlList.value(id).allowKeyboard;
+}
+
 QVariant VCWidget::externalControlsList() const
 {
     QVariantList controlsList;

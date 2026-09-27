@@ -520,6 +520,8 @@ function VCWidgetProperties({ widgets, functions }) {
         </div>
       ))}
       {!many ? section('geometry', 'Geometry', <GeometryEditor geometry={w.geometry} onCommit={(g) => e.reposition([{ widgetId: w.id, geometry: g }])} />) : null}
+      {/* Registry: window.QLCVCPropertiesCommon = [Component, ...] - sections every widget type gets (external controls: vc/vc-external.jsx). */}
+      {!many ? (window.QLCVCPropertiesCommon || []).map((C, i) => <C key={'common' + i} w={w} section={section} PropRow={PropRow} CheckRow={CheckRow} />) : null}
       {!many && w.widgetType === 'Button' ? <VCButtonConfigSections w={w} cfg={cfg} functions={functions} setConfig={setConfig} section={section} /> : null}
       {!many && w.widgetType === 'Slider' ? <VCSliderConfigSections w={w} cfg={cfg} functions={functions} setConfig={setConfig} setLevelChannels={setLevelChannels} section={section} /> : null}
       {Extra ? <Extra w={w} widgets={widgets} functions={functions} cfg={cfg} setConfig={setConfig} setStyle={setStyle} section={section}

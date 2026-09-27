@@ -40,6 +40,7 @@ class ApiVcLayoutDomain;
 class ApiShowDomain;
 class ApiFixtureDefsDomain;
 class ApiIoConfigDomain;
+class ApiVcInputDomain;
 class ApiVcLiveDomain;
 class Doc;
 
@@ -158,6 +159,7 @@ private:
     ApiShowDomain *m_showDomain;
     ApiFixtureDefsDomain *m_fixtureDefsDomain;
     ApiIoConfigDomain *m_ioConfigDomain;
+    ApiVcInputDomain *m_vcInputDomain;
     ApiVcLiveDomain *m_vcLiveDomain;
 };
 
