@@ -559,6 +559,7 @@ public:
     bool vcIsContainerWidget(quint32 id) const override;
     QList<quint32> vcWidgetIds() const override;
     QJsonObject vcWidgetSnapshot(quint32 id) const override;
+    void vcRemapChannels(const QMap<SceneValue, SceneValue> &remapMap) override;
 
     quint32 vcCreateWidget(const QString &widgetType, int page, quint32 parentId,
                             const QJsonObject &geometry, const QJsonObject &style,

@@ -21,12 +21,15 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QList>
+#include <QMap>
 #include <QPair>
 #include <QPointF>
 #include <QRectF>
 #include <QString>
 #include <QtGlobal>
 #include <limits>
+
+#include "scenevalue.h"
 
 /**
  * Receiver for live (§4b) Virtual Console state changes - the host side of the vc.*.stateChanged/
@@ -166,6 +169,13 @@ public:
      *  foregroundColor,font}, typeConfig{...}, inputSources, keySequences, externalControls) per the
      *  spec's VcWidgetDetail schema. Caller guarantees vcWidgetExists($id). */
     virtual QJsonObject vcWidgetSnapshot(quint32 id) const = 0;
+
+    /** fixtures.remap.apply: rewrites every widget's fixture/channel references (Slider level
+     *  channels, XY Pad fixtures, Audio Triggers) from the source (key) to the target (value)
+     *  SceneValue, like FixtureRemapManager::applyRemap() does after FixtureRemapper::applyRemap()
+     *  - VC widgets live in the UI layer, so the engine's remapper leaves this to the host.
+     *  Default no-op so a host without a Virtual Console (tests) needs nothing. */
+    virtual void vcRemapChannels(const QMap<SceneValue, SceneValue> &remapMap) { Q_UNUSED(remapMap) }
 
     /*********************************************************************
      * Widgets - mutations

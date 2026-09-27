@@ -35,6 +35,7 @@
 #include "domains/apivclayoutdomain.h"
 #include "domains/apishowdomain.h"
 #include "domains/apimonitordomain.h"
+#include "domains/apifixtureremapdomain.h"
 #include "qlcconfig.h"
 #include "doc.h"
 
@@ -65,6 +66,7 @@ ApiServer::ApiServer(QObject *parent, Doc *doc)
     m_vcLayoutDomain = new ApiVcLayoutDomain(m_doc, this, this);
     m_showDomain = new ApiShowDomain(m_doc, this, this);
     m_monitorDomain = new ApiMonitorDomain(m_doc, this, m_ioDomain, this);
+    m_fixtureRemapDomain = new ApiFixtureRemapDomain(m_doc, this, this);
 }
 
 ApiServer::~ApiServer()
