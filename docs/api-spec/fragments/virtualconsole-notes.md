@@ -325,15 +325,18 @@ and `vc.audioTriggers.setBarConfig`. `qmlui/app_apivcconfig_live.cpp` serves / a
   INVALID_STATE (engine no-ops). `schedule.update` range-checks startTime 0..86399, stopTime -1 or
   0..86399, weekFlags 0..255 and re-arms a one-shot schedule. `removeSchedule`'s engine bound check
   is off by one - the domain checks `index < count` itself. `targetTime` is ms, 0..86399999.
-  **Engine bug fixed on the way**: VCClock::saveXML() treated the ms target as seconds (any
-  countdown over 86.4 s was saved as `Time=""`) and loadXML() handed seconds to the ms setter - a
-  countdown never survived save/reload, in the desktop UI too.
+  **Engine bug fixed on the way (file format, backward compatible)**: VCClock::saveXML() split the
+  millisecond target into `Time="HH:mm:ss"` as if it were seconds and loadXML() divided it back, so
+  short countdowns round-tripped but anything over 86.4 s overflowed QTime and was saved as
+  `Time=""` (lost on reload, desktop UI too). saveXML() now writes `Hours`/`Minutes`/`Seconds`
+  (the QLC+ 4 format, which loadXML() already read correctly); loadXML() prefers those and still
+  reads an old `Time` attribute the way it was written, so existing shows load unchanged.
 - **Audio triggers**: `setBarConfig` changes the type first (which resets the bar, like the QML
   combo) and only when it differs, then thresholds (0..255 on the wire, stored via the engine's
   whole-percent setter, so e.g. 230 reads back 229), function / widget / DMX channels - each refused
   unless the bar has the matching type after this call; a bar cannot trigger its own widget.
   `barsNumber` counts the volume bar (1..33); resizing while capturing restarts the capture.
-  `volumeLevel` is 0..100 (the engine's percent, not 0..255 as the schema says). Capture is the
+  `volumeLevel` is 0..100 (the engine's percent; the schema said 0..255 and was corrected). Capture is the
   host's audio input: with no input device the bars stay at 0, as on the desktop.
 - **Delivery**: `vc.clock.timeChanged` (1 Hz Clock / 10 Hz running timer) and
   `vc.audioTriggers.levelsChanged` are subscribe-gated per §5; `floorPositionChanged` is delivered to

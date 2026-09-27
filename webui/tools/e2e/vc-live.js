@@ -370,7 +370,8 @@ async function dragEl(page, selector, fromFrac, toFrac, horizontal) {
     await dragEl(page, '[data-vc-widget="' + animId + '"] [data-vc-fader]', 0.95, 0.3, false);
     live = await poll(async () => { const w = await widgetGet(animId); return w.faderLevel > 100 ? w : null; });
     check(!!live, 'fader drag started the matrix (level ' + (live && live.faderLevel) + ')');
-    check((await srv.call('functions.status.get', { functionId: String(matrix.id) }).catch(() => ({ running: true }))).running !== false, 'the RGB Matrix is running');
+    const matrixRunning = async () => ((await srv.call('functions.list')).functions.find(f => String(f.id) === String(matrix.id)) || {}).running;
+    check(await poll(async () => (await matrixRunning()) === true), 'the RGB Matrix is running (functions.list)');
     await clickSel(page, '[data-vc-widget="' + animId + '"] [data-e2e-preset="' + g.presets[0].presetId + '"]');
     live = await poll(async () => { const w = await widgetGet(animId); return w.activePresetId === g.presets[0].presetId ? w : null; });
     check(!!live && live.typeConfig.colors[0] === '#00ff00', 'green preset applied: active #' + (live && live.activePresetId) + ', colour 1 = ' + (live && live.typeConfig.colors[0]));
@@ -378,7 +379,8 @@ async function dragEl(page, selector, fromFrac, toFrac, horizontal) {
     await page.screenshot(path.join(OUT, '6-anim-live.png'));
     await dragEl(page, '[data-vc-widget="' + animId + '"] [data-vc-fader]', 0.3, 1.0, false);
     live = await poll(async () => { const w = await widgetGet(animId); return w.faderLevel === 0 ? w : null; });
-    check(!!live, 'fader back to 0 stops the matrix');
+    check(!!live, 'fader back to 0');
+    check(await poll(async () => (await matrixRunning()) === false), 'the RGB Matrix stopped (functions.list)');
 
     /* ================= Audio triggers ================= */
     console.log('audio triggers: properties');
@@ -454,7 +456,7 @@ async function dragEl(page, selector, fromFrac, toFrac, horizontal) {
     check(new RegExp('<Type>FixtureGroup</Type>\\s*<Name>[^<]*</Name>\\s*<Group ID="' + groups[0].id + '"/>').test(padBlock), 'XML fixture-group preset');
     check(new RegExp('<Type>Scene</Type>\\s*<Name>[^<]*</Name>\\s*<FuncID>' + scene.id + '</FuncID>').test(padBlock), 'XML Scene preset');
     const clockBlock = block('Clock', CAP.clock, clockId);
-    check(/Type="Countdown"/.test(clockBlock) && /Time="00:01:30"/.test(clockBlock), 'XML countdown 00:01:30');
+    check(/Type="Countdown" Hours="0" Minutes="1" Seconds="30"/.test(clockBlock) && !/Time="/.test(clockBlock), 'XML countdown 00:01:30 as Hours/Minutes/Seconds');
     check(new RegExp('<Schedule Function="' + scene.id + '" StartTime="20:00:00" StopTime="23:\\d\\d:\\d\\d" WeekFlags="176"/>').test(clockBlock), 'XML schedule 20:00 - 23:xx Fri+Sat repeat');
     const animBlock = block('Matrix', CAP.anim, animId);
     check(new RegExp('<Function ID="' + matrix.id + '" InstantApply="true"/>').test(animBlock), 'XML attached matrix with instant apply');

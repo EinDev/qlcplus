@@ -26680,8 +26680,9 @@ components:
         volumeLevel:
           type: integer
           minimum: 0
-          maximum: 255
-          description: Capture gain/threshold calibration.
+          maximum: 100
+          description: Capture gain in percent (VCAudioTriggers::volumeLevel(), the widget's 0..100 volume
+            fader; applied as AudioCapture::setVolume(level / 100)).
     VcAudioTriggersBar:
       type: object
       required:
