@@ -25,10 +25,14 @@ function useChannelInfo(qlc, universeId) {
     if (!qlc.online) { setInfo(empty); return; }
     let alive = true, timer = null;
     const D = window.QLCData;
+    /* Channel names/groups/colours depend only on the definition, the mode and (for generic
+       dimmers) the channel count, so one fixtures.get per distinct type serves every fixture of
+       that type: SF3's universe 1 has 39 fixtures but only a handful of types. */
+    const typeKey = (f) => [f.manufacturer || '', f.model || '', f.mode || '', f.channels, f.isGeneric ? 'g' : ''].join('\u0001');
     const build = (fixtures, details) => {
       const names = new Array(512).fill(''), icons = new Array(512).fill(null), display = new Array(512).fill('none');
       fixtures.forEach((f, fi) => {
-        const d = details[f.id];
+        const d = details[typeKey(f)];
         for (let c = 0; c < f.channels && f.address + c < 512; c++) {
           const ch = f.address + c;
           const chDef = d && d.channelList && d.channelList[c];
@@ -43,8 +47,9 @@ function useChannelInfo(qlc, universeId) {
       const fixtures = (r.fixtures || []).filter(f => f.universe === universeId).sort((a, b) => a.address - b.address);
       if (!alive) return;
       setInfo(build(fixtures, cache.current));
-      const missing = fixtures.filter(f => !cache.current[f.id]);
-      return Promise.all(missing.map(f => qlc.call('fixtures.get', { fixtureId: f.id }).then(d => { cache.current[f.id] = d; }).catch(() => {})))
+      const missing = [], seen = {};
+      fixtures.forEach(f => { const k = typeKey(f); if (!cache.current[k] && !seen[k]) { seen[k] = true; missing.push(f); } });
+      return Promise.all(missing.map(f => qlc.call('fixtures.get', { fixtureId: f.id }).then(d => { cache.current[typeKey(f)] = d; }).catch(() => {})))
         .then(() => { if (alive && missing.length) setInfo(build(fixtures, cache.current)); });
     }).catch(() => {});
     const debounced = () => { clearTimeout(timer); timer = setTimeout(load, 150); };

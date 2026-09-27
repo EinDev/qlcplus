@@ -182,9 +182,55 @@
     return this.unsupported[method] === true;
   };
 
+  /* Read requests that are coalesced while in flight: a second identical call (same method, same
+     params) made before the first one's answer arrived shares that answer instead of sending the
+     request again. On load, App, the active screen and its helpers each ask for e.g.
+     functions.list (148 KiB on SF3) at the same moment; this sends it once. Safe because the socket
+     is ordered: an event received while the request is in flight was emitted before the server
+     handled it, so the shared answer already reflects it. The one case that is NOT safe - this
+     client sends a mutation after the read went out, then reads again - is handled by dropping
+     every in-flight read from the table whenever a request that is not a read is sent. Each
+     caller gets its own copy of the result when more than one shares it (callers sort / filter
+     results in place). */
+  var COALESCED_READS = {
+    'functions.list': 1, 'fixtures.list': 1, 'fixtures.get': 1, 'fixtures.group.list': 1,
+    'core.project.get': 1, 'core.mode.get': 1, 'core.history.get': 1, 'core.bpm.get': 1,
+    'io.blackout.get': 1, 'io.universe.list': 1, 'io.universe.get': 1, 'io.simpleDesk.get': 1,
+    'io.grandMaster.get': 1, 'palette.list': 1, 'vc.page.list': 1, 'vc.widget.list': 1
+  };
+  function isReadOnly(method) {
+    return COALESCED_READS[method] === 1 || method === 'subscribe' || method === 'unsubscribe'
+      || /\.(get|list)$/.test(method);
+  }
+  function cloneResult(r) {
+    if (r === null || typeof r !== 'object') return r;
+    return typeof structuredClone === 'function' ? structuredClone(r) : JSON.parse(JSON.stringify(r));
+  }
+
   /** Send one request; resolves with `result`, rejects with an Error (`.code`, `.details` set
-      from the server's error object when the rejection came from an {ok:false} response). */
+      from the server's error object when the rejection came from an {ok:false} response).
+      Identical in-flight reads are coalesced (see COALESCED_READS). */
   QLCPlusAPI.prototype.call = function (method, params) {
+    if (!this._inflightReads) this._inflightReads = {};
+    if (COALESCED_READS[method] !== 1) {
+      if (!isReadOnly(method)) this._inflightReads = {};
+      return this._send(method, params);
+    }
+    var key = method + ' ' + JSON.stringify(params || {});
+    var entry = this._inflightReads[key];
+    if (!entry) {
+      entry = { waiters: 0, promise: this._send(method, params) };
+      var table = this._inflightReads;
+      var drop = function () { if (table[key] === entry) delete table[key]; };
+      entry.promise.then(drop, drop);
+      this._inflightReads[key] = entry;
+    }
+    entry.waiters += 1;
+    /* waiters is final by the time the answer arrives (the entry leaves the table then). */
+    return entry.promise.then(function (r) { return entry.waiters > 1 ? cloneResult(r) : r; });
+  };
+
+  QLCPlusAPI.prototype._send = function (method, params) {
     var self = this;
     return new Promise(function (resolve, reject) {
       if (!self.connected()) { var e = new Error('not connected'); e.code = 'NOT_CONNECTED'; reject(e); return; }
