@@ -81,10 +81,13 @@ quint32 Script::totalDuration()
 {
     quint32 totalDuration = 0;
 
+    // Same throwaway, never-started runner as syntaxErrorsLines(): safe to
+    // delete right away instead of leaking one per call (this is called for
+    // every function summary the UI / API builds).
     ScriptRunner *runner = new ScriptRunner(doc(), m_data);
     runner->collectScriptData();
     totalDuration = runner->currentWaitTime();
-    //runner->deleteLater();
+    delete runner;
 
     qDebug() << "Script total duration:" << totalDuration;
 
