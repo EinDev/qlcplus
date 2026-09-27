@@ -676,6 +676,15 @@ bool Show::takeSeekRequest(quint32 &ms)
 
 void Show::preRun(MasterTimer* timer)
 {
+    // Drop runner requests left from the previous run: one can land between
+    // postRun() clearing them and Function::postRun() clearing isRunning().
+    // Nothing can post for this run before Function::preRun() below.
+    m_pendingRunnerPause.storeRelease(-1);
+    {
+        QMutexLocker locker(&m_pendingIntensityMutex);
+        m_pendingIntensity.clear();
+    }
+
     Function::preRun(timer);
     m_runningChildren.clear();
     if (m_runner != NULL)
