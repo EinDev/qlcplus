@@ -514,6 +514,38 @@ void ApiFixturesDomain_Test::updateMoveAddressRejectsOverlap()
     QCOMPARE(moveReply.value(QStringLiteral("ok")).toBool(), true);
 }
 
+void ApiFixturesDomain_Test::updateMoveToOtherUniverseIgnoresOldUniverseOccupant()
+{
+    // Regression: moving universe AND address used to call setAddress() then
+    // setUniverse(), each emitting changed(); after the first one the fixture
+    // was tracked at (new address, OLD universe) - here fxB's channels - and
+    // Doc::slotFixtureChanged()'s Q_ASSERT(!m_addresses.contains(i)) aborted
+    // this Debug build. The target (universe 1, address 20) is free.
+    helloAndGetClientId();
+    quint32 fxA = patchGenericFixture(0, 0, 4);
+    quint32 fxB = patchGenericFixture(0, 20, 4);
+
+    QJsonObject params;
+    params.insert(QStringLiteral("fixtureId"), QString::number(fxA));
+    params.insert(QStringLiteral("universe"), 1);
+    params.insert(QStringLiteral("address"), 20); // occupied by fxB in universe 0, free in universe 1
+    params.insert(QStringLiteral("baseRevision"), int(m_doc->docRevision()));
+
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("fixtures.update"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(m_doc->fixture(fxA)->universe(), quint32(1));
+    QCOMPARE(m_doc->fixture(fxA)->address(), quint32(20));
+
+    // Address tracking is exact: fxB still owns its channels in universe 0,
+    // fxA owns the new ones in universe 1, and fxA's old range is free.
+    for (quint32 i = 0; i < 4; i++)
+    {
+        QCOMPARE(m_doc->fixtureForAddress((0 << 9) + 20 + i), fxB);
+        QCOMPARE(m_doc->fixtureForAddress((1 << 9) + 20 + i), fxA);
+        QCOMPARE(m_doc->fixtureForAddress((0 << 9) + i), Fixture::invalidId());
+    }
+}
+
 void ApiFixturesDomain_Test::updateWithNoFieldsIsInvalidParams()
 {
     helloAndGetClientId();

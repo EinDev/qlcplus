@@ -55,6 +55,7 @@ private slots:
 
     void updateRenameBroadcastsUpdatedEvent();
     void updateMoveAddressRejectsOverlap();
+    void updateMoveToOtherUniverseIgnoresOldUniverseOccupant();
     void updateWithNoFieldsIsInvalidParams();
     void updateWithStaleRevisionConflicts();
 

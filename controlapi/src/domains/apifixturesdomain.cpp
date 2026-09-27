@@ -785,21 +785,28 @@ void ApiFixturesDomain::registerMethods()
             }
         }
 
-        // Fixture::setAddress()/setUniverse() are two separate setters, each
-        // independently emitting changed(), and Doc::slotFixtureChanged()
-        // re-tracks this fixture's occupied addresses on every single call -
-        // when both are changing there's an unavoidable transient step where
-        // the fixture is briefly tracked at (new address, old universe) [this
-        // order] or (old address, new universe) [the other order] before the
-        // second call lands, matching a documented existing quirk in
-        // Doc::slotFixtureChanged() (doc.cpp). The overlap check above only
-        // guards the final state; a pathological transient collision with
-        // some other real fixture during this brief window is a pre-existing
-        // engine limitation, not something introduced or fixable here.
-        if (hasAddress)
-            fixture->setAddress(quint32(newAddress));
-        if (hasUniverse)
-            fixture->setUniverse(newUniverse);
+        // Fixture::setAddress()/setUniverse() each emit changed(), and
+        // Doc::slotFixtureChanged() re-tracks the fixture's footprint on every
+        // emit. Applied one after the other, the first emit would track the
+        // fixture at a transient (new address, OLD universe) position, which
+        // can collide with another fixture there even though the final
+        // position was validated free above - Doc::slotFixtureChanged()'s
+        // Q_ASSERT(!m_addresses.contains(i)) then aborts a Debug build and a
+        // Release build silently steals that fixture's address entries.
+        // Apply both with signals blocked and emit changed() exactly once
+        // (setID() to the same id does that, the idiom qmlui's
+        // FixtureManager::pasteFromClipboard() already uses): the slot first
+        // drops every address owned by this id, then adds the final footprint.
+        if (hasAddress || hasUniverse)
+        {
+            fixture->blockSignals(true);
+            if (hasAddress)
+                fixture->setAddress(quint32(newAddress));
+            if (hasUniverse)
+                fixture->setUniverse(newUniverse);
+            fixture->blockSignals(false);
+            fixture->setID(fixture->id());
+        }
         if (hasName)
             fixture->setName(params.value(QStringLiteral("name")).toString());
 
