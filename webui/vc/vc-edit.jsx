@@ -530,4 +530,4 @@ function VCWidgetProperties({ widgets, functions }) {
   );
 }
 
-Object.assign(window, { VCEditable, VCWidgetPalette, VCWidgetProperties, VCUsageDialog, VCPropRow: PropRow, VCCheckRow: CheckRow, VCTextField: TextField, VCSpinField: SpinField, VCFunctionPicker: FunctionPicker });
+Object.assign(window, { VCEditable, VCWidgetPalette, VCWidgetProperties, VCUsageDialog, VCPropRow: PropRow, VCCheckRow: CheckRow, VCTextField: TextField, VCSpinField: SpinField, VCFunctionPicker: FunctionPicker, VCLevelChannelsPicker: LevelChannelsPicker });
