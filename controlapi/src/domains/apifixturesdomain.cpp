@@ -102,7 +102,7 @@ QJsonObject fixtureDetailToJson(Fixture *fixture)
 // addressing (universe<<9 | address) has no overflow guard of its own (an
 // out-of-range footprint silently encroaches into the next universe's own
 // address 0 instead of erroring), so this must be checked here.
-bool validAddressRange(int address, int channels)
+bool validAddressRange(qint64 address, qint64 channels)
 {
     return address >= 0 && channels >= 1 && (address + channels) <= 512;
 }
@@ -475,7 +475,7 @@ void ApiFixturesDomain::registerMethods()
         bool fits = true;
         for (int n = 0; n < quantity && fits; n++)
         {
-            int addr = requested + n * (channels + gap);
+            qint64 addr = qint64(requested) + qint64(n) * (qint64(channels) + gap);
             if (validAddressRange(addr, channels) == false ||
                 rangeIsFree(doc, quint32(universeId), quint32(addr), quint32(channels), excludeId) == false)
             {
@@ -500,7 +500,7 @@ void ApiFixturesDomain::registerMethods()
             // quirkier single-pass counter loop (see its comments), since the
             // universe is capped at 512 channels this is trivially fast and
             // easier to verify correct.
-            int blockSize = channels * quantity + gap * quantity;
+            qint64 blockSize = (qint64(channels) + gap) * quantity;
             int found = -1;
             for (int start = 0; start + blockSize <= 512 && found < 0; start++)
             {
@@ -635,7 +635,7 @@ void ApiFixturesDomain::registerMethods()
         // apply on error).
         for (int n = 0; n < quantity; n++)
         {
-            int addr = baseAddress + n * (channelCount + gap);
+            qint64 addr = qint64(baseAddress) + qint64(n) * (qint64(channelCount) + gap);
             if (validAddressRange(addr, channelCount) == false)
             {
                 session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams,
@@ -664,7 +664,7 @@ void ApiFixturesDomain::registerMethods()
 
         for (int n = 0; n < quantity; n++)
         {
-            int addr = baseAddress + n * (channelCount + gap);
+            qint64 addr = qint64(baseAddress) + qint64(n) * (qint64(channelCount) + gap);
             Fixture *fxi = new Fixture(doc);
             fxi->setUniverse(quint32(universeId));
             fxi->setAddress(quint32(addr));
