@@ -238,6 +238,16 @@ bool QLCFixtureDefCache::reloadOrAddFixtureDef(QLCFixtureDef *fixtureDef)
     return true;
 }
 
+bool QLCFixtureDefCache::removeFixtureDef(QLCFixtureDef *fixtureDef)
+{
+    int idx = m_defs.indexOf(fixtureDef);
+    if (idx == -1)
+        return false;
+
+    delete m_defs.takeAt(idx);
+    return true;
+}
+
 bool QLCFixtureDefCache::load(const QDir& dir)
 {
     qDebug() << Q_FUNC_INFO << dir.path();
@@ -442,11 +452,36 @@ QDir QLCFixtureDefCache::systemDefinitionDirectory()
     return QLCFile::systemDirectory(QString(FIXTUREDIR), QString(KExtFixture));
 }
 
+QString QLCFixtureDefCache::s_userDirectoryOverride;
+
+void QLCFixtureDefCache::setUserDefinitionDirectoryOverride(const QString& path)
+{
+    s_userDirectoryOverride = path;
+}
+
 QDir QLCFixtureDefCache::userDefinitionDirectory()
 {
     QStringList filters;
     filters << QString("*%1").arg(KExtFixture);
     filters << QString("*%1").arg(KExtAvolitesFixture);
+
+    // Explicit override (tests, sandboxes) first, then the environment,
+    // then the platform default. Both alternatives get the same
+    // ensure-exists + name-filter treatment QLCFile::userDirectory()
+    // applies, since load() relies on the filters.
+    QString overridePath = s_userDirectoryOverride;
+    if (overridePath.isEmpty())
+        overridePath = qEnvironmentVariable("QLCPLUS_USER_FIXTURE_DIR");
+
+    if (overridePath.isEmpty() == false)
+    {
+        QDir dir(overridePath);
+        if (dir.exists() == false)
+            dir.mkpath(".");
+        dir.setFilter(QDir::Files);
+        dir.setNameFilters(filters);
+        return dir;
+    }
 
     return QLCFile::userDirectory(QString(USERFIXTUREDIR), QString(FIXTUREDIR), filters);
 }
