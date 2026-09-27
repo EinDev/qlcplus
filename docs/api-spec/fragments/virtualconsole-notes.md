@@ -133,6 +133,65 @@ Other implementation facts worth knowing:
   (`qmlui/app_apivchost.cpp`) compiles and mirrors the QML call paths line
   by line, but no live `qlcplus5.exe` session exercised it yet.
 
+## Cue list side fader, speed dial extras, widget presets - implemented (2026-09-27)
+
+Appended to `ApiVcDomain` (`registerCueSpeedDialMethods()` /
+`registerPresetMethods()` at the end of `apivcdomain.cpp`; the host side is
+`qmlui/app_apivchost_cue.cpp` + `app_apivcconfig_cue.cpp`) and exercised
+end to end from the web UI (`webui/vc/vc-props-cue.jsx`,
+`webui/tools/e2e/vc-cue.js`) against a plugin-less sandbox instance running
+the SF3 project. Spec changes made alongside, all additive:
+
+- `VcCueListConfig` and `VcSpeedDialConfig` are served by `vc.widget.get`'s
+  `typeConfig` and accepted by `vc.widget.setConfig` for CueList / Speed
+  widgets. `chaserID` must name an existing Chaser or Sequence (or
+  `"4294967295"` to detach) - `VCCueList::setChaserID()` would otherwise
+  silently detach on an unknown id, so the host validates first.
+  `VcSpeedDialConfig.functions` replaces the whole list; omitted factors
+  keep the current ones for an already-attached Function.
+- **`VcSpeedDialConfig.presets`** (new, `readOnly`): the preset list rides
+  along in `typeConfig` so one `vc.widget.get` seeds a client; a
+  `setConfig` patch carrying it is rejected.
+- **`vc.widget.preset.apply` on a Speed widget is now supported** (was
+  "NOT SUPPORTED / undefined effect"): the host does what the on-screen
+  preset button does, `setCurrentTime(valueMs)`, reported as
+  `vc.speedDial.valueChanged`. XYPad and Animation presets go through the
+  same generic plumbing (`App::vcWidgetPreset*()` dispatching into
+  `ApiVcConfig::{xyPad,animation}Preset*()`) but those functions are
+  stubs returning INVALID_STATE ("not yet supported") until the XYPad /
+  Animation slice fills them in `app_apivcconfig_live.cpp`.
+- **Live seeds added to `VcWidgetSummary`**: CueList `sideFaderLevel`,
+  `nextStepIndex`, `primaryTop`; Speed `factor`, `tapTimeValue`.
+- **`vc.cueList.sideFaderChanged` carries `nextStepIndex` + `primaryTop`**
+  besides `level` (the on-screen fader's two step labels need all three),
+  and is also emitted when only those change - so a running crossfade
+  list emits it next to `playbackChanged`. `vc.cueList.setSideFaderLevel`
+  confines the level to 0..100 in Crossfade mode and answers
+  INVALID_STATE while `sideFaderMode` is None. Engine caveats surfaced
+  as-is: `setSideFaderMode()` resets the level (Steps → 255, Crossfade →
+  100), so a `setConfig` changing the mode emits `sideFaderChanged` right
+  before `configChanged`; in Steps mode `setSideFaderLevel()` stores the
+  level but returns before emitting while the Chaser is stopped or the
+  level maps onto the current step.
+- **`vc.speedDial.setFactor` accepts OneSixteenth..Sixteen only** - the
+  dial's own factor is what the 1/16..16 buttons and +/- set; None/Zero
+  are per-function overrides and would zero every attached Function.
+- **`vc.speedDial.tapChanged.tapTimeValue` is the tap interval in ms**,
+  not a BPM (the spec used to say "Computed BPM"; `VCSpeedDial::tap()`
+  stores the interval and derives its BPM as 60000 / interval). Emitted
+  on change only, so a `resetTap` with no series to clear sends nothing.
+- `vc.speedDial.apply` is a bare ack: `applyFunctionsTime(true)` only
+  touches the attached Functions' speeds (visible through
+  `functions.get`, e.g. currentTime 1600 ms x dial factor 1 x per-function
+  duration factor 2 → duration 3200 ms, verified).
+- Structural preset methods (`vc.widget.preset.add/remove`,
+  `vc.speedDial.preset.update`) bump `docRevision` and broadcast
+  `vc.<speedDial|xyPad|animation>.presetsChanged` with the full list to
+  every session; unknown `presetId` → NOT_FOUND, a widget type without
+  presets → INVALID_PARAMS with `details.widgetType`.
+- Not covered by the headless `FakeVcHost` tests: the App-side config
+  validation (enum spellings, Chaser existence) - that part was exercised
+  in the sandbox only.
 ## Layout / configuration slice - implemented (2026-09-27)
 
 `controlapi/src/domains/apivclayoutdomain.cpp` (a second class next to ApiVcDomain,

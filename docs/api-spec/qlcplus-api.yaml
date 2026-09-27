@@ -1026,6 +1026,8 @@ channels:
         $ref: '#/components/messages/IoPluginConfigureRequest'
       ioPluginConfigureResponse:
         $ref: '#/components/messages/IoPluginConfigureResponse'
+      ioPluginConfigureOkResponse:
+        $ref: '#/components/messages/IoPluginConfigureOkResponse'
       ioInputProfileListRequest:
         $ref: '#/components/messages/IoInputProfileListRequest'
       ioInputProfileListResponse:
@@ -1160,6 +1162,18 @@ channels:
         $ref: '#/components/messages/IoPatchSetRequest'
       ioPatchSetResponse:
         $ref: '#/components/messages/IoPatchSetResponse'
+      ioAudioListDevicesRequest:
+        $ref: '#/components/messages/IoAudioListDevicesRequest'
+      ioAudioListDevicesResponse:
+        $ref: '#/components/messages/IoAudioListDevicesResponse'
+      ioAudioListDevicesOkResponse:
+        $ref: '#/components/messages/IoAudioListDevicesOkResponse'
+      ioAudioSetDeviceRequest:
+        $ref: '#/components/messages/IoAudioSetDeviceRequest'
+      ioAudioSetDeviceResponse:
+        $ref: '#/components/messages/IoAudioSetDeviceResponse'
+      ioAudioDeviceChangedEvent:
+        $ref: '#/components/messages/IoAudioDeviceChangedEvent'
       vcDocRevisionOkResponse:
         $ref: '#/components/messages/VcDocRevisionOkResponse'
       vcPageListRequest:
@@ -4326,6 +4340,36 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/ioPatchSetResponse'
+  sendIoAudioListDevices:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/ioAudioListDevicesRequest'
+  receiveIoAudioListDevicesResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/ioAudioListDevicesResponse'
+  sendIoAudioSetDevice:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/ioAudioSetDeviceRequest'
+  receiveIoAudioSetDeviceResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/ioAudioSetDeviceResponse'
+  receiveIoAudioDeviceChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/ioAudioDeviceChangedEvent'
   sendVcPageList:
     action: send
     channel:
@@ -17171,8 +17215,34 @@ components:
     IoPluginConfigureResponse:
       payload:
         oneOf:
-        - $ref: '#/components/messages/GenericAckResponse/payload'
+        - $ref: '#/components/messages/IoPluginConfigureOkResponse/payload'
         - $ref: '#/components/messages/ErrorResponse/payload'
+    IoPluginConfigureOkResponse:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - ok
+        - result
+        properties:
+          type:
+            const: response
+          id:
+            type: string
+          ok:
+            const: true
+          result:
+            type: object
+            required:
+            - openedOnHost
+            description: UNSUPPORTED is returned instead when the plugin has no dialog (canConfigure false)
+              or the QLC+ host has no desktop to show one on; a modal dialog keeps the response waiting
+              until it is closed.
+            properties:
+              openedOnHost:
+                type: boolean
+                description: The plugin''s native dialog was opened on the machine running QLC+.
     IoInputProfileListRequest:
       payload:
         type: object
@@ -17468,12 +17538,17 @@ components:
             required:
             - universeId
             description: 'Puts the engine into MIDI/OSC-learn mode: raw input signals on this (already
-              patched) input universe are reported via io.inputProfile.learn.signal instead of being consumed
-              normally, mirroring InputProfileEditor::toggleDetection(). Live, no baseRevision — this
-              is editor-session state, not saved.'
+              patched) input universe are reported via io.inputProfile.learn.signal (to the requesting
+              client only) while still being consumed normally, mirroring InputProfileEditor::toggleDetection().
+              Live, no baseRevision — this is editor-session state, not saved. One session per server:
+              INVALID_STATE (details.clientId) while another client is learning.'
             properties:
               universeId:
                 type: integer
+              profileName:
+                type: string
+                description: Profile to compute alreadyMapped against (the one being edited); omit to
+                  use the universe's current input profile.
     IoInputProfileLearnStartResponse:
       payload:
         oneOf:
@@ -17521,11 +17596,25 @@ components:
             required:
             - channelNumber
             - alreadyMapped
+            description: Sent ONLY to the client whose io.inputProfile.learn.start opened the session
+              (never broadcast); originClientId is that client. channelNumber is the profile channel key
+              (0-based, the same number IoInputChannel.number uses), not the +1 display number.
             properties:
+              universeId:
+                type: integer
               channelNumber:
                 type: integer
+              value:
+                type: integer
+                minimum: 0
+                maximum: 255
+              key:
+                type: string
+                description: Plugin-supplied key for the control (e.g. an OSC path), empty for MIDI.
               alreadyMapped:
                 type: boolean
+                description: The profile (learn.start's profileName, else the universe's current input
+                  profile) already has a channel with this number.
     IoGrandMasterGetRequest:
       payload:
         type: object
@@ -17943,6 +18032,12 @@ components:
                 type: integer
               currentPage:
                 type: integer
+              commandHistory:
+                type: array
+                description: Server-side keypad command history, most recent first (max 10), so a client
+                  can seed its list before following io.simpleDesk.commandHistoryChanged.
+                items:
+                  type: string
     IoSimpleDeskSetChannelRequest:
       payload:
         type: object
@@ -18211,10 +18306,16 @@ components:
             - command
             description: Console-style keypad syntax (e.g. "1 THRU 10 @ 50 ENTER"), see SimpleDesk::sendKeypadCommand
               / KeyPadParser. Side effects arrive as ordinary io.simpleDesk.channelChanged events, one
-              per affected channel.
+              per affected channel, plus io.simpleDesk.commandHistoryChanged. The server upper-cases,
+              maps "@" to AT and drops ENTER before parsing; the channel selection is remembered across
+              commands ("1 THRU 4" then "AT 50").
             properties:
               command:
                 type: string
+              universeId:
+                type: integer
+                description: Universe the channel numbers refer to. Defaults to the Simple Desk universe
+                  filter (io.simpleDesk.setUniverseFilter).
     IoSimpleDeskSendKeypadCommandResponse:
       payload:
         oneOf:
@@ -18244,6 +18345,14 @@ components:
                 type: boolean
                 description: false if the command string was not syntactically valid; see error.details
                   for the parser's message if ok:false was used instead.
+              channelsChanged:
+                type: integer
+                description: Number of channels the command wrote (0 for a bare channel selection).
+              history:
+                type: array
+                description: The new command history, most recent first (same as the event).
+                items:
+                  type: string
     IoSimpleDeskCommandHistoryChangedEvent:
       payload:
         type: object
@@ -18474,6 +18583,130 @@ components:
         oneOf:
         - $ref: '#/components/messages/IoPatchMutationOkResponse/payload'
         - $ref: '#/components/messages/ErrorResponse/payload'
+    IoAudioListDevicesRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: io.audio.listDevices
+          params:
+            type: object
+    IoAudioListDevicesResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/IoAudioListDevicesOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    IoAudioListDevicesOkResponse:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - ok
+        - result
+        properties:
+          type:
+            const: response
+          id:
+            type: string
+          ok:
+            const: true
+          result:
+            type: object
+            required:
+            - inputs
+            - outputs
+            - inputDevice
+            - outputDevice
+            description: The sound devices of the machine running QLC+ (AudioPluginCache::audioDevicesList),
+              each list starting with the "__qlcplusdefault__" pseudo-device like AudioCardsList.qml.
+              inputDevice/ outputDevice are the selected privateNames (QSettings audio/input, audio/output
+              - host-wide, not part of the project).
+            properties:
+              inputs:
+                type: array
+                items:
+                  $ref: '#/components/schemas/IoAudioDevice'
+              outputs:
+                type: array
+                items:
+                  $ref: '#/components/schemas/IoAudioDevice'
+              inputDevice:
+                type: string
+              outputDevice:
+                type: string
+    IoAudioSetDeviceRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: io.audio.setDevice
+          params:
+            type: object
+            required:
+            - direction
+            - privateName
+            description: Selects the host audio device the engine uses for audio input (beat detection,
+              Audio Triggers) or output (Audio functions) - InputOutputManager::setAudioInput/setAudioOutput.
+              Live/host setting, no baseRevision; "__qlcplusdefault__" restores the system default. NOT_FOUND
+              for a privateName the host does not list.
+            properties:
+              direction:
+                enum:
+                - input
+                - output
+              privateName:
+                type: string
+    IoAudioSetDeviceResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/GenericAckResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    IoAudioDeviceChangedEvent:
+      payload:
+        type: object
+        required:
+        - type
+        - topic
+        - data
+        properties:
+          type:
+            const: event
+          topic:
+            const: io.audio.deviceChanged
+          originClientId:
+            type:
+            - string
+            - 'null'
+          data:
+            type: object
+            required:
+            - direction
+            - privateName
+            properties:
+              direction:
+                enum:
+                - input
+                - output
+              privateName:
+                type: string
     VcDocRevisionOkResponse:
       payload:
         type: object
@@ -21634,8 +21867,15 @@ components:
             required:
             - widgetId
             - level
-            description: VCCueList::setSideFaderLevel() - live (§4b). Meaning depends on sideFaderMode
-              (Crossfade vs. Steps, see VcCueListConfig).
+            description: 'VCCueList::setSideFaderLevel() - live (§4b), bare {} ack; the new level arrives
+              as vc.cueList.sideFaderChanged (nothing is sent if unchanged). Meaning depends on sideFaderMode
+              (VcCueListConfig): Crossfade = 0..100 % between the current and the next step (the server
+              confines level to 0..100 there, like the on-screen fader), Steps = 0..255 mapped onto the
+              Chaser''s step index. Errors NOT_FOUND, INVALID_PARAMS (not a CueList, or level not an integer
+              0..255), INVALID_STATE (widget isDisabled, or sideFaderMode is None - the fader is hidden
+              then). Engine caveat: in Steps mode the level is stored but no event is emitted while the
+              Chaser is stopped or the level maps onto the step already current (VCCueList::setSideFaderLevel()
+              returns before emitting).'
             properties:
               widgetId:
                 type: string
@@ -21666,14 +21906,26 @@ components:
             - 'null'
           data:
             type: object
+            description: Also broadcast (with an unchanged level) whenever the crossfade bookkeeping the
+              on-screen fader labels show changes - nextStepIndex follows every playback step, primaryTop
+              flips when a crossfade completes - so a running crossfade cue list emits this alongside
+              vc.cueList.playbackChanged.
             required:
             - widgetId
             - level
+            - nextStepIndex
+            - primaryTop
             properties:
               widgetId:
                 type: string
               level:
                 type: integer
+              nextStepIndex:
+                type: integer
+                description: VCCueList::nextStepIndex(), -1 = none.
+              primaryTop:
+                type: boolean
+                description: VCCueList::primaryTop().
     VcSpeedDialSetValueRequest:
       payload:
         type: object
@@ -21765,9 +22017,14 @@ components:
             required:
             - widgetId
             - factor
-            description: VCSpeedDial::setCurrentFactor()/increaseSpeedFactor()/decreaseSpeedFactor() (client
-              can compute +/- from the current value in the widget's last-known state; server just accepts
-              the resulting factor).
+            description: 'VCSpeedDial::setCurrentFactor()/increaseSpeedFactor()/decreaseSpeedFactor()
+              (client can compute +/- from the current value in the widget''s last-known state; server
+              just accepts the resulting factor). Live (§4b), bare {} ack; the new factor arrives as vc.speedDial.factorChanged
+              (nothing if unchanged) and is applied to the attached Functions immediately, like the on-screen
+              1/16..16 buttons. Only OneSixteenth..Sixteen are accepted: None/Zero exist in VcSpeedDialMultiplier
+              as per-function overrides (VcSpeedDialConfig. functions) and would multiply every attached
+              Function''s speed by 0 here. Errors NOT_FOUND, INVALID_PARAMS (not a Speed widget, or factor
+              outside that set), INVALID_STATE (widget isDisabled).'
             properties:
               widgetId:
                 type: string
@@ -21903,7 +22160,10 @@ components:
         - type
         - topic
         - data
-        description: Broadcast after tap/resetTap.
+        description: Broadcast whenever VCSpeedDial::tapTimeValue() changes - i.e. after the second and
+          every further tap of a series (vc.speedDial.tap, the QML button, external input) and after a
+          vc.speedDial.resetTap that actually had a series to clear (a reset with nothing to clear sends
+          nothing, like every other unchanged live value).
         properties:
           type:
             const: event
@@ -21924,9 +22184,12 @@ components:
                 type: string
               tapTimeValue:
                 type: integer
-                description: Computed BPM.
+                description: The tap interval in milliseconds VCSpeedDial computed from the tap history
+                  (NOT a BPM - the engine derives its BPM as 60000 / tapTimeValue), 0 after a reset.
               currentTimeMs:
                 type: integer
+                description: VCSpeedDial::currentTime() at that moment (equals tapTimeValue right after
+                  a tap, since tap() sets the dial to the interval).
     VcSpeedDialPresetUpdateRequest:
       payload:
         type: object
@@ -21944,6 +22207,10 @@ components:
             const: vc.speedDial.preset.update
           params:
             type: object
+            description: VCSpeedDial::setPresetName()/setPresetValue() - at least one of name (non-empty)
+              / valueMs (>= 0) is required, an omitted one is left unchanged. Speed widgets only (INVALID_PARAMS
+              otherwise); unknown presetId -> NOT_FOUND. Broadcasts vc.speedDial.presetsChanged with the
+              full list.
             required:
             - widgetId
             - presetId
@@ -22405,6 +22672,10 @@ components:
             const: vc.widget.preset.remove
           params:
             type: object
+            description: Removes one preset from a Speed / XYPad / Animation widget's list. Errors CONFLICT
+              (stale baseRevision), NOT_FOUND (widget, or no preset with that presetId), INVALID_PARAMS
+              (a widget type without presets, details.widgetType). Broadcasts the type's *.presetsChanged
+              event with the resulting list.
             required:
             - widgetId
             - presetId
@@ -22450,11 +22721,13 @@ components:
               and (if the fader level is already > 0) applies the preset''s content immediately. Knob-type
               presets are the one exception: applyPreset() no-ops for them server-side (they have no single
               "apply" moment) - use vc.animation.setPresetKnobValue instead, which is the actual live
-              control for a Knob preset. - SpeedDial: NOT SUPPORTED. VCSpeedDial has no applyPreset counterpart
-              in the engine at all (only add/remove/rename/setValue on the preset list itself). "Applying"
-              a SpeedDial preset is purely a client-side gesture: look up the preset''s stored value in
-              VcSpeedDialPreset and send that value via vc.speedDial.setValue - do not send vc.widget.preset.apply
-              for a SpeedDial widgetId, it has no defined effect.'
+              control for a Knob preset. - SpeedDial (implemented 2026-09-27): VCSpeedDial has no applyPreset()
+              of its own, so the server does what VCSpeedDialItem.qml''s preset button does - setCurrentTime(the
+              preset''s valueMs), reported as vc.speedDial.valueChanged (and applied to the attached Functions
+              like any other currentTime change). Nothing is persisted; no docRevision bump. Errors: NOT_FOUND
+              (widget or preset), INVALID_PARAMS (widget type has no presets), INVALID_STATE (widget isDisabled,
+              or the type''s apply is not implemented yet - XYPad and Animation presets are still stubs
+              on the host as of 2026-09-27).'
             properties:
               widgetId:
                 type: string
@@ -25079,6 +25352,19 @@ components:
           description: Present for status missing - the path that could not be found
         docRevision:
           type: integer
+    IoAudioDevice:
+      type: object
+      required:
+      - name
+      - privateName
+      properties:
+        name:
+          type: string
+          description: Human-readable device name.
+        privateName:
+          type: string
+          description: Stable device id to pass to io.audio.setDevice ("__qlcplusdefault__" for the system
+            default).
     IoUniverseSummary:
       type: object
       required:
@@ -25324,6 +25610,19 @@ components:
               color:
                 type: string
                 description: '#rrggbb'
+        name:
+          type: string
+          description: Read-only, "<manufacturer> <model>" (QLCInputProfile::name), the key io.inputProfile.get/delete
+            take. Ignored on save.
+        path:
+          type: string
+          description: Read-only, the .qxi file the profile was loaded from / saved to (empty if never
+            saved).
+        isUser:
+          type: boolean
+          description: Read-only, true when the profile lives in the user profile directory (or was never
+            saved) - only those can be deleted; a bundled system profile is INVALID_STATE on delete. Saving
+            over a system profile writes a user copy that overrides it.
         midiChannelTable:
           type: array
           description: Optional per-MIDI-channel labels (QLCInputProfile::midiChannelTable).
@@ -25386,10 +25685,12 @@ components:
           maximum: 255
         lowerChannel:
           type: integer
-          description: Extended/14-bit range support; -1 or omitted if unused.
+          description: MIDI channel for custom feedback (QLCInputChannel::lowerChannel, the .qxi MidiChannel
+            attribute); -1 or omitted if unused. Button channels only, like lowerValue/upperValue.
         upperChannel:
           type: integer
-          description: Extended/14-bit range support; -1 or omitted if unused.
+          description: Declared by the engine header but never defined, persisted or read - not served;
+            kept in the schema only as a placeholder should the engine ever implement it.
     IoGrandMasterChannelMode:
       type: string
       enum:
@@ -25587,6 +25888,18 @@ components:
         paused:
           type: boolean
           description: 'CueList only: see VcCueListPlaybackState.paused.'
+        sideFaderLevel:
+          type: integer
+          description: 'CueList only: live VCCueList::sideFaderLevel() (0..100 in Crossfade mode, 0..255
+            in Steps mode; VCCueList defaults it to 100), seed for vc.cueList.sideFaderChanged.'
+        nextStepIndex:
+          type: integer
+          description: 'CueList only: VCCueList::nextStepIndex() - the step the crossfade side fader''s
+            other end points at (-1 = none); seed for vc.cueList.sideFaderChanged.'
+        primaryTop:
+          type: boolean
+          description: 'CueList only: VCCueList::primaryTop() - whether the current step sits at the top
+            end of the crossfade fader (it flips each time a crossfade completes).'
         x:
           type: number
           description: 'XYPad only: live normalized 0..1 position, seed for vc.xyPad.positionChanged.'
@@ -25596,6 +25909,13 @@ components:
         ms:
           type: integer
           description: 'Speed only: live VCSpeedDial::currentTime() in ms, seed for vc.speedDial.valueChanged.'
+        factor:
+          $ref: '#/components/schemas/VcSpeedDialMultiplier'
+          description: 'Speed only: live VCSpeedDial::currentFactor(), seed for vc.speedDial.factorChanged.'
+        tapTimeValue:
+          type: integer
+          description: 'Speed only: live VCSpeedDial::tapTimeValue() - the current tap-tempo interval
+            in ms (0 = no tap series), seed for vc.speedDial.tapChanged.'
         currentPage:
           type: integer
           description: 'Frame/SoloFrame only: live internal page, seed for vc.frame.pageChanged.'
@@ -25606,10 +25926,11 @@ components:
           type: boolean
           description: 'Frame/SoloFrame only: VCFrame::multiPageMode().'
       description: Compact form used in list/usage results and as the base of VcWidgetDetail. The per-type
-        live (§4b) fields at the end (state / value+min+max / playbackIndex+running+paused / x+y / ms
-        / currentPage+pages+multipage) are present ONLY on widgets of the matching widgetType (a Label
-        carries none) and let a client seed its live view straight from vc.widget.list/get instead of
-        waiting for the first vc.*Changed event. Added additively (2026-09-26) - no pre-existing field
+        live (§4b) fields at the end (state / value+min+max / playbackIndex+running+paused+ sideFaderLevel+nextStepIndex+primaryTop
+        / x+y / ms+factor+tapTimeValue / currentPage+pages+ multipage) are present ONLY on widgets of
+        the matching widgetType (a Label carries none) and let a client seed its live view straight from
+        vc.widget.list/get instead of waiting for the first vc.*Changed event. Added additively (2026-09-26,
+        the cue list side fader and speed dial factor/tap seeds on 2026-09-27) - no pre-existing field
         was removed or renamed.
     VcCueListPlaybackState:
       type: object
@@ -26150,8 +26471,20 @@ components:
       - Sixteen
     VcSpeedDialConfig:
       type: object
-      description: VCSpeedDial document-state config. Presets managed via vc.speedDial.preset.*.
+      description: 'VCSpeedDial document-state config. Every key is optional in a vc.widget.setConfig
+        patch; `functions` replaces the whole controlled-Function list (an entry''s omitted factors keep
+        that Function''s current ones if it was already attached, else the VCSpeedDial::addFunction()
+        defaults None/None/One). The preset list is read-only here (`presets`, present in vc.widget.get/list
+        only): mutate it through vc.widget.preset.add/remove and vc.speedDial.preset.update - a patch
+        carrying `presets` is rejected with INVALID_PARAMS.'
       properties:
+        presets:
+          type: array
+          readOnly: true
+          description: The widget's preset list (VCSpeedDial::presetsList()), in display order. Read-only
+            convenience so one vc.widget.get seeds a client; kept current by vc.speedDial.presetsChanged.
+          items:
+            $ref: '#/components/schemas/VcSpeedDialPreset'
         visibilityMask:
           type: array
           items:

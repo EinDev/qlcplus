@@ -15,6 +15,7 @@ set(CONTROLAPI_SOURCES
     domains/apivcdomain.cpp domains/apivcdomain.h
     domains/apirgbmatrixdomain.cpp domains/apirgbmatrixdomain.h
     domains/apiefxcollectiondomain.cpp domains/apiefxcollectiondomain.h
+    domains/apiioconfigdomain.cpp domains/apiioconfigdomain.h
     domains/apimediadomain.cpp domains/apimediadomain.h
     domains/apivclayoutdomain.cpp domains/apivclayoutdomain.h
     domains/apishowdomain.cpp domains/apishowdomain.h

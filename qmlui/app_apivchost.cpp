@@ -678,10 +678,16 @@ void appendLiveStateToJson(VCWidget *w, QJsonObject &obj)
         {
             int playbackIndex = -1;
             bool running = false, paused = false;
-            cueListPlaybackState(qobject_cast<VCCueList *>(w), playbackIndex, running, paused);
+            VCCueList *cl = qobject_cast<VCCueList *>(w);
+            cueListPlaybackState(cl, playbackIndex, running, paused);
             obj.insert(QStringLiteral("playbackIndex"), playbackIndex);
             obj.insert(QStringLiteral("running"), running);
             obj.insert(QStringLiteral("paused"), paused);
+            // Side fader seed (vc.cueList.sideFaderChanged): level plus the crossfade bookkeeping
+            // VCCueListItem.qml's two step labels show.
+            obj.insert(QStringLiteral("sideFaderLevel"), cl->sideFaderLevel());
+            obj.insert(QStringLiteral("nextStepIndex"), cl->nextStepIndex());
+            obj.insert(QStringLiteral("primaryTop"), cl->primaryTop());
         }
         break;
         case VCWidget::XYPadWidget:
@@ -693,7 +699,11 @@ void appendLiveStateToJson(VCWidget *w, QJsonObject &obj)
         break;
         case VCWidget::SpeedWidget:
         {
-            obj.insert(QStringLiteral("ms"), int(qobject_cast<VCSpeedDial *>(w)->currentTime()));
+            VCSpeedDial *sd = qobject_cast<VCSpeedDial *>(w);
+            obj.insert(QStringLiteral("ms"), int(sd->currentTime()));
+            // Seeds for vc.speedDial.factorChanged / tapChanged.
+            obj.insert(QStringLiteral("factor"), ApiVcConfig::speedDialMultiplierName(int(sd->currentFactor())));
+            obj.insert(QStringLiteral("tapTimeValue"), sd->tapTimeValue());
         }
         break;
         case VCWidget::FrameWidget:
@@ -1039,8 +1049,8 @@ bool App::vcSetWidgetConfig(quint32 id, const QJsonObject &configPatch, QString 
         case VCWidget::FrameWidget:
         case VCWidget::SoloFrameWidget:     return ApiVcConfig::applyFrameConfig(w, configPatch, error);
         case VCWidget::LabelWidget:         return ApiVcConfig::applyLabelConfig(w, configPatch, error);
-        case VCWidget::CueListWidget:       return ApiVcConfig::applyCueListConfig(w, configPatch, error);
-        case VCWidget::SpeedWidget:         return ApiVcConfig::applySpeedDialConfig(w, configPatch, error);
+        case VCWidget::CueListWidget:       return ApiVcConfig::applyCueListConfig(w, m_doc, configPatch, error);
+        case VCWidget::SpeedWidget:         return ApiVcConfig::applySpeedDialConfig(w, m_doc, configPatch, error);
         case VCWidget::XYPadWidget:         return ApiVcConfig::applyXyPadConfig(w, configPatch, error);
         case VCWidget::ClockWidget:         return ApiVcConfig::applyClockConfig(w, configPatch, error);
         case VCWidget::AnimationWidget:     return ApiVcConfig::applyAnimationConfig(w, configPatch, error);
@@ -1163,6 +1173,20 @@ void App::slotVcWidgetRegistered(VCWidget *widget)
             // the Chaser advancing on its own (slotCurrentStepChanged -> setPlaybackIndex).
             connect(cl.data(), &VCCueList::playbackStatusChanged, this, relay);
             connect(cl.data(), &VCCueList::playbackIndexChanged, this, relay);
+
+            // Side fader: the level itself plus the crossfade bookkeeping (which step the fader's
+            // other end points at, and which end the current step sits on) all feed one event, since
+            // the on-screen labels need all three together. nextStepIndex also changes on every
+            // playback step, so a running crossfade list emits this alongside playbackChanged.
+            auto sideFaderRelay = [this, cl]()
+            {
+                if (cl.isNull() || m_vcLiveListener == nullptr)
+                    return;
+                m_vcLiveListener->vcCueListSideFaderChanged(cl->id(), cl->sideFaderLevel(), cl->nextStepIndex(), cl->primaryTop());
+            };
+            connect(cl.data(), &VCCueList::sideFaderLevelChanged, this, sideFaderRelay);
+            connect(cl.data(), &VCCueList::nextStepIndexChanged, this, sideFaderRelay);
+            connect(cl.data(), &VCCueList::primaryTopChanged, this, sideFaderRelay);
         }
         break;
         case VCWidget::XYPadWidget:
@@ -1186,6 +1210,19 @@ void App::slotVcWidgetRegistered(VCWidget *widget)
                 if (sd.isNull() || m_vcLiveListener == nullptr)
                     return;
                 m_vcLiveListener->vcSpeedDialValueChanged(sd->id(), int(sd->currentTime()));
+            });
+            // Multiplier factor (1/16..16 buttons, +/-, external input) and tap-tempo state.
+            connect(sd.data(), &VCSpeedDial::currentFactorChanged, this, [this, sd]()
+            {
+                if (sd.isNull() || m_vcLiveListener == nullptr)
+                    return;
+                m_vcLiveListener->vcSpeedDialFactorChanged(sd->id(), ApiVcConfig::speedDialMultiplierName(int(sd->currentFactor())));
+            });
+            connect(sd.data(), &VCSpeedDial::tapTimeValueChanged, this, [this, sd]()
+            {
+                if (sd.isNull() || m_vcLiveListener == nullptr)
+                    return;
+                m_vcLiveListener->vcSpeedDialTapChanged(sd->id(), sd->tapTimeValue(), int(sd->currentTime()));
             });
         }
         break;

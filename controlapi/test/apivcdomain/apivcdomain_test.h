@@ -77,6 +77,13 @@ private slots:
     void liveEngineDrivenChangeBroadcastsWithNullOrigin();
     void liveMethodsDoNotBumpDocRevision();
 
+    // Cue list side fader, speed dial extras and widget presets (this slice's messages in
+    // docs/api-spec/fragments/virtualconsole.yaml).
+    void liveCueListSideFaderLevel();
+    void liveSpeedDialFactorApplyAndResetTap();
+    void widgetPresetAddUpdateApplyRemove();
+    void widgetPresetRejectsWidgetsWithoutPresets();
+
 private:
     QJsonObject sendAndWaitForReply(const QString &method, const QJsonObject &params, const QString &requestId = QStringLiteral("t-1"));
     QString helloAndGetClientId();

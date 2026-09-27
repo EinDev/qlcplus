@@ -1422,3 +1422,297 @@ void ApiVcDomain_Test::liveMethodsDoNotBumpDocRevision()
     // by the headless fake either way.)
     QCOMPARE(currentDocRevision(), rev);
 }
+
+/*****************************************************************************
+ * Cue list side fader, speed dial extras, widget presets
+ *****************************************************************************/
+
+void ApiVcDomain_Test::liveCueListSideFaderLevel()
+{
+    QString clientId = helloAndGetClientId();
+    QJsonObject cfg;
+    cfg.insert(QStringLiteral("chaserID"), QStringLiteral("5"));
+    cfg.insert(QStringLiteral("sideFaderMode"), QStringLiteral("Crossfade"));
+    QString cueId = createWidget(QStringLiteral("CueList"), cfg);
+    QString noneId = createWidget(QStringLiteral("CueList"));
+    QString buttonId = createWidget(QStringLiteral("Button"));
+    int rev = currentDocRevision();
+
+    // Seed state: the fake starts at VCCueList's default level of 100
+    QJsonObject get = sendAndWaitForReply(QStringLiteral("vc.widget.get"), widgetParams(cueId), QStringLiteral("t-sf0"));
+    QCOMPARE(get.value(QStringLiteral("result")).toObject().value(QStringLiteral("sideFaderLevel")).toInt(), 100);
+
+    QSignalSpy spy(m_client, &QWebSocket::textMessageReceived);
+    QJsonObject lvl; lvl.insert(QStringLiteral("level"), 40);
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("vc.cueList.setSideFaderLevel"), widgetParams(cueId, lvl), QStringLiteral("t-sf1"));
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QVERIFY(reply.value(QStringLiteral("result")).toObject().isEmpty());
+
+    QList<QJsonObject> events = eventsWithTopic(spy, QStringLiteral("vc.cueList.sideFaderChanged"));
+    QCOMPARE(events.size(), 1);
+    QCOMPARE(events.at(0).value(QStringLiteral("widgetId")).toString(), cueId);
+    QCOMPARE(events.at(0).value(QStringLiteral("level")).toInt(), 40);
+    QVERIFY(events.at(0).contains(QStringLiteral("nextStepIndex")));
+    QVERIFY(events.at(0).contains(QStringLiteral("primaryTop")));
+    QCOMPARE(events.at(0).value(QStringLiteral("_origin")).toString(), clientId);
+
+    get = sendAndWaitForReply(QStringLiteral("vc.widget.get"), widgetParams(cueId), QStringLiteral("t-sf2"));
+    QCOMPARE(get.value(QStringLiteral("result")).toObject().value(QStringLiteral("sideFaderLevel")).toInt(), 40);
+
+    // Same value again -> ack, no second event
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("vc.cueList.setSideFaderLevel"), widgetParams(cueId, lvl), QStringLiteral("t-sf3")).value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(eventsWithTopic(spy, QStringLiteral("vc.cueList.sideFaderChanged")).size(), 1);
+
+    // Crossfade confines to 0..100 (the on-screen fader's range in that mode)
+    QJsonObject big; big.insert(QStringLiteral("level"), 200);
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("vc.cueList.setSideFaderLevel"), widgetParams(cueId, big), QStringLiteral("t-sf4")).value(QStringLiteral("ok")).toBool(), true);
+    events = eventsWithTopic(spy, QStringLiteral("vc.cueList.sideFaderChanged"));
+    QCOMPARE(events.size(), 2);
+    QCOMPARE(events.at(1).value(QStringLiteral("level")).toInt(), 100);
+
+    // Validation: out of range / non-integer / missing -> INVALID_PARAMS; wrong type; unknown widget
+    QJsonObject neg; neg.insert(QStringLiteral("level"), -1);
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.cueList.setSideFaderLevel"), widgetParams(cueId, neg), QStringLiteral("t-sfn"))), QStringLiteral("INVALID_PARAMS"));
+    QJsonObject over; over.insert(QStringLiteral("level"), 256);
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.cueList.setSideFaderLevel"), widgetParams(cueId, over), QStringLiteral("t-sfo"))), QStringLiteral("INVALID_PARAMS"));
+    QJsonObject str; str.insert(QStringLiteral("level"), QStringLiteral("40"));
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.cueList.setSideFaderLevel"), widgetParams(cueId, str), QStringLiteral("t-sfs"))), QStringLiteral("INVALID_PARAMS"));
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.cueList.setSideFaderLevel"), widgetParams(cueId), QStringLiteral("t-sfm"))), QStringLiteral("INVALID_PARAMS"));
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.cueList.setSideFaderLevel"), widgetParams(buttonId, lvl), QStringLiteral("t-sfwt"))), QStringLiteral("INVALID_PARAMS"));
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.cueList.setSideFaderLevel"), widgetParams(QStringLiteral("888"), lvl), QStringLiteral("t-sfnf"))), QStringLiteral("NOT_FOUND"));
+
+    // No side fader (mode None) -> INVALID_STATE
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.cueList.setSideFaderLevel"), widgetParams(noneId, lvl), QStringLiteral("t-sfnone"))), QStringLiteral("INVALID_STATE"));
+
+    // Live: docRevision untouched
+    QCOMPARE(currentDocRevision(), rev);
+}
+
+void ApiVcDomain_Test::liveSpeedDialFactorApplyAndResetTap()
+{
+    QString clientId = helloAndGetClientId();
+    QString dialId = createWidget(QStringLiteral("Speed"));
+    QString buttonId = createWidget(QStringLiteral("Button"));
+    int rev = currentDocRevision();
+
+    // Seed state
+    QJsonObject get = sendAndWaitForReply(QStringLiteral("vc.widget.get"), widgetParams(dialId), QStringLiteral("t-fa0"));
+    QCOMPARE(get.value(QStringLiteral("result")).toObject().value(QStringLiteral("factor")).toString(), QStringLiteral("One"));
+    QCOMPARE(get.value(QStringLiteral("result")).toObject().value(QStringLiteral("tapTimeValue")).toInt(), 0);
+
+    QSignalSpy spy(m_client, &QWebSocket::textMessageReceived);
+
+    // --- setFactor ---
+    QJsonObject f; f.insert(QStringLiteral("factor"), QStringLiteral("Half"));
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("vc.speedDial.setFactor"), widgetParams(dialId, f), QStringLiteral("t-fa1"));
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QList<QJsonObject> events = eventsWithTopic(spy, QStringLiteral("vc.speedDial.factorChanged"));
+    QCOMPARE(events.size(), 1);
+    QCOMPARE(events.at(0).value(QStringLiteral("widgetId")).toString(), dialId);
+    QCOMPARE(events.at(0).value(QStringLiteral("factor")).toString(), QStringLiteral("Half"));
+    QCOMPARE(events.at(0).value(QStringLiteral("_origin")).toString(), clientId);
+
+    get = sendAndWaitForReply(QStringLiteral("vc.widget.get"), widgetParams(dialId), QStringLiteral("t-fa2"));
+    QCOMPARE(get.value(QStringLiteral("result")).toObject().value(QStringLiteral("factor")).toString(), QStringLiteral("Half"));
+
+    // Same factor again -> no event; None/Zero/garbage -> INVALID_PARAMS; wrong type; unknown widget
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("vc.speedDial.setFactor"), widgetParams(dialId, f), QStringLiteral("t-fa3")).value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(eventsWithTopic(spy, QStringLiteral("vc.speedDial.factorChanged")).size(), 1);
+    for (const QString &bad : { QStringLiteral("None"), QStringLiteral("Zero"), QStringLiteral("Double"), QString() })
+    {
+        QJsonObject b; b.insert(QStringLiteral("factor"), bad);
+        QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.speedDial.setFactor"), widgetParams(dialId, b), QStringLiteral("t-fab-") + bad)), QStringLiteral("INVALID_PARAMS"));
+    }
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.speedDial.setFactor"), widgetParams(buttonId, f), QStringLiteral("t-fawt"))), QStringLiteral("INVALID_PARAMS"));
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.speedDial.setFactor"), widgetParams(QStringLiteral("888"), f), QStringLiteral("t-fanf"))), QStringLiteral("NOT_FOUND"));
+
+    // --- apply: bare ack, nothing observable on the fake ---
+    reply = sendAndWaitForReply(QStringLiteral("vc.speedDial.apply"), widgetParams(dialId), QStringLiteral("t-ap1"));
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QVERIFY(reply.value(QStringLiteral("result")).toObject().isEmpty());
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.speedDial.apply"), widgetParams(buttonId), QStringLiteral("t-apwt"))), QStringLiteral("INVALID_PARAMS"));
+
+    // --- tap twice -> tapChanged with the interval; resetTap -> tapChanged with 0 ---
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("vc.speedDial.tap"), widgetParams(dialId), QStringLiteral("t-tp1")).value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(eventsWithTopic(spy, QStringLiteral("vc.speedDial.tapChanged")).size(), 0);
+    QTest::qWait(60);
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("vc.speedDial.tap"), widgetParams(dialId), QStringLiteral("t-tp2")).value(QStringLiteral("ok")).toBool(), true);
+    events = eventsWithTopic(spy, QStringLiteral("vc.speedDial.tapChanged"));
+    QCOMPARE(events.size(), 1);
+    int tapped = events.at(0).value(QStringLiteral("tapTimeValue")).toInt();
+    QVERIFY2(tapped > 0 && tapped < 1500, qPrintable(QString::number(tapped)));
+    QCOMPARE(events.at(0).value(QStringLiteral("currentTimeMs")).toInt(), tapped);
+    QCOMPARE(events.at(0).value(QStringLiteral("_origin")).toString(), clientId);
+
+    get = sendAndWaitForReply(QStringLiteral("vc.widget.get"), widgetParams(dialId), QStringLiteral("t-tp3"));
+    QCOMPARE(get.value(QStringLiteral("result")).toObject().value(QStringLiteral("tapTimeValue")).toInt(), tapped);
+
+    reply = sendAndWaitForReply(QStringLiteral("vc.speedDial.resetTap"), widgetParams(dialId), QStringLiteral("t-rt1"));
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    events = eventsWithTopic(spy, QStringLiteral("vc.speedDial.tapChanged"));
+    QCOMPARE(events.size(), 2);
+    QCOMPARE(events.at(1).value(QStringLiteral("tapTimeValue")).toInt(), 0);
+    QCOMPARE(events.at(1).value(QStringLiteral("currentTimeMs")).toInt(), tapped);
+
+    // A second reset changes nothing -> no event
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("vc.speedDial.resetTap"), widgetParams(dialId), QStringLiteral("t-rt2")).value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(eventsWithTopic(spy, QStringLiteral("vc.speedDial.tapChanged")).size(), 2);
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.speedDial.resetTap"), widgetParams(buttonId), QStringLiteral("t-rtwt"))), QStringLiteral("INVALID_PARAMS"));
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.speedDial.resetTap"), widgetParams(QStringLiteral("888")), QStringLiteral("t-rtnf"))), QStringLiteral("NOT_FOUND"));
+
+    // Live: docRevision untouched
+    QCOMPARE(currentDocRevision(), rev);
+}
+
+void ApiVcDomain_Test::widgetPresetAddUpdateApplyRemove()
+{
+    QString clientId = helloAndGetClientId();
+    QString dialId = createWidget(QStringLiteral("Speed"));
+    int rev = currentDocRevision();
+
+    // Starts empty, and the read-only list rides along inside typeConfig
+    QJsonObject get = sendAndWaitForReply(QStringLiteral("vc.widget.get"), widgetParams(dialId), QStringLiteral("t-pr0"));
+    QVERIFY(get.value(QStringLiteral("result")).toObject().value(QStringLiteral("typeConfig")).toObject().value(QStringLiteral("presets")).toArray().isEmpty());
+
+    QSignalSpy spy(m_client, &QWebSocket::textMessageReceived);
+
+    // --- add ---
+    QJsonObject preset; preset.insert(QStringLiteral("name"), QStringLiteral("Slow")); preset.insert(QStringLiteral("valueMs"), 2000);
+    QJsonObject addParams = widgetParams(dialId);
+    addParams.insert(QStringLiteral("baseRevision"), rev);
+    addParams.insert(QStringLiteral("preset"), preset);
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("vc.widget.preset.add"), addParams, QStringLiteral("t-pr1"));
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    int presetId = reply.value(QStringLiteral("result")).toObject().value(QStringLiteral("presetId")).toInt(-1);
+    QVERIFY(presetId >= 0);
+    int revAfterAdd = reply.value(QStringLiteral("result")).toObject().value(QStringLiteral("docRevision")).toInt();
+    QVERIFY(revAfterAdd > rev);
+
+    QList<QJsonObject> events = eventsWithTopic(spy, QStringLiteral("vc.speedDial.presetsChanged"));
+    QCOMPARE(events.size(), 1);
+    QCOMPARE(events.at(0).value(QStringLiteral("widgetId")).toString(), dialId);
+    QCOMPARE(events.at(0).value(QStringLiteral("docRevision")).toInt(), revAfterAdd);
+    QCOMPARE(events.at(0).value(QStringLiteral("_origin")).toString(), clientId);
+    QJsonArray presets = events.at(0).value(QStringLiteral("presets")).toArray();
+    QCOMPARE(presets.size(), 1);
+    QCOMPARE(presets.at(0).toObject().value(QStringLiteral("presetId")).toInt(), presetId);
+    QCOMPARE(presets.at(0).toObject().value(QStringLiteral("name")).toString(), QStringLiteral("Slow"));
+    QCOMPARE(presets.at(0).toObject().value(QStringLiteral("valueMs")).toInt(), 2000);
+
+    // Stale baseRevision -> CONFLICT with the current revision in details; bad payload -> INVALID_PARAMS
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.widget.preset.add"), addParams, QStringLiteral("t-pr2"))), QStringLiteral("CONFLICT"));
+    QJsonObject badParams = widgetParams(dialId);
+    badParams.insert(QStringLiteral("baseRevision"), revAfterAdd);
+    QJsonObject noName; noName.insert(QStringLiteral("valueMs"), 10);
+    badParams.insert(QStringLiteral("preset"), noName);
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.widget.preset.add"), badParams, QStringLiteral("t-pr3"))), QStringLiteral("INVALID_PARAMS"));
+    badParams.insert(QStringLiteral("preset"), QStringLiteral("not an object"));
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.widget.preset.add"), badParams, QStringLiteral("t-pr4"))), QStringLiteral("INVALID_PARAMS"));
+    QCOMPARE(currentDocRevision(), revAfterAdd);
+
+    // --- update (vc.speedDial.preset.update) ---
+    QJsonObject upd = widgetParams(dialId);
+    upd.insert(QStringLiteral("baseRevision"), revAfterAdd);
+    upd.insert(QStringLiteral("presetId"), presetId);
+    upd.insert(QStringLiteral("name"), QStringLiteral("Slower"));
+    upd.insert(QStringLiteral("valueMs"), 3000);
+    reply = sendAndWaitForReply(QStringLiteral("vc.speedDial.preset.update"), upd, QStringLiteral("t-pu1"));
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    int revAfterUpdate = reply.value(QStringLiteral("result")).toObject().value(QStringLiteral("docRevision")).toInt();
+    QVERIFY(revAfterUpdate > revAfterAdd);
+    events = eventsWithTopic(spy, QStringLiteral("vc.speedDial.presetsChanged"));
+    QCOMPARE(events.size(), 2);
+    presets = events.at(1).value(QStringLiteral("presets")).toArray();
+    QCOMPARE(presets.at(0).toObject().value(QStringLiteral("name")).toString(), QStringLiteral("Slower"));
+    QCOMPARE(presets.at(0).toObject().value(QStringLiteral("valueMs")).toInt(), 3000);
+
+    get = sendAndWaitForReply(QStringLiteral("vc.widget.get"), widgetParams(dialId), QStringLiteral("t-pu2"));
+    presets = get.value(QStringLiteral("result")).toObject().value(QStringLiteral("typeConfig")).toObject().value(QStringLiteral("presets")).toArray();
+    QCOMPARE(presets.size(), 1);
+    QCOMPARE(presets.at(0).toObject().value(QStringLiteral("valueMs")).toInt(), 3000);
+
+    // update validation: unknown preset -> NOT_FOUND; nothing to change / empty name -> INVALID_PARAMS
+    QJsonObject updBad = widgetParams(dialId);
+    updBad.insert(QStringLiteral("baseRevision"), revAfterUpdate);
+    updBad.insert(QStringLiteral("presetId"), 999);
+    updBad.insert(QStringLiteral("name"), QStringLiteral("x"));
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.speedDial.preset.update"), updBad, QStringLiteral("t-pu3"))), QStringLiteral("NOT_FOUND"));
+    updBad.insert(QStringLiteral("presetId"), presetId);
+    updBad.remove(QStringLiteral("name"));
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.speedDial.preset.update"), updBad, QStringLiteral("t-pu4"))), QStringLiteral("INVALID_PARAMS"));
+    updBad.insert(QStringLiteral("name"), QString());
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.speedDial.preset.update"), updBad, QStringLiteral("t-pu5"))), QStringLiteral("INVALID_PARAMS"));
+
+    // --- apply (live): Speed -> currentTime = preset value -> vc.speedDial.valueChanged, no revision bump ---
+    QJsonObject ap = widgetParams(dialId);
+    ap.insert(QStringLiteral("presetId"), presetId);
+    reply = sendAndWaitForReply(QStringLiteral("vc.widget.preset.apply"), ap, QStringLiteral("t-pa1"));
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QVERIFY(reply.value(QStringLiteral("result")).toObject().isEmpty());
+    events = eventsWithTopic(spy, QStringLiteral("vc.speedDial.valueChanged"));
+    QCOMPARE(events.size(), 1);
+    QCOMPARE(events.at(0).value(QStringLiteral("ms")).toInt(), 3000);
+    QCOMPARE(events.at(0).value(QStringLiteral("_origin")).toString(), clientId);
+    QCOMPARE(currentDocRevision(), revAfterUpdate);
+    ap.insert(QStringLiteral("presetId"), 999);
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.widget.preset.apply"), ap, QStringLiteral("t-pa2"))), QStringLiteral("NOT_FOUND"));
+
+    // Disabled widget refuses apply like every other live method
+    QJsonObject dis = widgetParams(dialId);
+    dis.insert(QStringLiteral("baseRevision"), revAfterUpdate);
+    dis.insert(QStringLiteral("isDisabled"), true);
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("vc.widget.update"), dis, QStringLiteral("t-pa3")).value(QStringLiteral("ok")).toBool(), true);
+    ap.insert(QStringLiteral("presetId"), presetId);
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.widget.preset.apply"), ap, QStringLiteral("t-pa4"))), QStringLiteral("INVALID_STATE"));
+    int revNow = currentDocRevision();
+
+    // --- remove ---
+    QJsonObject rm = widgetParams(dialId);
+    rm.insert(QStringLiteral("baseRevision"), revNow);
+    rm.insert(QStringLiteral("presetId"), 999);
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.widget.preset.remove"), rm, QStringLiteral("t-pm1"))), QStringLiteral("NOT_FOUND"));
+    rm.insert(QStringLiteral("presetId"), presetId);
+    reply = sendAndWaitForReply(QStringLiteral("vc.widget.preset.remove"), rm, QStringLiteral("t-pm2"));
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QVERIFY(reply.value(QStringLiteral("result")).toObject().value(QStringLiteral("docRevision")).toInt() > revNow);
+    events = eventsWithTopic(spy, QStringLiteral("vc.speedDial.presetsChanged"));
+    QCOMPARE(events.size(), 3);
+    QVERIFY(events.at(2).value(QStringLiteral("presets")).toArray().isEmpty());
+    // Stale now
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.widget.preset.remove"), rm, QStringLiteral("t-pm3"))), QStringLiteral("CONFLICT"));
+}
+
+void ApiVcDomain_Test::widgetPresetRejectsWidgetsWithoutPresets()
+{
+    helloAndGetClientId();
+    QString buttonId = createWidget(QStringLiteral("Button"));
+    QString padId = createWidget(QStringLiteral("XYPad"));
+    int rev = currentDocRevision();
+
+    QJsonObject preset; preset.insert(QStringLiteral("name"), QStringLiteral("x")); preset.insert(QStringLiteral("valueMs"), 1);
+    QJsonObject p = widgetParams(buttonId);
+    p.insert(QStringLiteral("baseRevision"), rev);
+    p.insert(QStringLiteral("preset"), preset);
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("vc.widget.preset.add"), p, QStringLiteral("t-np1"));
+    QCOMPARE(errorCode(reply), QStringLiteral("INVALID_PARAMS"));
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("details")).toObject().value(QStringLiteral("widgetType")).toString(), QStringLiteral("Button"));
+    p.insert(QStringLiteral("presetId"), 16);
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.widget.preset.remove"), p, QStringLiteral("t-np2"))), QStringLiteral("INVALID_PARAMS"));
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.widget.preset.apply"), p, QStringLiteral("t-np3"))), QStringLiteral("INVALID_PARAMS"));
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.speedDial.preset.update"), p, QStringLiteral("t-np4"))), QStringLiteral("INVALID_PARAMS"));
+
+    // vc.speedDial.preset.update is Speed-only even though XYPad has presets
+    QJsonObject xp = widgetParams(padId);
+    xp.insert(QStringLiteral("baseRevision"), rev);
+    xp.insert(QStringLiteral("presetId"), 16);
+    xp.insert(QStringLiteral("name"), QStringLiteral("x"));
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.speedDial.preset.update"), xp, QStringLiteral("t-np5"))), QStringLiteral("INVALID_PARAMS"));
+
+    // Unknown widget -> NOT_FOUND
+    QJsonObject nf = widgetParams(QStringLiteral("888"));
+    nf.insert(QStringLiteral("baseRevision"), rev);
+    nf.insert(QStringLiteral("preset"), preset);
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.widget.preset.add"), nf, QStringLiteral("t-np6"))), QStringLiteral("NOT_FOUND"));
+
+    QCOMPARE(currentDocRevision(), rev);
+}

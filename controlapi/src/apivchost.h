@@ -54,6 +54,22 @@ public:
     virtual void vcXyPadPositionChanged(quint32 widgetId, double x, double y) = 0;
     virtual void vcSpeedDialValueChanged(quint32 widgetId, int ms) = 0;
     virtual void vcFramePageChanged(quint32 widgetId, int page) = 0;
+
+    // --- Cue List side fader / Speed Dial extras (vc.cueList.sideFaderChanged, vc.speedDial.factorChanged,
+    // vc.speedDial.tapChanged) ---
+
+    /** VCCueList::sideFaderLevel() changed, or the crossfade bookkeeping it displays did (nextStepIndex /
+     *  primaryTop - the step the fader's other end points at, and whether the current step sits at the
+     *  top of the fader). $level is 0..100 in Crossfade mode, 0..255 in Steps mode. */
+    virtual void vcCueListSideFaderChanged(quint32 widgetId, int level, int nextStepIndex, bool primaryTop) = 0;
+
+    /** VCSpeedDial::currentFactor() changed; $factor is the VcSpeedDialMultiplier wire spelling
+     *  ("OneSixteenth".."Sixteen"). */
+    virtual void vcSpeedDialFactorChanged(quint32 widgetId, const QString &factor) = 0;
+
+    /** VCSpeedDial::tapTimeValue() changed: $tapTimeValue is the tap interval in ms (0 = no tap series
+     *  running), $currentTimeMs the dial's currentTime() at that moment. */
+    virtual void vcSpeedDialTapChanged(quint32 widgetId, int tapTimeValue, int currentTimeMs) = 0;
 };
 
 /**
@@ -251,6 +267,59 @@ public:
     /** vc.frame.get - {pages, currentPage, multipage}. */
     virtual QJsonObject vcFrameSnapshot(quint32 id) const = 0;
 
+    /*********************************************************************
+     * Cue List side fader / Speed Dial extras (live, §4b)
+     *
+     * Same caller contract as the live methods above: the widget exists and has the matching wire type
+     * ("CueList" / "Speed"); changes are reported through the ApiVcLiveListener.
+     *********************************************************************/
+
+    /** vc.cueList.setSideFaderLevel - VCCueList::setSideFaderLevel(). $level has been validated to
+     *  0..255 by the caller; the host confines it to the mode's own range (0..100 in Crossfade mode)
+     *  the way the on-screen fader does, and returns false (INVALID_STATE) while sideFaderMode is
+     *  None (the fader is hidden then). */
+    virtual bool vcCueListSetSideFaderLevel(quint32 id, int level, QString *error) = 0;
+
+    /** vc.speedDial.setFactor - VCSpeedDial::setCurrentFactor(). $factor is a VcSpeedDialMultiplier
+     *  wire string already validated by the caller to be one of OneSixteenth..Sixteen. */
+    virtual bool vcSpeedDialSetFactor(quint32 id, const QString &factor, QString *error) = 0;
+
+    /** vc.speedDial.apply - VCSpeedDial::applyFunctionsTime(enqueue=true), the "Apply" button. */
+    virtual bool vcSpeedDialApply(quint32 id, QString *error) = 0;
+
+    /** vc.speedDial.resetTap - VCSpeedDial::resetTap(). */
+    virtual bool vcSpeedDialResetTap(quint32 id, QString *error) = 0;
+
+    /*********************************************************************
+     * Widget presets (vc.widget.preset.add/remove are §4a, vc.widget.preset.apply is §4b)
+     *
+     * Presets exist on Speed, XYPad and Animation widgets only (VCWidget::supportsPresets()); the
+     * host dispatches on the widget's type and the preset payload shape follows the spec's
+     * VcSpeedDialPreset(Data) / VcXyPadPreset(Data) / VcAnimationPreset(Data). The caller checks
+     * vcWidgetSupportsPresets() first and resolves "no such preset" itself via vcWidgetPresets().
+     *********************************************************************/
+
+    /** True if $id exists and its type keeps a preset list. */
+    virtual bool vcWidgetSupportsPresets(quint32 id) const = 0;
+
+    /** The widget's full preset list in its type's Vc<Type>Preset shape (each entry carries a stable
+     *  integer presetId), in display order. Empty for a widget without presets. */
+    virtual QJsonArray vcWidgetPresets(quint32 id) const = 0;
+
+    /** Adds a preset built from $preset (the type's Vc<Type>PresetData) and returns its new presetId,
+     *  or -1 with *$error set when the payload is invalid for this widget type. */
+    virtual int vcWidgetPresetAdd(quint32 id, const QJsonObject &preset, QString *error) = 0;
+
+    /** Removes the preset $presetId (already known to exist). */
+    virtual bool vcWidgetPresetRemove(quint32 id, int presetId, QString *error) = 0;
+
+    /** Live activation of preset $presetId (already known to exist): Speed sets currentTime to the
+     *  preset's value (reported as vc.speedDial.valueChanged), XYPad/Animation call their applyPreset(). */
+    virtual bool vcWidgetPresetApply(quint32 id, int presetId, QString *error) = 0;
+
+    /** vc.speedDial.preset.update - applies whichever of "name" / "valueMs" are present in $patch to
+     *  the Speed widget's preset $presetId (already known to exist). */
+    virtual bool vcSpeedDialPresetUpdate(quint32 id, int presetId, const QJsonObject &patch, QString *error) = 0;
     /*********************************************************************
      * Widgets - layout / configuration slice (ApiVcLayoutDomain,
      * controlapi/src/domains/apivclayoutdomain.cpp)

@@ -50,8 +50,11 @@ public:
     /** @reimp */
     QString pluginInfo() const override;
 
-    /** Find out what kinds of widgets there are currently connected */
-    bool rescanWidgets();
+    /** Find out what kinds of widgets there are currently connected.
+     *  Q_INVOKABLE so the Control API's io.plugin.rescan can reach it by
+     *  name (QMetaObject) without adding a virtual to the plugin interface
+     *  (which would break already-deployed plugin DLLs). */
+    Q_INVOKABLE bool rescanWidgets();
 
     /** Get currently connected widgets (input & output) */
     QList <DMXUSBWidget*> widgets() const;

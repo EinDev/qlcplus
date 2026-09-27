@@ -1018,8 +1018,24 @@ QDir InputOutputMap::systemProfileDirectory()
 
 QDir InputOutputMap::userProfileDirectory()
 {
-    return QLCFile::userDirectory(QString(USERINPUTPROFILEDIR), QString(INPUTPROFILEDIR),
-                                  QStringList() << QString("*%1").arg(KExtInputProfile));
+    QStringList filters = QStringList() << QString("*%1").arg(KExtInputProfile);
+
+    // Test/sandbox override: a throwaway instance (dev-webui-sandbox.ps1) or a
+    // unit test saving/deleting profiles through the Control API must never
+    // touch the real per-user profile folder of whoever runs it. Created on
+    // demand, exactly like QLCFile::userDirectory() does for the default.
+    QString override = qEnvironmentVariable(USER_INPUTPROFILE_DIR_ENV);
+    if (override.isEmpty() == false)
+    {
+        QDir dir(override);
+        if (dir.exists() == false)
+            dir.mkpath(".");
+        dir.setFilter(QDir::Files);
+        dir.setNameFilters(filters);
+        return dir;
+    }
+
+    return QLCFile::userDirectory(QString(USERINPUTPROFILEDIR), QString(INPUTPROFILEDIR), filters);
 }
 
 /*********************************************************************
