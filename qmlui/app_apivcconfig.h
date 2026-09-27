@@ -18,6 +18,7 @@
 #ifndef APP_APIVCCONFIG_H
 #define APP_APIVCCONFIG_H
 
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QString>
 
@@ -58,11 +59,14 @@ namespace ApiVcConfig
     bool applyLabelConfig(VCWidget *w, const QJsonObject &patch, QString *error);
 
     // ---- app_apivcconfig_cue.cpp ----
+    // These two take the Doc as well: attaching a Chaser / listing controlled Functions has to check
+    // the Function ids exist (and are Chasers) before touching the widget, since VCCueList::
+    // setChaserID() silently detaches on an unknown id.
     QJsonObject cueListConfigToJson(VCWidget *w);
-    bool applyCueListConfig(VCWidget *w, const QJsonObject &patch, QString *error);
+    bool applyCueListConfig(VCWidget *w, Doc *doc, const QJsonObject &patch, QString *error);
 
     QJsonObject speedDialConfigToJson(VCWidget *w);
-    bool applySpeedDialConfig(VCWidget *w, const QJsonObject &patch, QString *error);
+    bool applySpeedDialConfig(VCWidget *w, Doc *doc, const QJsonObject &patch, QString *error);
 
     // ---- app_apivcconfig_live.cpp ----
     QJsonObject xyPadConfigToJson(VCWidget *w);
@@ -76,6 +80,44 @@ namespace ApiVcConfig
 
     QJsonObject audioTriggersConfigToJson(VCWidget *w);
     bool applyAudioTriggersConfig(VCWidget *w, const QJsonObject &patch, QString *error);
+
+    /**
+     * Widget presets (vc.widget.preset.add/apply/remove, vc.speedDial.preset.update) for the three
+     * preset-capable widget types (VCWidget::supportsPresets(): Speed, XYPad, Animation). App's
+     * vcWidgetPreset*() (app_apivchost_cue.cpp) dispatches on the widget type into these:
+     *  - `<type>PresetsToJson(w)` - the widget's full preset list in display order, one object per
+     *    preset in the spec's Vc<Type>Preset shape (always carrying an integer `presetId`).
+     *  - `add<Type>Preset(w, data, error)` - validates `data` against Vc<Type>PresetData, adds the
+     *    preset and returns its new id, or -1 with `error` set (nothing added).
+     *  - `remove<Type>Preset(w, presetId, error)` / `apply<Type>Preset(w, presetId, error)` - the
+     *    preset is known to exist; apply is the live activation (Speed: currentTime = preset value,
+     *    XYPad/Animation: their applyPreset()).
+     * Same file ownership as the config functions above: Speed in app_apivcconfig_cue.cpp, XYPad and
+     * Animation in app_apivcconfig_live.cpp.
+     */
+    // ---- app_apivcconfig_cue.cpp ----
+    QJsonArray speedDialPresetsToJson(VCWidget *w);
+    int addSpeedDialPreset(VCWidget *w, const QJsonObject &data, QString *error);
+    bool removeSpeedDialPreset(VCWidget *w, int presetId, QString *error);
+    bool applySpeedDialPreset(VCWidget *w, int presetId, QString *error);
+    /** vc.speedDial.preset.update: applies whichever of "name" / "valueMs" are in $patch. */
+    bool updateSpeedDialPreset(VCWidget *w, int presetId, const QJsonObject &patch, QString *error);
+
+    /** VcSpeedDialMultiplier wire spelling <-> VCSpeedDial::SpeedMultiplier (as int); the name lookup
+     *  returns -1 for an unknown spelling. Shared by the live factor relay/setter in app_apivchost*.cpp. */
+    QString speedDialMultiplierName(int factor);
+    int speedDialMultiplierFromName(const QString &name);
+
+    // ---- app_apivcconfig_live.cpp ----
+    QJsonArray xyPadPresetsToJson(VCWidget *w);
+    int addXyPadPreset(VCWidget *w, const QJsonObject &data, QString *error);
+    bool removeXyPadPreset(VCWidget *w, int presetId, QString *error);
+    bool applyXyPadPreset(VCWidget *w, int presetId, QString *error);
+
+    QJsonArray animationPresetsToJson(VCWidget *w);
+    int addAnimationPreset(VCWidget *w, const QJsonObject &data, QString *error);
+    bool removeAnimationPreset(VCWidget *w, int presetId, QString *error);
+    bool applyAnimationPreset(VCWidget *w, int presetId, QString *error);
 }
 
 #endif
