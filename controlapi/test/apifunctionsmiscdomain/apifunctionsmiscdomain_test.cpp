@@ -265,6 +265,13 @@ void ApiFunctionsMiscDomain_Test::chaserSetActionValidates()
     p.insert(QStringLiteral("stepIndex"), 1);
     QVERIFY(isOk(call(QStringLiteral("functions.chaser.setAction"), p)));
 
+    // the runner's currentStepChanged is relayed as functions.chaser.currentStepChanged
+    QSignalSpy spy(m_client, &QWebSocket::textMessageReceived);
+    emit chaser->currentStepChanged(1);
+    QJsonObject ev = waitForEvent(spy, QStringLiteral("functions.chaser.currentStepChanged"));
+    QCOMPARE(ev.value(QStringLiteral("functionId")).toString(), sid(chaser->id()));
+    QCOMPARE(ev.value(QStringLiteral("stepIndex")).toInt(), 1);
+
     p.insert(QStringLiteral("action"), QStringLiteral("jump"));
     QCOMPARE(errorCode(call(QStringLiteral("functions.chaser.setAction"), p)), QStringLiteral("INVALID_PARAMS"));
     p.insert(QStringLiteral("functionId"), sid(a->id()));
@@ -651,11 +658,12 @@ void ApiFunctionsMiscDomain_Test::videoVolumeMuteSpoutSize()
 
     QJsonObject p;
     p.insert(QStringLiteral("functionId"), sid(video->id()));
-    p.insert(QStringLiteral("volume"), 0.3);
+    // 0-100, the Video Volume attribute's own range
+    p.insert(QStringLiteral("volume"), 30);
     QVERIFY(isOk(callRev(QStringLiteral("functions.video.setVolume"), p)));
-    QCOMPARE(video->volume(), 0.3);
-    QVERIFY(waitForEvent(spy, QStringLiteral("functions.video.volumeChanged")).isEmpty() == false);
-    p.insert(QStringLiteral("volume"), 1.5);
+    QCOMPARE(video->volume(), 30.0);
+    QCOMPARE(waitForEvent(spy, QStringLiteral("functions.video.volumeChanged")).value(QStringLiteral("volume")).toDouble(), 30.0);
+    p.insert(QStringLiteral("volume"), 150);
     QCOMPARE(errorCode(callRev(QStringLiteral("functions.video.setVolume"), p)), QStringLiteral("INVALID_PARAMS"));
 
     p.remove(QStringLiteral("volume"));

@@ -374,7 +374,28 @@
         </div>
         <div style={{ width: 300, flex: 'none', borderLeft: 'var(--border-dark)', padding: 10, overflow: 'auto' }}>
           <FF.TimingEditor qlc={qlc} detail={detail} setDetail={setDetail} reload={reload} />
+          <SaveToSequence qlc={qlc} fid={fid} hasGroup={!!(detail.typeDetail && detail.typeDetail.config && detail.typeDetail.config.fixtureGroupId != null)} />
         </div>
+      </div>
+    );
+  }
+
+  /** RGBMatrixEditor.qml "Save this matrix to a Sequence" (functions.rgbmatrix.saveToSequence). */
+  function SaveToSequence({ qlc, fid, hasGroup }) {
+    const { GenericButton } = window.PatchDesignSystem_5432c9;
+    const [msg, setMsg] = React.useState('');
+    const save = () => {
+      setMsg('Saving…');
+      FF.mutate(qlc, 'functions.rgbmatrix.saveToSequence', { functionId: fid })
+        .then(r => setMsg('Created a Sequence with ' + r.stepsCount + ' steps (function ' + r.sequenceId + ')'))
+        .catch(e => setMsg((e && e.message) || 'failed'));
+    };
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 10 }}>
+        <FF.Heading text="Sequence" />
+        <GenericButton label="Save to Sequence" width={150} height={26} disabled={!hasGroup} onClick={save}
+          tooltip="Render every step of this matrix into a new Sequence (and a hidden Scene of the group's channels)" />
+        {msg ? <RobotoText label={msg} fontSize={12} labelColor="var(--fg-light)" wrapText height="auto" data-e2e="rgb-save-seq-msg" /> : null}
       </div>
     );
   }

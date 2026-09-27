@@ -64,7 +64,11 @@
          * @returns {Promise<object>} result - {docRevision: integer}
          * @see docs/api-spec/fragments/functions-advanced.yaml (method: functions.audio.setVolume)
          */
-        setVolume: function (params) { return self.call('functions.audio.setVolume', params); }
+        setVolume: function (params) { return self.call('functions.audio.setVolume', params); },
+        /** {functionId, muted: bool, baseRevision} -> {docRevision}; broadcasts functions.audio.mutedChanged */
+        setMuted: function (params) { return self.call('functions.audio.setMuted', params); },
+        /** {functionId} -> {bpm: {state, value, confidence}}; the result follows as functions.audio.bpmChanged */
+        detectBpm: function (params) { return self.call('functions.audio.detectBpm', params); }
       },
 
       media: {
@@ -77,7 +81,13 @@
          * @returns {Promise<object>} result - the refreshed Audio/Video typeDetail + {status: 'reloaded'|'unchanged'|'queued'|'missing'|'notManaged', error?: string}
          * @see docs/api-spec/fragments/functions-advanced.yaml (method: functions.media.reload)
          */
-        reload: function (params) { return self.call('functions.media.reload', params); }
+        reload: function (params) { return self.call('functions.media.reload', params); },
+        /** {} -> {storeDir, staging, external: [{path,size}], unused: [{path,size}], changed: [{functionId,name,type,running}]} */
+        status: function (params) { return self.call('functions.media.status', params || {}); },
+        /** {baseRevision} -> {copied, queued, failed, error, storeDir, docRevision}; broadcasts functions.media.collected */
+        collect: function (params) { return self.call('functions.media.collect', params); },
+        /** {files?: string[]} (omitted = all unused) -> {removed, complete, error, unused} */
+        removeUnused: function (params) { return self.call('functions.media.removeUnused', params || {}); }
       },
 
       rgbmatrix: {
@@ -125,7 +135,9 @@
          * @returns {Promise<object>} result - {docRevision: integer}
          * @see docs/api-spec/fragments/functions-advanced.yaml (method: functions.rgbmatrix.setScriptProperty)
          */
-        setScriptProperty: function (params) { return self.call('functions.rgbmatrix.setScriptProperty', params); }
+        setScriptProperty: function (params) { return self.call('functions.rgbmatrix.setScriptProperty', params); },
+        /** {functionId, baseRevision} -> {sequenceId, sceneId, stepsCount, docRevision} */
+        saveToSequence: function (params) { return self.call('functions.rgbmatrix.saveToSequence', params); }
       },
 
       script: {
@@ -379,7 +391,13 @@
          * @returns {Promise<object>} result - {docRevision: integer}
          * @see docs/api-spec/fragments/functions-advanced.yaml (method: functions.video.setSource)
          */
-        setSource: function (params) { return self.call('functions.video.setSource', params); }
+        setSource: function (params) { return self.call('functions.video.setSource', params); },
+        /** {functionId, volume: 0..1, baseRevision} -> {docRevision}; broadcasts functions.video.volumeChanged */
+        setVolume: function (params) { return self.call('functions.video.setVolume', params); },
+        /** {functionId, muted: bool, baseRevision} -> {docRevision}; broadcasts functions.video.mutedChanged */
+        setMuted: function (params) { return self.call('functions.video.setMuted', params); },
+        /** {functionId, width, height (0 = native), baseRevision} -> {docRevision}; broadcasts functions.video.spoutSizeChanged */
+        setSpoutSize: function (params) { return self.call('functions.video.setSpoutSize', params); }
       }
     };
   }
@@ -431,6 +449,12 @@
     // audio + video media store: {functionId, source, managed, origin..., status:'reloaded'} after a
     // managed copy was re-imported (functions.media.reload, the QML editors' Reload button, or a
     // queued background copy landing) — originClientId is always null
-    'functions.media.reloaded'
+    'functions.media.reloaded',
+    'functions.media.collected',
+    'functions.audio.bpmChanged',
+    'functions.audio.mutedChanged',
+    'functions.video.volumeChanged',
+    'functions.video.mutedChanged',
+    'functions.video.spoutSizeChanged'
   ];
 })();

@@ -2814,9 +2814,9 @@ messages:
                 type: string
               minItems: 1
               description: Functions to copy (functionId alone is accepted too).
-            functionId: &id002
+            functionId:
               type: string
-            baseRevision: &id001
+            baseRevision:
               type: integer
   FunctionsCloneResponse:
     payload:
@@ -2849,7 +2849,8 @@ messages:
               items:
                 type: string
               description: The new ids, in request order.
-            docRevision: *id001
+            docRevision:
+              type: integer
   FunctionsUsageRequest:
     payload:
       type: object
@@ -2872,7 +2873,8 @@ messages:
           description: 'UsageList.qml / FunctionManager::usageList() plus the VC side. An unknown id is
             not an error: the lists are simply empty.'
           properties:
-            functionId: *id002
+            functionId:
+              type: string
   FunctionsUsageResponse:
     payload:
       oneOf:
@@ -2912,7 +2914,8 @@ messages:
                 - type
                 - position
                 properties:
-                  functionId: *id002
+                  functionId:
+                    type: string
                   name:
                     type: string
                   type:
@@ -2956,13 +2959,42 @@ messages:
           description: 'Broadcast after functions.adjustAttribute (live, not subscribe-gated: one per adjust
             call).'
           properties:
-            functionId: *id002
+            functionId:
+              type: string
             attributeIndex:
               type: integer
             attributeName:
               type: string
             value:
               type: number
+  FunctionsChaserCurrentStepChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.chaser.currentStepChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - functionId
+          - stepIndex
+          description: 'Live (4b): a running Chaser''s / Sequence''s current step changed (the runner''s
+            currentStepChanged). At most one per step change, not subscribe-gated; originClientId is null.'
+          properties:
+            functionId:
+              type: string
+            stepIndex:
+              type: integer
 schemas:
   FunctionsTypeEnum:
     type: string
@@ -4409,3 +4441,9 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/functionsAttributeChangedEvent'
+  receiveFunctionsChaserCurrentStepChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsChaserCurrentStepChangedEvent'

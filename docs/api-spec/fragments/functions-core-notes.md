@@ -173,3 +173,6 @@ a Show started at 1000 ms is past 1000 ms).
   `functions.start` / `functions.stop` are the parity - no `preview` flag was added.
 - Tests: `controlapi/test/apifunctionsmiscdomain` (18 cases, also covering the media,
   RGB-matrix and palette additions below).
+- NEW event `functions.chaser.currentStepChanged` {functionId, stepIndex}: the runner's
+  currentStepChanged relayed for every Chaser / Sequence (live, at most one per step change,
+  not gated) - how the web editor marks the playing step and confirms next / previous.

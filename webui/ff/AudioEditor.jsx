@@ -6,8 +6,8 @@
  * duration (functions.audio.setDuration), channels / sample rate / bitrate / BPM from the detail,
  * playback mode (functions.update runOrder), output device (functions.audio.setDevice, devices from
  * functions.audio.listCapabilities), volume (functions.audio.setVolume, 0-100 here, 0-1 on the wire),
- * fade in / out (functions.update). Mute and "Detect BPM" have no API method yet and are shown
- * read-only with a note rather than faked.
+ * fade in / out (functions.update), mute (functions.audio.setMuted) and Detect BPM
+ * (functions.audio.detectBpm, the result follows as functions.audio.bpmChanged).
  *
  * Registered as window.QLCEditors.Audio.
  */
@@ -69,6 +69,11 @@
     const setDevice = (id) => { patchCfg({ audioDevice: id }); FF.mutate(qlc, 'functions.audio.setDevice', { functionId: fid, audioDevice: id }).catch(() => reload()); };
     const setSource = (path) => FF.mutate(qlc, 'functions.audio.setSource', { functionId: fid, sourceFileName: path }).then(reload).catch(() => reload());
     const reloadMedia = () => FF.mutate(qlc, 'functions.media.reload', { functionId: fid }).then(reload).catch(() => reload());
+    const setMuted = (m) => { const v = typeof m === 'boolean' ? m : !cfg.muted; patchCfg({ muted: v }); FF.mutate(qlc, 'functions.audio.setMuted', { functionId: fid, muted: v }).catch(() => reload()); };
+    const detectBpm = () => qlc.call('functions.audio.detectBpm', { functionId: fid }).then(r => { if (r && r.bpm) patchCfg({ bpm: r.bpm }); }).catch(e => FF.reportError(e, 'functions.audio.detectBpm'));
+    /* the analysis result arrives later, for this client too */
+    React.useEffect(() => qlc.subscribeTo('functions.audio.bpmChanged', d => { if (d && String(d.functionId) === fid && d.bpm) patchCfg({ bpm: d.bpm }); }), [fid, qlc.online]);
+    FF.useForeignEvents(qlc, ['functions.audio.mutedChanged'], (topic, d) => { if (d && String(d.functionId) === fid) patchCfg({ muted: !!d.muted }); }, [fid]);
     const time = (label, field) => (
       <FF.Row label={label} width={LABEL_W}>
         <FF.InlineNumber value={detail[field] || 0} format={FF.ms} parse={FF.parseMs} onCommit={v => patchFn({ [field]: v })} width={90} title="Click to edit: 500, 1.5s, 2m" />
@@ -97,8 +102,8 @@
         <FF.Row label="Sample rate" width={LABEL_W}>{cfg.sampleRate ? cfg.sampleRate + ' Hz' : '—'}</FF.Row>
         <FF.Row label="Bitrate" width={LABEL_W}>{cfg.bitrate ? cfg.bitrate + ' kb/s' : '—'}</FF.Row>
         <FF.Row label="BPM" width={LABEL_W}>
-          <RobotoText label={bpmLabel} fontSize={14} />
-          <IconButton faSource={FF.GLYPH.rotateLeft} size={22} tooltip="Detect BPM is not available from the web UI (no API method yet)" disabled onClick={() => {}} />
+          <RobotoText label={bpmLabel} fontSize={14} data-e2e="audio-bpm" />
+          <IconButton faSource={FF.GLYPH.rotateLeft} size={22} tooltip="Detect BPM (runs the analysis again; needs the audio decoder plugins on the QLC+ machine)" disabled={bpm.state === 'analyzing'} onClick={detectBpm} />
         </FF.Row>
         <FF.Row label="Playback mode" width={LABEL_W}>
           <FF.Choice options={['SingleShot', 'Loop']} labels={{ SingleShot: 'Single shot', Loop: 'Looped' }} value={detail.runOrder === 'Loop' ? 'Loop' : 'SingleShot'} onChange={v => patchFn({ runOrder: v })} />
@@ -108,12 +113,12 @@
         </FF.Row>
         <FF.Row label="Volume" width={LABEL_W}>
           <CustomSpinBox value={volume} from={0} to={100} suffix="%" width={90} height={24} onValueModified={setVol} />
-          <CustomCheckBox checked={!!cfg.muted} size={22} disabled tooltip="Mute has no API method yet — read-only" onToggled={() => {}} />
-          <RobotoText label="Mute" fontSize={14} labelColor="var(--fg-medium)" />
+          <CustomCheckBox checked={!!cfg.muted} size={22} tooltip="Mute this audio function" onToggled={setMuted} />
+          <RobotoText label="Mute" fontSize={14} />
         </FF.Row>
         {time('Fade in', 'fadeInSpeed')}
         {time('Fade out', 'fadeOutSpeed')}
-        <FF.Note text={'Replace… copies the picked file (on the QLC+ machine) into the project\'s media store and repoints this function only; Reload re-imports a managed copy from its origin' + (td.origin ? ' (' + td.origin + ')' : '') + '. Mute and Detect BPM are desktop-only until the API grows a setter.'} style={{ marginTop: 6 }} />
+        <FF.Note text={'Replace… copies the picked file (on the QLC+ machine) into the project\'s media store and repoints this function only; Reload re-imports a managed copy from its origin' + (td.origin ? ' (' + td.origin + ')' : '') + '.'} style={{ marginTop: 6 }} />
         <window.ServerFileBrowser open={browser} qlc={qlc} title="Replace audio file" filters={filters}
           initialPath={td.origin ? td.origin.replace(/[\\/][^\\/]*$/, '') : undefined}
           onPick={setSource} onClose={() => setBrowser(false)} />

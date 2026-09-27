@@ -143,6 +143,23 @@
        */
       adjustAttribute: function (params) { return self.call('functions.adjustAttribute', params); },
 
+      /**
+       * Copy functions ("<name> (Copy)", same folder; a Sequence gets its own bound Scene copy).
+       * @param {object} params - {functionIds: string[], baseRevision: int}
+       * @returns {Promise<object>} result - {functionIds: string[] (new ids), docRevision}
+       * @see docs/api-spec/fragments/functions-core.yaml (method: functions.clone)
+       */
+      clone: function (params) { return self.call('functions.clone', params); },
+
+      /**
+       * Who uses a function: referencing functions (+ step / position) and VC widgets.
+       * @param {object} params - {functionId: string}
+       * @returns {Promise<object>} result - {functions: [{functionId, name, type, position}],
+       *   widgets: VcWidgetSnapshot[], vcAvailable, isStartupFunction}
+       * @see docs/api-spec/fragments/functions-core.yaml (method: functions.usage)
+       */
+      usage: function (params) { return self.call('functions.usage', params); },
+
       scene: {
         /**
          * Full replacement of a Scene's channel value list.
@@ -464,6 +481,8 @@
        per-tick emission frequency during playback as unconfirmed — a real subscribe-gate
        candidate the merge pass should verify. */
     'functions.status.changed',
+    /* functions.adjustAttribute: {functionId, attributeIndex, attributeName, value} */
+    'functions.attributeChanged',
     'functions.scene.valuesChanged',
     'functions.scene.membersChanged',
     /* Emitted by chaser.setSpeedModes only; steps.* on a Chaser emits chaser.stepsChanged instead. */

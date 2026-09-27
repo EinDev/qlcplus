@@ -698,6 +698,8 @@ channels:
         $ref: '#/components/messages/FunctionsUsageOkResponse'
       functionsAttributeChangedEvent:
         $ref: '#/components/messages/FunctionsAttributeChangedEvent'
+      functionsChaserCurrentStepChangedEvent:
+        $ref: '#/components/messages/FunctionsChaserCurrentStepChangedEvent'
       functionsRgbMatrixListAlgorithmsRequest:
         $ref: '#/components/messages/FunctionsRgbMatrixListAlgorithmsRequest'
       functionsRgbMatrixListAlgorithmsResponse:
@@ -3346,6 +3348,12 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/functionsAttributeChangedEvent'
+  receiveFunctionsChaserCurrentStepChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsChaserCurrentStepChangedEvent'
   sendFunctionsRgbMatrixListAlgorithms:
     action: send
     channel:
@@ -13745,6 +13753,35 @@ components:
                 type: string
               value:
                 type: number
+    FunctionsChaserCurrentStepChangedEvent:
+      payload:
+        type: object
+        required:
+        - type
+        - topic
+        - data
+        properties:
+          type:
+            const: event
+          topic:
+            const: functions.chaser.currentStepChanged
+          originClientId:
+            type:
+            - string
+            - 'null'
+          data:
+            type: object
+            required:
+            - functionId
+            - stepIndex
+            description: 'Live (4b): a running Chaser''s / Sequence''s current step changed (the runner''s
+              currentStepChanged). At most one per step change, not subscribe-gated; originClientId is
+              null.'
+            properties:
+              functionId:
+                type: string
+              stepIndex:
+                type: integer
     FunctionsRgbMatrixListAlgorithmsRequest:
       payload:
         type: object
@@ -17526,7 +17563,8 @@ components:
               volume:
                 type: number
                 minimum: 0
-                maximum: 1
+                maximum: 100
+                description: '0-100: Video''s Volume attribute range (unlike Audio''s 0-1).'
               baseRevision:
                 type: integer
     FunctionsVideoSetVolumeResponse:

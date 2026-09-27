@@ -1006,10 +1006,12 @@ void ApiMediaDomain::registerAssetMethods()
         Function *function = requireFunctionOfType(session, id, params, Function::VideoType);
         if (function == nullptr)
             return;
+        // Video's Volume is a 0-100 attribute (Video::Video registerAttribute),
+        // unlike Audio's 0-1 volume
         QJsonValue v = params.value(QStringLiteral("volume"));
-        if (v.isDouble() == false || v.toDouble() < 0.0 || v.toDouble() > 1.0)
+        if (v.isDouble() == false || v.toDouble() < 0.0 || v.toDouble() > 100.0)
         {
-            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams, QStringLiteral("volume must be a number in 0..1")));
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams, QStringLiteral("volume must be a number in 0..100")));
             return;
         }
         if (checkBaseRevision(session, id, params) == false)

@@ -6,8 +6,8 @@
  * windowed / fullscreen / Spout (functions.video.setScreenTarget, screens and spoutAvailable from
  * functions.video.listCapabilities), geometry Original / Custom with X Y W H
  * (functions.video.setGeometry), rotation X Y Z (functions.video.setRotation), layer
- * (functions.video.setLayer). Volume, mute and the Spout sender size have no API setter yet and are
- * shown read-only with a note.
+ * (functions.video.setLayer), volume / mute (functions.video.setVolume / setMuted) and the Spout
+ * sender size (functions.video.setSpoutSize; the sender name follows the function name, read-only).
  *
  * Registered as window.QLCEditors.Video.
  */
@@ -54,6 +54,13 @@
       patchCfg({ screen, outputMode, fullscreen });
       FF.mutate(qlc, 'functions.video.setScreenTarget', { functionId: fid, screen, fullscreen, outputMode }, { key: 'video:target:' + fid }).catch(() => reload());
     };
+    /* 0-100 like the desktop spin box (Video's Volume attribute range) */
+    const setVolume = (v) => { patchCfg({ volume: v }); FF.mutate(qlc, 'functions.video.setVolume', { functionId: fid, volume: v }, { key: 'video:vol:' + fid }).catch(() => reload()); };
+    const setMuted = (m) => { const v = typeof m === 'boolean' ? m : !cfg.muted; patchCfg({ muted: v }); FF.mutate(qlc, 'functions.video.setMuted', { functionId: fid, muted: v }).catch(() => reload()); };
+    const spout = cfg.spoutSize || { width: 0, height: 0 };
+    const spoutCustom = !!(spout.width && spout.height);
+    const setSpoutSize = (s) => { patchCfg({ spoutSize: s }); FF.mutate(qlc, 'functions.video.setSpoutSize', { functionId: fid, width: s.width, height: s.height }, { key: 'video:spout:' + fid }).catch(() => reload()); };
+    FF.useForeignEvents(qlc, ['functions.video.volumeChanged', 'functions.video.mutedChanged', 'functions.video.spoutSizeChanged'], (topic, d) => { if (d && String(d.functionId) === fid) reload(); }, [fid]);
     const geomField = (key, value) => {
       const g = Object.assign({ x: 0, y: 0, width: 0, height: 0 }, geom || {}, { [key]: value });
       setGeometry(g);
@@ -84,9 +91,9 @@
           <FF.Choice options={['SingleShot', 'Loop']} labels={{ SingleShot: 'Single shot', Loop: 'Looped' }} value={detail.runOrder === 'Loop' ? 'Loop' : 'SingleShot'} onChange={v => patchFn({ runOrder: v })} />
         </FF.Row>
         <FF.Row label="Volume" width={LABEL_W}>
-          <CustomSpinBox value={Math.round(cfg.volume != null ? cfg.volume : 100)} from={0} to={100} suffix="%" width={90} height={24} disabled onValueModified={() => {}} />
-          <CustomCheckBox checked={!!cfg.muted} size={22} disabled tooltip="Volume / mute have no API method yet — read-only" onToggled={() => {}} />
-          <RobotoText label="Mute" fontSize={14} labelColor="var(--fg-medium)" />
+          <CustomSpinBox value={Math.round(cfg.volume != null ? cfg.volume : 100)} from={0} to={100} suffix="%" width={90} height={24} onValueModified={setVolume} />
+          <CustomCheckBox checked={!!cfg.muted} size={22} tooltip="Mute this video's audio" onToggled={setMuted} />
+          <RobotoText label="Mute" fontSize={14} />
         </FF.Row>
         <FF.Row label="Output screen" width={LABEL_W}>
           <CustomComboBox width={320} height={24} model={screenModel.length ? screenModel : [{ mLabel: 'Screen 0', mValue: 0 }]} currValue={cfg.screen || 0}
@@ -96,9 +103,17 @@
           <FF.Choice options={modes} labels={{ windowed: 'Windowed', fullscreen: 'Fullscreen', spout: 'Spout' }} value={cfg.outputMode || (cfg.fullscreen ? 'fullscreen' : 'windowed')} onChange={v => setTarget(cfg.screen || 0, v)} />
         </FF.Row>
         {isSpout ? <>
+          <FF.Row label="Sender name" width={LABEL_W}>
+            <RobotoText label={cfg.spoutSenderName || detail.name} fontSize={14} />
+            <RobotoText label="(follows the function name)" fontSize={12} labelColor="var(--fg-medium)" />
+          </FF.Row>
           <FF.Row label="Sender size" width={LABEL_W}>
-            <RobotoText label={cfg.spoutSize && (cfg.spoutSize.width || cfg.spoutSize.height) ? cfg.spoutSize.width + ' x ' + cfg.spoutSize.height : 'native resolution'} fontSize={14} />
-            <RobotoText label="(read-only: no API setter yet)" fontSize={12} labelColor="var(--fg-medium)" />
+            <FF.Choice options={['native', 'custom']} labels={{ native: 'Native', custom: 'Custom' }} value={spoutCustom ? 'custom' : 'native'}
+              onChange={v => setSpoutSize(v === 'native' ? { width: 0, height: 0 } : { width: res ? res.width : 1920, height: res ? res.height : 1080 })} />
+            {spoutCustom ? <>
+              <RobotoText label="W" fontSize={13} />{spin(spout.width, v => setSpoutSize({ width: v, height: spout.height }), { from: 1, to: 16384 })}
+              <RobotoText label="H" fontSize={13} />{spin(spout.height, v => setSpoutSize({ width: spout.width, height: v }), { from: 1, to: 16384 })}
+            </> : null}
           </FF.Row>
         </> : null}
         <FF.Row label="Geometry" width={LABEL_W}>

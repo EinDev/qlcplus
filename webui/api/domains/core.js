@@ -118,7 +118,11 @@
          * @returns {Promise<object>} result - {files: [{filePath: string, fileName: string}]}
          * @see docs/api-spec/fragments/core.yaml (method: core.project.recentFiles)
          */
-        recentFiles: function (params) { return self.call('core.project.recentFiles', params); }
+        recentFiles: function (params) { return self.call('core.project.recentFiles', params); },
+
+        /** {functionId: string|null, baseRevision} -> {docRevision}; the autostart function
+            (core.project.get.startupFunctionId); broadcasts core.project.startupFunctionChanged */
+        setStartupFunction: function (params) { return self.call('core.project.setStartupFunction', params); }
       },
 
       bpm: {
@@ -219,6 +223,7 @@
     'core.project.loaded',           // {reason:'new'|'opened'|'closed', project: CoreProjectMetadata}
     'core.project.saved',            // {docRevision, filePath, fileName} — NOT fired for saveAs target='download'
     'core.project.recentFilesChanged', // {files: [{filePath, fileName}]}
+    'core.project.startupFunctionChanged', // {startupFunctionId: string|null, docRevision}
     'core.mode.changed',             // {mode:'design'|'operate'}
     'core.history.changed',          // {direction:'undo'|'redo', stepsApplied, docRevision, canUndo, canRedo, undoText?, redoText?}
     'core.bpm.changed',              // {bpm, generator} — web UI contract (2026-09)

@@ -1058,7 +1058,7 @@ messages:
               - string
               - 'null'
               description: null (or omitted) clears it.
-            baseRevision: &id001
+            baseRevision:
               type: integer
   CoreProjectSetStartupFunctionResponse:
     payload:
@@ -1085,7 +1085,8 @@ messages:
           required:
           - docRevision
           properties:
-            docRevision: *id001
+            docRevision:
+              type: integer
   CoreProjectStartupFunctionChangedEvent:
     payload:
       type: object
@@ -1112,7 +1113,8 @@ messages:
               type:
               - string
               - 'null'
-            docRevision: *id001
+            docRevision:
+              type: integer
 schemas:
 
   CoreBpmState:

@@ -257,9 +257,57 @@
   }
 
   /* ---- Palettes ------------------------------------------------------------------------------ */
-  const PALETTE_TYPES = ['Dimmer', 'Color', 'Pan', 'Tilt', 'PanTilt'];
+  const PALETTE_TYPES = ['Dimmer', 'Color', 'Pan', 'Tilt', 'PanTilt', 'Position3D', 'Shutter', 'Gobo', 'Zoom'];
+  const PALETTE_TYPE_LABELS = { PanTilt: 'Position (pan + tilt)', Position3D: 'Position 3D' };
+  /* QLCCapability::Preset ordinals a Shutter palette targets (QLCPalette::valuesFromFixtures) */
+  const SHUTTER_PRESETS = [{ mLabel: 'Shutter open', mValue: 7 }, { mLabel: 'Shutter closed', mValue: 8 }, { mLabel: 'Strobe slow → fast', mValue: 9 },
+    { mLabel: 'Strobe fast → slow', mValue: 10 }, { mLabel: 'Strobe random', mValue: 11 }, { mLabel: 'Random strobe slow → fast', mValue: 12 },
+    { mLabel: 'Random strobe fast → slow', mValue: 13 }, { mLabel: 'Strobe frequency', mValue: 14 }, { mLabel: 'Strobe frequency range', mValue: 15 }];
+  const FAN_TYPES = ['Flat', 'Linear', 'Sine', 'Square', 'Saw'];
+  const FAN_LAYOUTS = [['XAscending', 'X ascending'], ['XDescending', 'X descending'], ['XCentered', 'X centered'], ['YAscending', 'Y ascending'], ['YDescending', 'Y descending'],
+    ['YCentered', 'Y centered'], ['ZAscending', 'Z ascending'], ['ZDescending', 'Z descending'], ['ZCentered', 'Z centered']];
+  const FANNABLE = ['Dimmer', 'Color', 'Pan', 'Tilt', 'PanTilt', 'Zoom'];
+
+  /** PaletteFanningBox.qml: fanning type, layout (axis + ordering), amount and the end value. */
+  function PaletteFanningEditor({ type, fanning, onChange }) {
+    const D = window.QLCData;
+    const f = fanning || { type: 'Flat', layout: 'XAscending', amount: 100, value: null };
+    const set = (p) => onChange(Object.assign({}, f, p));
+    const flat = f.type === 'Flat';
+    return (
+      <div data-e2e="palette-fanning" style={{ display: 'flex', flexDirection: 'column', gap: 4, borderTop: 'var(--border-dark)', paddingTop: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <img src={D.icon('fanning')} alt="" style={{ width: 18, height: 18 }} />
+          <RobotoText label="Fanning" fontBold fontSize={13} />
+        </div>
+        <div style={{ display: 'flex', gap: 2 }}>
+          {FAN_TYPES.map(t => <IconButton key={t} imgSource={D.icon('algo-' + t.toLowerCase())} size={26} checked={f.type === t} tooltip={t} onClick={() => set({ type: t })} />)}
+        </div>
+        {!flat ? <>
+          <FF.Row label="Layout" width={60}><CustomComboBox width={160} currValue={f.layout} model={FAN_LAYOUTS.map(l => ({ mLabel: l[1], mValue: l[0] }))} onValueChanged={v => set({ layout: v })} /></FF.Row>
+          <FF.Row label="Amount" width={60}><CustomSpinBox value={f.amount} from={0} to={1000} suffix="%" width={100} onValueModified={v => set({ amount: v })} /></FF.Row>
+          {type === 'Color'
+            ? <FF.Row label="To colour" width={60}><input type="color" value={typeof f.value === 'string' && /^#[0-9a-f]{6}/i.test(f.value) ? f.value.slice(0, 7) : '#000000'} onChange={e => set({ value: e.target.value })} style={{ width: 40, height: 26, padding: 0, border: 'var(--border-control)', background: 'var(--bg-control)' }} /></FF.Row>
+            : <FF.Row label="Value" width={60}><CustomSpinBox value={Number(f.value) || 0} from={-1000} to={1000} width={100} onValueModified={v => set({ value: v })} /></FF.Row>}
+        </> : <RobotoText label="Flat: every fixture gets the same value." fontSize={12} labelColor="var(--fg-light)" />}
+      </div>
+    );
+  }
+
   function PaletteValueEditor({ type, values, onChange }) {
     const v = values || [];
+    if (type === 'Position3D') return <>
+      {['X', 'Y', 'Z'].map((axis, i) => (
+        <FF.Row key={axis} label={axis} width={60}><CustomSpinBox value={Number(v[i]) || 0} from={-100000} to={100000} width={110} suffix=" mm"
+          onValueModified={x => { const n = [Number(v[0]) || 0, Number(v[1]) || 0, Number(v[2]) || 0]; n[i] = x; onChange(n); }} /></FF.Row>
+      ))}
+    </>;
+    if (type === 'Shutter') return <>
+      <FF.Row label="Effect" width={60}><CustomComboBox width={200} currValue={Number(v[0]) || 7} model={SHUTTER_PRESETS} onValueChanged={x => onChange([x, Number(v[1]) || 0])} /></FF.Row>
+      <FF.Row label="Amount" width={60}><CustomSpinBox value={Number(v[1]) || 0} from={0} to={100} suffix="%" width={90} onValueModified={x => onChange([Number(v[0]) || 7, x])} /></FF.Row>
+    </>;
+    if (type === 'Gobo') return <FF.Row label="DMX" width={60}><CustomSpinBox value={Math.round(Number(v[0]) || 0)} from={0} to={255} width={90} onValueModified={x => onChange([x])} /></FF.Row>;
+    if (type === 'Zoom') return <FF.Row label="Zoom" width={60}><CustomSpinBox value={Math.round(Number(v[0]) || 0)} from={0} to={100} suffix="%" width={90} onValueModified={x => onChange([x])} /></FF.Row>;
     if (type === 'Dimmer') return <FF.Row label="Level" width={60}><CustomSpinBox value={Math.round(Number(v[0]) || 0)} from={0} to={100} suffix="%" width={90} onValueModified={x => onChange([x])} /></FF.Row>;
     if (type === 'Color') {
       const c = FF.parsePaletteColour(v[0] || '#ffffff') || { rgb: { r: 255, g: 255, b: 255 } };
@@ -299,9 +347,21 @@
     };
     const applyCurrent = () => { if (detail) apply(detail); };
     const update = (p) => { setDetail(d => Object.assign({}, d, p)); FF.mutate(qlc, 'palette.update', Object.assign({ paletteId: Number(current) }, p), { key: 'pal:' + current + ':' + Object.keys(p).join(',') }).catch(() => {}); };
-    const create = () => { const d = draft; setDraft(null); FF.mutate(qlc, 'palette.create', { type: d.type, name: d.name || d.type + ' palette', values: d.values }).then(r => { if (r && r.paletteId != null) setCurrent(String(r.paletteId)); }).catch(() => {}); };
+    /* PopupCreatePalette.qml: create, then optionally "Also create a Scene" holding it
+       (PaletteManager::addPaletteToNewScene: a new Scene with only the palette as member). */
+    const create = () => {
+      const d = draft; setDraft(null);
+      const name = d.name || d.type + ' palette';
+      FF.mutate(qlc, 'palette.create', Object.assign({ type: d.type, name, values: d.values }, d.fanning ? { fanning: d.fanning } : {})).then(r => {
+        if (!r || r.paletteId == null) return;
+        setCurrent(String(r.paletteId));
+        if (d.alsoScene) FF.mutate(qlc, 'functions.create', { type: 'Scene', name: d.sceneName || name })
+          .then(s => s && s.functionId != null ? FF.mutate(qlc, 'functions.scene.setMembers', { functionId: String(s.functionId), palettes: [String(r.paletteId)] }) : null)
+          .then(() => setApplied('Created palette "' + name + '" and scene "' + (d.sceneName || name) + '"')).catch(() => {});
+      }).catch(() => {});
+    };
     const remove = () => { setConfirm(false); if (current == null) return; FF.mutate(qlc, 'palette.delete', { paletteId: Number(current) }).then(() => setCurrent(null)).catch(() => {}); };
-    const defaultValues = (t) => t === 'Dimmer' ? [100] : t === 'Color' ? ['#ffffff'] : t === 'PanTilt' ? [127, 127] : [127];
+    const defaultValues = (t) => t === 'Dimmer' ? [100] : t === 'Color' ? ['#ffffff'] : t === 'PanTilt' ? [127, 127] : t === 'Position3D' ? [0, 0, 0] : t === 'Shutter' ? [7, 100] : t === 'Gobo' ? [0] : t === 'Zoom' ? [50] : [127];
     return (
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 6px', background: 'var(--bg-strong)' }}>
@@ -327,15 +387,23 @@
             <CustomTextInput key={detail.id} text={detail.name} allowDoubleClick width={170} onTextConfirmed={n => n && n !== detail.name && update({ name: n })} />
             <PaletteValueEditor type={detail.type} values={detail.values} onChange={vals => update({ values: vals })} />
             <GenericButton label={'Apply to ' + fixtureIds.length + ' selected'} width={170} height={24} disabled={!fixtureIds.length} onClick={applyCurrent} />
+            {FANNABLE.indexOf(detail.type) !== -1 && detail.fanning ? <PaletteFanningEditor type={detail.type} fanning={detail.fanning} onChange={fan => update({ fanning: fan })} /> : null}
           </> : <FF.Note text="Click a palette to edit it, double-click to apply it to the selected fixtures (live output). Applying is done by the browser: Color sets RGB/CMY/WAUV channels, Dimmer the intensity, Pan/Tilt the position." />}
           {applied ? <RobotoText label={applied} fontSize={12} labelColor="var(--fg-light)" wrapText height="auto" /> : null}
-          <FF.Note text="The API has no palette-apply / live fixture-control method; Shutter, Gobo, Zoom and Position3D palettes cannot be applied." />
+          <FF.Note text="The API has no palette-apply / live fixture-control method; Shutter, Gobo, Zoom and Position3D palettes cannot be applied from here (put them in a Scene instead). Fanning is used by the engine when the palette runs in a Scene." />
         </div>
         <CustomPopupDialog open={!!draft} title="New palette" width={380} standardButtons={['Cancel', 'Create']} onClicked={(b) => { if (b === 'Create') create(); else setDraft(null); }} onClose={() => setDraft(null)}>
           {draft ? <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <FF.Row label="Type" width={60}><CustomComboBox width={160} currValue={draft.type} model={PALETTE_TYPES.map(t => ({ mLabel: t, mValue: t }))} onValueChanged={t => setDraft({ type: t, name: draft.name, values: defaultValues(t) })} /></FF.Row>
-            <FF.Row label="Name" width={60}><input value={draft.name} onChange={e => setDraft(Object.assign({}, draft, { name: e.target.value }))} placeholder="Palette name" style={Object.assign({ width: 200 }, inputStyle)} /></FF.Row>
+            <FF.Row label="Type" width={60}><CustomComboBox width={200} currValue={draft.type} model={PALETTE_TYPES.map(t => ({ mLabel: PALETTE_TYPE_LABELS[t] || t, mValue: t }))} onValueChanged={t => setDraft(Object.assign({}, draft, { type: t, values: defaultValues(t), fanning: null }))} /></FF.Row>
+            <FF.Row label="Name" width={60}><input value={draft.name} onChange={e => setDraft(Object.assign({}, draft, { name: e.target.value }))} placeholder="Palette name" style={Object.assign({ width: 200 }, inputStyle)} data-e2e="palette-name" /></FF.Row>
             <PaletteValueEditor type={draft.type} values={draft.values} onChange={vals => setDraft(Object.assign({}, draft, { values: vals }))} />
+            {FANNABLE.indexOf(draft.type) !== -1 ? <PaletteFanningEditor type={draft.type} fanning={draft.fanning} onChange={fan => setDraft(Object.assign({}, draft, { fanning: fan }))} /> : null}
+            <FF.Row label="" width={60}>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'var(--font-roboto)', fontSize: 14, color: 'var(--fg-main)' }}>
+                <input type="checkbox" checked={!!draft.alsoScene} onChange={e => setDraft(Object.assign({}, draft, { alsoScene: e.target.checked }))} data-e2e="palette-also-scene" />Also create a Scene
+              </label>
+            </FF.Row>
+            {draft.alsoScene ? <FF.Row label="Scene" width={60}><input value={draft.sceneName || ''} onChange={e => setDraft(Object.assign({}, draft, { sceneName: e.target.value }))} placeholder={draft.name || 'Scene name'} style={Object.assign({ width: 200 }, inputStyle)} data-e2e="palette-scene-name" /></FF.Row> : null}
           </div> : null}
         </CustomPopupDialog>
         <CustomPopupDialog open={confirm} title="Delete palette" width={340} message={detail ? 'Are you sure you want to delete the palette "' + detail.name + '"?' : ''}

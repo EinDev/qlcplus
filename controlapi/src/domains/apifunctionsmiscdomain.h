@@ -65,6 +65,14 @@ private:
     void registerMethods();
     ApiVcHost *vcHost() const;
 
+    /** Relay a Chaser's / Sequence's currentStepChanged (string-based
+     *  connect, engine DLL) as functions.chaser.currentStepChanged */
+    void watchChaser(quint32 id);
+
+private slots:
+    void slotFunctionAdded(quint32 id);
+    void slotCurrentStepChanged(int stepNumber);
+
 private:
     Doc *m_doc;
     ApiServer *m_server;

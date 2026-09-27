@@ -194,6 +194,43 @@ ApiFunctionsMiscDomain::ApiFunctionsMiscDomain(Doc *doc, ApiServer *server, QObj
     Q_ASSERT(m_doc != nullptr);
     Q_ASSERT(m_server != nullptr);
     registerMethods();
+
+    for (Function *function : m_doc->functions())
+        watchChaser(function->id());
+    connect(m_doc, SIGNAL(functionAdded(quint32)), this, SLOT(slotFunctionAdded(quint32)));
+}
+
+void ApiFunctionsMiscDomain::watchChaser(quint32 id)
+{
+    Chaser *chaser = qobject_cast<Chaser *>(m_doc->function(id));
+    if (chaser != nullptr)
+        connect(chaser, SIGNAL(currentStepChanged(int)), this, SLOT(slotCurrentStepChanged(int)), Qt::UniqueConnection);
+}
+
+void ApiFunctionsMiscDomain::slotFunctionAdded(quint32 id)
+{
+    watchChaser(id);
+}
+
+void ApiFunctionsMiscDomain::slotCurrentStepChanged(int stepNumber)
+{
+    // emitted by the runner on the MasterTimer thread, delivered here queued:
+    // find the sender among the document's functions by pointer value only
+    // (it may have been deleted since, so it must not be dereferenced first)
+    QObject *source = sender();
+    Chaser *chaser = nullptr;
+    for (Function *function : m_doc->functions())
+    {
+        if (function == source)
+            chaser = qobject_cast<Chaser *>(function);
+    }
+    if (chaser == nullptr)
+        return;
+    QJsonObject data;
+    data.insert(QStringLiteral("functionId"), QString::number(chaser->id()));
+    data.insert(QStringLiteral("stepIndex"), stepNumber);
+    // live (4b), at most one per step change - not subscribe-gated
+    m_server->broadcast(QStringLiteral("functions.chaser.currentStepChanged"), data, QString(), false);
 }
 
 ApiVcHost *ApiFunctionsMiscDomain::vcHost() const

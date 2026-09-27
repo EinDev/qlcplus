@@ -549,6 +549,11 @@ function FixturesFunctions() {
   };
 
   const PopupMenu = ff('PopupMenu'), MenuItem = ff('MenuItem');
+  /* extension point: window.QLCFFMenuItems = [fn({qlc, node, selectedNodes, selectFixtures, close}) -> [{icon|glyph, text, onClick, disabled} | '-']]
+     appended to a function / fixture row's context menu (ff/FunctionActions.jsx). */
+  const extraMenu = (node) => (window.QLCFFMenuItems || [])
+    .reduce((a, fn) => a.concat(fn({ qlc, node, selectedNodes, selectFixtures, close: () => setMenu(null) }) || []), [])
+    .map((it, i) => it === '-' ? <div key={'xm' + i} style={{ height: 1, background: 'var(--border-color-dark)', margin: '2px 0' }} /> : <MenuItem key={'xm' + i} {...it} />);
   const FixtureTools = ff('FixtureTools'), PalettePanel = ff('PalettePanel'), GroupsPanel = ff('FixtureGroupsPanel'), AddFixtureDialog = ff('AddFixtureDialog');
   const canDelete = live && (selectedFunctionIds.length + selectedFixtureIds.length > 0 || isFunction || isFixture);
   const folderModel = functionTree ? [{ mLabel: '/ (top level)', mValue: '' }].concat(functionTree.paths.map(p => ({ mLabel: p, mValue: p }))) : [];
@@ -565,8 +570,8 @@ function FixturesFunctions() {
         <div style={{ width: 1, height: 20, background: 'var(--border-color-dark)', margin: '0 3px' }} />
         <IconButton imgSource={D.icon('add')} size={26} disabled={!live} tooltip={'Add a new function' + (targetPath ? ' in ' + targetPath : '')}
           onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu({ x: r.left, y: r.bottom + 2, kind: 'new' }); }} />
-        <IconButton imgSource={D.icon('rename')} size={26} disabled={!live || !detail || isFolder} tooltip="Rename the selected item (or double-click its name)"
-          onClick={() => setRenaming(true)} />
+        <IconButton imgSource={D.icon('rename')} size={26} disabled={!live || !detail || isFolder} tooltip="Rename the selected item (or double-click its name); several selected items are renamed with numbering"
+          onClick={() => { const many = selectedNodes.filter(n => n.kind === 'function' || n.kind === 'fixture'); if (many.length > 1 && window.QLCFFOverlays) FF.notifyLocal('ff.renameNumbered', { nodes: many }); else setRenaming(true); }} />
         <IconButton imgSource={D.icon('folder')} size={26} disabled={!live || !(isFunction || selectedFunctionIds.length)} tooltip="Move the selected functions to a folder"
           onClick={() => { setMoveTarget(targetPath); setDlg('move'); }} />
         <IconButton faSource="fa_trash_can" size={26} disabled={!canDelete}
@@ -613,6 +618,8 @@ function FixturesFunctions() {
                   faColor={isPaused ? 'var(--selection)' : 'var(--bg-strong)'}
                   tooltip={isPaused ? 'Resume function' : 'Pause function'} />
                 {fnStatus.reported && st ? <RobotoText label={st.running ? (st.paused ? 'Paused' : 'Running') : 'Stopped'} fontSize={13} labelColor={st.running ? (st.paused ? 'var(--selection)' : 'var(--check-lime)') : 'var(--fg-light)'} /> : null}
+                {/* extension point: window.QLCFunctionHeaderItems = [Component({qlc, node, running})] (ff/FunctionActions.jsx) */}
+                {live ? (window.QLCFunctionHeaderItems || []).map((C, i) => <C key={i} qlc={qlc} node={detail} running={isRunning} />) : null}
               </> : null}
               <RobotoText label={detail.mode || detail.type || (detail.summary && detail.summary.fixtureType) || ''} fontSize={14} labelColor="var(--fg-light)" />
             </div>
@@ -701,11 +708,13 @@ function FixturesFunctions() {
             <MenuItem glyph={FF.GLYPH.stop} text="Stop" onClick={() => { setMenu(null); qlc.call('functions.stop', { functionId: String(menu.node.functionId) }).catch(() => {}); setLastSent(p => p.filter(x => x !== menu.node.functionId)); }} />
             <MenuItem icon="rename" text="Rename" onClick={() => { setMenu(null); setRenaming(true); }} />
             <MenuItem icon="folder" text="Move to folder…" onClick={() => { setMenu(null); setMoveTarget(menu.node.path || ''); setDlg('move'); }} />
+            {extraMenu(menu.node)}
             <MenuItem glyph="fa_trash_can" text={selected.length > 1 ? 'Delete ' + selected.length + ' items' : 'Delete'} onClick={() => { setMenu(null); setDlg('delete'); }} />
           </> : menu.node.kind === 'fixture' ? <>
             <MenuItem icon="rename" text="Rename" onClick={() => { setMenu(null); setRenaming(true); }} />
             <MenuItem icon="intensity" text="Fixture tools" onClick={() => { setMenu(null); setPanel('tools'); }} />
             <MenuItem icon="scene" text="New Scene with selected fixtures" onClick={() => { setMenu(null); FF.mutate(qlc, 'functions.create', { type: 'Scene', fixtures: (selectedFixtureIds.length ? selectedFixtureIds : [menu.node.fixtureId]).map(String) }).catch(() => {}); }} />
+            {extraMenu(menu.node)}
             <MenuItem glyph="fa_trash_can" text={selectedFixtureIds.length > 1 ? 'Unpatch ' + selectedFixtureIds.length + ' fixtures' : 'Unpatch'} onClick={() => { setMenu(null); setDlg('delete'); }} />
           </> : menu.node.kind === 'folder' ? <>
             <MenuItem icon="add" text="New function here…" onClick={() => setMenu({ x: menu.x, y: menu.y, kind: 'new' })} />
@@ -748,6 +757,8 @@ function FixturesFunctions() {
         })()}
         standardButtons={['Cancel', 'Delete']}
         onClicked={(b) => { if (b === 'Delete') doDelete(); else setDlg(null); }} onClose={() => setDlg(null)} />
+      {/* extension point: window.QLCFFOverlays = [Component({qlc, functions, fixtures, onSelectFixtures})] - dialogs opened from the menu items above */}
+      {live ? (window.QLCFFOverlays || []).map((C, i) => <C key={i} qlc={qlc} functions={functionTree ? functionTree.functions : []} fixtures={fixtureTree ? fixtureTree.fixtures : []} onSelectFixtures={selectFixtures} />) : null}
     </div>
   );
 }
