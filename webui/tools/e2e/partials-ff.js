@@ -565,8 +565,9 @@ async function main() {
         return p ? api.call('palette.get', { paletteId: p.id }) : null;
       };
       const spinRow = async (label, value) => { await setInput(page, `${rowPart(label, 'input', '[data-e2e=palette-create]')}[0]`, value, true); };
-      let p = await create('Position 3D', 'E2E Pos3D', async () => { await spinRow('X', 1000); await spinRow('Y', 2000); await spinRow('Z', -500); });
-      check(p && p.type === 'Position3D' && p.values.map(Number).join(',') === '1000,2000,-500', 'Position 3D palette 1000 / 2000 / -500 mm', p && p.values);
+      // Position 3D is metres (Position3DTool.qml)
+      let p = await create('Position 3D', 'E2E Pos3D', async () => { await spinRow('X', 1.5); await spinRow('Y', 2); await spinRow('Z', -0.5); });
+      check(p && p.type === 'Position3D' && p.values.map(Number).join(',') === '1.5,2,-0.5', 'Position 3D palette 1.5 / 2 / -0.5 m', p && p.values);
       p = await create('Shutter', 'E2E Shutter', async () => {
         await clickFn(page, `${rowPart('Effect', 'button', '[data-e2e=palette-create]')}[0]`, 'effect combo');
         await clickFn(page, `[...(${rowPart('Effect', 'button', '[data-e2e=palette-create]')})].find(b => b.textContent.trim() === 'Strobe random')`, 'Strobe random');
@@ -576,7 +577,7 @@ async function main() {
       p = await create('Gobo', 'E2E Gobo', async () => { await spinRow('DMX', 64); });
       check(p && p.type === 'Gobo' && Number(p.values[0]) === 64, 'Gobo palette DMX 64', p && p.values);
       const zoom = await create('Zoom', 'E2E Zoom', async () => { await spinRow('Zoom', 30); });
-      check(zoom && zoom.type === 'Zoom' && Number(zoom.values[0]) === 30, 'Zoom palette 30%', zoom && zoom.values);
+      check(zoom && zoom.type === 'Zoom' && Number(zoom.values[0]) === 30, 'Zoom palette 30°', zoom && zoom.values);
       // edit: rename + change value
       if (zoom) {
         await clickFn(page, leafText('E2E Zoom'), 'E2E Zoom in the list');
@@ -596,7 +597,7 @@ async function main() {
         await page.key('Enter');
         check(!!await soon(async () => (await api.call('palette.get', { paletteId: zoom.id })).name === 'E2E Zoom Wide', 'renamed'), 'palette renamed to "E2E Zoom Wide"');
         await setInput(page, `${rowPart('Zoom', 'input')}[0]`, 75, true);
-        check(!!await soon(async () => Number((await api.call('palette.get', { paletteId: zoom.id })).values[0]) === 75, 'value'), 'palette value changed to 75%');
+        check(!!await soon(async () => Number((await api.call('palette.get', { paletteId: zoom.id })).values[0]) === 75, 'value'), 'palette value changed to 75°');
         await shot(page, 'palette-edit');
       }
       // Tilt and Pan + Tilt: values are degrees (the Pan palette is driven by functions-misc.js / vc-show-leftovers.js)

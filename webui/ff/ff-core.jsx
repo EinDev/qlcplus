@@ -451,7 +451,8 @@
     const v = palette.values || [];
     const panMax = FF.panTiltMax(physical, 'pan'), tiltMax = FF.panTiltMax(physical, 'tilt');
     switch (palette.type) {
-      case 'Dimmer': return FF.roleValues(channels, 'dimmer', Math.round(Math.max(0, Math.min(100, Number(v[0]) || 0)) * 2.55));
+      /* Dimmer palette values are DMX 0-255 (IntensityTool.qml stores percent * 2.55) */
+      case 'Dimmer': return FF.roleValues(channels, 'dimmer', Math.floor(Math.max(0, Math.min(255, Number(v[0]) || 0))));
       case 'Color': { const c = FF.parsePaletteColour(v[0]); return c ? FF.colourValues(channels, c.rgb, c.wauv) : []; }
       /* Pan / Tilt palette values are DEGREES (QLCPalette::valuesFromFixtures -> Fixture::positionToValues) */
       case 'Pan': return FF.positionValues(channels, 'pan', FF.degreesToDmx16(v[0], panMax));

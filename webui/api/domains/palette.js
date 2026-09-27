@@ -4,11 +4,10 @@
  * repo (read-only source, a moving target — re-verify against the live spec if something here
  * looks stale later). Covers CRUD on `QLCPalette` definitions only (Doc::addPalette/deletePalette/
  * palette/palettes) — color *filters* (qmlui/colorfilters.cpp) are a separate engine concept and
- * explicitly out of scope here (see palette-notes.md). Also out of scope: fanning
- * (palette.setFanning-shaped follow-up), live-preview application of a palette's values to DMX
- * (valuesFromFixtures/valuesFromFixtureGroups/previewPalette — §4b runtime behavior, belongs to a
- * future live-preview/context domain), addPaletteToNewScene (functions.scene.* territory), and
- * isTemporary (an editing-buffer-only flag, irrelevant once a palette is committed).
+ * explicitly out of scope here (see palette-notes.md). palette.apply is the one live (§4b) method:
+ * the desktop's previewPalette via valuesFromFixtures. Out of scope: valuesFromFixtureGroups,
+ * addPaletteToNewScene (functions.scene.* territory), and isTemporary (an editing-buffer-only
+ * flag, irrelevant once a palette is committed).
  * Thin pass-through wrappers only: this.call(method, params) / this.send(method, params).
  * No field remapping — params/result shapes here are exactly the spec's.
  *
@@ -20,13 +19,14 @@
  *
  * PaletteValues encoding (see PaletteValues in the yaml / palette-notes.md "Value encoding"): a
  * flat positional array, one element per stored value, meaning per `type`:
- *   Dimmer, Zoom:  [level]        — one float, 0.0-100.0 (percent)
+ *   Dimmer:        [level]        — DMX 0-255 (the desktop stores percent * 2.55)
+ *   Zoom:          [degrees]      — beam angle in degrees, mapped over each fixture's lens range
  *   Color:         [packed]       — one string "#rrggbb" or "#rrggbbwwaauv" (QLCPalette::colorToString/stringToColor semantics — build/parse with those, not hand-rolled hex)
- *   Pan, Tilt:     [value]        — one integer, raw pan-or-tilt value
- *   PanTilt:       [pan, tilt]    — two integers, in that order
- *   Position3D:    [x, y, z]      — three floats
- *   Shutter:       [value1, value2] — two integers, undocumented meaning upstream; pass-through only
- *   Gobo:          generic pass-through — no defined shape upstream, round-tripped as-is
+ *   Pan, Tilt:     [degrees]      — one integer
+ *   PanTilt:       [pan, tilt]    — two integers (degrees), in that order
+ *   Position3D:    [x, y, z]      — three floats, metres in stage space
+ *   Shutter:       [preset, pct]  — QLCCapability::Preset ordinal, 0-100 within that capability
+ *   Gobo:          [dmx]          — the gobo wheel's DMX value
  * An empty/omitted `values` on palette.create means "use the engine's type-appropriate default"
  * (QLCPalette::resetValues()).
  */
@@ -76,7 +76,18 @@
        * @returns {Promise<object>} result - {docRevision: integer}
        * @see docs/api-spec/fragments/palette.yaml (method: palette.delete)
        */
-      "delete": function (params) { return self.call('palette.delete', params); }
+      "delete": function (params) { return self.call('palette.delete', params); },
+
+      /**
+       * Applies a palette to fixtures on the live output (the desktop's double-click,
+       * PaletteManager::previewPalette): the server computes the values with
+       * QLCPalette::valuesFromFixtures (every type, fanning) and writes them as Simple Desk
+       * overrides (released with io.simpleDesk.resetChannel). Live: no baseRevision.
+       * @param {object} params - {paletteId: integer, fixtureIds: Array<string|integer> — non-empty, every id must exist}
+       * @returns {Promise<object>} result - {channels: Array<{fixtureId: string, channel: integer, address: integer, value: integer}>}
+       * @see docs/api-spec/fragments/palette.yaml (method: palette.apply)
+       */
+      apply: function (params) { return self.call('palette.apply', params); }
     };
   }
 
