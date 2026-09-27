@@ -2,7 +2,8 @@ const { ViewToolbar, ToolbarSpacer, IconButton, RobotoText, CustomComboBox, Cust
 
 /* qmlui/js/GenericHelpers.js::pluginIconFromName */
 const PLUGIN_ICONS = { ArtNet: 'artnetplugin', 'E1.31': 'e131plugin', 'DMX USB': 'dmxusbplugin', MIDI: 'midiplugin', OSC: 'oscplugin', HID: 'hidplugin', OLA: 'olaplugin', Loopback: 'loop' };
-const pluginIcon = (name) => window.QLCData.icon(PLUGIN_ICONS[name] || 'inputoutput');
+window.IOPluginIcon = (name) => PLUGIN_ICONS[name] || 'inputoutput';
+const pluginIcon = (name) => window.QLCData.icon(window.IOPluginIcon(name));
 const NONE = 'none';
 const lineKey = (plugin, line) => plugin + '|' + line;
 
@@ -14,15 +15,15 @@ const MOCK_PLUGINS = [
   { name: 'MIDI', inputLines: [{ index: 0, name: 'MIDI Controller' }], outputLines: [{ index: 0, name: 'MIDI Controller' }], canConfigure: false },
   { name: 'OSC', inputLines: [{ index: 0, name: 'OSC 9000' }], outputLines: [{ index: 0, name: 'OSC 9000' }], canConfigure: true }
 ];
-const MOCK_PROFILES = [{ name: 'Generic MIDI', manufacturer: 'Generic', model: 'MIDI' }, { name: 'Novation Launchpad', manufacturer: 'Novation', model: 'Launchpad' }];
+const MOCK_PROFILES = [{ name: 'Generic MIDI', manufacturer: 'Generic', model: 'MIDI', type: 'MIDI' }, { name: 'Novation Launchpad', manufacturer: 'Novation', model: 'Launchpad', type: 'MIDI' }];
 const mockUniverses = () => window.QLCData.universes.map(u => {
   /* data.js labels are "<plugin> <line>" ("ArtNet 2.0.0.1") or just the line ("MIDI Controller"). */
   const find = (dir, label) => { for (const p of MOCK_PLUGINS) for (const l of (dir === 'input' ? p.inputLines : p.outputLines)) if (l.name === label || p.name + ' ' + l.name === label) return { plugin: p.name, line: l }; return null; };
   const i = find('input', u.input), o = find('output', u.output), f = find('output', u.feedback);
-  return { id: u.id - 1, name: u.name, passthrough: u.passthrough, usedChannels: 0, totalChannels: 512,
-    inputPatch: i ? { pluginName: i.plugin, input: i.line.index, inputName: i.line.name, profileName: u.id === 3 ? 'Generic MIDI' : null } : null,
-    outputPatches: o ? [{ index: 0, pluginName: o.plugin, output: o.line.index, outputName: o.line.name, paused: false, blackout: false }] : [],
-    feedbackPatch: f ? { index: 0, pluginName: f.plugin, output: f.line.index, outputName: f.line.name } : null };
+  return { id: u.id - 1, name: u.name, passthrough: u.passthrough, monitor: false, usedChannels: 0, totalChannels: 512,
+    inputPatch: i ? { pluginName: i.plugin, input: i.line.index, inputName: i.line.name, profileName: u.id === 3 ? 'Generic MIDI' : null, parameters: {} } : null,
+    outputPatches: o ? [{ index: 0, pluginName: o.plugin, output: o.line.index, outputName: o.line.name, paused: false, blackout: false, parameters: { outputIP: '2.0.0.255', outputUni: 0 } }] : [],
+    feedbackPatch: f ? { index: 0, pluginName: f.plugin, output: f.line.index, outputName: f.line.name, parameters: {} } : null };
 });
 
 /** io.universe.list + one io.universe.get per universe (the list has no patch details). */
@@ -37,7 +38,7 @@ function useUniverses(qlc) {
     const debounced = () => { clearTimeout(timer); timer = setTimeout(load, 150); };
     reloadRef.current = debounced;
     load();
-    const offs = ['io.universe.created', 'io.universe.updated', 'io.universe.deleted', 'io.patch.output.stateChanged', 'core.project.loaded'].map(t => qlc.subscribeTo(t, debounced));
+    const offs = ['io.universe.created', 'io.universe.updated', 'io.universe.deleted', 'io.universe.monitorChanged', 'io.patch.output.stateChanged', 'io.plugin.linesChanged', 'core.project.loaded'].map(t => qlc.subscribeTo(t, debounced));
     return () => { alive = false; clearTimeout(timer); offs.forEach(f => f()); };
   }, [qlc.online]);
   return [rows, () => reloadRef.current()];
@@ -45,12 +46,12 @@ function useUniverses(qlc) {
 
 /** One list call whose absence (NOT_FOUND "Unknown method") is a first-class state, not an error. */
 function useOptionalList(qlc, method, key, topics) {
-  const [state, setState] = React.useState({ items: null, unsupported: false, error: '' });
+  const [state, setState] = React.useState({ items: null, raw: null, unsupported: false, error: '' });
   React.useEffect(() => {
-    if (!qlc.online) { setState({ items: null, unsupported: false, error: '' }); return; }
+    if (!qlc.online) { setState({ items: null, raw: null, unsupported: false, error: '' }); return; }
     let alive = true;
-    const load = () => qlc.call(method, {}).then(r => { if (alive) setState({ items: r[key] || [], unsupported: false, error: '' }); })
-      .catch(e => { if (alive) setState({ items: null, unsupported: e.code === 'NOT_FOUND' && /Unknown method/.test(e.message || ''), error: e.message || String(e) }); });
+    const load = () => qlc.call(method, {}).then(r => { if (alive) setState({ items: r[key] || [], raw: r, unsupported: false, error: '' }); })
+      .catch(e => { if (alive) setState({ items: null, raw: null, unsupported: e.code === 'NOT_FOUND' && /Unknown method/.test(e.message || ''), error: e.message || String(e) }); });
     load();
     const offs = (topics || []).map(t => qlc.subscribeTo(t, load));
     return () => { alive = false; offs.forEach(f => f()); };
@@ -85,12 +86,17 @@ function InputOutput() {
   const [delOpen, setDelOpen] = React.useState(null);
   const [status, setStatus] = React.useState({ text: '', error: false });
   const [blackout, setBlackout] = React.useState(false);
+  const [props, setProps] = React.useState(null);            // {universeId, direction, index} -> PatchPropertiesDialog
+  const [selProfile, setSelProfile] = React.useState(null);
+  const [profileEditor, setProfileEditor] = React.useState(null); // {name|null}
+  const [pluginNote, setPluginNote] = React.useState({});
 
   const universes = live ? (liveRows || []) : mockRows;
   const plugins = live ? pluginState.items : MOCK_PLUGINS;
   const profiles = live ? profileState.items : MOCK_PROFILES;
   const pickersOff = live && !plugins;      // io.plugin.list missing or not loaded yet
   const unsupported = (m) => live && qlc.isUnsupported(m);
+  const say = (text, error) => setStatus({ text, error: !!error });
 
   React.useEffect(() => {
     if (!live) return;
@@ -103,13 +109,16 @@ function InputOutput() {
   const mutate = (method, params, label) => {
     const send = () => qlc.call(method, Object.assign({ baseRevision: qlc.docRevision() }, params));
     return send().catch(e => { if (e.code === 'CONFLICT') return send(); throw e; })
-      .then(() => { setStatus({ text: label, error: false }); reload(); return true; },
+      .then(() => { say(label, false); reload(); return true; },
         e => {
           const missing = e.code === 'NOT_FOUND' && /Unknown method/.test(e.message || '');
-          setStatus({ text: missing ? label + ' — not available: this server has no ' + method + ' yet' : label + ' failed: ' + (e.message || e.code || 'request failed'), error: true });
+          say(missing ? label + ' — not available: this server has no ' + method + ' yet' : label + ' failed: ' + (e.message || e.code || 'request failed'), true);
           return false;
         });
   };
+  /* Live (§4b) calls: no revision, no reload needed beyond the event. */
+  const liveCall = (method, params, label) => qlc.call(method, params)
+    .then(() => { say(label, false); return true; }, e => { say((e.code === 'NOT_FOUND' && /Unknown method/.test(e.message || '') ? label + ' — not available: this server has no ' + method : label + ' failed: ' + (e.message || e.code)), true); return false; });
   const setMock = (id, patch) => setMockRows(p => p.map(u => u.id === id ? Object.assign({}, u, typeof patch === 'function' ? patch(u) : patch) : u));
 
   /* Which plugin lines are taken, and by which universes. Feedback rides on output lines. */
@@ -125,23 +134,27 @@ function InputOutput() {
   }, [universes]);
 
   /* --- actions ------------------------------------------------------------------------------- */
-  const patchLine = (u, direction, value) => {
-    const label = direction.charAt(0).toUpperCase() + direction.slice(1) + ' patch of ' + u.name;
+  const patchLine = (u, direction, value, index) => {
+    const slot = direction === 'output' && index > 0 ? ' ' + (index + 1) : '';
+    const label = direction.charAt(0).toUpperCase() + direction.slice(1) + slot + ' patch of ' + u.name;
     if (value === NONE) {
-      if (!live) { setMock(u.id, direction === 'input' ? { inputPatch: null, feedbackPatch: null } : direction === 'output' ? { outputPatches: [] } : { feedbackPatch: null }); return; }
-      mutate('io.patch.remove', { universeId: u.id, direction }, label + ' removed');
+      if (!live) { setMock(u.id, direction === 'input' ? { inputPatch: null, feedbackPatch: null } : direction === 'output' ? (r => ({ outputPatches: r.outputPatches.filter((p, i) => i !== (index || 0)).map((p, i) => Object.assign({}, p, { index: i })) })) : { feedbackPatch: null }); return; }
+      const params = { universeId: u.id, direction };
+      if (direction === 'output') params.index = index || 0;
+      mutate('io.patch.remove', params, label + ' removed');
       return;
     }
     const [plugin, lineStr] = value.split('|'); const line = Number(lineStr);
     if (!live) {
       const p = plugins.find(p => p.name === plugin); const l = (direction === 'input' ? p.inputLines : p.outputLines).find(l => l.index === line);
-      setMock(u.id, direction === 'input' ? { inputPatch: { pluginName: plugin, input: line, inputName: l.name, profileName: u.inputPatch ? u.inputPatch.profileName : null } }
-        : direction === 'output' ? { outputPatches: [{ index: 0, pluginName: plugin, output: line, outputName: l.name, paused: false, blackout: false }] }
-        : { feedbackPatch: { index: 0, pluginName: plugin, output: line, outputName: l.name } });
+      setMock(u.id, direction === 'input' ? { inputPatch: { pluginName: plugin, input: line, inputName: l.name, profileName: u.inputPatch ? u.inputPatch.profileName : null, parameters: {} } }
+        : direction === 'output' ? (r => { const list = r.outputPatches.slice(); list[index || 0] = { index: index || 0, pluginName: plugin, output: line, outputName: l.name, paused: false, blackout: false, parameters: {} }; return { outputPatches: list }; })
+        : { feedbackPatch: { index: 0, pluginName: plugin, output: line, outputName: l.name, parameters: {} } });
       return;
     }
     const params = { universeId: u.id, direction, plugin, line };
     if (direction === 'input' && u.inputPatch && u.inputPatch.profileName) params.profile = u.inputPatch.profileName;  // keep the profile across a line change
+    if (direction === 'output') params.index = index || 0;   // index == outputPatches.length appends a new output
     mutate('io.patch.set', params, label + ' set to ' + plugin + ' line ' + line);
   };
   const setProfile = (u, name) => {
@@ -160,11 +173,20 @@ function InputOutput() {
     if (!live) { setMock(u.id, { passthrough: on }); return; }
     mutate('io.universe.update', { universeId: u.id, passthrough: on }, 'Passthrough ' + (on ? 'enabled' : 'disabled') + ' on ' + u.name);
   };
+  const setMonitor = (u, on) => {
+    if (!live) { setMock(u.id, { monitor: on }); return; }
+    liveCall('io.universe.setMonitor', { universeId: u.id, monitor: on }, 'Monitor ' + (on ? 'enabled' : 'disabled') + ' on ' + u.name).then(ok => { if (ok) reload(); });
+  };
+  const setOutputState = (u, p, patch) => {
+    if (!live) { setMock(u.id, r => ({ outputPatches: r.outputPatches.map(o => o.index === p.index ? Object.assign({}, o, patch) : o) })); return; }
+    const what = 'paused' in patch ? (patch.paused ? 'paused' : 'resumed') : (patch.blackout ? 'blacked out' : 'restored');
+    liveCall('io.patch.output.setState', Object.assign({ universeId: u.id, index: p.index }, patch), 'Output ' + (p.index + 1) + ' of ' + u.name + ' ' + what).then(ok => { if (ok) reload(); });
+  };
   const addUniverse = () => {
     setAddOpen(false);
     const name = addName.trim();
     setAddName('');
-    if (!live) { setMockRows(p => p.concat([{ id: p.length, name: name || 'Universe ' + (p.length + 1), passthrough: false, usedChannels: 0, totalChannels: 512, inputPatch: null, outputPatches: [], feedbackPatch: null }])); return; }
+    if (!live) { setMockRows(p => p.concat([{ id: p.length, name: name || 'Universe ' + (p.length + 1), passthrough: false, monitor: false, usedChannels: 0, totalChannels: 512, inputPatch: null, outputPatches: [], feedbackPatch: null }])); return; }
     mutate('io.universe.create', name ? { name } : {}, 'Universe added');
   };
   const deleteUniverse = (u) => {
@@ -174,7 +196,17 @@ function InputOutput() {
   };
   const toggleBlackout = () => {
     if (!live) { setBlackout(!blackout); return; }
-    qlc.call('io.blackout.set', { blackout: !blackout }).then(() => setBlackout(!blackout)).catch(e => setStatus({ text: 'Blackout failed: ' + e.message, error: true }));
+    qlc.call('io.blackout.set', { blackout: !blackout }).then(() => setBlackout(!blackout)).catch(e => say('Blackout failed: ' + e.message, true));
+  };
+  const rescanPlugin = (p) => {
+    if (!live) return;
+    qlc.call('io.plugin.rescan', { pluginName: p.name })
+      .then(() => setPluginNote(n => Object.assign({}, n, { [p.name]: 'rescanned' })), e => setPluginNote(n => Object.assign({}, n, { [p.name]: e.code === 'UNSUPPORTED' ? 'no rescan hook' : (e.message || e.code) })));
+  };
+  const configurePlugin = (p) => {
+    if (!live) return;
+    qlc.call('io.plugin.configure', { pluginName: p.name })
+      .then(r => setPluginNote(n => Object.assign({}, n, { [p.name]: r && r.openedOnHost ? 'dialog shown on the QLC+ host' : 'configured' })), e => setPluginNote(n => Object.assign({}, n, { [p.name]: e.message || e.code })));
   };
 
   /* --- render ---------------------------------------------------------------------------------- */
@@ -191,16 +223,46 @@ function InputOutput() {
   const head = { display: 'flex', alignItems: 'center', height: 30, background: 'var(--section-header)', borderBottom: '2px solid var(--section-header-div)', padding: '0 6px', flex: 'none' };
   const noteText = 'var(--fg-medium)';
   const selected = universes.find(u => u.id === sel) || universes[0] || null;
+  const propsUniverse = props ? universes.find(u => u.id === props.universeId) : null;
+  const propsPatch = propsUniverse ? (props.direction === 'input' ? propsUniverse.inputPatch : props.direction === 'feedback' ? propsUniverse.feedbackPatch : (propsUniverse.outputPatches || [])[props.index]) : null;
+  const propsPlugin = propsPatch ? (plugins || []).find(p => p.name === propsPatch.pluginName) : null;
+  const paramsOff = unsupported('io.patch.setParameters');
+  const stateOff = unsupported('io.patch.output.setState');
+  const monitorOff = unsupported('io.universe.setMonitor');
+  const propsButton = (u, direction, index, patch) => (
+    <IconButton imgSource={D.icon('configure')} size={26} data-role={direction + '-properties'} onClick={(e) => { e.stopPropagation(); setProps({ universeId: u.id, direction, index }); }}
+      tooltip={'Plugin parameters of this ' + direction + ' line' + (Object.keys(patch.parameters || {}).length ? ' (' + Object.keys(patch.parameters).length + ' set)' : '') + (paramsOff ? ' — read-only: this server has no io.patch.setParameters' : '')} />
+  );
+
+  const renderOutputRow = (u, p, i, first) => {
+    const val = p ? lineKey(p.pluginName, p.output) : NONE;
+    const label = p ? p.pluginName + ' — ' + p.outputName : 'None';
+    return (
+      <div key={p ? p.index : 'add'} data-output={p ? p.index : 'add'} style={{ display: 'flex', alignItems: 'center', gap: 6, paddingLeft: first ? 0 : 32 }}>
+        {first ? <img src={p ? pluginIcon(p.pluginName) : D.icon('inputoutput')} alt="" style={{ width: 26, height: 26, flex: 'none', opacity: p ? 1 : .4 }} /> : null}
+        {!first && !p ? <RobotoText label="+ output" fontSize={12} labelColor="var(--fg-light)" height={26} style={{ width: 56 }} title="Patch an additional output line to this universe (the same universe is sent to every output)" /> : null}
+        {pickersOff
+          ? <RobotoText label={label} fontSize={first ? 14 : 12} height={26} labelColor={p ? 'var(--fg-main)' : noteText} />
+          : <CustomComboBox width={first ? 290 : 234} height={26} currValue={val} model={lineModel(plugins, 'output', inUse, u.id)} data-role={p ? 'output-picker' : 'output-add-picker'}
+            disabled={unsupported('io.patch.set')} onValueChanged={v => patchLine(u, 'output', v, p ? p.index : (u.outputPatches || []).length)} />}
+        {p ? <IconButton faSource={p.paused ? 'fa_play' : 'fa_pause'} faColor="var(--bg-strong)" size={26} checked={!!p.paused} checkedColor="var(--selection)" disabled={stateOff} data-role="output-pause"
+          tooltip={(p.paused ? 'Paused — click to resume this output' : 'Pause this output (holds its last frame)') + (stateOff ? ' — not available: this server has no io.patch.output.setState' : '')}
+          onClick={(e) => { e.stopPropagation(); setOutputState(u, p, { paused: !p.paused }); }} /> : null}
+        {p ? <IconButton imgSource={D.icon('blackout')} size={26} checked={!!p.blackout} checkedColor="var(--override-red)" disabled={stateOff} data-role="output-blackout"
+          tooltip={(p.blackout ? 'Blackout on this output — click to restore' : 'Blackout this output only') + (stateOff ? ' — not available: this server has no io.patch.output.setState' : '')}
+          onClick={(e) => { e.stopPropagation(); setOutputState(u, p, { blackout: !p.blackout }); }} /> : null}
+        {p ? propsButton(u, 'output', p.index, p) : null}
+      </div>
+    );
+  };
 
   const renderUniverse = (u, i) => {
     const isSel = selected && selected.id === u.id;
     const inputVal = u.inputPatch ? lineKey(u.inputPatch.pluginName, u.inputPatch.input) : NONE;
-    const out0 = (u.outputPatches || [])[0] || null;
-    const outputVal = out0 ? lineKey(out0.pluginName, out0.output) : NONE;
     const fbVal = u.feedbackPatch ? lineKey(u.feedbackPatch.pluginName, u.feedbackPatch.output) : NONE;
     const inputPlugin = u.inputPatch ? (plugins || []).find(p => p.name === u.inputPatch.pluginName) : null;
-    const outPlugin = out0 ? (plugins || []).find(p => p.name === out0.pluginName) : null;
     const updateOff = unsupported('io.universe.update');
+    const outputs = u.outputPatches || [];
     return (
       <div key={u.id} data-universe={u.id} onClick={() => setSel(u.id)}
         style={{ display: 'flex', alignItems: 'stretch', cursor: 'pointer', minHeight: 94,
@@ -212,8 +274,9 @@ function InputOutput() {
             <img src={u.inputPatch ? pluginIcon(u.inputPatch.pluginName) : D.icon('inputoutput')} alt="" style={{ width: 26, height: 26, flex: 'none', opacity: u.inputPatch ? 1 : .4 }} />
             {pickersOff
               ? <RobotoText label={u.inputPatch ? u.inputPatch.pluginName + ' — ' + u.inputPatch.inputName : 'None'} fontSize={14} height={26} labelColor={u.inputPatch ? 'var(--fg-main)' : noteText} />
-              : <CustomComboBox width={290} height={26} currValue={inputVal} model={lineModel(plugins, 'input', inUse, u.id)} data-role="input-picker"
+              : <CustomComboBox width={u.inputPatch ? 260 : 290} height={26} currValue={inputVal} model={lineModel(plugins, 'input', inUse, u.id)} data-role="input-picker"
                 disabled={unsupported('io.patch.set')} onValueChanged={v => patchLine(u, 'input', v)} />}
+            {u.inputPatch ? propsButton(u, 'input', 0, u.inputPatch) : null}
           </div>
           {u.inputPatch ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 32 }}>
@@ -229,8 +292,9 @@ function InputOutput() {
               <RobotoText label="Feedback" fontSize={12} labelColor="var(--fg-light)" height={26} style={{ width: 56 }} />
               {pickersOff
                 ? <RobotoText label={u.feedbackPatch ? u.feedbackPatch.outputName : 'None'} fontSize={12} height={26} labelColor={noteText} />
-                : <CustomComboBox width={228} height={26} currValue={fbVal} data-role="feedback-picker" disabled={unsupported('io.patch.set') || !inputPlugin || !inputPlugin.outputLines.length}
+                : <CustomComboBox width={u.feedbackPatch ? 196 : 228} height={26} currValue={fbVal} data-role="feedback-picker" disabled={unsupported('io.patch.set') || !inputPlugin || !inputPlugin.outputLines.length}
                   model={lineModel(plugins, 'output', inUse, u.id, u.inputPatch.pluginName)} onValueChanged={v => patchLine(u, 'feedback', v)} />}
+              {u.feedbackPatch ? propsButton(u, 'feedback', 0, u.feedbackPatch) : null}
             </div>
           ) : null}
         </div>
@@ -253,32 +317,33 @@ function InputOutput() {
               <ToolbarSpacer />
               <RobotoText label={u.totalChannels ? u.usedChannels + '/' + u.totalChannels : ''} fontSize={12} labelColor="var(--fg-light)" height={20} />
             </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }} title={monitorOff ? 'Monitor — not available: this server has no io.universe.setMonitor yet' : 'Monitor: also keep this universe\'s values when it is not patched (DMX view / 2D monitor), live only'}>
+              <CustomCheckBox checked={!!u.monitor} size={18} disabled={monitorOff} onToggled={v => setMonitor(u, v)} data-role="monitor" />
+              <RobotoText label="Monitor" fontSize={12} height={20} />
+            </div>
           </div>
         </div>
 
-        {/* Output side */}
+        {/* Output side: every output patch is editable, plus one "add" row (UniverseIOItem.qml's output list) */}
         <div style={Object.assign({}, col(360), { display: 'flex', flexDirection: 'column', gap: 4, justifyContent: 'center', flex: 1 })}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <img src={out0 ? pluginIcon(out0.pluginName) : D.icon('inputoutput')} alt="" style={{ width: 26, height: 26, flex: 'none', opacity: out0 ? 1 : .4 }} />
-            {pickersOff
-              ? <RobotoText label={out0 ? out0.pluginName + ' — ' + out0.outputName : 'None'} fontSize={14} height={26} labelColor={out0 ? 'var(--fg-main)' : noteText} />
-              : <CustomComboBox width={290} height={26} currValue={outputVal} model={lineModel(plugins, 'output', inUse, u.id)} data-role="output-picker"
-                disabled={unsupported('io.patch.set')} onValueChanged={v => patchLine(u, 'output', v)} />}
-            {out0 && out0.paused ? <RobotoText label="paused" fontSize={12} labelColor="var(--selection)" height={26} title="Read-only: io.patch.output.setState is not available on this server" /> : null}
-            {out0 && out0.blackout ? <RobotoText label="blackout" fontSize={12} labelColor="var(--override-red)" height={26} title="Read-only: io.patch.output.setState is not available on this server" /> : null}
-            {outPlugin && outPlugin.canConfigure ? <IconButton imgSource={D.icon('configure')} size={26} disabled tooltip={outPlugin.name + ' configuration opens a native dialog in the desktop app — not available in the browser'} /> : null}
-          </div>
-          {(u.outputPatches || []).slice(1).map(p => (
-            <div key={p.index} style={{ display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 32 }} title="Additional output patches are shown read-only: the API patches one output line per universe from here">
-              <IconTextEntry iSrc={pluginIcon(p.pluginName)} tLabel={p.pluginName + ' — ' + p.outputName + ' · read-only'} tFontSize={12} height={22} tLabelColor="var(--fg-light)" />
-              {p.paused ? <RobotoText label="paused" fontSize={12} labelColor="var(--selection)" height={22} /> : null}
-              {p.blackout ? <RobotoText label="blackout" fontSize={12} labelColor="var(--override-red)" height={22} /> : null}
-            </div>
-          ))}
+          {outputs.length ? outputs.map((p, idx) => renderOutputRow(u, p, idx, idx === 0)) : renderOutputRow(u, null, 0, true)}
+          {outputs.length && !pickersOff && !unsupported('io.patch.set') ? renderOutputRow(u, null, outputs.length, false) : null}
         </div>
       </div>
     );
   };
+
+  const PatchPropertiesDialog = window.IOPatchProperties && window.IOPatchProperties.PatchPropertiesDialog;
+  const InputProfileEditorDialog = window.IOInputProfileEditor && window.IOInputProfileEditor.InputProfileEditorDialog;
+  const AudioDevices = window.IOAudioDevices && window.IOAudioDevices.AudioDevices;
+  const GrandMasterPanel = window.IOGrandMasterPanel && window.IOGrandMasterPanel.GrandMasterPanel;
+  const profileRow = (p) => (
+    <div key={p.name} data-profile={p.name} onClick={() => setSelProfile(p.name)} onDoubleClick={() => live && setProfileEditor({ name: p.name })}
+      style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', background: selProfile === p.name ? 'var(--highlight)' : 'transparent', borderRadius: 3 }} title={p.manufacturer + ' ' + p.model + ' · ' + (p.type || '')}>
+      <IconTextEntry iSrc={D.icon(p.type === 'OSC' ? 'oscplugin' : p.type === 'HID' ? 'hidplugin' : p.type === 'DMX' || p.type === 'Enttec' ? 'dmxusbplugin' : 'midiplugin')} tLabel={p.name} tFontSize={14} height={26} style={{ flex: 1, minWidth: 0 }} />
+      <RobotoText label={p.type || ''} fontSize={12} labelColor="var(--fg-light)" height={26} rightMargin={4} />
+    </div>
+  );
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, position: 'relative' }}>
@@ -306,45 +371,56 @@ function InputOutput() {
             {live && pluginState.unsupported ? <RobotoText label="Patch pickers are not available: this server has no io.plugin.list yet, so plugin lines cannot be enumerated. Patches are shown read-only." fontSize={12} labelColor={noteText} wrapText height="auto" /> : null}
             {live && pluginState.error && !pluginState.unsupported ? <RobotoText label={'io.plugin.list failed: ' + pluginState.error} fontSize={12} labelColor="var(--override-red)" wrapText height="auto" /> : null}
             {live && profileState.unsupported ? <RobotoText label="Input profiles cannot be listed: this server has no io.inputProfile.list yet." fontSize={12} labelColor={noteText} wrapText height="auto" /> : null}
-            <RobotoText label="Drag-and-drop patching from the desktop is replaced by the pickers above. Lines already patched elsewhere are marked with the universe using them." fontSize={12} labelColor={noteText} wrapText height="auto" />
+            <RobotoText label="Drag-and-drop patching from the desktop is replaced by the pickers above. Lines already patched elsewhere are marked with the universe using them. The gear on a patched line opens its plugin parameters (IP, port, universe, …); the pause and blackout buttons act on that output only." fontSize={12} labelColor={noteText} wrapText height="auto" />
           </div>
         </div>
 
-        <div style={{ width: 260, minWidth: 260, borderLeft: 'var(--border-dark)', background: 'var(--bg-strong)', overflow: 'auto' }}>
+        <div style={{ width: 280, minWidth: 280, borderLeft: 'var(--border-dark)', background: 'var(--bg-strong)', overflow: 'auto' }}>
           <SectionBox sectionLabel="Plugins" isExpanded>
             <div style={{ padding: 6, display: 'flex', flexDirection: 'column', gap: 2 }}>
               {plugins ? plugins.map(p => {
                 const used = [].concat(p.inputLines.map(l => ({ dir: 'input', l })), p.outputLines.map(l => ({ dir: 'output', l })))
                   .filter(x => (inUse[x.dir][lineKey(p.name, x.l.index)] || []).length);
                 return (
-                  <div key={p.name} style={{ display: 'flex', flexDirection: 'column' }}>
-                    <IconTextEntry iSrc={pluginIcon(p.name)} tLabel={p.name + ' · ' + p.inputLines.length + ' in / ' + p.outputLines.length + ' out'} tFontSize={14} height={26}
-                      tLabelColor={used.length ? 'var(--fg-main)' : 'var(--fg-light)'} />
+                  <div key={p.name} data-plugin={p.name} style={{ display: 'flex', flexDirection: 'column' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <IconTextEntry iSrc={pluginIcon(p.name)} tLabel={p.name + ' · ' + p.inputLines.length + ' in / ' + p.outputLines.length + ' out'} tFontSize={14} height={26}
+                        tLabelColor={used.length ? 'var(--fg-main)' : 'var(--fg-light)'} style={{ flex: 1, minWidth: 0 }} />
+                      <IconButton imgSource={D.icon('loop')} size={22} disabled={!live || unsupported('io.plugin.rescan')} tooltip="Rescan: ask the plugin to re-enumerate its lines (hotplug plugins such as DMX USB)" onClick={() => rescanPlugin(p)} data-role="plugin-rescan" />
+                      {p.canConfigure ? <IconButton imgSource={D.icon('configure')} size={22} disabled={!live || unsupported('io.plugin.configure')} tooltip="Open the plugin's native configuration dialog on the QLC+ host machine" onClick={() => configurePlugin(p)} data-role="plugin-configure" /> : null}
+                    </div>
                     {used.map(x => (
                       <RobotoText key={x.dir + x.l.index} label={x.l.name + ' → ' + inUse[x.dir][lineKey(p.name, x.l.index)].map(u => u.name).join(', ') + (x.dir === 'input' ? ' (input)' : '')}
                         fontSize={12} labelColor="var(--fg-light)" height={20} leftMargin={30} />
                     ))}
-                    {p.canConfigure ? <RobotoText label="Configuration: desktop app only" fontSize={12} labelColor={noteText} height={20} leftMargin={30} /> : null}
+                    {pluginNote[p.name] ? <RobotoText label={pluginNote[p.name]} fontSize={12} labelColor={noteText} height={20} leftMargin={30} data-role="plugin-note" /> : null}
                   </div>
                 );
               }) : <RobotoText label={pluginState.unsupported ? 'Not available: no io.plugin.list on this server' : (live ? 'Loading…' : '')} fontSize={12} labelColor={noteText} wrapText height="auto" />}
+              {plugins && !plugins.length ? <RobotoText label="No IO plugins are loaded on this server (started without its Plugins folder?). Universes can still be renamed and configured; nothing can be patched." fontSize={12} labelColor={noteText} wrapText height="auto" /> : null}
             </div>
           </SectionBox>
           <SectionBox sectionLabel="Input profiles" isExpanded>
             <div style={{ padding: 6, display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {profiles ? (profiles.length ? profiles.map(p => (
-                <IconTextEntry key={p.name} iSrc={D.icon('midiplugin')} tLabel={p.name} tFontSize={14} height={26} title={p.manufacturer + ' ' + p.model} />
-              )) : <RobotoText label="No input profiles" fontSize={12} labelColor={noteText} height={22} />)
+              {profiles ? (profiles.length ? profiles.slice().sort((a, b) => a.name.localeCompare(b.name)).map(profileRow) : <RobotoText label="No input profiles" fontSize={12} labelColor={noteText} height={22} />)
                 : <RobotoText label={profileState.unsupported ? 'Not available: no io.inputProfile.list on this server' : (live ? 'Loading…' : '')} fontSize={12} labelColor={noteText} wrapText height="auto" />}
-              <RobotoText label="Profile editor and MIDI/OSC learn: desktop app only" fontSize={12} labelColor={noteText} wrapText height="auto" />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4 }}>
+                <GenericButton label="New" width={60} height={24} disabled={!live || !InputProfileEditorDialog || unsupported('io.inputProfile.save')} onClick={() => setProfileEditor({ name: null })} data-role="profile-new" />
+                <GenericButton label="Edit" width={60} height={24} disabled={!live || !InputProfileEditorDialog || !selProfile || unsupported('io.inputProfile.get')} onClick={() => selProfile && setProfileEditor({ name: selProfile })} data-role="profile-edit" />
+                <RobotoText label={live ? (profileState.raw ? 'rev ' + profileState.raw.profilesRevision : '') : 'connect to edit'} fontSize={12} labelColor="var(--fg-light)" height={24} style={{ flex: 1 }} />
+              </div>
+              <RobotoText label="Double-click a profile to edit it. Profiles are .qxi files in the QLC+ host's user profile folder; the editor can auto-detect channels from a patched input line." fontSize={12} labelColor={noteText} wrapText height="auto" />
             </div>
           </SectionBox>
+          <SectionBox sectionLabel="Grand Master" isExpanded>
+            <div style={{ padding: 6 }}>{GrandMasterPanel ? <GrandMasterPanel qlc={qlc} onStatus={say} /> : null}</div>
+          </SectionBox>
           <SectionBox sectionLabel="Audio" isExpanded>
-            <div style={{ padding: 6 }}><IconTextEntry iSrc={D.icon('audiocard')} tLabel="Audio devices: not available in the web UI" tFontSize={12} tLabelColor={noteText} height={26} /></div>
+            <div style={{ padding: 6 }}>{AudioDevices ? <AudioDevices qlc={qlc} onStatus={say} /> : null}</div>
           </SectionBox>
           <SectionBox sectionLabel="Desktop only" isExpanded>
             <div style={{ padding: 6, display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {['Plugin configuration dialogs (native, desktop only)', 'Input signal indicator (no input event on the API)', 'Pause / blackout per output patch (read-only here)', 'More than one output line per universe (read-only here)', 'Input profile editor and wizard'].map(t => (
+              {['Plugin configuration dialogs open on the QLC+ host machine, not in this browser', 'Input signal indicator on the input patch (no input event on the API)', 'Audio sample rate, channels, buffer size and input level check', 'Beat generator selection'].map(t => (
                 <RobotoText key={t} label={'· ' + t} fontSize={12} labelColor={noteText} wrapText height="auto" />
               ))}
             </div>
@@ -366,6 +442,11 @@ function InputOutput() {
       <CustomPopupDialog open={!!delOpen} title="Remove universe" width={380}
         message={delOpen ? 'Are you sure you want to remove ' + delOpen.name + '? Its input, output and feedback patches are removed with it.' : ''}
         standardButtons={['Cancel', 'Remove']} onClicked={(b) => { if (b === 'Remove' && delOpen) deleteUniverse(delOpen); else setDelOpen(null); }} onClose={() => setDelOpen(null)} />
+
+      {PatchPropertiesDialog ? <PatchPropertiesDialog open={!!props && !!propsPatch} qlc={qlc} universe={propsUniverse} direction={props ? props.direction : 'output'} index={props ? props.index : 0}
+        patch={propsPatch} plugin={propsPlugin} onClose={() => setProps(null)} onStatus={say} /> : null}
+      {InputProfileEditorDialog ? <InputProfileEditorDialog open={!!profileEditor} qlc={qlc} profileName={profileEditor ? profileEditor.name : null} universes={universes}
+        onClose={() => setProfileEditor(null)} onStatus={say} /> : null}
     </div>
   );
 }
