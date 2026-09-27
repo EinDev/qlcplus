@@ -494,7 +494,8 @@ async function dialogButton(page, text) { await clickEl(page, new Function('cons
     const e2eEntry = async () => (await api.call('fixturedefs.list', { manufacturer: MAN })).entries.find(e => e.model === MODEL);
     await waitUntil(() => page.eval('!!document.querySelector("[data-session-label=\\"E2E - Web Spot\\"]")'));
     await clickEl(page, '[data-session-label="E2E - Web Spot"] > button');
-    await waitUntil(() => exists(page, '[data-fe="general-tab"]'));
+    await tab(page, 'general'); /* each session remembers its last sub-tab */
+    check(await waitUntil(() => exists(page, '[data-fe="general-tab"]')), 'back on the E2E session, General tab');
     const other = await api.call('fixturedefs.session.open', { manufacturer: MAN, model: MODEL });
     await api.call('fixturedefs.session.update', { sessionId: other.sessionId, baseRevision: 0, author: 'other client' });
     await api.call('fixturedefs.save', { sessionId: other.sessionId, baseRevision: other.baseRevision });
