@@ -8,8 +8,8 @@
  * File operations, as a browser can do them:
  *   New                 fixturedefs.session.create
  *   Open                manufacturer -> model picker over fixtures.defs.listManufacturers +
- *                       fixturedefs.list({manufacturer}) (the unfiltered list force-loads the whole
- *                       library, ~9 s, so it is never used), then fixturedefs.session.open
+ *                       fixturedefs.list({manufacturer}) (only the filtered form carries type /
+ *                       author / channel and mode counts for every row), then fixturedefs.session.open
  *   Save                fixturedefs.save into the QLC+ host's user fixture folder; a bundled
  *                       definition must be forked first ("Save as user copy" = session.forkToUser)
  *   Import / Export     a .qxf picked in / downloaded to this browser (base64 over the socket)

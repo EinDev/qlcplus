@@ -240,6 +240,38 @@ void QLCFixtureDefCache_Test::fixtureDef()
     QVERIFY(cache.fixtureDef("", "") == NULL);
 }
 
+void QLCFixtureDefCache_Test::fixtureDefsAndEnsureLoaded()
+{
+    // fixtureDefs() lists every map entry without loading any of them
+    QList<QLCFixtureDef*> defs = cache.fixtureDefs();
+    QCOMPARE(defs.count(), cache.m_defs.count());
+    QVERIFY(defs.isEmpty() == false);
+    QLCFixtureDef *target = NULL;
+    foreach (QLCFixtureDef *def, defs)
+    {
+        QVERIFY(def->isLoaded() == false);
+        if (def->manufacturer() == "Futurelight" && def->model() == "CY-200")
+            target = def;
+    }
+    QVERIFY(target != NULL);
+    QVERIFY(target->channels().isEmpty());
+
+    // ensureLoaded() loads exactly that one, the same way fixtureDef() does
+    cache.ensureLoaded(target);
+    QVERIFY(target->isLoaded() == true);
+    QVERIFY(target->channels().isEmpty() == false);
+    QVERIFY(QDir(target->definitionSourceFile()).isAbsolute() == true);
+    int loaded = 0;
+    foreach (QLCFixtureDef *def, cache.fixtureDefs())
+        loaded += def->isLoaded() ? 1 : 0;
+    QCOMPARE(loaded, 1);
+
+    // a second call is a no-op, and NULL is ignored
+    cache.ensureLoaded(target);
+    QVERIFY(target->isLoaded() == true);
+    cache.ensureLoaded(NULL);
+}
+
 void QLCFixtureDefCache_Test::load()
 {
     /* At least these should be available */

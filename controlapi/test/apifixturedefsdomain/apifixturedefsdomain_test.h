@@ -44,6 +44,7 @@ private slots:
     void cleanup();
 
     void listIncludesSeededDefinition();
+    void listUnfilteredDoesNotLoadDefinitions();
     void getReturnsDefinitionWithIds();
     void getMissingIsNotFound();
     void sessionCreateIsBlankUserSession();

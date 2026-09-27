@@ -3,7 +3,9 @@
 //   node webui/tools/perf/api-cost.js --port 9340 [--reps 5] [--skip-defs] [--json out.json]
 //
 // Point it ONLY at a sandbox (dev-webui-sandbox.ps1), never at the live instance: it is read-only,
-// but fixturedefs.list force-loads every fixture definition and blocks that app for seconds.
+// but a cold manufacturer-filtered fixturedefs.list parses that manufacturer's definitions on the
+// main thread and blocks that app for up to seconds (and servers from before 2026-09-27 parse the
+// WHOLE library on an unfiltered call: 2-20 s, enough to trip the freeze watchdog).
 //
 // For every call it prints the round trip (median / max over --reps), the response size, and the
 // longest stall a second connection saw meanwhile (it pings io.grandMaster.get every 5 ms): the
@@ -87,6 +89,9 @@ const reps = Number(arg('reps', 5));
   const efx = fl.find(f => f.type === 'EFX');
   if (efx) await measure(`functions.efx.getPreview #${efx.id}`, 'functions.efx.getPreview', { functionId: efx.id, includeFixturePaths: true });
   if (!arg('skip-defs', false)) {
+    // Largest manufacturer first, while its definitions are still cold: the filtered form
+    // is the one that parses QXF files, so this row is the remaining bound per call.
+    await measure('fixturedefs.list manufacturer=American DJ (cold)', 'fixturedefs.list', { manufacturer: 'American DJ' }, 1);
     await measure('fixturedefs.list (1st call = cold)', 'fixturedefs.list', {}, 1);
     await measure('fixturedefs.list (warm)', 'fixturedefs.list', {}, 2);
     await measure('fixturedefs.list manufacturer=SF3', 'fixturedefs.list', { manufacturer: 'SF3' }, 3);

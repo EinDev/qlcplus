@@ -114,6 +114,17 @@ QMap<QString, QMap<QString, bool> > QLCFixtureDefCache::fixtureCache() const
     return map;
 }
 
+QList<QLCFixtureDef*> QLCFixtureDefCache::fixtureDefs() const
+{
+    return m_defs;
+}
+
+void QLCFixtureDefCache::ensureLoaded(QLCFixtureDef *def) const
+{
+    if (def != NULL)
+        def->checkLoaded(m_mapAbsolutePath);
+}
+
 bool QLCFixtureDefCache::addFixtureDef(QLCFixtureDef* fixtureDef)
 {
     if (fixtureDef == NULL)

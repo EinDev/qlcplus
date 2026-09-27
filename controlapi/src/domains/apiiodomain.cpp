@@ -400,6 +400,16 @@ void ApiIoDomain::slotUniverseWritten(quint32 id, const QByteArray &postGMValues
     QString topic = QStringLiteral("io.dmx.universe.%1.changed").arg(id);
 
     QByteArray &previous = m_lastUniverseSnapshot[id];
+    if (m_server->hasSubscriber(topic) == false)
+    {
+        // Nobody follows this universe: skip the per-channel diff (it runs
+        // on the main thread for every universe on every output cycle), but
+        // keep the snapshot current - an implicitly shared copy, no byte
+        // copy - so a client that subscribes later gets its first delta
+        // against the current frame, exactly as when the diff always ran.
+        previous = postGMValues;
+        return;
+    }
     QJsonArray changes;
     int max = qMax(previous.size(), postGMValues.size());
     for (int channel = 0; channel < max; channel++)

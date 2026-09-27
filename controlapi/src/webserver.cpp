@@ -15,6 +15,7 @@
   limitations under the License.
 */
 
+#include <QDateTime>
 #include <QDebug>
 #include <QDir>
 #include <QFile>
@@ -22,10 +23,12 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonValue>
+#include <QLocale>
 #include <QMimeDatabase>
 #include <QMimeType>
 #include <QTcpServer>
 #include <QTcpSocket>
+#include <QTimeZone>
 #include <QUrl>
 
 #include "webserver.h"
@@ -279,6 +282,25 @@ void WebServer::handleRequest(QTcpSocket *socket, const QByteArray &requestHead)
         return;
     }
 
+    // Validators, taken BEFORE reading: if the file is rewritten while we
+    // read it, the body is newer than the tag, so the browser's next
+    // revalidation mismatches and it downloads again - never the reverse.
+    // With Cache-Control: no-cache the browser revalidates every file on
+    // every load, so an edited file (--webui-root on a source tree) still
+    // shows up on the next reload; an unchanged one costs a 304 instead of
+    // its whole body.
+    const QFileInfo info(filePath);
+    const QByteArray etag = entityTag(info);
+    const QList<QPair<QByteArray, QByteArray>> validators = {
+        { "ETag", etag },
+        { "Last-Modified", httpDate(info.lastModified()) }
+    };
+    if (isNotModified(requestHead, etag, info.lastModified()))
+    {
+        sendResponse(socket, 304, QByteArray(), QByteArray(), 0, true, validators);
+        return;
+    }
+
     // Whole file in memory: web UI assets are small, and this keeps the
     // response path a single write with a Content-Length known up front.
     // For GET the length must describe the bytes actually read - the UI is
@@ -286,7 +308,74 @@ void WebServer::handleRequest(QTcpSocket *socket, const QByteArray &requestHead)
     // otherwise be announced with a stale size and the browser left waiting
     // for bytes that never come (or handed a truncated body).
     QByteArray body = headOnly ? QByteArray() : file.readAll();
-    sendResponse(socket, 200, contentTypeForPath(filePath), body, headOnly ? file.size() : body.size(), headOnly);
+    sendResponse(socket, 200, contentTypeForPath(filePath), body, headOnly ? file.size() : body.size(), headOnly, validators);
+}
+
+QByteArray WebServer::headerValue(const QByteArray &requestHead, const QByteArray &name)
+{
+    // Header lines after the request line; names are case-insensitive.
+    // Repeated headers are joined with ", " (RFC 9110 5.3).
+    QByteArray value;
+    bool found = false;
+    const QList<QByteArray> lines = requestHead.split('\n');
+    for (int i = 1; i < lines.size(); i++)
+    {
+        const QByteArray line = lines.at(i).trimmed();
+        const int colon = line.indexOf(':');
+        if (colon <= 0 || line.left(colon).trimmed().compare(name, Qt::CaseInsensitive) != 0)
+            continue;
+        if (found)
+            value += ", ";
+        value += line.mid(colon + 1).trimmed();
+        found = true;
+    }
+    return found ? value : QByteArray();
+}
+
+QByteArray WebServer::entityTag(const QFileInfo &info)
+{
+    // Size + modification time in ms: cheap (no hashing of the body) and
+    // changes on every save of an edited file.
+    return '"' + QByteArray::number(info.size(), 16) + '-'
+           + QByteArray::number(info.lastModified().toMSecsSinceEpoch(), 16) + '"';
+}
+
+QByteArray WebServer::httpDate(const QDateTime &time)
+{
+    return QLocale::c().toString(time.toUTC(), QStringLiteral("ddd, dd MMM yyyy HH:mm:ss 'GMT'")).toLatin1();
+}
+
+bool WebServer::isNotModified(const QByteArray &requestHead, const QByteArray &etag, const QDateTime &lastModified)
+{
+    // RFC 9110 13.2.2: If-None-Match wins; If-Modified-Since only counts
+    // when there is no If-None-Match. Weak comparison for If-None-Match.
+    const QByteArray noneMatch = headerValue(requestHead, "If-None-Match");
+    if (noneMatch.isNull() == false)
+    {
+        for (QByteArray tag : noneMatch.split(','))
+        {
+            tag = tag.trimmed();
+            if (tag == "*")
+                return true;
+            if (tag.startsWith("W/"))
+                tag = tag.mid(2);
+            if (tag == etag)
+                return true;
+        }
+        return false;
+    }
+
+    const QByteArray modifiedSince = headerValue(requestHead, "If-Modified-Since");
+    if (modifiedSince.isEmpty())
+        return false;
+    QDateTime since = QLocale::c().toDateTime(QString::fromLatin1(modifiedSince),
+                                              QStringLiteral("ddd, dd MMM yyyy HH:mm:ss 'GMT'"));
+    if (since.isValid() == false)
+        return false;
+    since.setTimeZone(QTimeZone::UTC);
+    // HTTP dates have whole seconds: compare at that resolution.
+    const qint64 fileSecs = lastModified.toMSecsSinceEpoch() / 1000;
+    return fileSecs <= since.toMSecsSinceEpoch() / 1000;
 }
 
 WebServer::PathStatus WebServer::resolvePath(const QString &requestPath, QString &filePath) const
@@ -353,8 +442,13 @@ void WebServer::sendResponse(QTcpSocket *socket, int status, const QByteArray &c
     QByteArray response;
     response.reserve(256 + (headOnly ? 0 : body.size()));
     response += "HTTP/1.1 " + QByteArray::number(status) + ' ' + reasonPhrase(status) + "\r\n";
-    response += "Content-Type: " + contentType + "\r\n";
-    response += "Content-Length: " + QByteArray::number(contentLength) + "\r\n";
+    // A 304 has no body and describes none: it only carries the validators
+    // (extraHeaders) and the caching policy.
+    if (status != 304)
+    {
+        response += "Content-Type: " + contentType + "\r\n";
+        response += "Content-Length: " + QByteArray::number(contentLength) + "\r\n";
+    }
     response += "Cache-Control: no-cache\r\n";
     response += "Connection: close\r\n";
     for (const auto &header : extraHeaders)
@@ -381,6 +475,7 @@ QByteArray WebServer::reasonPhrase(int status)
     switch (status)
     {
         case 200: return "OK";
+        case 304: return "Not Modified";
         case 400: return "Bad Request";
         case 403: return "Forbidden";
         case 404: return "Not Found";

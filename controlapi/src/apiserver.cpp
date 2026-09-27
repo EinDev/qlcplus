@@ -148,6 +148,16 @@ void ApiServer::slotSessionDisconnected(ApiSession *session)
     emit sessionDisconnected(session->clientId());
 }
 
+bool ApiServer::hasSubscriber(const QString &topic) const
+{
+    for (ApiSession *session : std::as_const(m_sessions))
+    {
+        if (session->isSubscribedTo(topic))
+            return true;
+    }
+    return false;
+}
+
 void ApiServer::broadcast(const QString &topic, const QJsonObject &data, const QString &originClientId, bool subscribeGated)
 {
     for (ApiSession *session : std::as_const(m_sessions))

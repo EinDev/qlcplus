@@ -228,6 +228,11 @@ void QLCFixtureDef::setLoaded(bool loaded)
     m_isLoaded = loaded;
 }
 
+bool QLCFixtureDef::isLoaded() const
+{
+    return m_isLoaded;
+}
+
 bool QLCFixtureDef::isUser() const
 {
     return m_isUser;

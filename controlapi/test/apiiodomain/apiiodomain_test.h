@@ -51,6 +51,7 @@ private slots:
     void grandMasterSetValueBroadcastsLiveEvent();
     void blackoutToggleBroadcastsLiveEvent();
     void dmxEventOnlyDeliveredAfterSubscribe();
+    void dmxDiffWithoutSubscriberKeepsSnapshotCurrent();
 
     void simpleDeskSetChannelIsReflectedInGet();
     void simpleDeskSetChannelBroadcastsOverriddenTrue();

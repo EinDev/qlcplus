@@ -65,15 +65,19 @@ function useProject(qlc) {
   const [project, setProject] = React.useState(null);
   React.useEffect(() => {
     if (!qlc.online) { setProject(null); return; }
-    let alive = true;
+    let alive = true, timer = null;
     const refresh = () => qlc.call('core.project.get').then(p => { if (alive) setProject(p); }).catch(() => {});
     refresh();
-    /* Every structural event bumps docRevision, and with it isModified — refresh on those too. */
+    /* Every structural event bumps docRevision, and with it isModified — refresh on those too.
+       Trailing debounce: one edit often fires several of these at once (an undo emits
+       core.history.changed plus the entity's own event; a speed-box drag a functions.updated per
+       step), and only the state after the burst matters. */
+    const later = () => { clearTimeout(timer); timer = setTimeout(refresh, 150); };
     const offs = ['core.project.loaded', 'core.project.saved', 'core.project.recentFilesChanged', 'core.history.changed',
       'vc.widget.created', 'vc.widget.deleted', 'vc.widget.updated', 'vc.widget.configChanged', 'vc.widget.repositioned',
       'vc.page.created', 'vc.page.deleted', 'vc.page.renamed', 'functions.created', 'functions.deleted', 'functions.updated', 'fixtures.created', 'fixtures.deleted']
-      .map(t => qlc.subscribeTo(t, refresh));
-    return () => { alive = false; offs.forEach(f => f()); };
+      .map(t => qlc.subscribeTo(t, later));
+    return () => { alive = false; clearTimeout(timer); offs.forEach(f => f()); };
   }, [qlc.online]);
   return project;
 }
