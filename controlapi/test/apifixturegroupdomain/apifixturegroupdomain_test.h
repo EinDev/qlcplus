@@ -58,6 +58,7 @@ private slots:
     void assignFixtureWithUnknownFixtureIsNotFound();
 
     void assignHeadAutoPlacesNewHead();
+    void assignHeadToExplicitCellBumpsRevision();
     void assignHeadToOccupiedCellSwapsPositions();
     void assignHeadWithBadHeadIndexIsInvalidParams();
 
