@@ -177,6 +177,47 @@ QJsonObject ApiVcLayoutDomain_Test::geometryOf(const QString &widgetId)
 }
 
 /*****************************************************************************
+ * vc.page.setPin -> vc.page.updated (VcPageUpdatedEvent)
+ *****************************************************************************/
+
+void ApiVcLayoutDomain_Test::pageSetPinBroadcastsPageUpdated()
+{
+    QString clientId = helloAndGetClientId();
+
+    QSignalSpy spy(m_client, &QWebSocket::textMessageReceived);
+    QJsonObject set;
+    set.insert(QStringLiteral("index"), 0);
+    set.insert(QStringLiteral("newPIN"), QStringLiteral("2468"));
+    set.insert(QStringLiteral("baseRevision"), currentDocRevision());
+    QCOMPARE(isOk(sendAndWaitForReply(QStringLiteral("vc.page.setPin"), set, QStringLiteral("t-pp1"))), true);
+
+    QList<QJsonObject> events = eventsWithTopic(spy, QStringLiteral("vc.page.updated"));
+    QCOMPARE(events.size(), 1);
+    QJsonObject pageObj = events.at(0).value(QStringLiteral("page")).toObject();
+    QCOMPARE(pageObj.value(QStringLiteral("index")).toInt(), 0);
+    QCOMPARE(pageObj.value(QStringLiteral("hasPin")).toBool(), true);
+    QCOMPARE(pageObj.contains(QStringLiteral("pin")), false); // the PIN itself never travels
+    QCOMPARE(events.at(0).value(QStringLiteral("docRevision")).toInt(), int(m_doc->docRevision()));
+    QCOMPARE(events.at(0).value(QStringLiteral("_origin")).toString(), clientId);
+
+    // Clearing it reports hasPin false the same way; a refused change reports nothing
+    QJsonObject wrong;
+    wrong.insert(QStringLiteral("index"), 0);
+    wrong.insert(QStringLiteral("currentPIN"), QStringLiteral("0000"));
+    wrong.insert(QStringLiteral("newPIN"), QString());
+    wrong.insert(QStringLiteral("baseRevision"), currentDocRevision());
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.page.setPin"), wrong, QStringLiteral("t-pp2"))), QStringLiteral("INVALID_PARAMS"));
+    QCOMPARE(eventsWithTopic(spy, QStringLiteral("vc.page.updated")).size(), 1);
+    QJsonObject clear = wrong;
+    clear.insert(QStringLiteral("currentPIN"), QStringLiteral("2468"));
+    clear.insert(QStringLiteral("baseRevision"), currentDocRevision());
+    QCOMPARE(isOk(sendAndWaitForReply(QStringLiteral("vc.page.setPin"), clear, QStringLiteral("t-pp3"))), true);
+    events = eventsWithTopic(spy, QStringLiteral("vc.page.updated"));
+    QCOMPARE(events.size(), 2);
+    QCOMPARE(events.at(1).value(QStringLiteral("page")).toObject().value(QStringLiteral("hasPin")).toBool(), false);
+}
+
+/*****************************************************************************
  * vc.frame.*
  *****************************************************************************/
 

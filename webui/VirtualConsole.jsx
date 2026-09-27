@@ -20,7 +20,7 @@ const { ViewToolbar, ToolbarSpacer, IconButton, RobotoText, QLCPlusFader, Generi
 
 /* core.history.changed is in both lists: undo/redo emit no domain events, so the screen re-reads itself. */
 const WIDGET_REFRESH_TOPICS = ['vc.widget.created', 'vc.widget.deleted', 'vc.widget.updated', 'vc.widget.configChanged', 'vc.widget.bulkUpdated', 'vc.page.deleted', 'core.project.loaded', 'core.history.changed'];
-const PAGE_REFRESH_TOPICS = ['vc.page.created', 'vc.page.deleted', 'vc.page.renamed', 'core.project.loaded', 'core.history.changed'];
+const PAGE_REFRESH_TOPICS = ['vc.page.created', 'vc.page.deleted', 'vc.page.renamed', 'vc.page.updated', 'core.project.loaded', 'core.history.changed'];
 const NO_FUNCTION_ID = '4294967295';
 
 /* --- mock widgets (offline preview) -------------------------------------------------------- */

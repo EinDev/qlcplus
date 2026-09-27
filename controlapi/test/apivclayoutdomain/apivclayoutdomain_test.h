@@ -40,6 +40,7 @@ private slots:
     void init();
     void cleanup();
 
+    void pageSetPinBroadcastsPageUpdated();
     void frameSetPinRequiresCurrentPinAndBroadcasts();
     void frameValidatePinChecksValue();
     void frameCloneFirstPageCreatesCopies();
