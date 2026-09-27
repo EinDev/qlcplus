@@ -193,10 +193,15 @@ ApiMediaDomain::ApiMediaDomain(Doc *doc, ApiServer *server, QObject *parent)
 
 QJsonObject ApiMediaDomain::scriptDetailToJson(Doc *doc, Script *script)
 {
+    // Deliberately NO syntax check here: on scriptv4 that means evaluating
+    // the whole body in a QJSEngine (ScriptRunner::collectScriptData), which
+    // has no interrupt - a "for(;;) { Engine.waitTime(...) }" script would
+    // spin the main thread forever, and functions.get is a read that every
+    // tree selection / foreign event triggers. functions.script.validate is
+    // the explicit, operator-triggered evaluation.
     QJsonObject obj;
     obj.insert(QStringLiteral("functionId"), functionIdString(script));
     obj.insert(QStringLiteral("source"), script->data());
-    scriptErrorsToJson(script, obj);
     obj.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
     return obj;
 }

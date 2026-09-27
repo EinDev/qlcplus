@@ -286,10 +286,12 @@ void ApiMediaDomain_Test::scriptValidateReportsErrorLinesAndRefs()
     QCOMPARE(result.value(QStringLiteral("syntaxErrors")).toArray().count(), 0);
 }
 
-void ApiMediaDomain_Test::scriptGetCarriesSourceAndSyntaxErrors()
+void ApiMediaDomain_Test::scriptGetCarriesSourceOnly()
 {
     helloAndGetClientId();
-    Script *script = addScript(QStringLiteral("Engine.waitTime(100);\n@@ nope\n"));
+    // A read must never evaluate the script (no interrupt in the QJSEngine
+    // check): a body that would spin forever in the validator is safe to get.
+    Script *script = addScript(QStringLiteral("for (;;) { Engine.waitTime(1000); }\n"));
     QVERIFY(script != nullptr);
 
     QJsonObject params;
@@ -302,9 +304,9 @@ void ApiMediaDomain_Test::scriptGetCarriesSourceAndSyntaxErrors()
     QJsonObject typeDetail = result.value(QStringLiteral("typeDetail")).toObject();
     QCOMPARE(typeDetail.value(QStringLiteral("functionId")).toString(), QString::number(script->id()));
     QCOMPARE(typeDetail.value(QStringLiteral("source")).toString(), script->data());
-    QVERIFY(typeDetail.value(QStringLiteral("syntaxErrorLines")).toArray().count() >= 1);
-    QCOMPARE(typeDetail.value(QStringLiteral("syntaxErrorLines")).toArray().at(0).toInt(), 2);
     QVERIFY(typeDetail.contains(QStringLiteral("docRevision")));
+    QVERIFY(typeDetail.contains(QStringLiteral("syntaxErrors")) == false);
+    QVERIFY(typeDetail.contains(QStringLiteral("syntaxErrorLines")) == false);
 }
 
 void ApiMediaDomain_Test::scriptSetSourceOnStaleRevisionIsConflict()

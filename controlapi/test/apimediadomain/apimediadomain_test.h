@@ -50,7 +50,7 @@ private slots:
     void scriptSetSourceReplacesBodyAndBroadcasts();
     void scriptAppendLineAppendsAndBroadcasts();
     void scriptValidateReportsErrorLinesAndRefs();
-    void scriptGetCarriesSourceAndSyntaxErrors();
+    void scriptGetCarriesSourceOnly();
     void scriptSetSourceOnStaleRevisionIsConflict();
     void scriptMethodsOnWrongTypeAreInvalidParams();
 
