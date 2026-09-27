@@ -310,7 +310,9 @@ registered; behaviour notes and the few additive deviations:
   unusedMedia() / removeUnusedMedia(). "Reload changed media" needs no bulk method: the client loops
   `functions.media.reload` over `status.changed`.
 - NEW `functions.audio.detectBpm` (runtime, ack with the current `bpm`), `functions.audio.bpmChanged`
-  (relayed from Audio::bpmChanged for every Audio a client asked to analyse). Needs a decoder plugin
+  (relayed from Audio::bpmChanged for every Audio, the automatic analysis on load / source change /
+  reload included; not gated, a few events per analysis). `functions.video.setVolume` takes 0-100,
+  the Video Volume attribute's range, unlike Audio's 0-1. Needs a decoder plugin
   (Plugins/Audio); the unit test loads the freshly built sndfile plugin and detects a 120 BPM click track.
 - NEW `functions.audio.setMuted`, `functions.video.setVolume` / `setMuted` / `setSpoutSize` (4a) with
   `...mutedChanged` / `volumeChanged` / `spoutSizeChanged` events. The Spout sender *name* is not
