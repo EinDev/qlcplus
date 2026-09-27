@@ -260,11 +260,11 @@ async function main() {
     await clickFn(page, dialogBtn('Create'), 'Create');
     const half = await soon(async () => (await api.call('palette.list')).palettes.find(x => x.name === 'E2E Apply Half'), 'created');
     const halfD = half ? await api.call('palette.get', { paletteId: half.id }) : null;
-    check(halfD && Math.abs(Number(halfD.values[0]) - 127.5) < 0.01, 'Dimmer 50 % is stored as DMX 127.5 (the desktop\'s percent * 2.55)', halfD && halfD.values);
+    check(halfD && Number(halfD.values[0]) === 127, 'Dimmer 50 % is stored as DMX 127 (the desktop\'s percent * 2.55, rounded)', halfD && halfD.values);
     if (halfD) {
       await dblClickFn(page, listRow('E2E Apply Half'), 'E2E Apply Half');
       const want = (await api.call('palette.apply', { paletteId: half.id, fixtureIds: gobos.map(f => f.id) })).channels.find(c => c.channel === DIM);
-      check(want && (want.value === 127 || want.value === 128), 'the engine writes it as DMX ' + (want && want.value));
+      check(want && want.value === 127, 'the engine writes it as DMX 127', want && want.value);
       await expectDmx('and the output carries it', gobos.map(f => [f.id, DIM, want ? want.value : -1]));
     }
 

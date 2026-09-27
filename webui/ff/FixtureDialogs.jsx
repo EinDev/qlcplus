@@ -354,10 +354,12 @@
     if (type === 'Zoom') return <FF.Row label="Zoom" width={60}>
       <NumberField value={Number(v[0]) || 0} step={0.5} min={0} max={360} suffix="°" e2e="palette-zoom" onChange={x => onChange([x])} />
     </FF.Row>;
-    /* Dimmer: stored as DMX 0-255, edited as percent like IntensityTool.qml (percent * 2.55) */
+    /* Dimmer: stored as DMX 0-255, edited as percent like IntensityTool.qml (percent * 2.55).
+       Rounded to a whole DMX value: IntensityTool stores the raw product (50 % = 127.4999...),
+       which the engine applies as 127 but saves as "127.5" and reloads as 128. */
     if (type === 'Dimmer') return <FF.Row label="Level" width={60}>
-      <CustomSpinBox value={Math.round((Number(v[0]) || 0) / 2.55)} from={0} to={100} suffix="%" width={90} onValueModified={x => onChange([x * 2.55])} />
-      <RobotoText label={'DMX ' + Math.floor(Number(v[0]) || 0)} fontSize={12} labelColor="var(--fg-light)" />
+      <CustomSpinBox value={Math.round((Number(v[0]) || 0) / 2.55)} from={0} to={100} suffix="%" width={90} onValueModified={x => onChange([Math.round(x * 2.55)])} />
+      <RobotoText label={'DMX ' + Math.round(Number(v[0]) || 0)} fontSize={12} labelColor="var(--fg-light)" />
     </FF.Row>;
     if (type === 'Color') {
       const c = FF.parsePaletteColour(v[0] || '#ffffff') || { rgb: { r: 255, g: 255, b: 255 } };

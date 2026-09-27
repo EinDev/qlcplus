@@ -150,7 +150,8 @@ the repo owner's general "prefer fewer, more general methods" steer in
   now treat it as one integer, the wheel's DMX value that `valuesFromFixtures()` writes;
   `engine/test/qlcpalette` round-trips every palette type (`saveLoadEveryType`). Note that applying a
   Gobo palette to a fixture still produces nothing: `QLCFixtureHead::cacheChannels()` never maps the
-  Gobo group (the existing `fixturesGobo` XFAIL) - separate, not changed.
+  Gobo group (the existing `fixturesGobo` XFAIL) - separate, not changed. (Fixed later the same day,
+  see "Implemented 2026-09-27: palette.apply" below.)
 - **Values are unchanged on the wire, the web UI now reads them right**: Pan / Tilt / PanTilt values
   are DEGREES (`Fixture::positionToValues`: `dmx16 = deg * 65535 / focusPanMax|focusTiltMax`, 360 / 270
   when the definition says 0). The web palette editor offered them as 0-255 and "apply to selection"
