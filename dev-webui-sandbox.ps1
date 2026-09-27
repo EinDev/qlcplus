@@ -24,6 +24,8 @@
                        repo root (see dev-local.example.json). Machine paths never go into the repo.
 .PARAMETER Stop        Only kill this sandbox's process (qlc-<Name>.exe) and exit.
 .PARAMETER NoLaunch    Prepare the sandbox but don't start it.
+.PARAMETER ShowWindow  Open the sandbox's desktop window normally. By default it starts minimized so
+                       test runs don't cover the user's screen.
 .PARAMETER UserFixtureDir  Redirect the user fixture-definition folder (QLCPLUS_USER_FIXTURE_DIR) for the
                        launched process only. Created on first use as a copy of %UserProfile%\QLC+\Fixtures,
                        so the project's custom definitions still resolve while fixturedefs.save / delete /
@@ -45,6 +47,7 @@ param(
     [string]$Project = "",
     [switch]$Stop,
     [switch]$NoLaunch,
+    [switch]$ShowWindow,
     [string]$UserFixtureDir = "",
     [string]$UserModifiersDir = ""
 )
@@ -160,8 +163,11 @@ if ($UserModifiersDir) {
     Write-Host "User modifier templates: $env:QLCPLUS_USER_MODIFIERS_DIR"
 }
 try {
+    # Minimized by default so test runs don't pop windows over the user's desktop (the web UI is
+    # driven headlessly; nobody needs to see the desktop window). -ShowWindow opens it normally.
+    $windowStyle = if ($ShowWindow) { "Normal" } else { "Minimized" }
     $p = Start-Process -FilePath (Join-Path $dest $exeName) -ArgumentList $args -WorkingDirectory $dest `
-        -RedirectStandardOutput $out -RedirectStandardError $err -PassThru
+        -RedirectStandardOutput $out -RedirectStandardError $err -PassThru -WindowStyle $windowStyle
 } finally {
     if ($null -eq $prevProfileDir) { Remove-Item Env:\QLCPLUS_USER_INPUTPROFILE_DIR -ErrorAction SilentlyContinue }
     else { $env:QLCPLUS_USER_INPUTPROFILE_DIR = $prevProfileDir }

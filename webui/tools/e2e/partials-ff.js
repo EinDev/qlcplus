@@ -599,7 +599,11 @@ async function main() {
         check(!!await soon(async () => Number((await api.call('palette.get', { paletteId: zoom.id })).values[0]) === 75, 'value'), 'palette value changed to 75%');
         await shot(page, 'palette-edit');
       }
-      console.log('  (Pan / Tilt / Pan+Tilt palettes: left to the degrees fix in FixtureDialogs.jsx, not driven here)');
+      // Tilt and Pan + Tilt: values are degrees (the Pan palette is driven by functions-misc.js / vc-show-leftovers.js)
+      p = await create('Tilt', 'E2E Tilt', async () => { await spinRow('Tilt', 45); });
+      check(p && p.type === 'Tilt' && Number(p.values[0]) === 45, 'Tilt palette 45°', p && p.values);
+      p = await create('Position (pan + tilt)', 'E2E PanTilt', async () => { await spinRow('Pan', 180); await spinRow('Tilt', 90); });
+      check(p && p.type === 'PanTilt' && p.values.map(Number).join(',') === '180,90', 'Pan + Tilt palette 180° / 90°', p && p.values);
       await panel(page, 'Palettes', false);
     }
 
