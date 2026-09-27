@@ -46,7 +46,11 @@
             ({direction, privateName}). */
         setDevice: function (direction, privateName) {
           return self.call('io.audio.setDevice', { direction: direction, privateName: privateName });
-        }
+        },
+        /** fields: any of {inputSampleRate (8000|11025|22050|32000|44100|48000), inputChannels (1|2),
+            outputBufferMs (10..1000)} - PopupAudioConfiguration.qml. Host setting, no baseRevision.
+            -> ack; broadcasts io.audio.configChanged (all three values). listDevices carries them too. */
+        setConfig: function (fields) { return self.call('io.audio.setConfig', fields || {}); }
       },
 
       dmx: {
@@ -268,6 +272,7 @@
     'io.inputProfile.deleted',
     'io.inputProfile.learn.signal',  // delivered only to the client that started the learn session
     'io.audio.deviceChanged',
+    'io.audio.configChanged',
     'io.grandMaster.changed',
     'io.blackout.changed',
     'io.simpleDesk.channelChanged',

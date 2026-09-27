@@ -80,6 +80,7 @@ private slots:
     void audioListDevicesStartsWithDefault();
     void audioSetDeviceUnknownIsNotFound();
     void audioSetDefaultDeviceRoundTrips();
+    void audioSetConfigWritesSettingsAndBroadcasts();
 
     void keypadCommandSetsChannelsAndHistory();
     void keypadCommandEmptyIsInvalidParams();

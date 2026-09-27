@@ -405,6 +405,17 @@ QJsonObject audioDeviceToJson(const QString &name, const QString &privateName)
     return obj;
 }
 
+/** PopupAudioConfiguration.qml's values, from the QSettings keys InputOutputManager uses. */
+QJsonObject audioConfigToJson()
+{
+    QSettings settings;
+    QJsonObject obj;
+    obj.insert(QStringLiteral("inputSampleRate"), settings.value(QLatin1String(SETTINGS_AUDIO_INPUT_SRATE), AUDIO_DEFAULT_SAMPLE_RATE).toInt());
+    obj.insert(QStringLiteral("inputChannels"), settings.value(QLatin1String(SETTINGS_AUDIO_INPUT_CHANNELS), AUDIO_DEFAULT_CHANNELS).toInt());
+    obj.insert(QStringLiteral("outputBufferMs"), settings.value(QLatin1String(SETTINGS_AUDIO_OUTPUT_BUFFER), DEFAULT_AUDIO_OUTPUT_BUFFER_MS).toInt());
+    return obj;
+}
+
 } // namespace
 
 ApiIoConfigDomain::ApiIoConfigDomain(Doc *doc, ApiServer *server, ApiIoDomain *ioDomain, QObject *parent)
@@ -1068,7 +1079,65 @@ void ApiIoConfigDomain::registerAudioMethods()
         result.insert(QStringLiteral("outputs"), outputs);
         result.insert(QStringLiteral("inputDevice"), inputDevice.isEmpty() ? AUDIO_DEFAULT_DEVICE : inputDevice);
         result.insert(QStringLiteral("outputDevice"), outputDevice.isEmpty() ? AUDIO_DEFAULT_DEVICE : outputDevice);
+        const QJsonObject config = audioConfigToJson();
+        for (auto it = config.begin(); it != config.end(); ++it)
+            result.insert(it.key(), it.value());
         session->send(ApiEnvelope::buildOkResponse(id, result));
+    });
+
+    // io.audio.setConfig {inputSampleRate?, inputChannels?, outputBufferMs?} -> {}
+    // PopupAudioConfiguration.qml's fields, written exactly like InputOutputManager's setters:
+    // host-wide QSettings (the default value removes the key), and a changed input format tears
+    // the running audio capture down so the next user re-opens it with the new format.
+    dispatcher->registerMethod(QStringLiteral("io.audio.setConfig"), [doc, this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        static const QList<int> sampleRates = { 8000, 11025, 22050, 32000, 44100, 48000 };
+        const bool hasRate = params.contains(QStringLiteral("inputSampleRate"));
+        const bool hasChannels = params.contains(QStringLiteral("inputChannels"));
+        const bool hasBuffer = params.contains(QStringLiteral("outputBufferMs"));
+        const int rate = params.value(QStringLiteral("inputSampleRate")).toInt(-1);
+        const int channels = params.value(QStringLiteral("inputChannels")).toInt(-1);
+        const int buffer = params.value(QStringLiteral("outputBufferMs")).toInt(-1);
+        QString problem;
+        if (hasRate == false && hasChannels == false && hasBuffer == false)
+            problem = QStringLiteral("Nothing to set: pass inputSampleRate, inputChannels and/or outputBufferMs");
+        else if (hasRate && sampleRates.contains(rate) == false)
+            problem = QStringLiteral("inputSampleRate must be one of 8000, 11025, 22050, 32000, 44100, 48000");
+        else if (hasChannels && channels != 1 && channels != 2)
+            problem = QStringLiteral("inputChannels must be 1 (mono) or 2 (stereo)");
+        else if (hasBuffer && (buffer < 10 || buffer > 1000))
+            problem = QStringLiteral("outputBufferMs must be 10..1000");
+        if (problem.isEmpty() == false)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams, problem));
+            return;
+        }
+
+        QSettings settings;
+        auto write = [&settings](const char *key, int value, int defaultValue)
+        {
+            if (settings.value(QLatin1String(key), defaultValue).toInt() == value)
+                return false;
+            if (value == defaultValue)
+                settings.remove(QLatin1String(key));
+            else
+                settings.setValue(QLatin1String(key), value);
+            return true;
+        };
+        bool inputChanged = false, changed = false;
+        if (hasRate && write(SETTINGS_AUDIO_INPUT_SRATE, rate, AUDIO_DEFAULT_SAMPLE_RATE))
+            inputChanged = true;
+        if (hasChannels && write(SETTINGS_AUDIO_INPUT_CHANNELS, channels, AUDIO_DEFAULT_CHANNELS))
+            inputChanged = true;
+        if (hasBuffer && write(SETTINGS_AUDIO_OUTPUT_BUFFER, buffer, DEFAULT_AUDIO_OUTPUT_BUFFER_MS))
+            changed = true;
+        settings.sync();
+        if (inputChanged)
+            doc->destroyAudioCapture();
+
+        session->send(ApiEnvelope::buildOkResponse(id, QJsonObject()));
+        if (inputChanged || changed)
+            m_server->broadcast(QStringLiteral("io.audio.configChanged"), audioConfigToJson(), session->clientId(), false);
     });
 
     // io.audio.setDevice {direction: input|output, privateName} -> {}

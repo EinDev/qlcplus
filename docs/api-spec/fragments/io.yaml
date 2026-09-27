@@ -2220,6 +2220,92 @@ messages:
               type: string
             outputDevice:
               type: string
+            inputSampleRate:
+              type: integer
+              description: Audio input sample rate in Hz (QSettings audio/samplerate, default 44100)
+            inputChannels:
+              type: integer
+              description: Audio input channels, 1 = mono, 2 = stereo (QSettings audio/channels, default 1)
+            outputBufferMs:
+              type: integer
+              description: Audio output buffer length in ms (QSettings audio/outputBufferMs, default 100)
+  IoAudioSetConfigRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: io.audio.setConfig
+        params:
+          type: object
+          description: 'PopupAudioConfiguration.qml: the audio input format and the output buffer of the
+            QLC+ host (InputOutputManager::setAudioInputSampleRate / setAudioInputChannels /
+            setAudioOutputBuffer). Host-wide QSettings, not part of the project; live, no baseRevision.
+            At least one field; a field set to its default removes the key. A changed input format tears
+            the running audio capture down (Doc::destroyAudioCapture) so its next user re-opens it.
+            INVALID_PARAMS for an empty request or a value outside the lists below.
+
+            '
+          properties:
+            inputSampleRate:
+              enum:
+              - 8000
+              - 11025
+              - 22050
+              - 32000
+              - 44100
+              - 48000
+            inputChannels:
+              enum:
+              - 1
+              - 2
+            outputBufferMs:
+              type: integer
+              minimum: 10
+              maximum: 1000
+  IoAudioSetConfigResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/GenericAckResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  IoAudioConfigChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      description: After an io.audio.setConfig that changed something. Carries all three current values.
+      properties:
+        type:
+          const: event
+        topic:
+          const: io.audio.configChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - inputSampleRate
+          - inputChannels
+          - outputBufferMs
+          properties:
+            inputSampleRate:
+              type: integer
+            inputChannels:
+              type: integer
+            outputBufferMs:
+              type: integer
   IoAudioSetDeviceRequest:
     payload:
       type: object
@@ -3390,6 +3476,24 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/ioAudioDeviceChangedEvent'
+  sendIoAudioSetConfig:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/ioAudioSetConfigRequest'
+  receiveIoAudioSetConfigResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/ioAudioSetConfigResponse'
+  receiveIoAudioConfigChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/ioAudioConfigChangedEvent'
   sendIoDmxChannelInspect:
     action: send
     channel:
