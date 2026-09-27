@@ -75,6 +75,7 @@ private slots:
     void sceneSetMembersReplacesFixtureList();
 
     void chaserStepsAddReplaceRemoveMove();
+    void chaserStepsRejectCycles();
 
     void listAndGetCarryRunningAndPaused();
     void startAndStopBroadcastStatusChanged();

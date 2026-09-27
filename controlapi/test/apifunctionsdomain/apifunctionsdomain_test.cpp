@@ -727,6 +727,48 @@ void ApiFunctionsDomain_Test::chaserStepsAddReplaceRemoveMove()
     QCOMPARE(chaser->stepsCount(), 1);
 }
 
+void ApiFunctionsDomain_Test::chaserStepsRejectCycles()
+{
+    // Crash audit: a Chaser step targeting the Chaser itself (replaceStep
+    // had no self check at all) or a function that already contains it made
+    // Chaser::contains() recurse forever (stack overflow) and a self-stepping
+    // Chaser deadlock MasterTimer once started.
+    helloAndGetClientId();
+    QString aId = createFunctionViaApi(QStringLiteral("Chaser"));
+    QString bId = createFunctionViaApi(QStringLiteral("Chaser"));
+    Chaser *a = qobject_cast<Chaser *>(m_doc->function(aId.toUInt()));
+    Chaser *b = qobject_cast<Chaser *>(m_doc->function(bId.toUInt()));
+    QVERIFY(a != nullptr && b != nullptr);
+
+    auto stepOn = [&](const QString &method, const QString &chaserId, const QString &targetId) {
+        QJsonObject step;
+        step.insert(QStringLiteral("targetFunctionId"), targetId);
+        QJsonObject params;
+        params.insert(QStringLiteral("functionId"), chaserId);
+        params.insert(QStringLiteral("index"), 0);
+        params.insert(QStringLiteral("step"), step);
+        params.insert(QStringLiteral("baseRevision"), int(m_doc->docRevision()));
+        return sendAndWaitForReply(method, params);
+    };
+
+    // A -> scene, then replace that step with A itself
+    QCOMPARE(stepOn(QStringLiteral("functions.steps.addStep"), aId, QString::number(m_scene->id())).value(QStringLiteral("ok")).toBool(), true);
+    QJsonObject reply = stepOn(QStringLiteral("functions.steps.replaceStep"), aId, aId);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("INVALID_PARAMS"));
+    QCOMPARE(a->stepAt(0)->fid, m_scene->id());
+
+    // A -> B is fine; B -> A (add or replace) would close the cycle
+    QCOMPARE(stepOn(QStringLiteral("functions.steps.addStep"), aId, bId).value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(stepOn(QStringLiteral("functions.steps.addStep"), bId, QString::number(m_scene->id())).value(QStringLiteral("ok")).toBool(), true);
+    reply = stepOn(QStringLiteral("functions.steps.addStep"), bId, aId);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    reply = stepOn(QStringLiteral("functions.steps.replaceStep"), bId, aId);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(b->stepsCount(), 1);
+    QVERIFY(a->contains(9999) == false); // terminates
+}
+
 /*********************************************************************
  * Live run-state: running/paused flags, functions.status.changed,
  * functions.pause alias, functions.stopAll

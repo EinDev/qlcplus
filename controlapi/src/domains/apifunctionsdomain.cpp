@@ -265,6 +265,20 @@ bool chaserStepFromJson(Chaser *chaser, bool isSequence, const QJsonObject &step
             errorMessage = QStringLiteral("Invalid or missing targetFunctionId");
             return false;
         }
+        // A step targeting the Chaser itself, or a function that (through
+        // its own steps/members) already contains it, closes a cycle:
+        // Chaser::contains()/Collection::contains() then recurse forever
+        // (stack overflow on the next membership check, e.g. a collection
+        // add or the delete guard), and a Chaser running itself as a step
+        // deadlocks MasterTimer on Chaser's non-recursive m_stepListMutex.
+        // Chaser::addStep() only rejects the direct case, replaceStep() not
+        // even that.
+        Function *target = chaser->doc() != nullptr ? chaser->doc()->function(targetId) : nullptr;
+        if (targetId == chaser->id() || (target != nullptr && target->contains(chaser->id())))
+        {
+            errorMessage = QStringLiteral("targetFunctionId would make the Chaser contain itself");
+            return false;
+        }
         outStep.fid = targetId;
     }
 
