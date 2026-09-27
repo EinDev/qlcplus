@@ -54,6 +54,8 @@ default until "Use server default" is pressed.
 | `ff/EfxEditor.jsx` | EFX editor (`window.QLCEditors.EFX`): live preview canvas fed by `functions.efx.getPreview`, fixture heads (mode / reverse / start offset, add / remove / reorder, offset on all), pattern parameters, propagation, timing. |
 | `tools/e2e/*.js` | Headless-Chrome end-to-end drivers per slice (`node webui/tools/e2e/efx-collection.js` against a `dev-webui-sandbox.ps1` instance). |
 | `ff/FixtureDialogs.jsx` | Add Fixtures dialog (`fixtures.defs.*` + `fixtures.patch`), Fixture Groups panel, Palettes panel (create/edit/apply). |
+| `ff/View2D.jsx`, `ff/ViewDMX.jsx`, `ff/ViewUniverseGrid.jsx` | F&F centre-area views registered in `window.QLCFFViews` (2D stage over `fixtures.monitor.*`, per-fixture DMX values, 512-cell address grid); `View2D.jsx` also exports `FF.useMonitor` and the placement block of the fixture detail. |
+| `ff/FixtureRemap.jsx` | Fixture Remap dialog over `fixtures.remap.suggestChannelMap` / `apply`. |
 | `VirtualConsole.jsx` | Pages + widgets at their real geometry, live interaction, Design-mode layout editing, Grand Master. |
 | `vc/vc-shared.jsx`, `vc/vc-widgets.jsx`, `vc/vc-edit.jsx` | VC context + pointer-event fader/knob; one body per widget type (button, slider/knob, cue list, XY pad, speed dial, frame, label); selection/move/resize wrapper, widget palette and properties panel. |
 | `SimpleDesk.jsx` | 512 channel strips per universe, live DMX values + overrides, keypad, dump to scene. |
@@ -100,6 +102,24 @@ and a second tab checked for the pushed event:
   end on 2026-09-27 in a sandbox instance by `tools/e2e/efx-collection.js`, with the saved `.qxw`
   checked. Not in the EFX editor: the fake-3D sphere preview and adding one specific head of a
   multi-head fixture (every head is added). A Show is edited on the Show Manager screen (below).
+- **Fixture views and placement** (added 2026-09-27, verified against a `fixtures` sandbox on
+  ports 9210/9211 with the SF3 project by `webui/tools/e2e/fixtures-views.js`): a view switcher in
+  the F&F centre area (Details | 2D | DMX | Universe grid). 2D view: the stage in the project's point
+  of view with every fixture at its monitor position, live head colours from the watched universe,
+  click / ctrl-click / alt-click (single head) / rubber-band selection wired to the tree, drag to
+  move, zoom, align left / top, distribute, arrange circle / grid / line (with detect from placement
+  and face centre), rotate around the centroid, move to centre, gel colour, select all / odd / even /
+  every Nth, invert selection in group(s), stage settings (point of view, units, size, labels, fixture
+  groups overlay, background reset) and the initial point-of-view prompt, and "Pick a 3D point"
+  (`fixtures.monitor.aimAt` writes Pan/Tilt as desk overrides). Fixture detail: position / rotation /
+  gel colour, invert pan / tilt, lock, hide, linked copies. DMX view: per-fixture channel values from
+  the live stream, absolute / relative addresses, DMX / percent, double-click to set a value. Universe
+  grid: address map with hover details, click to select, cut / paste into the first free block of
+  the shown universe, drag a fixture to a new address. Fixture Remap: clone or retarget fixtures to
+  another definition / mode / universe / address, auto-connect channels, apply - Scenes, groups,
+  2D positions and VC widgets follow. Fixture Tools gained a Highlight (locate) toggle. Not in the
+  browser: the Qt3D view itself (position / rotation editing is the parity), uploading a background
+  picture (the file must already be on the server), DMX-driven position / rotation per axis.
 - **Script / Audio / Video editors** (added 2026-09-27, verified against a `media` sandbox on ports
   9140/9141 by `webui/tools/e2e/media.js`): Script - line-numbered editor, insert-method menu from
   `functions.script.listCommands`, function / fixture ID pickers, server-side syntax check with the
