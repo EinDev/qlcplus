@@ -163,12 +163,11 @@ private:
         int tapTimeValue = 0;                             // Speed: last tap interval in ms, 0 = none
         QJsonArray presets;                               // Speed/XYPad/Animation: Vc<Type>Preset entries
         int nextPresetId = 16;                            // first id VCSpeedDial/VCXYPad assign
-    };
-
-    static const QStringList PresetWidgetTypes; // Speed, XYPad, Animation
         QString framePin;                                 // Frame/SoloFrame: empty = no PIN set
         bool flashing = false;                            // Slider (Adjust): vc.slider.flash state
     };
+
+    static const QStringList PresetWidgetTypes; // Speed, XYPad, Animation
 
     /** A fresh VcWidgetState registered in m_widgets - shared by vcCreateWidget() and the bulk creators. */
     quint32 addWidget(const QString &widgetType, int page, quint32 parentId, const QRectF &geometry,
