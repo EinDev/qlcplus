@@ -52,6 +52,7 @@
 #include "virtualconsole/vcclock.h"
 #include "virtualconsole/vcanimation.h"
 #include "virtualconsole/vcaudiotriggers.h"
+#include "virtualconsole/vcslider.h"
 
 namespace {
 
@@ -148,6 +149,28 @@ void App::vcConnectLiveRelaysExt(VCWidget *widget)
                     return;
                 m_vcLiveListenerExt->vcXyPadActivePresetChanged(pad->id(), pad->activePresetId());
             });
+            // The yellow "where the heads point" dots (fixturePositions, read back from the output).
+            connect(pad.data(), &VCXYPad::fixturePositionsChanged, this, [this, pad]()
+            {
+                if (pad.isNull() || m_vcLiveListenerExt == nullptr)
+                    return;
+                m_vcLiveListenerExt->vcXyPadFixturePositionsChanged(pad->id(), ApiVcConfig::xyPadFixturePositions(pad.data()));
+            });
+        }
+        break;
+        case VCWidget::SliderWidget:
+        {
+            // Level-mode monitor readback. monitorValueChanged is emitted from writeDMXLevel() on the
+            // MasterTimer thread: `this` as context makes it a queued call onto the GUI thread.
+            QPointer<VCSlider> slider(qobject_cast<VCSlider *>(widget));
+            auto relay = [this, slider]()
+            {
+                if (slider.isNull() || m_vcLiveListenerExt == nullptr)
+                    return;
+                m_vcLiveListenerExt->vcSliderMonitorChanged(slider->id(), slider->monitorValue(), slider->isOverriding());
+            };
+            connect(slider.data(), &VCSlider::monitorValueChanged, this, relay);
+            connect(slider.data(), &VCSlider::isOverridingChanged, this, relay);
         }
         break;
         case VCWidget::ClockWidget:
@@ -529,6 +552,24 @@ bool App::vcAnimationSetFaderLevel(quint32 id, int level, QString *error)
         return false;
     }
     anim->setFaderLevel(qBound(0, level, 255));
+    return true;
+}
+
+bool App::vcSliderResetOverride(quint32 id, QString *error)
+{
+    VCSlider *slider = qobject_cast<VCSlider *>(vcFindWidget(id));
+    if (slider == nullptr)
+    {
+        if (error) *error = QStringLiteral("No such widget");
+        return false;
+    }
+    if (slider->sliderMode() != VCSlider::Level || slider->monitorEnabled() == false)
+    {
+        if (error) *error = QStringLiteral("Only a Level slider with channel monitoring has an override to reset");
+        return false;
+    }
+    // VCSliderItem.qml's red X: back to following the monitored channels
+    slider->setIsOverriding(false);
     return true;
 }
 

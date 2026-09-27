@@ -629,6 +629,63 @@ void ApiVcLiveDomain_Test::audioTriggersCaptureAndLevels()
     QVERIFY(events.at(0).value(QStringLiteral("_origin")).isNull());
 }
 
+void ApiVcLiveDomain_Test::sliderMonitorGatedAndResetOverride()
+{
+    QString clientId = helloAndGetClientId();
+    QJsonObject level; level.insert(QStringLiteral("sliderMode"), QStringLiteral("Level"));
+    QString slider = createWidget(QStringLiteral("Slider"), level);
+    QString adjust = createWidget(QStringLiteral("Slider"));
+    QSignalSpy spy(m_client, &QWebSocket::textMessageReceived);
+
+    // monitor readback is subscribe-gated
+    m_vcHost->simulateSliderMonitor(slider.toUInt(), 120, true);
+    QTest::qWait(50);
+    QCOMPARE(eventsWithTopic(spy, QStringLiteral("vc.slider.monitorValueChanged")).size(), 0);
+    QJsonObject sub; sub.insert(QStringLiteral("topics"), QJsonArray() << QStringLiteral("vc.slider.monitorValueChanged"));
+    QVERIFY(isOk(sendAndWaitForReply(QStringLiteral("subscribe"), sub, QStringLiteral("t-m1"))));
+    m_vcHost->simulateSliderMonitor(slider.toUInt(), 130, true);
+    QVERIFY(QTest::qWaitFor([&]() { return eventsWithTopic(spy, QStringLiteral("vc.slider.monitorValueChanged")).size() == 1; }, 2000));
+    QJsonObject ev = eventsWithTopic(spy, QStringLiteral("vc.slider.monitorValueChanged")).first();
+    QCOMPARE(ev.value(QStringLiteral("widgetId")).toString(), slider);
+    QCOMPARE(ev.value(QStringLiteral("monitorValue")).toInt(), 130);
+    QCOMPARE(ev.value(QStringLiteral("isOverriding")).toBool(), true);
+    QVERIFY(ev.value(QStringLiteral("_origin")).isNull());
+
+    // vc.slider.resetOverride: the red X of VCSliderItem.qml
+    QJsonObject p; p.insert(QStringLiteral("widgetId"), slider);
+    QVERIFY(isOk(sendAndWaitForReply(QStringLiteral("vc.slider.resetOverride"), p, QStringLiteral("t-m2"))));
+    QCOMPARE(m_vcHost->sliderOverriding(slider.toUInt()), false);
+    QVERIFY(QTest::qWaitFor([&]() { return eventsWithTopic(spy, QStringLiteral("vc.slider.monitorValueChanged")).size() == 2; }, 2000));
+    ev = eventsWithTopic(spy, QStringLiteral("vc.slider.monitorValueChanged")).last();
+    QCOMPARE(ev.value(QStringLiteral("isOverriding")).toBool(), false);
+    QCOMPARE(ev.value(QStringLiteral("_origin")).toString(), clientId);
+    // not a Level slider / not a slider at all
+    p.insert(QStringLiteral("widgetId"), adjust);
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.slider.resetOverride"), p, QStringLiteral("t-m3"))), QStringLiteral("INVALID_STATE"));
+    p.insert(QStringLiteral("widgetId"), createWidget(QStringLiteral("Button")));
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.slider.resetOverride"), p, QStringLiteral("t-m4"))), QStringLiteral("INVALID_PARAMS"));
+}
+
+void ApiVcLiveDomain_Test::xyPadFixturePositionsGated()
+{
+    helloAndGetClientId();
+    QString pad = createWidget(QStringLiteral("XYPad"));
+    QSignalSpy spy(m_client, &QWebSocket::textMessageReceived);
+    const QList<QPointF> positions = { QPointF(0.25, 0.75), QPointF(1.0, 0.0) };
+    m_vcHost->simulateXyFixturePositions(pad.toUInt(), positions);
+    QTest::qWait(50);
+    QCOMPARE(eventsWithTopic(spy, QStringLiteral("vc.xyPad.fixturePositionsChanged")).size(), 0);
+    QJsonObject sub; sub.insert(QStringLiteral("topics"), QJsonArray() << QStringLiteral("vc.xyPad.fixturePositionsChanged"));
+    QVERIFY(isOk(sendAndWaitForReply(QStringLiteral("subscribe"), sub, QStringLiteral("t-x1"))));
+    m_vcHost->simulateXyFixturePositions(pad.toUInt(), positions);
+    QVERIFY(QTest::qWaitFor([&]() { return eventsWithTopic(spy, QStringLiteral("vc.xyPad.fixturePositionsChanged")).size() == 1; }, 2000));
+    QJsonArray got = eventsWithTopic(spy, QStringLiteral("vc.xyPad.fixturePositionsChanged")).first().value(QStringLiteral("positions")).toArray();
+    QCOMPARE(got.size(), 2);
+    QCOMPARE(got.at(0).toObject().value(QStringLiteral("x")).toDouble(), 0.25);
+    QCOMPARE(got.at(0).toObject().value(QStringLiteral("y")).toDouble(), 0.75);
+    QCOMPARE(got.at(1).toObject().value(QStringLiteral("x")).toDouble(), 1.0);
+}
+
 void ApiVcLiveDomain_Test::audioTriggersSetBarConfig()
 {
     helloAndGetClientId();

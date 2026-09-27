@@ -134,6 +134,7 @@ ApiVcLiveDomain::ApiVcLiveDomain(Doc *doc, ApiServer *server, QObject *parent)
     Q_ASSERT(m_server != nullptr);
 
     ApiDispatcher *d = m_server->dispatcher();
+    registerSliderMethods(d);
     registerXyPadMethods(d);
     registerClockMethods(d);
     registerAnimationMethods(d);
@@ -328,6 +329,60 @@ void ApiVcLiveDomain::vcAudioTriggersLevelsChanged(quint32 widgetId, const QList
     data.insert(QStringLiteral("levels"), arr);
     // Audio-capture rate: subscribe-gated per the spec.
     broadcastLive(QStringLiteral("vc.audioTriggers.levelsChanged"), widgetId, data, true);
+}
+
+void ApiVcLiveDomain::vcSliderMonitorChanged(quint32 widgetId, int monitorValue, bool isOverriding)
+{
+    QJsonObject data;
+    data.insert(QStringLiteral("monitorValue"), monitorValue);
+    data.insert(QStringLiteral("isOverriding"), isOverriding);
+    // Follows the monitored universe's writes: subscribe-gated per the spec.
+    broadcastLive(QStringLiteral("vc.slider.monitorValueChanged"), widgetId, data, true);
+}
+
+void ApiVcLiveDomain::vcXyPadFixturePositionsChanged(quint32 widgetId, const QList<QPointF> &positions)
+{
+    QJsonArray arr;
+    for (const QPointF &p : positions)
+    {
+        QJsonObject o;
+        o.insert(QStringLiteral("x"), p.x());
+        o.insert(QStringLiteral("y"), p.y());
+        arr.append(o);
+    }
+    QJsonObject data;
+    data.insert(QStringLiteral("positions"), arr);
+    // Follows the universe output while the heads move: subscribe-gated.
+    broadcastLive(QStringLiteral("vc.xyPad.fixturePositionsChanged"), widgetId, data, true);
+}
+
+/*****************************************************************************
+ * vc.slider.resetOverride
+ *****************************************************************************/
+
+void ApiVcLiveDomain::registerSliderMethods(ApiDispatcher *d)
+{
+    static const QStringList sliderTypes = { QStringLiteral("Slider") };
+    // --- vc.slider.resetOverride (live) ---
+    d->registerMethod(QStringLiteral("vc.slider.resetOverride"), [this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        ApiVcHost *host = requireHost(session, id);
+        if (host == nullptr)
+            return;
+        quint32 wid = ApiVcHost::InvalidWidgetId;
+        if (resolveWidget(session, id, params, sliderTypes, true, host, &wid) == false)
+            return;
+        QString error;
+        m_liveOriginClientId = session->clientId();
+        bool ok = host->vcSliderResetOverride(wid, &error);
+        m_liveOriginClientId.clear();
+        if (ok == false)
+        {
+            sendError(session, id, ApiEnvelope::ErrInvalidState, error);
+            return;
+        }
+        session->send(ApiEnvelope::buildOkResponse(id, QJsonObject()));
+    });
 }
 
 /*****************************************************************************

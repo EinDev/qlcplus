@@ -50,6 +50,8 @@ private slots:
     void animationPresetMove();
     void audioTriggersCaptureAndLevels();
     void audioTriggersSetBarConfig();
+    void sliderMonitorGatedAndResetOverride();
+    void xyPadFixturePositionsGated();
     void wrongWidgetTypeIsInvalidParams();
     void structuralMethodsConflictOnStaleRevision();
 

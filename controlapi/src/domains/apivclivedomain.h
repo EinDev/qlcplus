@@ -77,8 +77,12 @@ public:
     void vcAnimationStyleChanged(quint32 widgetId, int algorithmIndex, const QStringList &colors) override;
     void vcAudioTriggersCaptureEnabledChanged(quint32 widgetId, bool enabled) override;
     void vcAudioTriggersLevelsChanged(quint32 widgetId, const QList<int> &levels) override;
+    void vcSliderMonitorChanged(quint32 widgetId, int monitorValue, bool isOverriding) override;
+    void vcXyPadFixturePositionsChanged(quint32 widgetId, const QList<QPointF> &positions) override;
 
 private:
+    /** vc.slider.resetOverride (the monitor readback of Level sliders rides along here). */
+    void registerSliderMethods(ApiDispatcher *d);
     void registerXyPadMethods(ApiDispatcher *d);
     void registerClockMethods(ApiDispatcher *d);
     void registerAnimationMethods(ApiDispatcher *d);

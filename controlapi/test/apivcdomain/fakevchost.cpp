@@ -1670,6 +1670,46 @@ void FakeVcHost::simulateAudioLevels(quint32 id, const QList<int> &levels)
         m_liveListenerExt->vcAudioTriggersLevelsChanged(id, levels);
 }
 
+void FakeVcHost::simulateSliderMonitor(quint32 id, int monitorValue, bool isOverriding)
+{
+    if (m_widgets.contains(id) == false)
+        return;
+    m_widgets[id].monitorValue = monitorValue;
+    m_widgets[id].sliderOverriding = isOverriding;
+    if (m_liveListenerExt != nullptr)
+        m_liveListenerExt->vcSliderMonitorChanged(id, monitorValue, isOverriding);
+}
+
+void FakeVcHost::simulateXyFixturePositions(quint32 id, const QList<QPointF> &positions)
+{
+    if (m_widgets.contains(id) == false)
+        return;
+    if (m_liveListenerExt != nullptr)
+        m_liveListenerExt->vcXyPadFixturePositionsChanged(id, positions);
+}
+
+bool FakeVcHost::vcSliderResetOverride(quint32 id, QString *error)
+{
+    if (m_widgets.contains(id) == false)
+    {
+        if (error) *error = QStringLiteral("No such widget");
+        return false;
+    }
+    VcWidgetState &w = m_widgets[id];
+    if (w.typeConfig.value(QStringLiteral("sliderMode")).toString() != QStringLiteral("Level"))
+    {
+        if (error) *error = QStringLiteral("Only a Level slider with channel monitoring has an override to reset");
+        return false;
+    }
+    if (w.sliderOverriding)
+    {
+        w.sliderOverriding = false;
+        if (m_liveListenerExt != nullptr)
+            m_liveListenerExt->vcSliderMonitorChanged(id, w.monitorValue, false);
+    }
+    return true;
+}
+
 /*****************************************************************************
  * External controls slice (ApiVcInputDomain)
  *****************************************************************************/
