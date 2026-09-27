@@ -72,6 +72,20 @@ default until "Use server default" is pressed.
 Everything is referenced relative to `index.html`, so the directory can be mounted at any URL
 path. `?ctx=fx|vc|sd|io` in the URL picks the initial screen.
 
+**Adding a `.jsx` file**: its `<script type="text/babel">` tag needs
+`data-presets="react" data-plugins="transform-block-scoping"` like every other one (the
+`index.html` header says why; without them the in-browser compile falls back to a full ES5
+downlevel that took about 4-6 s per load). `node webui/tools/check-jsx.js` fails on a tag without
+them and compiles every file with the same options. This targets current browsers: syntax newer
+than what the browser supports (optional chaining etc. is fine in any Chromium/Firefox/Safari from
+2020 on) is no longer downleveled.
+
+**Caching**: the built-in server sends `ETag` / `Last-Modified` with `Cache-Control: no-cache`, so
+the browser revalidates every file on each load and only re-downloads files that changed (edits
+under `--webui-root` still show up on a plain reload). The API client coalesces identical
+read requests that are in flight at the same time (`COALESCED_READS` in `api/qlcplus-api.js`), so
+several components asking for e.g. `functions.list` on load cost one request.
+
 ## What is live and what is not
 
 Everything below was exercised end to end in a real browser against a real QLC+ 5 instance

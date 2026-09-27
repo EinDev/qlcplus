@@ -3,7 +3,13 @@
 <link rel="icon" href="assets/icons/qlcplus.svg" type="image/svg+xml">
 <link rel="stylesheet" href="styles.css">
 <!-- Fully offline: React, ReactDOM and Babel standalone are vendored, no CDN. Babel compiles the
-     type="text/babel" screens below in the browser; there is deliberately no Node build step. -->
+     type="text/babel" screens below in the browser; there is deliberately no Node build step.
+     Every text/babel tag carries data-presets="react" data-plugins="transform-block-scoping":
+     without them babel-standalone uses react + env with no targets (a full ES5 downlevel), which
+     made the in-browser compile about 5x slower. JSX is the only syntax that needs compiling for a
+     current browser; block scoping turns top-level const/let into var, because every file runs as
+     a classic script in one global scope and a second top-level `const X` would otherwise throw.
+     New tags need the same two attributes (tools/check-jsx.js fails without them). -->
 <script src="vendor/react.production.min.js"></script>
 <script src="vendor/react-dom.production.min.js"></script>
 <script src="vendor/babel.min.js"></script>
@@ -25,57 +31,57 @@
 <style>html,body{height:100%;margin:0;overflow:hidden}#root{height:100vh}</style>
 </head><body>
 <div id="root"></div>
-<script type="text/babel" src="Connection.jsx"></script>
-<script type="text/babel" src="FixturesFunctions.jsx"></script>
-<script type="text/babel" src="ff/ff-core.jsx"></script>
-<script type="text/babel" src="ff/FixtureTools.jsx"></script>
+<script type="text/babel" data-presets="react" data-plugins="transform-block-scoping" src="Connection.jsx"></script>
+<script type="text/babel" data-presets="react" data-plugins="transform-block-scoping" src="FixturesFunctions.jsx"></script>
+<script type="text/babel" data-presets="react" data-plugins="transform-block-scoping" src="ff/ff-core.jsx"></script>
+<script type="text/babel" data-presets="react" data-plugins="transform-block-scoping" src="ff/FixtureTools.jsx"></script>
 <!-- Centre-area views of the Fixtures & Functions screen (window.QLCFFViews) + the fixture remap dialog. -->
-<script type="text/babel" src="ff/View2D.jsx"></script>
-<script type="text/babel" src="ff/ViewDMX.jsx"></script>
-<script type="text/babel" src="ff/ViewUniverseGrid.jsx"></script>
-<script type="text/babel" src="ff/FixtureRemap.jsx"></script>
-<script type="text/babel" src="ff/FunctionEditors.jsx"></script>
-<script type="text/babel" src="ff/RgbMatrixEditor.jsx"></script>
-<script type="text/babel" src="ff/CollectionEditor.jsx"></script>
-<script type="text/babel" src="ff/EfxEditor.jsx"></script>
-<script type="text/babel" src="ff/ServerFileBrowser.jsx"></script>
-<script type="text/babel" src="ff/ScriptEditor.jsx"></script>
-<script type="text/babel" src="ff/AudioEditor.jsx"></script>
-<script type="text/babel" src="ff/VideoEditor.jsx"></script>
-<script type="text/babel" src="ff/FixtureDialogs.jsx"></script>
-<script type="text/babel" src="ff/FunctionActions.jsx"></script>
-<script type="text/babel" src="ff/MediaActions.jsx"></script>
-<script type="text/babel" src="ff/ImportProject.jsx"></script>
-<script type="text/babel" src="Wizard.jsx"></script>
-<script type="text/babel" src="ff/FixtureMisc.jsx"></script>
-<script type="text/babel" src="SimpleDesk.jsx"></script>
+<script type="text/babel" data-presets="react" data-plugins="transform-block-scoping" src="ff/View2D.jsx"></script>
+<script type="text/babel" data-presets="react" data-plugins="transform-block-scoping" src="ff/ViewDMX.jsx"></script>
+<script type="text/babel" data-presets="react" data-plugins="transform-block-scoping" src="ff/ViewUniverseGrid.jsx"></script>
+<script type="text/babel" data-presets="react" data-plugins="transform-block-scoping" src="ff/FixtureRemap.jsx"></script>
+<script type="text/babel" data-presets="react" data-plugins="transform-block-scoping" src="ff/FunctionEditors.jsx"></script>
+<script type="text/babel" data-presets="react" data-plugins="transform-block-scoping" src="ff/RgbMatrixEditor.jsx"></script>
+<script type="text/babel" data-presets="react" data-plugins="transform-block-scoping" src="ff/CollectionEditor.jsx"></script>
+<script type="text/babel" data-presets="react" data-plugins="transform-block-scoping" src="ff/EfxEditor.jsx"></script>
+<script type="text/babel" data-presets="react" data-plugins="transform-block-scoping" src="ff/ServerFileBrowser.jsx"></script>
+<script type="text/babel" data-presets="react" data-plugins="transform-block-scoping" src="ff/ScriptEditor.jsx"></script>
+<script type="text/babel" data-presets="react" data-plugins="transform-block-scoping" src="ff/AudioEditor.jsx"></script>
+<script type="text/babel" data-presets="react" data-plugins="transform-block-scoping" src="ff/VideoEditor.jsx"></script>
+<script type="text/babel" data-presets="react" data-plugins="transform-block-scoping" src="ff/FixtureDialogs.jsx"></script>
+<script type="text/babel" data-presets="react" data-plugins="transform-block-scoping" src="ff/FunctionActions.jsx"></script>
+<script type="text/babel" data-presets="react" data-plugins="transform-block-scoping" src="ff/MediaActions.jsx"></script>
+<script type="text/babel" data-presets="react" data-plugins="transform-block-scoping" src="ff/ImportProject.jsx"></script>
+<script type="text/babel" data-presets="react" data-plugins="transform-block-scoping" src="Wizard.jsx"></script>
+<script type="text/babel" data-presets="react" data-plugins="transform-block-scoping" src="ff/FixtureMisc.jsx"></script>
+<script type="text/babel" data-presets="react" data-plugins="transform-block-scoping" src="SimpleDesk.jsx"></script>
 <script src="io/keypad-parser.js"></script>
 <!-- Virtual Console pieces: shared context + pointer-event fader, widget bodies, edit mode — before the screen itself. -->
-<script type="text/babel" src="vc/vc-shared.jsx"></script>
-<script type="text/babel" src="vc/vc-widgets.jsx"></script>
-<script type="text/babel" src="vc/vc-edit.jsx"></script>
-<script type="text/babel" src="vc/vc-props-cue.jsx"></script>
-<script type="text/babel" src="vc/vc-external.jsx"></script>
-<script type="text/babel" src="vc/vc-props-layout.jsx"></script>
-<script type="text/babel" src="vc/vc-props-live.jsx"></script>
-<script type="text/babel" src="vc/vc-props-style.jsx"></script>
-<script type="text/babel" src="VirtualConsole.jsx"></script>
-<script type="text/babel" src="io/io-shared.jsx"></script>
-<script type="text/babel" src="io/PatchProperties.jsx"></script>
-<script type="text/babel" src="io/AudioDevices.jsx"></script>
-<script type="text/babel" src="io/GrandMasterPanel.jsx"></script>
-<script type="text/babel" src="io/InputProfileEditor.jsx"></script>
-<script type="text/babel" src="InputOutput.jsx"></script>
+<script type="text/babel" data-presets="react" data-plugins="transform-block-scoping" src="vc/vc-shared.jsx"></script>
+<script type="text/babel" data-presets="react" data-plugins="transform-block-scoping" src="vc/vc-widgets.jsx"></script>
+<script type="text/babel" data-presets="react" data-plugins="transform-block-scoping" src="vc/vc-edit.jsx"></script>
+<script type="text/babel" data-presets="react" data-plugins="transform-block-scoping" src="vc/vc-props-cue.jsx"></script>
+<script type="text/babel" data-presets="react" data-plugins="transform-block-scoping" src="vc/vc-external.jsx"></script>
+<script type="text/babel" data-presets="react" data-plugins="transform-block-scoping" src="vc/vc-props-layout.jsx"></script>
+<script type="text/babel" data-presets="react" data-plugins="transform-block-scoping" src="vc/vc-props-live.jsx"></script>
+<script type="text/babel" data-presets="react" data-plugins="transform-block-scoping" src="vc/vc-props-style.jsx"></script>
+<script type="text/babel" data-presets="react" data-plugins="transform-block-scoping" src="VirtualConsole.jsx"></script>
+<script type="text/babel" data-presets="react" data-plugins="transform-block-scoping" src="io/io-shared.jsx"></script>
+<script type="text/babel" data-presets="react" data-plugins="transform-block-scoping" src="io/PatchProperties.jsx"></script>
+<script type="text/babel" data-presets="react" data-plugins="transform-block-scoping" src="io/AudioDevices.jsx"></script>
+<script type="text/babel" data-presets="react" data-plugins="transform-block-scoping" src="io/GrandMasterPanel.jsx"></script>
+<script type="text/babel" data-presets="react" data-plugins="transform-block-scoping" src="io/InputProfileEditor.jsx"></script>
+<script type="text/babel" data-presets="react" data-plugins="transform-block-scoping" src="InputOutput.jsx"></script>
 <!-- Show Manager screen (registers window.QLCScreens.show; uses window.FF from ff/ff-core.jsx). -->
-<script type="text/babel" src="ShowManager.jsx"></script>
+<script type="text/babel" data-presets="react" data-plugins="transform-block-scoping" src="ShowManager.jsx"></script>
 <!-- Fixture Editor screen (registers window.QLCScreens.fxeditor + window.QLCOpenFixtureEditor; pieces in fixtureeditor/). -->
-<script type="text/babel" src="fixtureeditor/fe-core.jsx"></script>
-<script type="text/babel" src="fixtureeditor/fe-channels.jsx"></script>
-<script type="text/babel" src="fixtureeditor/fe-modes.jsx"></script>
-<script type="text/babel" src="FixtureEditor.jsx"></script>
+<script type="text/babel" data-presets="react" data-plugins="transform-block-scoping" src="fixtureeditor/fe-core.jsx"></script>
+<script type="text/babel" data-presets="react" data-plugins="transform-block-scoping" src="fixtureeditor/fe-channels.jsx"></script>
+<script type="text/babel" data-presets="react" data-plugins="transform-block-scoping" src="fixtureeditor/fe-modes.jsx"></script>
+<script type="text/babel" data-presets="react" data-plugins="transform-block-scoping" src="FixtureEditor.jsx"></script>
 <!-- App-level tools: shortcuts registry + key-cast toast, DMX dump / address tool / UI settings / legacy Show timing (window.QLCAppOverlays etc.). -->
-<script type="text/babel" src="misc/shortcuts.jsx"></script>
-<script type="text/babel" src="misc/tools-misc.jsx"></script>
-<script type="text/babel" src="App.jsx"></script>
-<script type="text/babel" data-presets="react">ReactDOM.createRoot(document.getElementById('root')).render(<AppRoot />);</script>
+<script type="text/babel" data-presets="react" data-plugins="transform-block-scoping" src="misc/shortcuts.jsx"></script>
+<script type="text/babel" data-presets="react" data-plugins="transform-block-scoping" src="misc/tools-misc.jsx"></script>
+<script type="text/babel" data-presets="react" data-plugins="transform-block-scoping" src="App.jsx"></script>
+<script type="text/babel" data-presets="react" data-plugins="transform-block-scoping">ReactDOM.createRoot(document.getElementById('root')).render(<AppRoot />);</script>
 </body></html>
