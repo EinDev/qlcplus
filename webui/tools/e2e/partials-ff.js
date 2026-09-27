@@ -690,6 +690,52 @@ async function main() {
       check(!!names, 'three fixtures renamed E2E Light 05 / 06 / 07', names || lights.map(f => f.name));
     }
 
+    /* ================= bottom-panel console: fader window shift, pan-tilt mode ================= */
+    if (want('console')) {
+      console.log('\n[console window shift / pan-tilt mode]');
+      const sectionHead = (text) => `[...document.querySelectorAll('span')].reverse().find(s => s.textContent.trim() === ${JSON.stringify(text)} && s.querySelector('img'))`;
+      const shownChannels = () => page.eval(`[...document.querySelectorAll('[data-console-ch]')].map(e => Number(e.getAttribute('data-console-ch')))`);
+      const pageLabel = () => page.eval(`(document.querySelector('[data-console-page]') || {}).textContent || ''`);
+      // window shift: the 21-channel Strobe Tube shows 12 faders per page
+      const tube = fixtures.find(f => f.model === 'Strobe Tube');
+      await view(page, 'list');
+      await selectInTree(page, tube.name);
+      await panel(page, 'Fixture tools');
+      if (!await page.eval(`!!document.querySelector('[data-console-ch]')`)) await clickFn(page, sectionHead('Channels'), 'Channels section');
+      await page.waitFor(`!!document.querySelector('[data-console-ch]')`, 8000);
+      const p1 = await shownChannels();
+      await clickFn(page, `document.querySelector('[data-console-next]')`, 'shift forward');
+      const p2 = await soon(async () => { const s = await shownChannels(); return s[0] !== p1[0] ? s : null; }, 'page 2');
+      check(p1.length === 12 && p1[0] === 0 && p2 && p2[0] === 12 && p2.length === 9 && /2\/2/.test(await pageLabel()), 'fader window shift: channels 1-12, then 13-21 (' + await pageLabel() + ')', { p1, p2 });
+      await setInput(page, q('[data-console-fader="14"]'), 200);
+      const tubeD = await api.call('fixtures.get', { fixtureId: tube.id });
+      check(!!await soon(async () => (await api.call('io.dmx.universe.get', { universeId: tubeD.universe })).values[tubeD.address + 14] === 200, 'fader'), 'a fader of the shifted window writes its channel (15 = 200)');
+      await clickFn(page, `document.querySelector('[data-console-prev]')`, 'shift back');
+      check(!!await soon(async () => (await shownChannels())[0] === 0, 'page 1'), 'shift back shows channels 1-12 again');
+      await clickFn(page, byText('button', 'Release fixtures'), 'Release fixtures');
+      // pan-tilt mode: two Gobo Spots, one page each with only their pan / tilt faders
+      const pair = gobos.slice(0, 2);
+      const common = pair[0].name.replace(/\s*\[\d+\]$/, '');
+      await selectInTree(page, pair[0].name, undefined, common);
+      await clickFn(page, leafText(pair[1].name, '[data-ff-tree]'), 'ctrl ' + pair[1].name, { modifiers: CTRL });
+      await page.waitFor(`/2 fixtures/.test((document.querySelector('[data-ff-tools-title]') || {}).textContent || '')`, 8000);
+      if (!await page.eval(`!!document.querySelector('[data-console-ch]')`)) await clickFn(page, sectionHead('Channels'), 'Channels section');
+      await page.waitFor(`!!document.querySelector('[data-console-pantilt]')`, 8000);
+      await clickFn(page, `document.querySelector('[data-console-pantilt]')`, 'Pan & Tilt mode');
+      const d0 = await api.call('fixtures.get', { fixtureId: pair[0].id }), d1 = await api.call('fixtures.get', { fixtureId: pair[1].id });
+      const ptIdx = (d) => d.channelList.filter(c => c.group === 'Pan' || c.group === 'Tilt').map(c => c.index).sort((a, b) => a - b).join(',');
+      const s1 = await soon(async () => { const s = await shownChannels(); return s.slice().sort((a, b) => a - b).join(',') === ptIdx(d0) ? s : null; }, 'pan/tilt faders');
+      check(!!s1 && /1\/2/.test(await pageLabel()), 'Pan & Tilt mode shows only the pan / tilt faders of the first moving head (page ' + await pageLabel() + ')', await shownChannels());
+      const panCh = d0.channelList.find(c => c.group === 'Pan').index;
+      await setInput(page, q('[data-console-fader="' + panCh + '"]'), 77);
+      check(!!await soon(async () => (await api.call('io.dmx.universe.get', { universeId: d0.universe })).values[d0.address + panCh] === 77, 'pan'), 'its pan fader drives ' + pair[0].name + ' pan = 77');
+      await clickFn(page, `document.querySelector('[data-console-next]')`, 'next moving head');
+      check(!!await soon(async () => /2\/2/.test(await pageLabel()) && (await shownChannels()).slice().sort((a, b) => a - b).join(',') === ptIdx(d1), 'second'), 'the arrow steps to the second moving head');
+      await shot(page, 'console-pantilt');
+      await clickFn(page, `document.querySelector('[data-console-pantilt]')`, 'Pan & Tilt mode off');
+      await clickFn(page, byText('button', 'Release fixtures'), 'Release fixtures');
+    }
+
     /* ================= save and grep the project ================= */
     if (want('save')) {
       console.log('\n[saveAs]');

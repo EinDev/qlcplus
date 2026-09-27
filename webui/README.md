@@ -136,7 +136,9 @@ and a second tab checked for the pushed event:
   the fixture properties, shown only for fixtures with Position / Rotation channels (SF3 FX Drone);
   the 2D background picture picked with the server file browser and drawn in the view
   (`fixtures.monitor.getBackground`), Reset; Highlight, basic colour and typed hex on a Tilt Bar,
-  the single-axis tilt tool; palettes Position 3D / Shutter / Gobo / Zoom created from the dialog,
+  the single-axis tilt tool; the Channels console's fader window shift (21-channel Strobe Tube, 12
+  faders per page) and Pan & Tilt mode (one moving head per page, only its pan / tilt faders);
+  palettes Position 3D / Shutter / Gobo / Zoom created from the dialog,
   a palette renamed (double-click) and its value changed; the Sequence bound-Scene picker (it now
   keeps the hidden scene it started with, so a rebind can be undone); RGB Matrix float / string
   script properties (a test script the driver writes into the sandbox's RGBScripts folder), Text

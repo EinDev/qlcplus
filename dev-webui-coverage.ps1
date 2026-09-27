@@ -27,7 +27,7 @@
   generator (monocart-coverage-reports) into webui/tools/coverage/node_modules (git-ignored,
   never installed with the web UI).
 
-.PARAMETER Drivers   Only run these (efx, rgb, media, vclayout, show, vccue, vclive, fixtures, io, vcinput, fixdefs). Default: all.
+.PARAMETER Drivers   Only run these (efx, rgb, media, vclayout, show, vccue, vclive, fixtures, io, vcinput, fixdefs, partialsff). Default: all.
 .PARAMETER BuildDir  CMake build directory with qmlui\qlcplus5.exe (default: build).
 .PARAMETER ReportOnly  Skip the drivers; regenerate the report from the last run's raw dumps.
 .PARAMETER Force     Restart a sandbox even if its process is already running.

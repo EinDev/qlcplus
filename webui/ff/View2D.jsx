@@ -273,7 +273,7 @@
           </div>
         ))}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <GenericButton label="Add linked copy" width={120} height={24} onClick={addLinked} />
+          <GenericButton label="Add linked copy" width={140} height={24} onClick={addLinked} />
           <FF.Note text="A linked copy shows the same fixture a second time in the 2D / 3D views (e.g. a mirrored patch)." />
         </div>
         {others.length ? null : null}
