@@ -54,9 +54,9 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | Save project (Ctrl+S) | ActionsMenu.qml | live | - |
 | Save project as (server-side path) | ActionsMenu.qml | live | - |
 | Import fixtures / functions from another project | ActionsMenu.qml, popup/PopupImportProject.qml, importmanager.cpp | missing | spec+S+U; nothing in the spec for project import |
-| Collect media into project (fork asset store) | ActionsMenu.qml, MainView.qml | missing | spec+S+U; only functions.media.reload is specced and registered |
-| Reload changed media | ActionsMenu.qml, MainView.qml | partial | U; per-function Reload button wired to functions.media.reload (not browser-verified); no bulk action or changed-on-disk list yet |
-| Remove unused media | ActionsMenu.qml, MainView.qml | missing | spec+S+U |
+| Collect media into project (fork asset store) | ActionsMenu.qml, MainView.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/functions-misc.js (functions.media.collect) |
+| Reload changed media | ActionsMenu.qml, MainView.qml | live | - ; sandbox 2026-09-27 (Actions menu dialog over functions.media.status / reload) |
+| Remove unused media | ActionsMenu.qml, MainView.qml | live | - ; sandbox 2026-09-27 (functions.media.removeUnused) |
 | Undo / Redo (with history labels) | ActionsMenu.qml | live | - |
 | Blackout toggle (Ctrl+B) | MainView.qml | live | - |
 | Stop all running functions | MainView.qml | live | - |
@@ -89,44 +89,44 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | Select every odd / even / Nth fixture of the selection | fixturesfunctions/FixturesAndFunctions.qml, popup/PopupInputNumber.qml | partial | U; even live (sandbox 2026-09-27); odd and every-Nth built, not clicked |
 | Add fixtures (manufacturer / model / mode / universe / address / quantity / gap / name, overlap check) | fixturesfunctions/FixtureBrowser.qml, fixturesfunctions/FixtureProperties.qml | live | - ; Add is blocked while the range overlaps |
 | Add a generic dimmer | fixturesfunctions/FixtureBrowser.qml | live | - |
-| Add a generic RGB panel (columns, component order, displacement, start corner) | fixturesfunctions/RGBPanelProperties.qml | missing | spec+S+U; fixtures-notes.md explicitly cuts it |
+| Add a generic RGB panel (columns, component order, displacement, start corner) | fixturesfunctions/RGBPanelProperties.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/fixtures-misc.js; rows that do not fit roll into the next existing universe (no universe creation) |
 | Rename fixture | fixturesfunctions/FixtureNodeRow.qml | live | - |
 | Re-address fixture / move to another universe | fixturesfunctions/FixtureGroupManager.qml (Address / Universe fields) | live | - |
-| Change fixture mode after patching | fixturesfunctions/FixtureGroupManager.qml (Mode field) | missing | spec+S+U; fixtures.update only takes universe / address / name; workaround is unpatch + patch |
+| Change fixture mode after patching | fixturesfunctions/FixtureGroupManager.qml (Mode field) | live | - ; sandbox 2026-09-27 (library fixture; no SF3 type has two modes), atomic and validated |
 | Unpatch / delete fixture | fixturesfunctions/FixtureGroupManager.qml | live | - ; confirm dialog |
-| Per-channel behaviour: forced HTP / LTP, can-fade, channel modifier | fixturesfunctions/FixtureChannelDelegate.qml, fixturesfunctions/FixtureGroupManager.qml | missing | spec+S+U; fixtures-notes.md explicitly leaves these out of fixtures.update |
-| Channel modifier templates editor | popup/PopupChannelModifiers.qml | missing | spec+S+U |
-| Apply changes to fixtures of the same type | fixturesfunctions/FixtureGroupManager.qml | missing | U; client-side loop once the per-channel row above exists |
+| Per-channel behaviour: forced HTP / LTP, can-fade, channel modifier | fixturesfunctions/FixtureChannelDelegate.qml, fixturesfunctions/FixtureGroupManager.qml | live | - ; sandbox 2026-09-27 (forced HTP / LTP, can-fade, modifier) |
+| Channel modifier templates editor | popup/PopupChannelModifiers.qml | live | - ; sandbox 2026-09-27 (adds rename and delete) |
+| Apply changes to fixtures of the same type | fixturesfunctions/FixtureGroupManager.qml | live | - ; sandbox 2026-09-27 |
 | Invert Pan / Invert Tilt per fixture | fixturesfunctions/FixtureNodeRow.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/fixtures-views.js |
 | Lock / unlock fixture position, show / hide fixture in the views | fixturesfunctions/FixtureNodeRow.qml | partial | U; implemented, unit-tested only |
-| Fixture summary (definition, physical block, address range) and print | fixturesfunctions/FixtureSummary.qml | partial | U; the web detail shows definition / mode / channels / addressing; physical block (fixtures.defs.getModel returns it) and print (browser print) missing |
-| Universe summary (channels used, power, weight, DIP switch) and print | fixturesfunctions/UniverseSummary.qml | missing | U; derivable from fixtures.list + fixtures.defs.getModel |
+| Fixture summary (definition, physical block, address range) and print | fixturesfunctions/FixtureSummary.qml | live | - ; sandbox 2026-09-27, print via the browser |
+| Universe summary (channels used, power, weight, DIP switch) and print | fixturesfunctions/UniverseSummary.qml | live | - ; sandbox 2026-09-27, print via the browser |
 | Fixture groups: create / rename / assign / unassign / delete | fixturesfunctions/FixtureGroupManager.qml | live | - |
 | Multi-head fixtures: select individual heads for live tools and group assignment | fixturesfunctions/FixtureHeadDelegate.qml, fixturesfunctions/FixtureNodeDelegate.qml | partial | U; alt-click head selection implemented, not exercised (SF3 Gobo Spots are single-head) |
-| Fixture group grid editor (group size / rows, rotate, flip, regenerate, reset, swap heads, per-head assign) | fixturesfunctions/FixtureGroupEditor.qml, fixturesfunctions/GridEditor.qml | missing | U; fixtures.group.setSize / swapHeads / reset / assignHead / unassignHead are registered, none is called |
+| Fixture group grid editor (group size / rows, rotate, flip, regenerate, reset, swap heads, per-head assign) | fixturesfunctions/FixtureGroupEditor.qml, fixturesfunctions/GridEditor.qml | live | - ; sandbox 2026-09-27 |
 | Invert selection in group(s) | MainView.qml, popup/PopupInvertGroupSelection.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/fixtures-views.js |
-| Rename items with numbering (start number, digits) | popup/PopupRenameItems.qml | missing | U; loop over fixtures.update / functions.rename |
+| Rename items with numbering (start number, digits) | popup/PopupRenameItems.qml | partial | U; functions live (sandbox 2026-09-27); the same dialog for fixtures not browser-driven |
 | Fixture remap (drag new fixtures, map channels, clone, apply and save) | fixturesfunctions/FixtureRemap.qml, fixturesfunctions/RemapRowDelegate.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/fixtures-views.js; Scene references and 2D placement follow the remap |
 | Create / edit a fixture definition (opens the Fixture Editor) | fixturesfunctions/FixtureBrowser.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/fixture-editor.js |
 | Live tool: Intensity | fixturesfunctions/IntensityTool.qml, fixturesfunctions/LeftPanel.qml | live | - ; writes Simple Desk overrides at the fixture addresses |
 | Live tool: Colour (basic palette, full picker, typed hex, RGB / CMY / WAUV) | ColorTool.qml, ColorToolBasic.qml, ColorToolFull.qml, ColorToolPrimary.qml | live | - |
-| Live tool: Colour filters tab (named colour filter lists) | ColorToolFilters.qml | missing | U; filter definitions come from the engine's colour filter files, palette.* has no listing, so possibly spec+S+U |
+| Live tool: Colour filters tab (named colour filter lists) | ColorToolFilters.qml | live | - ; sandbox 2026-09-27 (read-only list, no filter-file editing) |
 | Live tool: Position (pan / tilt XY pad, spin boxes, centre, snap, rotate preview) | fixturesfunctions/PositionTool.qml | live | - ; snap-to-next / rotate-preview not checked |
 | Live tool: Colour wheel / Gobos / Shutter / Beam / Speed / Prism / Effect / Maintenance capability presets | fixturesfunctions/PresetsTool.qml, fixturesfunctions/BeamTool.qml, fixturesfunctions/ShutterAnimator.qml, fixturesfunctions/MaintenanceTool.qml | live | - ; grouped presets from fixtures.defs.getMode; the Beam tool's projected-diameter maths is not ported |
 | Live tool: Highlight (locate selected fixtures) | fixturesfunctions/LeftPanel.qml | partial | U; implemented, not exercised |
 | Live tool: Pick a 3D point (aim fixtures at a stage position) | fixturesfunctions/Position3DTool.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/fixtures-views.js (fixtures.monitor.aimAt writes pan / tilt) |
 | Release fixtures / reset dump channels | fixturesfunctions/RightPanel.qml ("Reset dump channels"), fixturesfunctions/LeftPanel.qml | live | - |
 | Bottom-panel fixture console (plain per-channel faders for the selection) | fixturesfunctions/BottomPanel.qml, FixtureConsole.qml | live | - ; Fixture Tools show a plain slider per channel |
-| Bottom-panel extras: copy values to all fixtures of the same type, pan-tilt fader mode, multi-channel selection, fader window shift | fixturesfunctions/BottomPanel.qml | missing | U |
-| Bottom-panel external controller mapping of the fixture faders | fixturesfunctions/BottomPanel.qml | missing | spec+S+U; nothing maps an input line to the F&F console remotely |
+| Bottom-panel extras: copy values to all fixtures of the same type, pan-tilt fader mode, multi-channel selection, fader window shift | fixturesfunctions/BottomPanel.qml | partial | U; copy to same type and multi-channel selection live (sandbox 2026-09-27); pan-tilt mode and fader window shift exist as on-screen navigation only (in the desktop they belong to the external controller mapping) |
+| Bottom-panel external controller mapping of the fixture faders | fixturesfunctions/BottomPanel.qml | n/a | - ; the desktop's mapping lives entirely in the qmlui SceneEditor on inputValueChanged with no engine hook; external controllers drive the rig through VC input sources, which the web UI configures |
 | Palettes: list and search | fixturesfunctions/PaletteManager.qml | live | - ; search box not checked |
 | Palettes: create Dimmer / Colour palette | popup/PopupCreatePalette.qml, PaletteFanningBox.qml | live | - |
-| Palettes: create Position / Pan / Tilt / Shutter / Gobo / Position 3D palette | popup/PopupCreatePalette.qml | missing | U; the palette.create type enum already has them; FixtureDialogs.jsx handles Dimmer and Color only |
-| Palettes: "Also create a Scene" on create | popup/PopupCreatePalette.qml | missing | U; palette.create + functions.create + functions.scene.setValues |
+| Palettes: create Position / Pan / Tilt / Shutter / Gobo / Position 3D palette | popup/PopupCreatePalette.qml | partial | U; Pan palette live (sandbox 2026-09-27); Tilt / Pan+Tilt / Position 3D / Shutter / Gobo / Zoom forms present, not driven; Pan / Tilt units fix in progress (degrees) |
+| Palettes: "Also create a Scene" on create | popup/PopupCreatePalette.qml | live | - ; sandbox 2026-09-27 |
 | Palettes: apply to the selected fixtures | fixturesfunctions/PaletteManager.qml | live | - ; double-click |
-| Palettes: edit (rename, change value) | fixturesfunctions/PaletteManager.qml | missing | U; palette.update is registered, not called |
+| Palettes: edit (rename, change value) | fixturesfunctions/PaletteManager.qml | partial | U; fanning edit live through palette.update (sandbox 2026-09-27); rename / change value not driven |
 | Palettes: delete | fixturesfunctions/PaletteManager.qml | live | - |
-| Palette fanning (type, layout, amount, per-axis ordering) | PaletteFanningBox.qml | missing | spec+S+U; palette.yaml has no fanning fields |
+| Palette fanning (type, layout, amount, per-axis ordering) | PaletteFanningBox.qml | live | - ; sandbox 2026-09-27 (colour palette fanned Linear 60%, saved in the .qxw) |
 
 ## Fixtures & Functions - function editors
 
@@ -140,37 +140,37 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | Delete function(s) (multi-select, confirm) | fixturesfunctions/RightPanel.qml | live | - |
 | Start / stop a function, running state shown | FunctionDelegate.qml | live | - ; state from functions.status.changed |
 | Pause / resume a function | FunctionDelegate.qml | live | - |
-| Clone the selected functions | fixturesfunctions/RightPanel.qml | missing | spec+S+U; no clone method (a client-side re-create needs every type's editor methods first) |
-| Show function usage (functions and widgets using it) | fixturesfunctions/RightPanel.qml, UsageList.qml | missing | spec+S+U; vc.widget.usage is specced (widget side) but not registered, function-side usage is not specced |
-| Set / unset autostart function | fixturesfunctions/RightPanel.qml | missing | spec+S+U; core.yaml only mentions the startup function in the mode description |
-| Function preview toggle (edited function runs on the output while editing) | fixturesfunctions/RightPanel.qml ("Function Preview") | partial | U; starting the function with functions.start works, previewing unsaved Scene values does not (FunctionEditors.jsx says so); use Fixture Tools with target live output |
-| Select fixtures in function(s) | fixturesfunctions/FunctionManager.qml | partial | U; code present in FixturesFunctions.jsx (selectFixtures), not live-verified |
+| Clone the selected functions | fixturesfunctions/RightPanel.qml | live | - ; sandbox 2026-09-27 (functions.clone) |
+| Show function usage (functions and widgets using it) | fixturesfunctions/RightPanel.qml, UsageList.qml | live | - ; sandbox 2026-09-27 (functions.usage lists functions and VC widgets) |
+| Set / unset autostart function | fixturesfunctions/RightPanel.qml | live | - ; sandbox 2026-09-27 (core.project.setStartupFunction) |
+| Function preview toggle (edited function runs on the output while editing) | fixturesfunctions/RightPanel.qml ("Function Preview") | live | - ; start / stop is the engine's preview (no separate preview mode exists) |
+| Select fixtures in function(s) | fixturesfunctions/FunctionManager.qml | live | - ; sandbox 2026-09-27 |
 | Timing settings: fade in / fade out / duration, tempo type (time / beats) | fixturesfunctions/RightPanel.qml (Timing Settings), TimeEditTool.qml | live | - ; tempo type (beats) not live-verified |
 | Run order and direction (loop / single shot / ping pong / random, forward / backward) | fixturesfunctions/ChaserEditor.qml, fixturesfunctions/EFXEditor.qml, fixturesfunctions/RGBMatrixEditor.qml | live | - ; Chaser, EFX and RGB Matrix share the TimingEditor block; EFX/RGB run order not clicked in the sandbox runs, duration was |
 | Scene editor: add fixtures, inline values, console faders, remove channel, fade times | fixturesfunctions/SceneEditor.qml, fixturesfunctions/SceneFixtureConsole.qml | live | - |
-| Scene editor: add a fixture group / head as member | fixturesfunctions/SceneEditor.qml ("Add a fixture/group") | partial | U; fixtures are added one by one, groups not checked |
+| Scene editor: add a fixture group / head as member | fixturesfunctions/SceneEditor.qml ("Add a fixture/group") | live | - ; sandbox 2026-09-27; a single head of a group is not addable on its own |
 | Scene editor: add / remove palettes | fixturesfunctions/SceneEditor.qml | live | - |
 | Scene editor: speed (fade in / out) | fixturesfunctions/SceneEditor.qml | live | - |
 | Chaser editor: add / remove / move / duplicate steps, per-step fade in / hold / fade out / duration / note | fixturesfunctions/ChaserEditor.qml, ChaserStepDelegate.qml | live | - ; per-step times editable only where the speed mode is Per Step, like the desktop; duplicate and note are code present, not in the README list |
-| Chaser editor: speed modes Common / Per Step / Default | fixturesfunctions/ChaserEditor.qml | missing | S: functions.chaser.setSpeedModes |
-| Chaser editor: preview next / previous step | fixturesfunctions/ChaserEditor.qml | missing | S: functions.chaser.setAction |
-| Chaser editor: randomize step order, auto-set step durations from total, print steps | fixturesfunctions/ChaserEditor.qml | missing | U; moveStep / replaceStep loops, browser print |
-| Sequence editor: steps and per-channel step values via the bound Scene | fixturesfunctions/SequenceEditor.qml | partial | U; same editor as Chaser (verified) plus a per-channel value list; the per-channel list and the Sequence path are not live-verified |
-| Sequence editor: add / remove fixtures of the bound Scene | fixturesfunctions/SequenceEditor.qml | partial | U; functions.scene.setMembers on the bound Scene; not checked from the Sequence editor |
-| Sequence editor: capture live output into a step, preview channel changes on the output | fixturesfunctions/SequenceEditor.qml | missing | S: functions.sequence.applyDumpValues, functions.sequence.setBoundScene |
+| Chaser editor: speed modes Common / Per Step / Default | fixturesfunctions/ChaserEditor.qml | live | - ; sandbox 2026-09-27; Fade Out has no Default option (existing behaviour) |
+| Chaser editor: preview next / previous step | fixturesfunctions/ChaserEditor.qml | live | - ; sandbox 2026-09-27 (functions.chaser.setAction + currentStepChanged) |
+| Chaser editor: randomize step order, auto-set step durations from total, print steps | fixturesfunctions/ChaserEditor.qml | live | - ; sandbox 2026-09-27 |
+| Sequence editor: steps and per-channel step values via the bound Scene | fixturesfunctions/SequenceEditor.qml | live | - ; sandbox 2026-09-27 |
+| Sequence editor: add / remove fixtures of the bound Scene | fixturesfunctions/SequenceEditor.qml | live | - ; sandbox 2026-09-27 |
+| Sequence editor: capture live output into a step, preview channel changes on the output | fixturesfunctions/SequenceEditor.qml | partial | U; capture live and preview on output live (sandbox 2026-09-27); the bound-Scene picker is server-tested only |
 | Collection editor: add / remove member functions | fixturesfunctions/CollectionEditor.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/efx-collection.js; add via picker, remove, move up / down; loops and self-membership refused by the server |
 | EFX editor: pattern, width / height / rotation / offsets / frequencies / phases, speed, relative movement, preview | fixturesfunctions/EFXEditor.qml, fixturesfunctions/EFXPreview.qml | live | - ; sandbox 2026-09-27; 2D preview only (no fake-3D sphere view); preview data from functions.efx.getPreview so it matches the Qt canvas |
 | EFX editor: fixture list (add / remove / reorder heads, per-fixture mode / direction / offset / reverse / dimmer control) and fixture order (parallel / serial / asymmetric) | fixturesfunctions/EFXEditor.qml | live | - ; sandbox 2026-09-27; adding a fixture adds every head (no per-head picker); Asymmetric and raise not clicked in the sandbox run |
 | RGB Matrix editor: fixture group, algorithm, colours, blend / control mode, speed, preview | fixturesfunctions/RGBMatrixEditor.qml, fixturesfunctions/RGBMatrixPreview.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/rgbmatrix.js; Beats tempo preview approximated at 500 ms |
 | RGB Matrix editor: script algorithm properties, text / image / animation parameters, font | fixturesfunctions/RGBMatrixEditor.qml | partial | U; list/range script properties, text, font family and text animation live (sandbox 2026-09-27); Image parameters, font size/bold/italic, offsets, float/string properties implemented + server-tested, not exercised in the browser; image path / font are server-side text fields |
-| RGB Matrix editor: save this matrix to a Sequence | fixturesfunctions/RGBMatrixEditor.qml | missing | spec+S+U |
+| RGB Matrix editor: save this matrix to a Sequence | fixturesfunctions/RGBMatrixEditor.qml | live | - ; sandbox 2026-09-27 (functions.rgbmatrix.saveToSequence) |
 | Script editor: edit source, syntax check, insert command at cursor, fixture / function trees | fixturesfunctions/ScriptEditor.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/media.js; the QML side trees are replaced by function / fixture ID pickers |
-| Audio editor: file, output device, volume, fade in / out, looped / single shot, mute, file info | fixturesfunctions/AudioEditor.qml | live | - ; sandbox 2026-09-27; mute is read-only (no API setter); media info needs the decoder plugins (absent in the sandbox) |
-| Audio editor: detect BPM, replace file (fork media store) | fixturesfunctions/AudioEditor.qml | partial | spec+S+U for Detect BPM (no method); Replace file live (sandbox 2026-09-27, media store copy + origin recorded) |
-| Video editor: file / URL, output screen, windowed / fullscreen, geometry, rotation, layer, looped, mute | fixturesfunctions/VideoEditor.qml, fixturesfunctions/VideoContext.qml | live | - ; sandbox 2026-09-27; volume / mute read-only (no API setter) |
-| Video editor: Spout output mode, sender name / size, replace file (fork) | fixturesfunctions/VideoEditor.qml | partial | spec+S+U for sender name / size (read-only); Spout selectable via outputMode and Replace file live (sandbox 2026-09-27) |
+| Audio editor: file, output device, volume, fade in / out, looped / single shot, mute, file info | fixturesfunctions/AudioEditor.qml | live | - ; sandbox 2026-09-27, mute now settable (functions.audio.setMuted) |
+| Audio editor: detect BPM, replace file (fork media store) | fixturesfunctions/AudioEditor.qml | live | - ; sandbox 2026-09-27 (detectBpm + bpmChanged; Replace via setSource) |
+| Video editor: file / URL, output screen, windowed / fullscreen, geometry, rotation, layer, looped, mute | fixturesfunctions/VideoEditor.qml, fixturesfunctions/VideoContext.qml | live | - ; sandbox 2026-09-27, volume 0-100 and mute settable |
+| Video editor: Spout output mode, sender name / size, replace file (fork) | fixturesfunctions/VideoEditor.qml | live | - ; sandbox 2026-09-27; sender size settable, sender name follows the function name (read-only as on the desktop) |
 | Show function: edit on the timeline | fixturesfunctions/FunctionManager.qml | live | - ; sandbox 2026-09-27 on the Show Manager screen |
-| Adjust a running function's intensity attribute | FunctionDelegate.qml (via the VC "Adjust" slider mode), functions.adjustAttribute | missing | S: functions.adjustAttribute |
+| Adjust a running function's intensity attribute | FunctionDelegate.qml (via the VC "Adjust" slider mode), functions.adjustAttribute | live | - ; sandbox 2026-09-27 (functions.adjustAttribute intensity slider) |
 | Show Wizard (stage wizard: show type, fixture roles, venue, effects, controller, generate) | fixturesfunctions/RightPanel.qml, stagewizard/ShowWizard.qml, stagewizard/WizardStep1ShowType.qml ... WizardStep6Summary.qml | missing | spec+S+U; the generator runs in the desktop process |
 
 ## 2D / 3D / DMX / Universe grid views
@@ -370,9 +370,9 @@ duplicate a feature row above say so.
 | Animation algorithm preset | popup/PopupAnimationPreset.qml | live | - ; sandbox 2026-09-27 (script-algorithm preset with parameters through the dialog) |
 | Arrange fixtures | popup/PopupArrangeFixtures.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/fixtures-views.js (circle) |
 | Audio configuration | popup/PopupAudioConfiguration.qml | n/a | - ; host audio devices |
-| Channel modifiers editor | popup/PopupChannelModifiers.qml | missing | spec+S+U; duplicate |
+| Channel modifiers editor | popup/PopupChannelModifiers.qml | live | - ; sandbox 2026-09-27 |
 | Channel wizard | popup/PopupChannelWizard.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/fixture-editor.js |
-| Create palette | popup/PopupCreatePalette.qml | partial | U; Dimmer / Colour live, other types and "Also create a Scene" missing |
+| Create palette | popup/PopupCreatePalette.qml | partial | U; see the palette rows |
 | Custom feedback | popup/PopupCustomFeedback.qml | partial | U; lower / upper / monitor values live (sandbox 2026-09-27); colour table and MIDI routing need a patched input profile |
 | DMX channel dump | popup/PopupDMXDump.qml | partial | U for the target Scene, spec+S+U for the filters |
 | Disclaimer | popup/PopupDisclaimer.qml | n/a | - ; desktop first-run notice |
@@ -388,11 +388,11 @@ duplicate a feature row above say so.
 | Network server setup | popup/PopupNetworkServer.qml | n/a | - ; host process settings |
 | Page / frame PIN request | popup/PopupPINRequest.qml | live | - ; sandbox 2026-09-27 |
 | PIN setup | popup/PopupPINSetup.qml | live | - ; sandbox 2026-09-27 (frame via dialog, page via vc.page.setPin) |
-| Rename items with numbering | popup/PopupRenameItems.qml | missing | U |
+| Rename items with numbering | popup/PopupRenameItems.qml | partial | U; functions live (sandbox 2026-09-27); the same dialog for fixtures not browser-driven |
 | Spout size mismatch | popup/PopupSpoutSizeMismatch.qml | missing | spec+S+U; duplicate of the track Spout row |
 | Track Spout output size | popup/PopupTrackSpoutSize.qml | missing | spec+S+U; duplicate of the track Spout row |
 | DMX Address tool | DMXAddressTool.qml, DMXAddressWidget.qml | missing | U |
-| Usage list | UsageList.qml | missing | spec+S+U; duplicate of the function usage row |
+| Usage list | UsageList.qml | live | - ; sandbox 2026-09-27 |
 | UI Settings editor | UISettingsEditor.qml, UISettings.qml | missing | U |
 | Shortcuts editor | ShortcutsEditor.qml | missing | U |
 | External controls panel (input sources + key sequences of a widget) | ExternalControls.qml, ExternalControlDelegate.qml, KeyboardSequenceDelegate.qml | live | - ; sandbox 2026-09-27, webui/vc/vc-external.jsx |
@@ -402,7 +402,7 @@ duplicate a feature row above say so.
 | Day-time tool (clock schedule times) | DayTimeTool.qml | live | - ; sandbox 2026-09-27 |
 | Keypad | KeyPad.qml | live | - |
 | Fixture console (per-channel faders) | FixtureConsole.qml, ChannelToolLoader.qml | live | - ; see the bottom-panel rows |
-| Palette fanning box | PaletteFanningBox.qml | missing | spec+S+U |
+| Palette fanning box | PaletteFanningBox.qml | live | - ; sandbox 2026-09-27 (colour palette fanned Linear 60%, saved in the .qxw) |
 | Single-axis tool (pan or tilt only fixtures) | SingleAxisTool.qml | partial | U; pan / tilt spin boxes exist, a single-axis layout is not checked |
 | Chaser step widget (per-step times popup) | ChaserWidget.qml, ChaserStepDelegate.qml | live | - |
 | Zoom item (view zoom controls) | ZoomItem.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/fixtures-views.js |
@@ -425,8 +425,8 @@ the total is larger than the number of distinct actions). Recompute after editin
 
 | Status | Rows |
 | --- | --- |
-| live | 173 |
-| partial | 61 |
-| missing | 60 |
-| n/a | 20 |
+| live | 205 |
+| partial | 58 |
+| missing | 30 |
+| n/a | 21 |
 | total | 314 |

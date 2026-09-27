@@ -137,8 +137,13 @@ it so the integration pass can re-run it.
 - Only make `core.project.saveAs` write into your sandbox directory (`C:\qlcsandbox\<Name>\...`).
 - Commit before every build. Conventional Commits (`feat(webui): ...`, `feat(controlapi): ...`,
   `test(controlapi): ...`, `docs(api-spec): ...`); several small commits are fine, never amend, no
-  debug-only logging in a commit. End each commit message with
-  `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`.
+  debug-only logging in a commit. End each commit message with the `Co-Authored-By:` line
+  your harness gives you for commits.
+- The fork is public: never commit absolute local paths or the Windows user name (no
+  `C:\Users\...`, `D:\...\<checkout>`, `/d/...`). Use repo-relative paths, `$PSScriptRoot`, env
+  vars or script parameters, and placeholders such as `<repo>` / `<test project>` in docs. Before
+  your final commit run `git diff master...HEAD | grep -nE 'Users[\\/]|Projekte'` and fix every
+  hit. Your report may mention local paths; committed files may not.
 - Do not edit `CLAUDE.md`, memory files, or the other agents' slices. If you must touch a shared
   file (`index.html`, `apiserver.cpp/.h`, the two `CMakeLists.txt` lists, `webui/README.md`,
   `apivchost.h`/`app.h`/`fakevchost.{h,cpp}`), keep the edit to the minimal added lines at the natural place; the
