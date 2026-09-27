@@ -115,9 +115,14 @@ shared `ServerFileBrowser.jsx` over `core.fs.list` (see core-notes.md).
   `waitTime` returns immediately while the runner is not started) would
   spin the engine's main thread forever, and `functions.get` is a read hit
   by every tree selection. The same hazard pre-exists in
-  `functions.script.validate` and the QML "Check syntax" button; a
-  watchdog calling `QJSEngine::setInterrupted` from another thread is the
-  follow-up. Pre-existing bug fixed on the way: `apifunctionsdomain.cpp`
+  `functions.script.validate` and the QML "Check syntax" button - and,
+  worse, in the engine itself: scriptv4's `Script::totalDuration()`
+  evaluates the body the same way (it sums the `Engine.waitTime` calls),
+  and every function summary/detail (`functions.list`, `functions.get`, the
+  QML Function Manager) calls `totalDuration()`. So an endlessly looping
+  script already hangs/crashes those reads today; a watchdog calling
+  `QJSEngine::setInterrupted` from another thread, or a static wait-time
+  scan, is the follow-up. Pre-existing bug fixed on the way: `apifunctionsdomain.cpp`
   included the legacy `script.h` while the engine DLL compiles `scriptv4` -
   `new Script(doc)` there allocated with the wrong class size; it now
   includes `scriptwrapper.h`. `Script::syntaxErrorsLines()` also leaked a

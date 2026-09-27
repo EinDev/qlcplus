@@ -289,9 +289,12 @@ void ApiMediaDomain_Test::scriptValidateReportsErrorLinesAndRefs()
 void ApiMediaDomain_Test::scriptGetCarriesSourceOnly()
 {
     helloAndGetClientId();
-    // A read must never evaluate the script (no interrupt in the QJSEngine
-    // check): a body that would spin forever in the validator is safe to get.
-    Script *script = addScript(QStringLiteral("for (;;) { Engine.waitTime(1000); }\n"));
+    // The typeDetail itself must not run the syntax check (no interrupt in
+    // the QJSEngine evaluation). NOTE: the generic part of functions.get
+    // still evaluates a scriptv4 body through Script::totalDuration() - a
+    // pre-existing engine behaviour, so a for(;;) script cannot be used
+    // here (it would spin / crash inside the engine, not in this domain).
+    Script *script = addScript(QStringLiteral("Engine.waitTime(100);\n@@ nope\n"));
     QVERIFY(script != nullptr);
 
     QJsonObject params;
