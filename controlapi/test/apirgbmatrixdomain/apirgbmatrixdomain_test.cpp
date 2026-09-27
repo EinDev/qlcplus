@@ -303,7 +303,11 @@ void ApiRgbMatrixDomain_Test::setConfigAppliesEverythingAndBroadcasts()
     QCOMPARE(m_matrix->controlMode(), RGBMatrix::ControlModeDimmer);
     QCOMPARE(m_matrix->blendMode(), Universe::AdditiveBlend);
     QCOMPARE(m_matrix->dimmerControl(), true);
-    QCOMPARE(m_doc->docRevision(), before + 1);
+    // Every RGBMatrix setter's changed() is turned into Doc::setModified()
+    // (doc.cpp, slotFunctionChanged), so one call advances the revision
+    // several times - what matters is that it moved and that the response/
+    // event carry the final value.
+    QVERIFY(m_doc->docRevision() > before);
 
     // event carries the config read back from the engine
     QJsonObject data = event.value(QStringLiteral("data")).toObject();
@@ -475,7 +479,7 @@ void ApiRgbMatrixDomain_Test::setScriptPropertyChangesValueAndBroadcasts()
     QVERIFY(event.isEmpty() == false);
 
     QCOMPARE(m_matrix->property(QStringLiteral("orientation")), QStringLiteral("Vertical"));
-    QCOMPARE(m_doc->docRevision(), before + 1);
+    QVERIFY(m_doc->docRevision() > before);
     QJsonObject data = event.value(QStringLiteral("data")).toObject();
     QCOMPARE(data.value(QStringLiteral("functionId")).toString(), QString::number(m_matrix->id()));
     QCOMPARE(data.value(QStringLiteral("propertyName")).toString(), QStringLiteral("orientation"));

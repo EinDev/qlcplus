@@ -699,8 +699,12 @@ void ApiRgbMatrixDomain::registerMethods()
             return;
         }
 
-        // RGBMatrix's setters emit changed() but never Doc::setModified();
-        // like functions.update, the revision bump is explicit.
+        // Most RGBMatrix setters emit changed(), which Doc turns into
+        // setModified() (one revision bump each), but the Text/Image
+        // parameter setters are plain C++ objects with no signal at all -
+        // the explicit bump guarantees every successful call advances the
+        // revision. Like functions.scene.setValues, one call may therefore
+        // advance it by more than one; response and event carry the final value.
         doc->setModified();
         session->send(ApiEnvelope::buildOkResponse(id, docRevisionResult(doc)));
 
