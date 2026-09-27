@@ -1095,7 +1095,17 @@ void ApiFunctionsDomain::registerMethods()
         // MasterTimer keeps raw Function* in its running list and start
         // queue: stop it and wait until MasterTimer has let go of it first,
         // like FunctionManager::deleteFunction() does for the Qt UI.
-        if (stopAndWaitForMasterTimer(function) == false)
+        // Running parents that play it (a Show clip - ShowRunner caches the
+        // raw Function* -, a Collection member, a Chaser step) must stop
+        // first as well: they'd call stop()/setPause()/adjustAttribute() on
+        // the freed child, or Q_ASSERT on it no longer resolving.
+        bool stoppedAll = true;
+        for (Function *parent : doc->functions())
+        {
+            if (parent != nullptr && parent != function && parent->isRunning() && parent->contains(functionId))
+                stoppedAll = stopAndWaitForMasterTimer(parent) && stoppedAll;
+        }
+        if (stoppedAll == false || stopAndWaitForMasterTimer(function) == false)
         {
             session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidState,
                                                             QStringLiteral("Function could not be stopped; not deleted")));

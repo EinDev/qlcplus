@@ -60,6 +60,7 @@ private slots:
     void listFiltersByType();
     void deleteRemovesFunction();
     void deleteRunningFunctionStopsItFirst();
+    void deleteChildOfRunningParentStopsParent();
     void renameChangesName();
     void moveChangesPath();
     void updateChangesGenericProperties();

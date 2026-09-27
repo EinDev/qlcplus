@@ -30,6 +30,7 @@
 #include "fixture.h"
 #include "scene.h"
 #include "chaser.h"
+#include "collection.h"
 #include "sequence.h"
 #include "universe.h"
 #include "doc.h"
@@ -394,6 +395,34 @@ void ApiFunctionsDomain_Test::deleteRunningFunctionStopsItFirst()
     QCOMPARE(m_doc->masterTimer()->runningFunctions(), 0);
     QTest::qWait(100); // a few MasterTimer ticks: must not touch the freed function
     QCOMPARE(m_doc->masterTimer()->runningFunctions(), 0);
+}
+
+void ApiFunctionsDomain_Test::deleteChildOfRunningParentStopsParent()
+{
+    // Crash audit: a running Show/Collection/Chaser keeps playing its child
+    // by id or by raw pointer (ShowRunner caches Function*); deleting the
+    // child left the parent calling into freed memory or Q_ASSERTing on the
+    // id no longer resolving (Collection::postRun/write/setPause).
+    helloAndGetClientId();
+    Collection *collection = new Collection(m_doc);
+    QVERIFY(m_doc->addFunction(collection));
+    QVERIFY(collection->addFunction(m_scene->id()));
+
+    QJsonObject startParams;
+    startParams.insert(QStringLiteral("functionId"), QString::number(collection->id()));
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("functions.start"), startParams).value(QStringLiteral("ok")).toBool(), true);
+    QVERIFY(QTest::qWaitFor([&]() { return collection->isRunning() && m_scene->isRunning(); }, 2000));
+
+    QJsonObject params;
+    params.insert(QStringLiteral("functionId"), QString::number(m_scene->id()));
+    params.insert(QStringLiteral("baseRevision"), int(m_doc->docRevision()));
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("functions.delete"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    m_scene = nullptr;
+    QCOMPARE(collection->isRunning(), false);
+    QCOMPARE(m_doc->masterTimer()->runningFunctions(), 0);
+    QTest::qWait(100);
+    QCOMPARE(collection->functions().count(), 0);
 }
 
 void ApiFunctionsDomain_Test::renameChangesName()
