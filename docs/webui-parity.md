@@ -206,7 +206,7 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | Button: adjust function intensity on press (startup intensity) | virtualconsole/VCButtonItem.qml | live | - ; sandbox 2026-09-27; Enable + 50% configured, XML <Intensity>50 |
 | Slider / Knob: move, value pushed to every client | virtualconsole/VCSliderItem.qml, QLCPlusFader.qml, QLCPlusKnob.qml | live | - |
 | Slider: flash button ("Flash the controlled Function") | virtualconsole/VCSliderItem.qml | live | - ; sandbox 2026-09-27 via vc.slider.flash + Show flash button config |
-| Slider: monitor channel levels display | virtualconsole/VCSliderItem.qml | partial | U; monitor mode configurable and on/off exercised (sandbox 2026-09-27); the live monitorValueChanged feed is not shown in the widget body yet |
+| Slider: monitor channel levels display | virtualconsole/VCSliderItem.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-vc.js (Loopback plugin for I/O) |
 | Cue list: play / pause / stop / next / previous / jump to step, current step highlighted | virtualconsole/VCCueListItem.qml | live | - |
 | Cue list: side fader (crossfade / steps) | virtualconsole/VCCueListItem.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/vc-cue.js; both modes driven |
 | XY pad: move the position | virtualconsole/VCXYPadItem.qml | live | - |
@@ -215,14 +215,14 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | Speed dial: set time, tap | virtualconsole/VCSpeedDialItem.qml | live | - |
 | Speed dial: plus / minus buttons, multiplier factors, apply, reset tap, preset buttons | virtualconsole/VCSpeedDialItem.qml, virtualconsole/VCSpeedDialPresets.qml | live | - ; sandbox 2026-09-27; the stray speedDial.setCurrentTime wrapper is deprecated (preset.apply covers it) |
 | Frame / Solo frame: multipage next / previous | virtualconsole/VCFrameItem.qml | live | - |
-| Frame: enable / disable, expand / collapse | virtualconsole/VCFrameItem.qml | partial | U; enable button + header configured and exercised (sandbox 2026-09-27); Collapsed toggle server-tested only |
+| Frame: enable / disable, expand / collapse | virtualconsole/VCFrameItem.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-vc.js (Loopback plugin for I/O) |
 | Frame: page shortcuts by keyboard | virtualconsole/VCFrameProperties.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/vc-input.js; F flips the frame in Operate mode |
 | Label | virtualconsole/VCLabelItem.qml | live | - |
 | Clock: clock / stopwatch / countdown display, play / pause, reset, enable schedule | virtualconsole/VCClockItem.qml | live | - ; sandbox 2026-09-27; Stopwatch server-tested only |
-| Animation: level fader, preset buttons, colour knobs | virtualconsole/VCAnimationItem.qml | partial | U; fader (starts / stops the matrix) and preset buttons live (sandbox 2026-09-27); knob turn and body colour swatch server-tested only |
+| Animation: level fader, preset buttons, colour knobs | virtualconsole/VCAnimationItem.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-vc.js (Loopback plugin for I/O) |
 | Audio triggers: enable / disable capture, live bars | virtualconsole/VCAudioTriggersItem.qml | live | - ; sandbox 2026-09-27 (levelsChanged stream from the host's capture) |
 | Grand Master value | virtualconsole/VirtualConsole.qml | live | - |
-| Fire widgets by keyboard sequences in Operate mode | virtualconsole/VirtualConsole.qml, KeyboardSequenceDelegate.qml | partial | U; the web UI honours widget key bindings itself (the server cannot see browser keys); Button and Frame driven in the sandbox 2026-09-27, cue list / speed dial / slider flash built but not driven |
+| Fire widgets by keyboard sequences in Operate mode | virtualconsole/VirtualConsole.qml, KeyboardSequenceDelegate.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-vc.js (Loopback plugin for I/O) |
 | Fire widgets from an external controller (input sources) | ExternalControls.qml | n/a | - ; input lines are patched on the host and drive the engine directly; the web UI only needs to *configure* them (editing section) |
 
 ## Virtual Console - editing
@@ -239,34 +239,34 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | Move / resize widgets, snapping toggle | virtualconsole/VCWidgetItem.qml, virtualconsole/VirtualConsole.qml | live | - |
 | Copy / cut / paste / delete widgets | virtualconsole/VCRightPanel.qml | live | - ; cut is copy + delete |
 | Widget caption | virtualconsole/VCWidgetProperties.qml | live | - |
-| Widget foreground / background colour, font, bold | virtualconsole/VCWidgetProperties.qml | partial | U; controls present in vc-edit.jsx, not in the README verified list |
+| Widget foreground / background colour, font, bold | virtualconsole/VCWidgetProperties.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-vc.js (Loopback plugin for I/O) |
 | Widget background image | virtualconsole/VCWidgetProperties.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/vc-show-leftovers.js; image on the QLC+ host picked with the file browser, read back as a data URL (vc.widget.getBackgroundImage); UNC paths refused |
 | Widget z-index | virtualconsole/VCWidgetProperties.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/vc-show-leftovers.js |
-| Align selected widgets left / right / top / bottom | virtualconsole/VCWidgetProperties.qml | partial | U; top / left exercised (sandbox 2026-09-27), right / bottom server-tested only; selection must share one parent (INVALID_PARAMS otherwise, by design) |
-| Distribute selected widgets horizontally / vertically | virtualconsole/VCWidgetProperties.qml | partial | U; horizontal exercised (sandbox 2026-09-27), vertical server-tested only |
-| Bulk style on a multi-selection (caption, colours, font) | virtualconsole/VCWidgetProperties.qml | partial | U; caption exercised via one vc.widget.bulkStyle (sandbox 2026-09-27); colours / font server-tested only |
+| Align selected widgets left / right / top / bottom | virtualconsole/VCWidgetProperties.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-vc.js (Loopback plugin for I/O) |
+| Distribute selected widgets horizontally / vertically | virtualconsole/VCWidgetProperties.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-vc.js (Loopback plugin for I/O) |
+| Bulk style on a multi-selection (caption, colours, font) | virtualconsole/VCWidgetProperties.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-vc.js (Loopback plugin for I/O) |
 | Widget presets (save / apply / remove a style preset) | virtualconsole/VCWidgetProperties.qml | live | - ; generic vc.widget.preset.* live for Speed, XY Pad and Animation (sandbox 2026-09-27) |
-| External controls: add / remove an input source, auto-detect, manual selection | ExternalControls.qml, ExternalControlDelegate.qml, popup/PopupManualInputSource.qml | partial | U; manual add / remove live (sandbox 2026-09-27); auto-detect arm / refuse-second-client / cancel verified in the browser, the actual binding from a controller signal unit-tested only (no input plugin in the sandbox) |
-| External controls: custom feedback values / colours per input source | popup/PopupCustomFeedback.qml | partial | U; values live (sandbox 2026-09-27); colour table and MIDI routing need a patched input profile |
+| External controls: add / remove an input source, auto-detect, manual selection | ExternalControls.qml, ExternalControlDelegate.qml, popup/PopupManualInputSource.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-vc.js (Loopback plugin for I/O) |
+| External controls: custom feedback values / colours per input source | popup/PopupCustomFeedback.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-vc.js (Loopback plugin for I/O) |
 | External controls: add / remove a keyboard combination, auto-detect | ExternalControls.qml, KeyboardSequenceDelegate.qml | live | - ; sandbox 2026-09-27 (keys recorded by pressing them in the browser; re-recording leaves exactly one entry) |
 | Button properties: attached function, pressure behaviour (Toggle / Flash / Blackout / Stop all) | virtualconsole/VCButtonProperties.qml | live | - |
 | Button properties: flash override priority / force LTP, stop-all fade out, adjust function intensity | virtualconsole/VCButtonProperties.qml | live | - ; sandbox 2026-09-27, every VcButtonConfig field exercised |
-| Slider properties: display style (DMX / percent, normal / inverted, slider / knob), mode (Level / Adjust / Submaster / Grand Master), value limits | virtualconsole/VCSliderProperties.qml | partial | U; Level and Adjust modes exercised (sandbox 2026-09-27); Submaster / Grand Master, knob / percent / inverted radios and range limits server-tested only |
+| Slider properties: display style (DMX / percent, normal / inverted, slider / knob), mode (Level / Adjust / Submaster / Grand Master), value limits | virtualconsole/VCSliderProperties.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-vc.js (Loopback plugin for I/O) |
 | Slider properties: Level mode channel list (add / remove, all / intensity / RGB / gobo groups) | virtualconsole/VCSliderProperties.qml | live | - ; sandbox 2026-09-27; channel picker over fixtures.list (expand fixture, tick channels), vc.slider.setLevelChannels; group shortcuts (all / intensity / RGB / gobo) not offered |
 | Slider properties: monitor channel levels, catch up with external input | virtualconsole/VCSliderProperties.qml | live | - ; sandbox 2026-09-27 (Monitor on/off/on, catch-up) |
-| Slider properties: click & go button type | virtualconsole/VCSliderProperties.qml | partial | U; type combobox implemented (server-tested); no colour / preset picker UI for it |
+| Slider properties: click & go button type | virtualconsole/VCSliderProperties.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-vc.js (Loopback plugin for I/O) |
 | Slider properties: Function Control (Adjust) mode - attached function and attribute | virtualconsole/VCSliderProperties.qml | live | - ; sandbox 2026-09-27 (function picker + attribute + Show flash button) |
-| Slider properties: Grand Master mode (value / channel mode) | virtualconsole/VCSliderProperties.qml | partial | U; GM modes in VcSliderConfig, server-tested only; io.grandMaster.setMode is another slice |
+| Slider properties: Grand Master mode (value / channel mode) | virtualconsole/VCSliderProperties.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-vc.js (Loopback plugin for I/O) |
 | Slider properties: show flash button | virtualconsole/VCSliderProperties.qml | live | - ; sandbox 2026-09-27 |
 | Cue list properties: attached chaser, next / previous behaviour, playback layout, side fader mode | virtualconsole/VCCueListProperties.qml | live | - ; sandbox 2026-09-27 |
 | Frame properties: header, enable button, pages (count, labels, loop, clone first page), shortcut names, solo options | virtualconsole/VCFrameProperties.qml | live | - ; sandbox 2026-09-27; pages 3, label, circular scrolling, enable button, header, clone first page, solo exclude-monitored + mixing; Collapsed server-tested only |
-| XY pad properties: fixtures / heads (add, remove, pan-tilt range, reverse), axis ranges, inverted Y, floor control, display units | virtualconsole/VCXYPadProperties.qml | partial | U; add fixtures / groups, pan-tilt range, reverse, units live (sandbox 2026-09-27); the body ignores inverted Y; fixture remove and the Universe tab server-tested only |
+| XY pad properties: fixtures / heads (add, remove, pan-tilt range, reverse), axis ranges, inverted Y, floor control, display units | virtualconsole/VCXYPadProperties.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-vc.js (Loopback plugin for I/O) |
 | XY pad properties: presets (create from position, drop Scene / EFX / fixture group, rename, reorder, remove) | virtualconsole/VCXYPadPresets.qml | live | - ; sandbox 2026-09-27; preset remove server-tested only |
 | Speed dial properties: functions list, multipliers, dial time range, visibility of parts, tap controls BPM, reset on change | virtualconsole/VCSpeedDialProperties.qml | live | - ; sandbox 2026-09-27; tap-controls-BPM checkbox rendered, not clicked in the driver |
 | Speed dial properties: presets (add / remove, name, time) | virtualconsole/VCSpeedDialPresets.qml | live | - ; sandbox 2026-09-27 via vc.widget.preset.* + vc.speedDial.preset.update |
 | Clock properties: clock type, schedules (add / remove / update, function, start / stop time, weekdays) | virtualconsole/VCClockProperties.qml | live | - ; sandbox 2026-09-27; schedule remove server-tested only |
 | Animation properties: attached function, visibility, instant changes, presets list (colour / text / algorithm presets) | virtualconsole/VCAnimationProperties.qml, virtualconsole/VCAnimationPresets.qml, popup/PopupAnimationPreset.qml | live | - ; sandbox 2026-09-27 |
-| Audio triggers properties: number of bars, per-bar type (DMX / function / widget), thresholds, targets | virtualconsole/VCAudioTriggersProperties.qml | partial | U; bar count, DMX bar and Function bar live (sandbox 2026-09-27); VC-widget bar type and volume fader server-tested only |
+| Audio triggers properties: number of bars, per-bar type (DMX / function / widget), thresholds, targets | virtualconsole/VCAudioTriggersProperties.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-vc.js (Loopback plugin for I/O) |
 | Label properties (caption / style only) | virtualconsole/VCLabelItem.qml | live | - ; generic caption / style rows |
 | Widget usage (functions referenced by a widget) | virtualconsole/VCWidgetProperties.qml, UsageList.qml | live | - ; sandbox 2026-09-27, Usage popup over vc.widget.usage |
 | Function Manager side panel inside the VC (browse functions to attach) | virtualconsole/VCRightPanel.qml | live | - ; the FunctionPicker in the properties panel |
@@ -300,37 +300,37 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | Rename universe | inputoutput/UniverseIOItem.qml | live | - |
 | Passthrough toggle | inputoutput/UniverseIOItem.qml | live | - |
 | Patch input / output / feedback line (plugin + line pickers) | inputoutput/PluginsList.qml, inputoutput/InputPatchItem.qml, inputoutput/OutputPatchItem.qml, inputoutput/PatchWireBox.qml | live | - ; pickers replace drag-and-drop; verified on an instance without IO plugins, so real plugin lines are sandbox-unverified |
-| Multiple output patches per universe | inputoutput/UniverseIOItem.qml | partial | U; server + editable UI incl. add / remove / pause / blackout of extra output lines (2026-09-27, unit-tested with the stub plugin); not live-verified without an IO plugin |
-| Enable / disable feedback | inputoutput/UniverseIOItem.qml | partial | U; feedback picker present, not live-verified with a real line |
-| Refresh plugin lines / rescan | inputoutput/PluginsList.qml | partial | U; io.plugin.rescan / getLines / linesChanged implemented + Rescan buttons (2026-09-27); unit-tested only; DMXUSB gains rescan once Plugins dir is rebuilt |
-| Plugin line parameters for network plugins (ArtNet / E1.31 / OSC IP, port, transmission mode ...) | inputoutput/IOLeftPanel.qml, inputoutput/IORightPanel.qml ("Open the plugin configuration") | partial | U; io.patch.setParameters + parameter dialog (io/PatchProperties.jsx) with ArtNet / E1.31 / OSC key suggestions (2026-09-27); unit-tested only, no plugin in the sandbox |
-| Plugin configuration dialog for native-hardware plugins (dmxusb, MIDI device dialogs ...) | inputoutput/IOLeftPanel.qml, inputoutput/IORightPanel.qml | partial | U; io.plugin.configure opens the plugin's native dialog on the QLC+ host from a browser button (2026-09-27); the dialog itself stays on the host by nature |
-| Per-output-patch blackout, play / pause an output patch | inputoutput/OutputPatchItem.qml | partial | U; io.patch.output.setState + buttons (2026-09-27); unit-tested only |
+| Multiple output patches per universe | inputoutput/UniverseIOItem.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-vc.js (Loopback plugin for I/O) |
+| Enable / disable feedback | inputoutput/UniverseIOItem.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-vc.js (Loopback plugin for I/O) |
+| Refresh plugin lines / rescan | inputoutput/PluginsList.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-vc.js (Loopback plugin for I/O); Rescan and line listing driven; real re-enumeration of a hot-plugged device cannot happen in a sandbox |
+| Plugin line parameters for network plugins (ArtNet / E1.31 / OSC IP, port, transmission mode ...) | inputoutput/IOLeftPanel.qml, inputoutput/IORightPanel.qml ("Open the plugin configuration") | partial | U; io.patch.setParameters + parameter dialog built and unit-tested; not driven in a browser because network plugins (ArtNet / E1.31 / OSC) are kept out of sandboxes - the user's live video chain listens for ArtNet on this machine |
+| Plugin configuration dialog for native-hardware plugins (dmxusb, MIDI device dialogs ...) | inputoutput/IOLeftPanel.qml, inputoutput/IORightPanel.qml | n/a | - ; the plugin's own configuration dialog is a native window that opens on the QLC+ machine by nature; the web UI's Configure button opens it there (io.plugin.configure) |
+| Per-output-patch blackout, play / pause an output patch | inputoutput/OutputPatchItem.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-vc.js (Loopback plugin for I/O) |
 | Blackout on all output patches | inputoutput/IORightPanel.qml | live | - ; global blackout |
-| Assign an input profile to a universe | inputoutput/ProfilesList.qml, inputoutput/InputPatchItem.qml | partial | U; profile list is live, assignment via io.patch.set profile field present but not live-verified |
+| Assign an input profile to a universe | inputoutput/ProfilesList.qml, inputoutput/InputPatchItem.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-vc.js (Loopback plugin for I/O) |
 | Input profile: create / edit / save / delete (channels, MIDI channels, colours, behaviour, sensitivity) | inputoutput/InputProfileEditor.qml, inputoutput/ProfilesList.qml, popup/PopupInputChannelEditor.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/io.js; io/InputProfileEditor.jsx, .qxi lands in the host's user profile folder (QLCPLUS_USER_INPUTPROFILE_DIR override in sandboxes / tests) |
-| Input profile: channel auto-detection (learn) | inputoutput/ProfilesList.qml, inputoutput/InputProfileEditor.qml | partial | U; io.inputProfile.learn.* scoped to the requesting client + Detect button (2026-09-27); unit-tested only (no input line in the sandbox) |
-| Input profile: custom feedback and MIDI global settings | inputoutput/InputProfileEditor.qml, popup/PopupCustomFeedback.qml | partial | U; MIDI note-off, colour table, MIDI channel labels live via the editor (sandbox 2026-09-27); custom feedback values unit-tested only (Button-only in the .qxi format) |
-| Audio input / output device selection, sample rate, channels, buffer size | inputoutput/AudioCardsList.qml, inputoutput/AudioIOItem.qml, popup/PopupAudioConfiguration.qml | partial | U; device lists live and io.audio.setDevice built (2026-09-27, not exercised: it writes the host's real settings); sample rate / channels / buffer size not exposed |
-| Audio input signal level check | popup/PopupAudioConfiguration.qml | n/a | - ; host audio capture |
+| Input profile: channel auto-detection (learn) | inputoutput/ProfilesList.qml, inputoutput/InputProfileEditor.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-vc.js (Loopback plugin for I/O) |
+| Input profile: custom feedback and MIDI global settings | inputoutput/InputProfileEditor.qml, popup/PopupCustomFeedback.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-vc.js (Loopback plugin for I/O) |
+| Audio input / output device selection, sample rate, channels, buffer size | inputoutput/AudioCardsList.qml, inputoutput/AudioIOItem.qml, popup/PopupAudioConfiguration.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-vc.js (Loopback plugin for I/O) |
+| Audio input signal level check | popup/PopupAudioConfiguration.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-vc.js (Loopback plugin for I/O); level events stream to the previewing client (io.audio.inputLevel); the sandbox host's default input was silent, so only zero levels were observed |
 
 ## Show Manager
 
 | Qt UI action | Where in qmlui (file) | Web UI status | Blocker / notes |
 | --- | --- | --- | --- |
 | Show Manager context with timeline, header and cursor | showmanager/ShowManager.qml, showmanager/HeaderAndCursor.qml | live | - ; sandbox 2026-09-27 |
-| Pick / create the Show function being edited | showmanager/ShowManager.qml | partial | U; pick + rename driven in the sandbox (2026-09-27); create "+" implemented via functions.create, not browser-driven |
-| Tracks: create, rename, delete, move up / down | showmanager/ShowManager.qml, showmanager/TrackDelegate.qml | partial | U; create + rename live (sandbox 2026-09-27); delete-with-confirm and move up / down implemented + server-tested, not browser-driven |
+| Pick / create the Show function being edited | showmanager/ShowManager.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-vc.js (Loopback plugin for I/O) |
+| Tracks: create, rename, delete, move up / down | showmanager/ShowManager.qml, showmanager/TrackDelegate.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-vc.js (Loopback plugin for I/O) |
 | Tracks: mute / solo | showmanager/TrackDelegate.qml | live | - ; sandbox 2026-09-27 |
 | Items: drop a function on the timeline, move, resize / stretch, delete | showmanager/ShowItem.qml, showmanager/ShowManager.qml | live | - ; sandbox 2026-09-27; items are added from a function picker at the cursor instead of drag-drop from the tree; overlap rejected with nearest-free-spot placement; stretch mode not offered |
 | Items: colour, lock / unlock | showmanager/ShowManager.qml | live | - ; sandbox 2026-09-27 |
 | Items: copy / paste at cursor | showmanager/ShowManager.qml | live | - ; sandbox 2026-09-27 |
-| Timing panel: start / duration / end edit, align start / end to cursor | showmanager/TimingUtils.qml | partial | U; implemented over item.move / item.resize, not browser-driven |
-| Ripple: cut time / insert time | showmanager/TimingUtils.qml | partial | U; insert live (sandbox 2026-09-27); cut server-tested only |
+| Timing panel: start / duration / end edit, align start / end to cursor | showmanager/TimingUtils.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-vc.js (Loopback plugin for I/O) |
+| Ripple: cut time / insert time | showmanager/TimingUtils.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-vc.js (Loopback plugin for I/O) |
 | Time division (Time, BPM 2/4, 3/4, 4/4) | showmanager/ShowManager.qml | live | - ; sandbox 2026-09-27 |
 | Playback: play from cursor, pause, stop / rewind, cursor follows playback | showmanager/ShowManager.qml | live | - ; sandbox 2026-09-27; functions.start startTime + the gated functions.show.<id>.playhead stream |
 | Preview the Show at the cursor while stopped / paused | showmanager/ShowManager.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/vc-show-leftovers.js (functions.show.preview / endPreview) |
-| Snap to grid, markers, zoom | showmanager/ShowManager.qml | partial | U; implemented client-side, not browser-driven |
+| Snap to grid, markers, zoom | showmanager/ShowManager.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-vc.js (Loopback plugin for I/O) |
 | Track Spout output size (set, unset, mismatch prompt) | showmanager/TrackDelegate.qml, popup/PopupTrackSpoutSize.qml, popup/PopupSpoutSizeMismatch.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/vc-show-leftovers.js; document state, header label and mismatch prompt verified; resizing a running Spout sender not observed |
 | Legacy Show timing conversion | showmanager/LegacyShowTimingDialog.qml, showmanager/LegacyShowTimingConvertDialog.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/tools-misc.js (upload path live; detection from a file on disk unit-tested; conversion is not on the undo stack) |
 
@@ -369,11 +369,11 @@ duplicate a feature row above say so.
 | About | popup/PopupAbout.qml | live | - ; duplicate of the toolbar row |
 | Animation algorithm preset | popup/PopupAnimationPreset.qml | live | - ; sandbox 2026-09-27 (script-algorithm preset with parameters through the dialog) |
 | Arrange fixtures | popup/PopupArrangeFixtures.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/fixtures-views.js (circle) |
-| Audio configuration | popup/PopupAudioConfiguration.qml | n/a | - ; host audio devices |
+| Audio configuration | popup/PopupAudioConfiguration.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-vc.js (Loopback plugin for I/O) |
 | Channel modifiers editor | popup/PopupChannelModifiers.qml | live | - ; sandbox 2026-09-27 |
 | Channel wizard | popup/PopupChannelWizard.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/fixture-editor.js |
 | Create palette | popup/PopupCreatePalette.qml | live | - ; see the palette create row |
-| Custom feedback | popup/PopupCustomFeedback.qml | partial | U; lower / upper / monitor values live (sandbox 2026-09-27); colour table and MIDI routing need a patched input profile |
+| Custom feedback | popup/PopupCustomFeedback.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-vc.js (Loopback plugin for I/O) |
 | DMX channel dump | popup/PopupDMXDump.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/tools-misc.js |
 | Disclaimer | popup/PopupDisclaimer.qml | n/a | - ; desktop first-run notice |
 | Folder browser (server-side file picker) | popup/PopupFolderBrowser.qml | live | - ; sandbox 2026-09-27 as window.ServerFileBrowser over core.fs.list, used by the Audio / Video editors; the Open-project dialog still takes a typed path plus recent files |
@@ -425,8 +425,8 @@ the total is larger than the number of distinct actions). Recompute after editin
 
 | Status | Rows |
 | --- | --- |
-| live | 262 |
-| partial | 31 |
+| live | 293 |
+| partial | 1 |
 | missing | 0 |
-| n/a | 21 |
+| n/a | 20 |
 | total | 314 |
