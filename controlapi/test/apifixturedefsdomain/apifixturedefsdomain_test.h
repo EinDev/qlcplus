@@ -56,6 +56,7 @@ private slots:
     void channelRemoveCascadesToModesAndAliases();
     void capabilityAddUpdateRemove();
     void capabilityWizardCreatesRangesAndRejectsOverlap();
+    void capabilityWizardRejectsOverflowingWidthTimesAmount();
     void channelWizardCreatesCompoundChannels();
     void autoPatchColorsDetectsNamedColors();
     void aliasAddUpdateRemoveApplyToAllModes();

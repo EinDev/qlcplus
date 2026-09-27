@@ -787,6 +787,29 @@ void ApiFixtureDefsDomain_Test::capabilityWizardCreatesRangesAndRejectsOverlap()
     QCOMPARE(caps.at(3).toObject().value(QStringLiteral("max")).toInt(), 63);
 }
 
+void ApiFixtureDefsDomain_Test::capabilityWizardRejectsOverflowingWidthTimesAmount()
+{
+    // Crash audit: width * amount was computed in int; 65536 * 65536 wraps
+    // to 0, the "exceeds 255" and overlap checks passed, and the loop then
+    // created `amount` capabilities (2^31 for other wrapping pairs: an
+    // endless allocation loop on the main thread).
+    hello();
+    QString sid = createSession().value(QStringLiteral("sessionId")).toString();
+    QString chId = callOk(QStringLiteral("fixturedefs.channel.add"), params(sid, 0)).value(QStringLiteral("channelId")).toString();
+    QJsonObject p = params(sid, 1);
+    p.insert(QStringLiteral("channelId"), chId);
+    p.insert(QStringLiteral("capabilityIndex"), 0);
+    p.insert(QStringLiteral("max"), 15);
+    callOk(QStringLiteral("fixturedefs.channel.capability.update"), p);
+
+    p = params(sid, 2);
+    p.insert(QStringLiteral("channelId"), chId);
+    p.insert(QStringLiteral("start"), 16);
+    p.insert(QStringLiteral("width"), 65536);
+    p.insert(QStringLiteral("amount"), 65536);
+    QCOMPARE(callError(QStringLiteral("fixturedefs.channel.capability.wizard"), p), QStringLiteral("INVALID_PARAMS"));
+}
+
 void ApiFixtureDefsDomain_Test::channelWizardCreatesCompoundChannels()
 {
     hello();

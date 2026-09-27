@@ -2064,7 +2064,9 @@ void ApiFixtureDefsDomain::registerMethods()
             sendInvalid(client, id, QStringLiteral("start must be 0..254, width and amount >= 1"));
             return;
         }
-        const int end = start + width * amount - 1;
+        // 64-bit: width * amount in int wraps (65536 * 65536 == 0), which
+        // slipped past this check into a loop creating `amount` capabilities
+        const qint64 end = qint64(start) + qint64(width) * amount - 1;
         if (end > 255)
         {
             sendInvalid(client, id, QStringLiteral("start + width * amount exceeds 255"));
