@@ -823,6 +823,159 @@ async function vcProps(api, ctx) {
   await shot(page, 'partials-vc-style');
 }
 
+/* ================================================================ Show Manager */
+
+/** The input in the FF.Row whose label is `label` (Timings / Cut-Insert panels). */
+const rowInputByLabel = (label) => `(function(){ const leafs = [...document.querySelectorAll('[data-show="panel"] *, body *')].filter(e => e.children.length === 0 && e.textContent.trim() === ${JSON.stringify(label)}); for (const l of leafs.reverse()) { let r = l.parentElement; for (let i = 0; i < 4 && r; i++, r = r.parentElement) { const inp = r.querySelector('input'); if (inp) return inp; } } return null; })()`;
+
+/** FF.InlineNumber: a text box that turns into an <input> on click; commits on Enter. */
+async function editInline(page, label, text) {
+  const box = `(function(){ const leafs = [...document.querySelectorAll('body *')].filter(e => e.children.length === 0 && e.textContent.trim() === ${JSON.stringify(label)}); for (const l of leafs.reverse()) { let r = l.parentElement; for (let i = 0; i < 4 && r; i++, r = r.parentElement) { const t = r.querySelector('[title="mm:ss.mmm or ms"], input'); if (t) return t; } } return null; })()`;
+  await clickFn(page, box, label);
+  await page.waitFor(`document.activeElement && document.activeElement.tagName === 'INPUT'`, 3000);
+  await selectAll(page);
+  await page.s.send('Input.insertText', { text: String(text) });
+  await page.key('Enter');
+  await sleep(300);
+}
+/** Click the empty timeline below the tracks: clears the item selection (and moves the cursor there). */
+async function clearShowSelection(page) {
+  const tl = await page.rectOf('[data-show="timeline"]');
+  const x = tl.x + 500, y = tl.y + tl.h - 30;
+  await page.mouse('mouseMoved', x, y); await page.mouse('mousePressed', x, y); await page.mouse('mouseReleased', x, y);
+  await sleep(250);
+}
+
+async function showSection(browser, api) {
+  console.log('\n[Show Manager]');
+  const fns = (await api.call('functions.list')).functions;
+  const showsBefore = fns.filter(f => f.type === 'Show').map(f => String(f.id));
+  const scene = fns.find(f => f.type === 'Scene' && !f.hidden);
+  const page = await browser.open(WEB + '?ctx=show', { width: 1600, height: 1000 });
+  try {
+    await page.waitFor(`!!document.querySelector('[data-show="screen"]')`, 30000);
+    await sleep(800);
+
+    /* ---- create a Show with "+" ---- */
+    await clickFn(page, q('[data-show="new"]'), 'new Show');
+    const created = await until(async () => (await api.call('functions.list')).functions.find(f => f.type === 'Show' && showsBefore.indexOf(String(f.id)) === -1), 'new Show', 8000);
+    check(!!created, '"+" creates a Show (functions.create) - "' + created.name + '"');
+    const sid = String(created.id);
+    await page.waitFor(`(document.querySelector('[data-show="name"]') || {}).value === ${JSON.stringify(created.name)}`, 8000).catch(() => {});
+    check(await page.eval(`(document.querySelector('[data-show="name"]') || {}).value === ${JSON.stringify(created.name)}`), 'the new Show is the one being edited');
+    const td = async () => (await api.call('functions.get', { functionId: sid })).typeDetail;
+
+    /* ---- tracks: two, an item on the first, move down / up, delete with confirmation ---- */
+    await clickFn(page, q('[data-show="add-track"]'), 'add track');
+    await clickFn(page, q('[data-show="add-track"]'), 'add track');
+    await until(async () => (await td()).tracks.length === 2, 'two tracks');
+    let d = await td();
+    const [t1, t2] = d.tracks.map(t => String(t.id));
+    await clickFn(page, q(`[data-show="track"][data-track-id="${t1}"]`), 'track 1');
+    await page.eval(`(function(){ const el = document.querySelector('[data-show="picker-row"][data-function-id="${scene.id}"]'); el.scrollIntoView({ block: 'nearest' }); })()`);
+    await clickFn(page, q(`[data-show="picker-row"][data-function-id="${scene.id}"]`), 'scene row');
+    await clickFn(page, q('[data-show="add-picked"]'), 'add at cursor');
+    await until(async () => (await td()).tracks[0].items.length === 1, 'item on track 1');
+    d = await td();
+    const item = d.tracks[0].items[0];
+    check(item.startTime === 0, 'the Scene lands on track 1 at the cursor');
+    /* a track header click keeps the item selection: clear it on the empty timeline first (the toolbar delete
+       removes the selected items, or the selected track when no item is selected) */
+    await clearShowSelection(page);
+    await clickFn(page, q(`[data-show="track"][data-track-id="${t1}"]`), 'track 1');
+    await page.waitFor(`!!document.querySelector('[data-show="track-down"]')`, 5000);
+    await clickFn(page, q('[data-show="track-down"]'), 'move track down');
+    /* Show::moveTrack swaps the two tracks' ids: the moved track (the one with the item) is found by content */
+    await waitCheck(async () => { const tr = (await td()).tracks; return tr[0].items.length === 0 && tr[1].items.length === 1 && tr[1].name === 'Track 1'; }, 'track move down: Track 1 with its item is second now (functions.show.track.move)', 5000, async () => (await td()).tracks.map(t => [t.id, t.name, t.items.length]));
+    await clickFn(page, q('[data-show="track-up"]'), 'move track up');
+    await waitCheck(async () => { const tr = (await td()).tracks; return tr[0].items.length === 1 && tr[0].name === 'Track 1'; }, 'track move up: back on top', 5000, async () => (await td()).tracks.map(t => [t.id, t.name, t.items.length]));
+    /* the track with the item asks first; Cancel keeps it */
+    await clickFn(page, q(`[data-show="track"][data-track-id="${t1}"] [data-show="track-delete"]`), 'delete track 1');
+    await page.waitFor(`document.body.textContent.includes('Delete track "')`, 5000);
+    await clickFn(page, byText('button', 'Cancel'), 'Cancel');
+    await sleep(400);
+    check((await td()).tracks.length === 2, 'deleting a track with items asks first; Cancel keeps it');
+    await clickFn(page, q(`[data-show="track"][data-track-id="${t2}"]`), 'track 2');
+    await clickFn(page, q('[data-show="delete"]'), 'toolbar delete');
+    await waitCheck(async () => (await td()).tracks.length === 1, 'the empty track 2 goes without a question (toolbar delete with no item selected)');
+
+    /* ---- timing panel ---- */
+    const itemSel = `[data-show="item"][data-item-id="${item.id}"]`;
+    await clickFn(page, q(itemSel), 'the item');
+    await editInline(page, 'Start time', '2000');
+    await waitCheck(async () => (await td()).tracks[0].items[0].startTime === 2000, 'Timings: Start time 2000 ms (functions.show.item.move)', 5000, async () => (await td()).tracks[0].items[0]);
+    await editInline(page, 'Duration', '3000');
+    await waitCheck(async () => (await td()).tracks[0].items[0].duration === 3000, 'Timings: Duration 3000 ms (functions.show.item.resize)', 5000, async () => (await td()).tracks[0].items[0]);
+    await editInline(page, 'End time', '6000');
+    await waitCheck(async () => { const it = (await td()).tracks[0].items[0]; return it.startTime === 2000 && it.duration === 4000; }, 'Timings: End time 6000 ms -> duration 4000');
+
+    /* ---- zoom: the item gets wider / narrower on screen ---- */
+    const w0 = (await page.rectOf(itemSel)).w;
+    await clickFn(page, q('button[title="Zoom in"]'), 'zoom in');
+    await waitCheck(async () => (await page.rectOf(itemSel)).w > w0 * 1.1, 'Zoom in widens the timeline (' + Math.round(w0) + ' px ->)', 3000, async () => (await page.rectOf(itemSel)).w);
+    await clickFn(page, q('button[title="Zoom out"]'), 'zoom out');
+    await clickFn(page, q('button[title="Zoom out"]'), 'zoom out');
+    await waitCheck(async () => (await page.rectOf(itemSel)).w < w0 * 0.95, 'Zoom out narrows it', 3000, async () => (await page.rectOf(itemSel)).w);
+    await clickFn(page, q('button[title="Zoom in"]'), 'zoom in');
+    await sleep(300);
+    const r0 = await page.rectOf(itemSel);
+    const pxPerMs = r0.w / 4000;
+
+    /* ---- cursor from the ruler + align start / end to it ---- */
+    const timeline = await page.rectOf('[data-show="timeline"]');
+    const rulerY = timeline.y + 10;
+    const clickRuler = async (ms) => { const x = r0.x + (ms - 2000) * pxPerMs; await page.mouse('mouseMoved', x, rulerY); await page.mouse('mousePressed', x, rulerY); await page.mouse('mouseReleased', x, rulerY); await sleep(250); };
+    const cursorMs = async () => { const t = await page.eval(`document.querySelector('[data-show="time"]').textContent.trim()`); const m = t.match(/(\d+):(\d+):(\d+)\.(\d+)/); return m ? ((+m[1]) * 3600 + (+m[2]) * 60 + (+m[3])) * 1000 + Number(m[4].padEnd(3, '0')) : NaN; };
+    await clickRuler(9000);
+    const c1 = await cursorMs();
+    check(Math.abs(c1 - 9000) < 300, 'clicking the ruler moves the cursor (' + c1 + ' ms)');
+    await clickFn(page, q(itemSel), 'the item');
+    await clickFn(page, q('[data-show="align-start"]'), 'align start');
+    await waitCheck(async () => (await td()).tracks[0].items[0].startTime === c1, 'Align start to cursor: the item starts at ' + c1, 5000, async () => (await td()).tracks[0].items[0]);
+    await clickRuler(9000 + 7000);
+    const c2 = await cursorMs();
+    await clickFn(page, q(itemSel), 'the item');
+    await clickFn(page, q('[data-show="align-end"]'), 'align end');
+    await waitCheck(async () => { const it = (await td()).tracks[0].items[0]; return it.startTime + it.duration === c2; }, 'Align end to cursor: the item ends at ' + c2, 5000, async () => (await td()).tracks[0].items[0]);
+
+    /* ---- ripple cut at a cursor inside the item ---- */
+    let it = (await td()).tracks[0].items[0];
+    const r1 = await page.rectOf(itemSel);
+    const midMs = it.startTime + Math.round(it.duration / 2);
+    { const x = r1.x + r1.w / 2; await page.mouse('mouseMoved', x, rulerY); await page.mouse('mousePressed', x, rulerY); await page.mouse('mouseReleased', x, rulerY); await sleep(250); }
+    const dur0 = it.duration;
+    await clickFn(page, q('[data-show="cut-time"]'), 'cut time');
+    await waitCheck(async () => (await td()).tracks[0].items[0].duration === dur0 - 1000, 'Cut time (1 s at a cursor inside the item) shortens it by 1000 ms (functions.show.cutTime)', 5000, async () => (await td()).tracks[0].items[0]);
+    void midMs;
+
+    /* ---- snap to grid while dragging ---- */
+    const grid = q('button[title="Snap to grid"]');
+    const gridOn = async () => page.eval(`(function(){ const b = ${grid}; return b && getComputedStyle(b).backgroundColor; })()`);
+    const bgOff = await gridOn();
+    await clickFn(page, grid, 'snap to grid');
+    await sleep(200);
+    check((await gridOn()) !== bgOff, 'the grid button shows its checked state');
+    it = (await td()).tracks[0].items[0];
+    const r2 = await page.rectOf(itemSel);
+    await page.drag(r2.x + 10, r2.y + r2.h / 2, r2.x + 10 + 3300 * pxPerMs, r2.y + r2.h / 2, 10);
+    await waitCheck(async () => { const s = (await td()).tracks[0].items[0].startTime; return s !== it.startTime && s % 5000 === 0; }, 'with Snap to grid a dragged item starts on a grid line (multiple of the 5 s ticks)', 5000, async () => (await td()).tracks[0].items[0].startTime);
+    await clickFn(page, grid, 'snap off');
+    it = (await td()).tracks[0].items[0];
+    const r3 = await page.rectOf(itemSel);
+    await page.drag(r3.x + 10, r3.y + r3.h / 2, r3.x + 10 + 1300 * pxPerMs, r3.y + r3.h / 2, 10);
+    await waitCheck(async () => { const s = (await td()).tracks[0].items[0].startTime; return s !== it.startTime && s % 5000 !== 0; }, 'without it the item lands where it was dropped', 5000, async () => (await td()).tracks[0].items[0].startTime);
+
+    /* ---- markers: time division BPM 3/4 and back ---- */
+    await pickCombo(page, `[...document.querySelectorAll('[data-show="screen"] div')].find(d => d.children[0] && d.children[0].tagName === 'BUTTON' && d.children[0].textContent.trim().startsWith('Time'))`, 'BPM 3/4', 'markers');
+    await waitCheck(async () => /3_4|3\/4/i.test(String((await td()).timeDivisionType)), 'Markers combo -> BPM 3/4 (functions.show.setTimeDivision)', 5000, async () => (await td()).timeDivisionType);
+    await shot(page, 'partials-show');
+    check(page.consoleErrors.length === 0, 'Show: no console errors', page.consoleErrors);
+  } catch (e) {
+    sectionError('SHOW', e, page);
+    try { await shot(page, 'partials-show-failure'); } catch (x) { }
+  }
+}
+
 /* ---------------------------------------------------------------- the run */
 async function main() {
   fs.mkdirSync(SHOTS, { recursive: true });
@@ -835,6 +988,23 @@ async function main() {
     /* the VC section's external-control checks need the Loopback patches the I/O section makes */
     if (run('io') || run('vc')) ctx.io = await ioSection(browser, api);
     if (run('vc')) ctx.vc = await vcSection(browser, api, ctx.io);
+    if (run('show')) await showSection(browser, api);
+
+    /* ---- what the edits left in the project file (written into the sandbox only) ---- */
+    console.log('\n[saveAs into the sandbox]');
+    const out = path.join(SANDBOX, 'partials.qxw');
+    await api.call('core.project.saveAs', { target: 'serverPath', path: out });
+    const xml = fs.readFileSync(out, 'utf8');
+    if (ctx.io && ctx.io.patched) {
+      check(new RegExp('<Universe Name="Universe 5" ID="4"[^>]*>[\\s\\S]*?<Input Plugin="Loopback"[^>]*Profile="' + PROFILE + '"').test(xml), 'saved: universe 5 input on Loopback with the "' + PROFILE + '" profile');
+      check(/<Universe Name="Loopback check" ID="6"/.test(xml), 'saved: the universe added from the toolbar');
+    }
+    if (ctx.vc && ctx.vc.W) {
+      check(new RegExp('<Slider Caption="RGB CnG" ID="' + ctx.vc.W.cngC + '"[\\s\\S]*?ClickAndGoType="Colors">Level</SliderMode>\\s*<Level [^>]*Value="128"').test(xml), 'saved: the Click & Go colour slider (Colors type, level 128 after the colour pick)');
+      /* QFont::toString(): family, point size, pixel size, style hint, weight (700 = bold), italic... */
+      check((xml.match(/<Font>Arial,18,-1,5,700,0,/g) || []).length >= 3, 'saved: the three bulk-styled widgets with Arial 18 pt bold (italic switched off by the bulk edit)');
+    }
+    if (run('show')) check(/<TimeDivision Type="BPM_3_4"/.test(xml), 'saved: the new Show with BPM 3/4 markers');
   } catch (e) {
     failures.push('EXCEPTION ' + (e && e.stack || e));
     console.log('  EXCEPTION ' + (e && e.stack || e));

@@ -156,3 +156,13 @@ file name was stored and Save wrote it relative to the engine's working director
 reports the uploaded name until the next new / open / close. The uploaded `<Creator><Version>` is kept
 for `functions.show.legacyTiming.get`. Like the desktop's network project sync, an upload does not
 raise the desktop's own legacy-timing popup or error log; the web UI asks through the API instead.
+
+## Implemented 2026-09-27: `core.project.open` with `source: path` validated first
+
+App::loadWorkspace() clears the current project before it even opens the file, so a missing or
+non-workspace path used to leave an empty project behind the error. The file is now read and checked
+first: `NOT_FOUND` for an empty / missing / unreadable path or a directory, `INVALID_PARAMS` for
+anything that is not a workspace; `file:` URLs are resolved like App::loadWorkspace() does. The shared
+check (uploads too) now also refuses a `Workspace` DTD whose root element is not `<Workspace>`
+(App::loadXML() gave up on that after clearing). A file that passes these checks but fails deeper in
+the engine's loader still clears the project - the same residual as for uploads.

@@ -69,6 +69,8 @@ $all = @(
     @{ Name = "wizard";   Api = 9270; Web = 9271; Script = "wizard-import.js";  Args = @("9270", "9271", "C:\qlcsandbox\wizard") },
     @{ Name = "tools";    Api = 9260; Web = 9261; Script = "tools-misc.js";     Args = @("--userdir", "C:\qlcsandbox\tools\UserFixtures"); Sandbox = @{ UserFixtureDir = "C:\qlcsandbox\tools\UserFixtures" } },
     @{ Name = "vcshow";   Api = 9310; Web = 9311; Script = "vc-show-leftovers.js"; Args = @("--api", "9310", "--web", "9311", "--sandbox", "C:\qlcsandbox\vcshow") },
+    # Needs the Loopback IO plugin (build the "loopback" target): only this driver's sandbox gets it.
+    @{ Name = "partialsvc"; Api = 9330; Web = 9331; Script = "partials-vc.js"; Args = @("--api", "9330", "--web", "9331", "--sandbox", "C:\qlcsandbox\partialsvc"); Sandbox = @{ Plugins = @("loopback") } },
     # Sandbox = extra dev-webui-sandbox.ps1 parameters. The fixture editor writes .qxf files, so its
     # user fixture folder must point into the sandbox (the driver refuses otherwise).
     @{ Name = "fixdefs";  Api = 9200; Web = 9201; Script = "fixture-editor.js"; Args = @("--api", "9200", "--web", "9201", "--userdir", "C:\qlcsandbox\fixdefs\UserFixtures");

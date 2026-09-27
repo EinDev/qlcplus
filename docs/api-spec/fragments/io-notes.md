@@ -249,3 +249,27 @@ sendKeypadCommand`, `commandHistory` on `io.simpleDesk.get`, the
   every Universe without `universeRemoved`) left ApiIoDomain holding the deleted Universe's fader, so
   every web Simple Desk override silently stopped reaching the output until the universe was reset.
   Both covered by `apiiodomain_test`.
+
+## Implemented 2026-09-27: audio format, input level check, universe thread; Loopback verification
+
+- `io.audio.listDevices` also reports `inputSampleRate`, `inputChannels`, `outputBufferMs`; **NEW
+  `io.audio.setConfig`** writes them (PopupAudioConfiguration.qml's choices: 8000..48000 Hz, mono /
+  stereo, 10..1000 ms) into the same QSettings keys as InputOutputManager - a default value removes
+  the key, a changed input format tears the capture down - and broadcasts **`io.audio.configChanged`**.
+  The desktop's own popup is not notified (it re-reads the settings when reopened).
+- **NEW `io.audio.inputPreview.set {enabled}`**: the popup's Signal level check. While any client has
+  it on, the host's audio input capture runs and each previewing client (only) receives
+  **`io.audio.inputLevel {level 0..32767}`** about 20 per second; a disconnect ends that client's
+  preview; a device / format change re-opens a running preview on the new input.
+- `io.universe.create` now starts the new universe's thread (`startUniverses()`, as
+  InputOutputManager does); before, the universe processed nothing until the project was reloaded.
+- The web UI sandbox (`dev-webui-sandbox.ps1`) keeps QSettings in `<sandbox>\Settings`
+  (`QLCPLUS_SETTINGS_DIR`, qmlui/main.cpp), so `io.audio.setDevice` / `setConfig` can be exercised
+  without touching the host's real settings, and `-Plugins loopback` adds the Loopback plugin (the only
+  one allowed). Verified with it end to end (webui/tools/e2e/partials-vc.js): several outputs per
+  universe, per-output pause (holds the first frame output after the pause - a value changed within
+  the same 20 ms tick can be the frozen one) and blackout (zeroes intensity channels only: the engine
+  keeps LTP channels in `m_blackoutValues`, like the global blackout), profile assignment, learn, VC
+  auto-detection and feedback. Loopback hands feedback back only to the input line with the same
+  number and only for the universe that sent it (`Loopback::sendFeedBack`). Plugin line parameters of
+  network plugins stay unit-tested (Loopback has none).
