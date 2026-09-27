@@ -502,6 +502,18 @@
       /* drop that fixture's channels from every step, like ChaserEditor::removeFixtures() */
       steps.forEach((s, i) => { const vals = Object.assign({}, s.values || {}); let hit = false; Object.keys(vals).forEach(k => { if (k.split('.')[0] === String(id)) { delete vals[k]; hit = true; } }); if (hit) replaceStep(i, { values: vals }); });
     };
+    /* a channel new to the Sequence joins the bound Scene too (as in the Qt editor, where the step
+       console is the bound Scene's editor) - otherwise the next applyDumpValues re-normalisation,
+       which aligns every step with the Scene's channel set, would drop it again */
+    const sceneValues = (scene && scene.typeDetail && scene.typeDetail.values) || {};
+    const setChannel = (fx, ch, v) => {
+      const key = fx + '.' + ch;
+      if (sceneId && !Object.prototype.hasOwnProperty.call(sceneValues, key)) {
+        setScene(s => s ? Object.assign({}, s, { typeDetail: Object.assign({}, s.typeDetail, { values: Object.assign({}, sceneValues, { [key]: 0 }) }) }) : s);
+        FF.mutate(qlc, 'functions.scene.setValue', { functionId: sceneId, fixture: String(fx), channel: ch, value: 0 }).catch(() => loadScene());
+      }
+      setStepValue(curIndex, key, v);
+    };
     const bindScene = (id) => FF.mutate(qlc, 'functions.sequence.setBoundScene', { functionId: fid, sceneId: String(id) }).then(reload).catch(() => reload());
     const sceneItems = (functions || []).filter(f => f.type === 'Scene').map(f => ({ mLabel: f.name + (String(f.id) === sceneId ? '' : ''), mValue: String(f.id) }));
     const hiddenBound = sceneId && !sceneItems.some(m => m.mValue === sceneId);
@@ -551,7 +563,7 @@
                 <div key={id} data-e2e={'seq-console-' + id}>
                   <RobotoText label={f.name} fontBold fontSize={13} height={20} />
                   <SceneFixtureConsole qlc={qlc} sceneId={sceneId} fixture={f} values={curStep.values || {}}
-                    setValue={(fx, ch, v) => setStepValue(curIndex, fx + '.' + ch, v)} unsetValue={(fx, ch) => setStepValue(curIndex, fx + '.' + ch, null)} />
+                    setValue={(fx, ch, v) => setChannel(fx, ch, v)} unsetValue={(fx, ch) => setStepValue(curIndex, fx + '.' + ch, null)} />
                 </div>
               );
             }) : null}
