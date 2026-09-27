@@ -412,7 +412,10 @@
     }, [qlc.online, showGroups, loadGroups]);
 
     const liveRef = React.useRef({});
-    React.useEffect(() => {
+    /* Layout effect: the window listeners must exist before the next input event (mousedown is a
+       discrete event, so its render and layout effects flush synchronously; a passive effect could
+       miss a quick mouseup and leave the drag stuck). */
+    React.useLayoutEffect(() => {
       if (!drag && !band) return undefined;
       const L = () => liveRef.current;
       const move = (e) => {
@@ -449,6 +452,15 @@
     if (!monitor) return <div style={{ padding: 20 }}><RobotoText label="Loading placement…" fontSize={14} labelColor="var(--fg-medium)" /></div>;
 
     const size = stageSize(stage);
+    /* The canvas covers the stage plus every item, so fixtures placed off the grid (the Qt view
+       allows that) stay visible and clickable instead of being clipped by the <svg>. */
+    const vb = (() => {
+      let x0 = 0, y0 = 0, x1 = size.w, y1 = size.h;
+      items.forEach(it => { const p = project(stage, it.position), s2 = size2D(stage, it); x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x + s2.w); y1 = Math.max(y1, p.y + s2.h); });
+      const pad = unitsMm(stage) / 2;
+      if (x0 < 0) x0 -= pad; if (y0 < 0) y0 -= pad; if (x1 > size.w) x1 += pad; if (y1 > size.h) y1 += pad;
+      return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+    })();
     const u = unitsMm(stage);
     const fitScale = () => { const el = wrapRef.current; if (!el) return 0.1; return Math.max(0.01, Math.min((el.clientWidth - 20) / size.w, (el.clientHeight - 20) / size.h)); };
     const pxPerMm = scale || fitScale();
@@ -495,7 +507,7 @@
     /* ---- mouse ---- */
     const toMm = (e) => {
       const r = svgRef.current.getBoundingClientRect();
-      return { x: (e.clientX - r.left) / pxPerMm, y: (e.clientY - r.top) / pxPerMm };
+      return { x: (e.clientX - r.left) / pxPerMm + vb.x, y: (e.clientY - r.top) / pxPerMm + vb.y };
     };
     const onItemDown = (e, it) => {
       e.stopPropagation(); e.preventDefault();
@@ -621,7 +633,7 @@
         ) : null}
 
         <div ref={wrapRef} onWheel={onWheel} style={{ flex: 1, minHeight: 0, overflow: 'auto', position: 'relative', cursor: aimPick ? 'crosshair' : 'default' }}>
-          <svg ref={svgRef} data-ff-stage="1" width={size.w * pxPerMm} height={size.h * pxPerMm} viewBox={'0 0 ' + size.w + ' ' + size.h}
+          <svg ref={svgRef} data-ff-stage="1" width={vb.w * pxPerMm} height={vb.h * pxPerMm} viewBox={vb.x + ' ' + vb.y + ' ' + vb.w + ' ' + vb.h}
             style={{ display: 'block', margin: 10, background: '#222', userSelect: 'none' }} onMouseDown={onBgDown}>
             <rect x={0} y={0} width={size.w} height={size.h} fill="#2b2b2b" stroke="#555" strokeWidth={Math.max(1, 1 / pxPerMm)} />
             {gridLines}
