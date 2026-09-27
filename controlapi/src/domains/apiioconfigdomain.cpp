@@ -222,8 +222,10 @@ QJsonObject inputChannelToJson(quint32 number, const QLCInputChannel *ch)
     obj.insert(QStringLiteral("sendExtraPress"), ch->sendExtraPress());
     obj.insert(QStringLiteral("lowerValue"), int(ch->lowerValue()));
     obj.insert(QStringLiteral("upperValue"), int(ch->upperValue()));
+    // MIDI channel (QLCInputChannel::lowerChannel, the .qxi MidiChannel
+    // attribute). io.yaml's upperChannel is declared by the engine header but
+    // never defined, persisted or read anywhere - deliberately not exposed.
     obj.insert(QStringLiteral("lowerChannel"), ch->lowerChannel());
-    obj.insert(QStringLiteral("upperChannel"), ch->upperChannel());
     return obj;
 }
 
@@ -352,7 +354,6 @@ QLCInputProfile *inputProfileFromJson(const QJsonObject &obj, QString &error)
         ch->setRange(uchar(qBound(0, cj.value(QStringLiteral("lowerValue")).toInt(0), 255)),
                      uchar(qBound(0, cj.value(QStringLiteral("upperValue")).toInt(255), 255)));
         ch->setLowerChannel(cj.value(QStringLiteral("lowerChannel")).toInt(-1));
-        ch->setUpperChannel(cj.value(QStringLiteral("upperChannel")).toInt(-1));
         profile->insertChannel(quint32(number), ch);
     }
 

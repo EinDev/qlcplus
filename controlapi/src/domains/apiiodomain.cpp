@@ -641,7 +641,7 @@ void ApiIoDomain::registerMethods()
     });
 
     // io.inputProfile.list {} -> {profiles: [{name, manufacturer, model, type}], profilesRevision}
-    dispatcher->registerMethod(QStringLiteral("io.inputProfile.list"), [doc](ApiSession *session, const QString &id, const QJsonObject &params)
+    dispatcher->registerMethod(QStringLiteral("io.inputProfile.list"), [doc, this](ApiSession *session, const QString &id, const QJsonObject &params)
     {
         Q_UNUSED(params)
         InputOutputMap *ioMap = doc->inputOutputMap();

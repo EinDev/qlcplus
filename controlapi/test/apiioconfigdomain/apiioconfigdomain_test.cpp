@@ -156,18 +156,26 @@ IOPluginStub *ApiIoConfigDomain_Test::loadStubPlugin()
     QList<QLCIOPlugin *> plugins = m_doc->ioPluginCache()->plugins();
     if (plugins.isEmpty())
         return nullptr;
-    // Same header, same build: engine/test/inputpatch does this too.
+    // Same header, same build: engine/test/inputpatch does this too. Virtual
+    // calls must still go through the QLCIOPlugin vtable (the DLL's code) -
+    // IOPluginStub is final, so stub->name() would be devirtualised into a
+    // symbol this binary does not link. Hence stubName() below.
     return static_cast<IOPluginStub *>(plugins.first());
+}
+
+QString ApiIoConfigDomain_Test::stubName(IOPluginStub *stub) const
+{
+    return static_cast<QLCIOPlugin *>(stub)->name();
 }
 
 void ApiIoConfigDomain_Test::patchStubOutput(IOPluginStub *stub, quint32 universeId, quint32 line)
 {
-    QVERIFY(m_doc->inputOutputMap()->setOutputPatch(universeId, stub->name(), QString(), QString(), line, false, 0));
+    QVERIFY(m_doc->inputOutputMap()->setOutputPatch(universeId, stubName(stub), QString(), QString(), line, false, 0));
 }
 
 void ApiIoConfigDomain_Test::patchStubInput(IOPluginStub *stub, quint32 universeId, quint32 line, const QString &profile)
 {
-    QVERIFY(m_doc->inputOutputMap()->setInputPatch(universeId, stub->name(), QString(), QString(), line, profile));
+    QVERIFY(m_doc->inputOutputMap()->setInputPatch(universeId, stubName(stub), QString(), QString(), line, profile));
 }
 
 QList<QJsonObject> ApiIoConfigDomain_Test::eventsWithTopic(QSignalSpy &spy, const QString &topic)
@@ -226,7 +234,7 @@ void ApiIoConfigDomain_Test::pluginGetLinesDescribesStubLines()
     hello(m_client);
 
     QJsonObject params;
-    params.insert(QStringLiteral("pluginName"), stub->name());
+    params.insert(QStringLiteral("pluginName"), stubName(stub));
     QJsonObject reply = sendAndWaitForReply(QStringLiteral("io.plugin.getLines"), params);
     QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
     QJsonObject result = reply.value(QStringLiteral("result")).toObject();
@@ -256,14 +264,14 @@ void ApiIoConfigDomain_Test::pluginRescanInvokesStubAndBroadcastsLinesChanged()
     QSignalSpy spy(m_client, &QWebSocket::textMessageReceived);
 
     QJsonObject params;
-    params.insert(QStringLiteral("pluginName"), stub->name());
+    params.insert(QStringLiteral("pluginName"), stubName(stub));
     QJsonObject reply = sendAndWaitForReply(QStringLiteral("io.plugin.rescan"), params);
     QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
     QCOMPARE(stub->m_rescanCalled, 1);
 
     QVERIFY(QTest::qWaitFor([&]() { return eventsWithTopic(spy, QStringLiteral("io.plugin.linesChanged")).count() >= 1; }, 2000));
     QJsonObject data = eventsWithTopic(spy, QStringLiteral("io.plugin.linesChanged")).first().value(QStringLiteral("data")).toObject();
-    QCOMPARE(data.value(QStringLiteral("pluginName")).toString(), stub->name());
+    QCOMPARE(data.value(QStringLiteral("pluginName")).toString(), stubName(stub));
     QCOMPARE(data.value(QStringLiteral("inputs")).toArray().count(), 4);
     QCOMPARE(data.value(QStringLiteral("outputs")).toArray().count(), 4);
 }
@@ -286,7 +294,7 @@ void ApiIoConfigDomain_Test::pluginConfigureWithoutDialogIsUnsupported()
     hello(m_client);
 
     QJsonObject params;
-    params.insert(QStringLiteral("pluginName"), stub->name());
+    params.insert(QStringLiteral("pluginName"), stubName(stub));
     QJsonObject reply = sendAndWaitForReply(QStringLiteral("io.plugin.configure"), params);
     QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
     QJsonObject error = reply.value(QStringLiteral("error")).toObject();
@@ -306,7 +314,7 @@ void ApiIoConfigDomain_Test::pluginConfigureOnHeadlessHostIsUnsupported()
     hello(m_client);
 
     QJsonObject params;
-    params.insert(QStringLiteral("pluginName"), stub->name());
+    params.insert(QStringLiteral("pluginName"), stubName(stub));
     QJsonObject reply = sendAndWaitForReply(QStringLiteral("io.plugin.configure"), params);
     QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
     QJsonObject error = reply.value(QStringLiteral("error")).toObject();

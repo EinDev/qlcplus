@@ -92,6 +92,8 @@ private:
 
     /** Load engine/test/iopluginstub's plugin into m_doc's cache and return it. */
     IOPluginStub *loadStubPlugin();
+    /** stub->name() through the plugin vtable (see loadStubPlugin()). */
+    QString stubName(IOPluginStub *stub) const;
 
     /** Patch the stub's output line 0 (universe 0) / input line 0 (universe 0). */
     void patchStubOutput(IOPluginStub *stub, quint32 universeId = 0, quint32 line = 0);
