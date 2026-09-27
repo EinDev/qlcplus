@@ -86,6 +86,19 @@ public:
     bool vcFrameGotoPage(quint32 id, int page, QString *error) override;
     QJsonObject vcFrameSnapshot(quint32 id) const override;
 
+    // --- Widgets: layout / configuration slice (ApiVcLayoutDomain) ---
+    bool vcFrameSetPin(quint32 id, const QString &currentPin, const QString &newPin) override;
+    bool vcFrameValidatePin(quint32 id, const QString &pin) const override;
+    bool vcFrameCloneFirstPage(quint32 id, QJsonArray &createdIds, QString *error) override;
+    bool vcSliderSetLevelChannels(quint32 id, const QList<QPair<quint32, quint32> > &channels, QString *error) override;
+    bool vcSliderFlash(quint32 id, bool on, QString *error) override;
+    QList<quint32> vcCreateWidgetsFromFunctions(int page, quint32 parentId, const QList<quint32> &functionIds,
+                                                QPointF position, const QString &widgetHint, QString *error) override;
+    QList<quint32> vcCreateWidgetMatrix(int page, quint32 parentId, const QString &matrixType, QPointF position,
+                                        int columns, int rows, int widgetWidth, int widgetHeight,
+                                        bool soloFrame, QString *error) override;
+    QList<quint32> vcWidgetsUsingFunction(quint32 functionId) const override;
+
     /** Every fake CueList pretends its Chaser has exactly this many steps (named "Step 1".."Step N"),
      *  so index-range validation in the domain has something real to check against. */
     static const int FakeCueListStepCount;
@@ -134,7 +147,13 @@ private:
         int speedMs = 0;                                  // Speed
         qint64 lastTapMs = 0;                             // Speed: tap-tempo bookkeeping
         int currentPage = 0;                              // Frame/SoloFrame
+        QString framePin;                                 // Frame/SoloFrame: empty = no PIN set
+        bool flashing = false;                            // Slider (Adjust): vc.slider.flash state
     };
+
+    /** A fresh VcWidgetState registered in m_widgets - shared by vcCreateWidget() and the bulk creators. */
+    quint32 addWidget(const QString &widgetType, int page, quint32 parentId, const QRectF &geometry,
+                      const QString &caption, const QJsonObject &typeConfig);
 
     static const QStringList ContainerWidgetTypes; // Frame, SoloFrame
 
