@@ -26,6 +26,7 @@
 #include <QAudioDevice>
 #include <QAudioSink>
 #include <QIODevice>
+#include <atomic>
 
 class Doc;
 
@@ -82,6 +83,11 @@ private:
     QAudioDevice m_deviceInfo;
     qint64 m_bytesWritten;
     qint64 m_processedUsecsBase;
+
+    /** The sink is created by run() on the renderer thread, so suspend()/resume() can be
+     *  called (from the main thread, e.g. a Show paused right after it started) before it
+     *  exists. A pause requested then is remembered here and applied once the sink starts. */
+    std::atomic<bool> m_suspendPending;
 };
 
 /** @} */
