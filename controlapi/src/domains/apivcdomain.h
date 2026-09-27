@@ -39,9 +39,13 @@ class Doc;
  *    vc.frame.{gotoPage,get}, plus the matching vc.button.stateChanged / vc.slider.valueChanged /
  *    vc.cueList.playbackChanged / vc.xyPad.positionChanged / vc.speedDial.valueChanged /
  *    vc.frame.pageChanged events (broadcast to every session, not subscribe-gated).
+ *  - cue list / speed dial extras: vc.cueList.setSideFaderLevel (+ vc.cueList.sideFaderChanged),
+ *    vc.speedDial.{setFactor,apply,resetTap} (+ vc.speedDial.factorChanged / tapChanged), and the
+ *    generic widget presets vc.widget.preset.{add,apply,remove} + vc.speedDial.preset.update
+ *    (+ vc.speedDial/xyPad/animation.presetsChanged) - see the section at the end of this class.
  * Every other vc.* method in the spec (usage, createMatrix, createFromFunctions, align, distribute,
- * bulkStyle, inputSource.*, keySequence.*, inputDetect.*, preset.*, vc.slider.flash, vc.xyPad.floor/
- * fixture/preset.*, vc.frame.setPin/cloneFirstPage, vc.clock.*, vc.animation.*, vc.audioTriggers.*,
+ * bulkStyle, inputSource.*, keySequence.*, inputDetect.*, vc.slider.flash, vc.xyPad.floor/
+ * fixture/preset.move/rename, vc.frame.setPin/cloneFirstPage, vc.clock.*, vc.animation.*, vc.audioTriggers.*,
  * ...) is deliberately NOT registered here - left for a future pass. An unregistered method name is
  * not a crash: ApiDispatcher::dispatch() already responds NOT_FOUND for any method nobody registered.
  *
@@ -105,6 +109,32 @@ private:
 
     /** Non-null only while a live method's host call is on the stack - see class comment. */
     QString m_liveOriginClientId;
+
+    /*********************************************************************
+     * Cue List side fader, Speed Dial extras and widget presets
+     * (vc.cueList.setSideFaderLevel, vc.speedDial.setFactor/apply/resetTap, vc.speedDial.preset.update,
+     * vc.widget.preset.add/apply/remove and the sideFaderChanged/factorChanged/tapChanged/
+     * *.presetsChanged events) - implemented at the end of apivcdomain.cpp.
+     *********************************************************************/
+public:
+    /** @reimp ApiVcLiveListener */
+    void vcCueListSideFaderChanged(quint32 widgetId, int level, int nextStepIndex, bool primaryTop) override;
+    void vcSpeedDialFactorChanged(quint32 widgetId, const QString &factor) override;
+    void vcSpeedDialTapChanged(quint32 widgetId, int tapTimeValue, int currentTimeMs) override;
+
+private:
+    void registerCueSpeedDialMethods(ApiDispatcher *d);
+    void registerPresetMethods(ApiDispatcher *d);
+
+    /** Shared front half of the structural preset methods: baseRevision check, widgetId resolution and
+     *  the "this widget type has presets" check (INVALID_PARAMS otherwise). On true nothing has been
+     *  sent yet and $outHost/$outId are set. */
+    bool resolvePresetWidget(ApiSession *session, const QString &id, const QJsonObject &params, bool checkRevision,
+                             ApiVcHost **outHost, quint32 *outId);
+
+    /** Broadcasts vc.<type>.presetsChanged (speedDial / xyPad / animation, by the widget's wire type)
+     *  with the widget's full preset list and the current docRevision. */
+    void broadcastPresetsChanged(ApiVcHost *host, quint32 widgetId, const QString &originClientId);
 };
 
 #endif
