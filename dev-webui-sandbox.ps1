@@ -59,6 +59,9 @@ $procName = "qlc-$Name"
 Get-Process -Name $procName -ErrorAction SilentlyContinue | ForEach-Object {
     Write-Host "Stopping running $exeName (pid $($_.Id))"
     Stop-Process -Id $_.Id -Force
+    # Stop-Process returns before Windows releases the exe/dll file locks: wait for the exit,
+    # otherwise the copy below fails with "file in use" on a quick relaunch.
+    try { Wait-Process -Id $_.Id -Timeout 15 -ErrorAction Stop } catch { }
 }
 if ($Stop) { return }
 
@@ -92,8 +95,16 @@ if (-not (Test-Path (Join-Path $dest "qt.conf"))) {
     if ($LASTEXITCODE -ge 8) { throw "robocopy failed with $LASTEXITCODE" }
     Remove-Item (Join-Path $dest "qlcplus5.exe") -ErrorAction SilentlyContinue
 }
-Copy-Item $exeSrc (Join-Path $dest $exeName) -Force
-Copy-Item $dllSrc (Join-Path $dest "qlcplusengine.dll") -Force
+# Retry briefly: a just-killed process can hold its file locks for a moment after exiting.
+foreach ($pair in @(@($exeSrc, (Join-Path $dest $exeName)), @($dllSrc, (Join-Path $dest "qlcplusengine.dll")))) {
+    for ($attempt = 1; ; $attempt++) {
+        try { Copy-Item $pair[0] $pair[1] -Force -ErrorAction Stop; break }
+        catch {
+            if ($attempt -ge 20) { throw }
+            Start-Sleep -Milliseconds 500
+        }
+    }
+}
 
 # Strip every patch so nothing is ever output, even if a plugin somehow loads.
 $xml = Get-Content $Project -Raw
