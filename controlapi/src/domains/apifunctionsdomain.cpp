@@ -765,8 +765,11 @@ void ApiFunctionsDomain::registerMethods()
                 ? tempoTypeFromJson(params.value(QStringLiteral("overrideTempoType")))
                 : Function::Original;
 
+        // optional start offset (FunctionsStartRequest.startTime): a Show
+        // plays from that point of its timeline, media seeks into the file
+        quint32 startTime = quint32(qMax(0, params.value(QStringLiteral("startTime")).toInt()));
         function->start(doc->masterTimer(), FunctionParent::master(FunctionParent::ControlApi),
-                         0, fadeIn, fadeOut, duration, tempoType);
+                         startTime, fadeIn, fadeOut, duration, tempoType);
         session->send(ApiEnvelope::buildOkResponse(id, QJsonObject()));
     });
 

@@ -591,6 +591,12 @@ messages:
           properties:
             functionId:
               type: string
+            startTime:
+              type: integer
+              description: Optional start offset in ms (Function::start's startTime, default 0). A Show
+                started with it plays from that point of its timeline, like the Show Manager's "play from
+                the cursor" (ShowManager::playShow); Audio/Video seek into the file, a Chaser starts on
+                the step covering the offset; Scene/EFX/RGBMatrix ignore it.
             overrideFadeIn:
               type: integer
               description: Optional one-shot fade-in override in ms, not persisted.
