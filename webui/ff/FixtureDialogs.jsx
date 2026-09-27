@@ -190,6 +190,7 @@
     const [creating, setCreating] = React.useState(false);
     const [newName, setNewName] = React.useState('New group');
     const [confirm, setConfirm] = React.useState(false);
+    const [gridOpen, setGridOpen] = React.useState(false);
     const loadList = () => qlc.call('fixtures.group.list').then(r => setGroups((r && r.groups) || [])).catch(() => {});
     const loadDetail = (id) => qlc.call('fixtures.group.get', { groupId: String(id) }).then(setDetail).catch(() => setDetail(null));
     React.useEffect(() => {
@@ -251,7 +252,11 @@
               })}
               {detail && !memberIds.length ? <RobotoText label="No fixtures in this group" fontSize={13} labelColor="var(--fg-medium)" /> : null}
             </div>
-            <FF.Note text="Head layout editing (the grid) is not available in the web UI; fixtures are appended to the grid on assignment." />
+            {FF.GroupGridEditor ? (
+              <GenericButton label="Edit layout…" width={120} height={24} disabled={!detail} onClick={() => setGridOpen(true)} data-group-grid-open="1" />
+            ) : <FF.Note text="Head layout editing (the grid) is not available in the web UI; fixtures are appended to the grid on assignment." />}
+            {FF.GroupGridEditor && gridOpen && detail ? <FF.GroupGridEditor open qlc={qlc} group={detail} fixtures={fixtures} candidateIds={fixtureIds}
+              reload={() => loadDetail(current)} onClose={() => setGridOpen(false)} /> : null}
           </div>
         ) : <div style={{ padding: 6 }}><FF.Note text="Pick a group to see and edit its members. Fixtures selected in the tree can be added to it." /></div>}
         <CustomPopupDialog open={creating} title="New fixture group" width={340} standardButtons={['Cancel', 'Create']} onClicked={(b) => { if (b === 'Create') create(); else setCreating(false); }} onClose={() => setCreating(false)}>

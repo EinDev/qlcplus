@@ -129,23 +129,26 @@
     const mask = React.useMemo(() => FF.toolMask(channelsAll), [channelsAll]);
     const hasWauv = channelsAll.some(c => c.role === 'white' || c.role === 'amber' || c.role === 'uv');
     const has16 = channelsAll.some(c => (c.role === 'pan' || c.role === 'tilt') && c.fine);
+    /* Pan-only / tilt-only fixtures get a single-axis tool (SingleAxisTool.qml) in degrees. */
+    const hasPan = channelsAll.some(c => c.role === 'pan'), hasTilt = channelsAll.some(c => c.role === 'tilt');
+    const physOf = (k, dflt) => { const it = items.find(x => x.detail.physical && x.detail.physical[k]); return it ? it.detail.physical[k] : dflt; };
+    const panMax = physOf('focusPanMax', 360), tiltMax = physOf('focusTiltMax', 270);
 
     /** Apply writes (per fixture: fn(channels) → [{channel,value}]) to the current target. */
-    const apply = (key, fn) => {
-      items.forEach(it => {
-        const writes = fn(it.channels);
-        if (!writes.length) return;
-        if (toScene) {
-          writes.forEach(w => {
-            FF.mutate(qlc, 'functions.scene.setValue', { functionId: String(sceneId), fixture: String(it.detail.id), channel: w.channel, value: w.value },
-              { key: 'scene:' + sceneId + ':' + it.detail.id + ':' + w.channel }).catch(() => {});
-            /* Own server echoes are filtered, so tell the open Scene editor directly. */
-            FF.notifyLocal('scene.value', { sceneId: String(sceneId), fixture: String(it.detail.id), channel: w.channel, value: w.value });
-          });
-        } else {
-          FF.writeLive(qlc, it.detail, writes, key + ':' + it.detail.id);
-        }
-      });
+    const apply = (key, fn) => { items.forEach(it => writeOne(it, fn(it.channels), key)); };
+    /** Write [{channel,value}] for one fixture ({detail}) to the current target. */
+    const writeOne = (it, writes, key) => {
+      if (!writes.length) return;
+      if (toScene) {
+        writes.forEach(w => {
+          FF.mutate(qlc, 'functions.scene.setValue', { functionId: String(sceneId), fixture: String(it.detail.id), channel: w.channel, value: w.value },
+            { key: 'scene:' + sceneId + ':' + it.detail.id + ':' + w.channel }).catch(() => {});
+          /* Own server echoes are filtered, so tell the open Scene editor directly. */
+          FF.notifyLocal('scene.value', { sceneId: String(sceneId), fixture: String(it.detail.id), channel: w.channel, value: w.value });
+        });
+      } else {
+        FF.writeLive(qlc, it.detail, writes, key + ':' + it.detail.id);
+      }
     };
     const setInt = (v) => { setIntensity(v); apply('int', chs => FF.roleValues(chs, 'dimmer', v)); };
     const setColour = (c, w) => { setRgb(c); if (w) setWauv(w); apply('col', chs => FF.colourValues(chs, c, w || wauv)); };
@@ -256,7 +259,18 @@
           </Section>
         ) : null}
 
-        {mask.position ? (
+        {mask.colour && FF.ColorFiltersPicker ? (
+          <Section label="Color filters" icon="color" open={false}>
+            <FF.ColorFiltersPicker qlc={qlc} onPick={(c, w) => setColour(c, w)} />
+          </Section>
+        ) : null}
+
+        {mask.position && FF.SingleAxis && (!hasPan || !hasTilt) ? (
+          <Section label="Position" icon="position">
+            {hasPan ? <FF.SingleAxis axis="pan" value16={pan} maxDegrees={panMax} onChange={p => setPos(p, tilt)} />
+              : <FF.SingleAxis axis="tilt" value16={tilt} maxDegrees={tiltMax} onChange={t => setPos(pan, t)} />}
+          </Section>
+        ) : mask.position ? (
           <Section label="Position" icon="position">
             <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
               <XYPad pan={pan} tilt={tilt} onMove={setPos} size={140} />
@@ -301,6 +315,11 @@
         ))}
         {presetRows.length && !anyCaps && !capsPending ? (
           <div style={{ padding: '4px 10px 10px' }}><FF.Note text="Capability presets (gobo names, colour wheel slots, strobe ranges) are not available: the server has no fixtures.defs.getMode/getModel yet, so these channels only get plain 0–255 sliders." /></div>
+        ) : null}
+        {FF.FixtureConsole && items.length ? (
+          <Section label="Channels" icon="sliders" open={false}>
+            <FF.FixtureConsole items={items} allFixtures={fixtures} writeFn={writeOne} />
+          </Section>
         ) : null}
         {items.length > 1 ? <div style={{ padding: '4px 10px 10px' }}><FF.Note text="With several fixtures selected, presets follow the first fixture's channel layout and are applied to every fixture that has a channel of the same kind." /></div> : null}
       </div>
