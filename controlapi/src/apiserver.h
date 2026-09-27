@@ -38,6 +38,7 @@ class ApiEfxCollectionDomain;
 class ApiMediaDomain;
 class ApiVcLayoutDomain;
 class ApiShowDomain;
+class ApiIoConfigDomain;
 class ApiVcLiveDomain;
 class Doc;
 
@@ -154,6 +155,7 @@ private:
     ApiMediaDomain *m_mediaDomain;
     ApiVcLayoutDomain *m_vcLayoutDomain;
     ApiShowDomain *m_showDomain;
+    ApiIoConfigDomain *m_ioConfigDomain;
     ApiVcLiveDomain *m_vcLiveDomain;
 };
 

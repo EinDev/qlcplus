@@ -34,6 +34,7 @@
 #include "domains/apimediadomain.h"
 #include "domains/apivclayoutdomain.h"
 #include "domains/apishowdomain.h"
+#include "domains/apiioconfigdomain.h"
 #include "domains/apivclivedomain.h"
 #include "qlcconfig.h"
 #include "doc.h"
@@ -64,6 +65,7 @@ ApiServer::ApiServer(QObject *parent, Doc *doc)
     m_mediaDomain = new ApiMediaDomain(m_doc, this, this);
     m_vcLayoutDomain = new ApiVcLayoutDomain(m_doc, this, this);
     m_showDomain = new ApiShowDomain(m_doc, this, this);
+    m_ioConfigDomain = new ApiIoConfigDomain(m_doc, this, m_ioDomain, this);
     m_vcLiveDomain = new ApiVcLiveDomain(m_doc, this, this);
 }
 

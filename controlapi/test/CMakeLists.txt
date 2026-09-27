@@ -13,6 +13,7 @@ add_subdirectory(apiefxcollectiondomain)
 add_subdirectory(apimediadomain)
 add_subdirectory(apivclayoutdomain)
 add_subdirectory(apishowdomain)
+add_subdirectory(apiioconfigdomain)
 add_subdirectory(apivclivedomain)
 add_subdirectory(webserver)
 
@@ -33,6 +34,7 @@ set(QLCPLUS_CONTROLAPI_TESTS
     apimediadomain_test
     apivclayoutdomain_test
     apishowdomain_test
+    apiioconfigdomain_test
     apivclivedomain_test
     webserver_test
 )
