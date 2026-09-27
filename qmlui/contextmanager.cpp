@@ -26,6 +26,7 @@
 
 #include "contextmanager.h"
 #include "monitorproperties.h"
+#include "monitorlayout.h"
 #include "genericdmxsource.h"
 #include "functionmanager.h"
 #include "fixturemanager.h"
@@ -438,42 +439,17 @@ void ContextManager::setPositionPickPoint(QVector3D point)
 
         qDebug() << "3D point picked:" << point << "light position:" << lightPos;
 
-        if (panMSB != QLCChannel::invalid())
+        // The pan/tilt maths is shared with the Control API's
+        // fixtures.monitor.aimAt (MonitorLayout::aimPanTilt) so both hosts
+        // point a fixture the same way.
+        bool hasPan = false, hasTilt = false;
+        qreal panDeg = 0, tiltDeg = 0;
+        if (MonitorLayout::aimPanTilt(fixture, itemFlags, point, lightPos, lightMatrix,
+                                      hasPan, panDeg, hasTilt, tiltDeg) == false)
+            continue;
+
+        if (hasPan)
         {
-            QVector3D dir = (point - lightPos).normalized();
-
-            // rotate x-axis according to light matrix.
-            QVector4D res = lightMatrix * QVector4D(1.0, 0.0, 0.0, 0.0);
-            QVector3D xa = QVector3D(res.x(), res.y(), res.z());
-
-            // rotate z-axis according to light matrix.
-            res = lightMatrix * QVector4D(0.0, 0.0, 1.0, 0.0);
-            QVector3D za = QVector3D(res.x(), res.y(), res.z());
-
-            QVector3D projDirX = QVector3D::dotProduct(dir, xa) * xa;
-            QVector3D projDirZ = QVector3D::dotProduct(dir, za) * za;
-
-            qreal b = projDirX.length();
-            qreal c = projDirZ.length();
-            qreal panDeg = qRadiansToDegrees(M_PI_2 - qAtan(c / b)); // PI/2 - angle
-
-            bool xLeft = QVector3D::dotProduct(projDirX, xa) < 0.0 ? true : false;
-            bool zBack = QVector3D::dotProduct(projDirZ, za) < 0.0 ? true : false;
-
-            if (xLeft && !zBack)
-                panDeg = 90.0 + (90.0 - panDeg);
-            else if (!xLeft && !zBack)
-                panDeg = 180.0 + panDeg;
-            else if (!xLeft && zBack)
-                panDeg = 270.0 + (90.0 - panDeg);
-
-            if (itemFlags & MonitorProperties::InvertedPanFlag)
-            {
-                QLCPhysical phy = fixture->fixtureMode()->physical();
-                double maxPanDeg = phy.focusPanMax() ? phy.focusPanMax() : 360;
-                panDeg = maxPanDeg - panDeg;
-            }
-
             qDebug() << "Fixture" << fxID << "pan degrees:" << panDeg;
 
             QList<SceneValue> svList = fixture->positionToValues(QLCChannel::Pan, panDeg);
@@ -486,28 +462,8 @@ void ContextManager::setPositionPickPoint(QVector3D point)
             }
         }
 
-        if (tiltMSB != QLCChannel::invalid())
+        if (hasTilt)
         {
-            QVector3D dir = (point - lightPos).normalized();
-            // rotate y-axis according to light matrix.
-            QVector4D res = lightMatrix * QVector4D(0.0, -1.0, 0.0, 0.0);
-            QVector3D ya = QVector3D(res.x(), res.y(), res.z());
-
-            qreal tiltDeg =  qRadiansToDegrees(qAcos(QVector3D::dotProduct(dir, ya)));
-            QLCPhysical phy = fixture->fixtureMode()->physical();
-
-            // clamp the tilt.
-            if (tiltDeg < 0.0)
-                tiltDeg = 0.0;
-
-            if (tiltDeg > phy.focusTiltMax() / 2)
-                tiltDeg = phy.focusTiltMax() / 2;
-
-            if (itemFlags & MonitorProperties::InvertedTiltFlag)
-                tiltDeg = phy.focusTiltMax() / 2 + tiltDeg;
-            else
-                tiltDeg = phy.focusTiltMax() / 2 - tiltDeg;
-
             qDebug() << "Fixture" << fxID << "tilt degrees:" << tiltDeg;
 
             QList<SceneValue> svList = fixture->positionToValues(QLCChannel::Tilt, tiltDeg);
@@ -1542,26 +1498,10 @@ void ContextManager::setFixturesAlignment(int alignment)
     if (m_selectedFixtures.count() == 0)
         return;
 
-    quint32 firstFxID = FixtureUtils::itemFixtureID(m_selectedFixtures.first());
-    quint16 firstHeadIndex = FixtureUtils::itemHeadIndex(m_selectedFixtures.first());
-    quint16 firstLinkedIndex = FixtureUtils::itemLinkedIndex(m_selectedFixtures.first());
-    QVector3D firstPos = m_monProps->fixturePosition(firstFxID, firstHeadIndex, firstLinkedIndex);
-
-    for (quint32 &itemID : m_selectedFixtures)
-    {
-        quint32 fxID = FixtureUtils::itemFixtureID(itemID);
-        quint16 headIndex = FixtureUtils::itemHeadIndex(itemID);
-        quint16 linkedIndex = FixtureUtils::itemLinkedIndex(itemID);
-        QVector3D fxPos = m_monProps->fixturePosition(fxID, headIndex, linkedIndex);
-
-        FixtureUtils::alignItem(firstPos, fxPos, m_monProps->pointOfView(), alignment);
-        m_monProps->setFixturePosition(fxID, headIndex, linkedIndex, fxPos);
-        if (m_2DView->isEnabled())
-            m_2DView->updateFixturePosition(itemID, fxPos);
-        if (m_3DView->isEnabled())
-            m_3DView->updateFixturePosition(itemID, fxPos);
-    }
+    // The reference is the first selected item (selection order), as before
+    applyLayoutResult(MonitorLayout::align(layoutItems(m_selectedFixtures), m_monProps->pointOfView(), alignment));
     m_doc->setModified();
+    emit fixturesPositionChanged();
 }
 
 void ContextManager::setFixturesDistribution(int direction)
@@ -1569,150 +1509,51 @@ void ContextManager::setFixturesDistribution(int direction)
     if (m_selectedFixtures.count() < 3)
         return;
 
-    qreal min = 1000000;
-    qreal max = 0;
-    qreal fixturesSize = 0;
-    qreal gap = 0;
-    QVector<quint32> sortedIDs;
-    QVector<quint32> sortedPos;
-
-    /* cycle through selected fixtures and do the following:
-     * 1- calculate the total width/height
-     * 2- sort the fixture IDs from the leftmost/topmost item
-     * 3- detect the minimum and maximum items position
-     */
-    for (quint32 &itemID : m_selectedFixtures)
-    {
-        quint32 fxID = FixtureUtils::itemFixtureID(itemID);
-        quint16 headIndex = FixtureUtils::itemHeadIndex(itemID);
-        quint16 linkedIndex = FixtureUtils::itemLinkedIndex(itemID);
-        Fixture *fixture = m_doc->fixture(fxID);
-        QPointF fxPos = FixtureUtils::item2DPosition(m_monProps, m_monProps->pointOfView(),
-                                                     m_monProps->fixturePosition(fxID, headIndex, linkedIndex));
-        QSizeF fxRect = FixtureUtils::item2DDimension(fixture->fixtureMode(), m_monProps->pointOfView());
-        qreal pos = direction == Qt::Horizontal ? fxPos.x() : fxPos.y();
-        qreal size = direction == Qt::Horizontal ? fxRect.width() : fxRect.height();
-        int i = 0;
-
-        // 1
-        fixturesSize += size;
-
-        // 2
-        for (i = 0; i < sortedPos.count(); i++)
-        {
-            if (pos < sortedPos[i])
-                break;
-        }
-        if (sortedPos.isEmpty() || i == sortedIDs.count())
-        {
-            sortedIDs.append(itemID);
-            sortedPos.append(pos);
-        }
-        else
-        {
-            sortedIDs.insert(i, itemID);
-            sortedPos.insert(i, pos);
-        }
-
-        // 3
-        if (pos + size > max)
-            max = pos + size;
-        if (pos < min)
-            min = pos;
-    }
-
-    gap = ((max - min) - fixturesSize) / (sortedIDs.count() - 1);
-
-    qDebug() << "Sorted IDs:" << sortedIDs << "min/max:" << min << max;
-
-    qreal newPos = min;
-
-    for (int idx = 0; idx < sortedIDs.count(); idx++)
-    {
-        quint32 itemID = sortedIDs[idx];
-        quint32 fxID = FixtureUtils::itemFixtureID(itemID);
-        quint16 headIndex = FixtureUtils::itemHeadIndex(itemID);
-        quint16 linkedIndex = FixtureUtils::itemLinkedIndex(itemID);
-        Fixture *fixture = m_doc->fixture(fxID);
-        QSizeF fxRect = FixtureUtils::item2DDimension(fixture->fixtureMode(), m_monProps->pointOfView());
-        qreal size = direction == Qt::Horizontal ? fxRect.width() : fxRect.height();
-        QVector3D fxPos = m_monProps->fixturePosition(fxID, headIndex, linkedIndex);
-
-        // the first and last fixture don't need any adjustment
-        if (idx > 0 && idx < sortedIDs.count() - 1)
-        {
-            switch(m_monProps->pointOfView())
-            {
-                case MonitorProperties::TopView:
-                    if (direction == Qt::Horizontal)
-                        fxPos.setX(newPos);
-                    else
-                        fxPos.setZ(newPos);
-                break;
-                case MonitorProperties::RightSideView:
-                    if (direction == Qt::Horizontal)
-                        fxPos.setZ(m_monProps->gridSize().z() - newPos);
-                    else
-                        fxPos.setY(newPos);
-                break;
-                case MonitorProperties::LeftSideView:
-                    if (direction == Qt::Horizontal)
-                        fxPos.setZ(newPos);
-                    else
-                        fxPos.setY(newPos);
-                break;
-                default:
-                    if (direction == Qt::Horizontal)
-                        fxPos.setX(newPos);
-                    else
-                        fxPos.setY(newPos);
-                break;
-            }
-
-            m_monProps->setFixturePosition(fxID, headIndex, linkedIndex, fxPos);
-            if (m_2DView->isEnabled())
-                m_2DView->updateFixturePosition(itemID, fxPos);
-            if (m_3DView->isEnabled())
-                m_3DView->updateFixturePosition(itemID, fxPos);
-        }
-
-        newPos += size + gap;
-    }
+    applyLayoutResult(MonitorLayout::distribute(layoutItems(m_selectedFixtures), m_monProps, direction));
     m_doc->setModified();
+    emit fixturesPositionChanged();
 }
 
-void ContextManager::fixturePlaneAxes(int pointOfView, int &hAxis, int &vAxis, int &dAxis) const
+QList<MonitorLayout::Item> ContextManager::layoutItems(const QList<quint32> &itemIDs) const
 {
-    switch (pointOfView)
+    QList<MonitorLayout::Item> items;
+    int pointOfView = m_monProps->pointOfView();
+
+    for (quint32 itemID : itemIDs)
     {
-        case MonitorProperties::TopView:
-            hAxis = 0; vAxis = 2; dAxis = 1; // X / Z, depth is height (Y)
-        break;
-        case MonitorProperties::RightSideView:
-        case MonitorProperties::LeftSideView:
-            hAxis = 2; vAxis = 1; dAxis = 0; // Z / Y, depth is left-right (X)
-        break;
-        case MonitorProperties::Undefined:
-        case MonitorProperties::FrontView:
-        default:
-            hAxis = 0; vAxis = 1; dAxis = 2; // X / Y, depth is front-back (Z)
-        break;
+        MonitorLayout::Item item;
+        item.fixtureId = FixtureUtils::itemFixtureID(itemID);
+        item.headIndex = FixtureUtils::itemHeadIndex(itemID);
+        item.linkedIndex = FixtureUtils::itemLinkedIndex(itemID);
+        item.hostKey = itemID;
+        item.position = effectiveFixturePosition(itemID);
+        item.rotation = m_monProps->fixtureRotation(item.fixtureId, item.headIndex, item.linkedIndex);
+        item.locked = m_monProps->fixtureFlags(item.fixtureId, item.headIndex, item.linkedIndex) & MonitorProperties::LockedFlag;
+        Fixture *fixture = m_doc->fixture(item.fixtureId);
+        item.size2D = FixtureUtils::item2DDimension(fixture != nullptr ? fixture->fixtureMode() : nullptr, pointOfView);
+        items.append(item);
     }
+
+    return items;
 }
 
-static qreal vecAxis(const QVector3D &v, int axis)
+bool ContextManager::applyLayoutResult(const QList<MonitorLayout::Item> &items)
 {
-    return axis == 0 ? v.x() : axis == 1 ? v.y() : v.z();
-}
+    bool rotationChanged = false;
 
-static void setVecAxis(QVector3D &v, int axis, qreal value)
-{
-    if (axis == 0)
-        v.setX(value);
-    else if (axis == 1)
-        v.setY(value);
-    else
-        v.setZ(value);
+    for (const MonitorLayout::Item &item : items)
+    {
+        if (item.positionChanged)
+            applyArrangedFixturePosition(item.hostKey, item.position);
+
+        if (item.rotationChanged)
+        {
+            applyArrangedFixtureRotation(item.hostKey, item.rotation);
+            rotationChanged = true;
+        }
+    }
+
+    return rotationChanged;
 }
 
 QVector3D ContextManager::selectedFixturesCentroid() const
@@ -1863,84 +1704,12 @@ QList<quint32> ContextManager::groupOrSortedSelectedFixtures() const
 
 qreal ContextManager::detectedCircleDiameter() const
 {
-    if (m_selectedFixtures.count() < 2)
-        return 0;
-
-    int hAxis, vAxis, dAxis;
-    fixturePlaneAxes(m_monProps->pointOfView(), hAxis, vAxis, dAxis);
-    Q_UNUSED(dAxis)
-    QVector3D centroid = selectedFixturesCentroid();
-
-    qreal sumRadius = 0;
-    for (quint32 itemID : m_selectedFixtures)
-    {
-        quint32 fxID = FixtureUtils::itemFixtureID(itemID);
-        quint16 headIndex = FixtureUtils::itemHeadIndex(itemID);
-        quint16 linkedIndex = FixtureUtils::itemLinkedIndex(itemID);
-        QVector3D pos = m_monProps->fixturePosition(fxID, headIndex, linkedIndex);
-
-        qreal h = vecAxis(pos, hAxis) - vecAxis(centroid, hAxis);
-        qreal v = vecAxis(pos, vAxis) - vecAxis(centroid, vAxis);
-        sumRadius += qSqrt(h * h + v * v);
-    }
-
-    return (sumRadius / m_selectedFixtures.count()) * 2.0;
+    return MonitorLayout::detectedCircleDiameter(layoutItems(m_selectedFixtures), m_monProps->pointOfView());
 }
 
 void ContextManager::detectedLineFit(qreal &angleRadians, qreal &length) const
 {
-    angleRadians = 0;
-    length = 0;
-
-    if (m_selectedFixtures.count() < 2)
-        return;
-
-    int hAxis, vAxis, dAxis;
-    fixturePlaneAxes(m_monProps->pointOfView(), hAxis, vAxis, dAxis);
-    Q_UNUSED(dAxis)
-    QVector3D centroid = selectedFixturesCentroid();
-
-    // Principal axis of the position scatter, via the dominant eigenvector of
-    // its 2D covariance matrix - the same "structure tensor" formula used to
-    // recover a blob's orientation in image processing.
-    QVector<QPointF> local;
-    local.reserve(m_selectedFixtures.count());
-    qreal sxx = 0, syy = 0, sxy = 0;
-
-    for (quint32 itemID : m_selectedFixtures)
-    {
-        quint32 fxID = FixtureUtils::itemFixtureID(itemID);
-        quint16 headIndex = FixtureUtils::itemHeadIndex(itemID);
-        quint16 linkedIndex = FixtureUtils::itemLinkedIndex(itemID);
-        QVector3D pos = m_monProps->fixturePosition(fxID, headIndex, linkedIndex);
-
-        qreal h = vecAxis(pos, hAxis) - vecAxis(centroid, hAxis);
-        qreal v = vecAxis(pos, vAxis) - vecAxis(centroid, vAxis);
-        local.append(QPointF(h, v));
-
-        sxx += h * h;
-        syy += v * v;
-        sxy += h * v;
-    }
-
-    if (qFuzzyIsNull(sxx) && qFuzzyIsNull(syy) && qFuzzyIsNull(sxy))
-        return; // every fixture sits on top of its neighbours - no direction to detect
-
-    angleRadians = 0.5 * qAtan2(2.0 * sxy, sxx - syy);
-    qreal dirH = qCos(angleRadians);
-    qreal dirV = qSin(angleRadians);
-
-    qreal minProj = 0, maxProj = 0;
-    for (int i = 0; i < local.count(); i++)
-    {
-        qreal proj = local.at(i).x() * dirH + local.at(i).y() * dirV;
-        if (i == 0 || proj < minProj)
-            minProj = proj;
-        if (i == 0 || proj > maxProj)
-            maxProj = proj;
-    }
-
-    length = maxProj - minProj;
+    MonitorLayout::detectedLineFit(layoutItems(m_selectedFixtures), m_monProps->pointOfView(), angleRadians, length);
 }
 
 qreal ContextManager::detectedLineLength() const
@@ -1957,24 +1726,13 @@ qreal ContextManager::detectedLineAngle() const
     return qRadiansToDegrees(angleRadians);
 }
 
-void ContextManager::faceFixtureTowards(quint32 itemID, const QVector3D &newPos, const QVector3D &centroid,
-                                         int hAxis, int vAxis, int dAxis)
+void ContextManager::applyArrangedFixtureRotation(quint32 itemID, const QVector3D &newRot)
 {
     quint32 fxID = FixtureUtils::itemFixtureID(itemID);
     quint16 headIndex = FixtureUtils::itemHeadIndex(itemID);
     quint16 linkedIndex = FixtureUtils::itemLinkedIndex(itemID);
 
-    qreal dh = vecAxis(centroid, hAxis) - vecAxis(newPos, hAxis);
-    qreal dv = vecAxis(centroid, vAxis) - vecAxis(newPos, vAxis);
-    if (qFuzzyIsNull(dh) && qFuzzyIsNull(dv))
-        return; // fixture is sitting right on the centroid - no facing to compute
-
-    qreal bearingDeg = qRadiansToDegrees(qAtan2(dv, dh));
-
     QVector3D currRot = m_monProps->fixtureRotation(fxID, headIndex, linkedIndex);
-    QVector3D newRot = currRot;
-    setVecAxis(newRot, dAxis, bearingDeg);
-
     Tardis::instance()->enqueueAction(Tardis::FixtureSetRotation, itemID, QVariant(currRot), QVariant(newRot));
     m_monProps->setFixtureRotation(fxID, headIndex, linkedIndex, newRot);
 
@@ -1987,39 +1745,15 @@ void ContextManager::faceFixtureTowards(quint32 itemID, const QVector3D &newPos,
 void ContextManager::arrangeFixturesInCircle(qreal diameter, bool lookAtCenter)
 {
     QList<quint32> fixtures = sortedSelectedFixtures();
-    int count = fixtures.count();
-    if (count == 0)
+    if (fixtures.isEmpty())
         return;
 
-    int hAxis, vAxis, dAxis;
-    fixturePlaneAxes(m_monProps->pointOfView(), hAxis, vAxis, dAxis);
-    QVector3D centroid = selectedFixturesCentroid();
-    qreal radius = diameter / 2.0;
-
-    for (int i = 0; i < count; i++)
-    {
-        quint32 itemID = fixtures.at(i);
-        quint32 fxID = FixtureUtils::itemFixtureID(itemID);
-        quint16 headIndex = FixtureUtils::itemHeadIndex(itemID);
-        quint16 linkedIndex = FixtureUtils::itemLinkedIndex(itemID);
-
-        if (m_monProps->fixtureFlags(fxID, headIndex, linkedIndex) & MonitorProperties::LockedFlag)
-            continue;
-
-        qreal angleRad = qDegreesToRadians(360.0 * i / count);
-        QVector3D newPos = centroid;
-        setVecAxis(newPos, hAxis, vecAxis(centroid, hAxis) + radius * qCos(angleRad));
-        setVecAxis(newPos, vAxis, vecAxis(centroid, vAxis) + radius * qSin(angleRad));
-
-        applyArrangedFixturePosition(itemID, newPos);
-
-        if (lookAtCenter)
-            faceFixtureTowards(itemID, newPos, centroid, hAxis, vAxis, dAxis);
-    }
+    bool rotated = applyLayoutResult(MonitorLayout::arrangeCircle(layoutItems(fixtures), m_monProps->pointOfView(),
+                                                                  diameter, lookAtCenter));
 
     m_doc->setModified();
     emit fixturesPositionChanged();
-    if (lookAtCenter)
+    if (rotated)
         emit fixturesRotationChanged();
 }
 
@@ -2028,47 +1762,11 @@ void ContextManager::arrangeFixturesInGrid(qreal width, qreal height, int column
     // Prefer the selection's own Fixture Group grid order (what RGB Matrix
     // effects actually run on) over plain DMX order, when applicable.
     QList<quint32> fixtures = groupOrSortedSelectedFixtures();
-    int count = fixtures.count();
-    if (count == 0)
+    if (fixtures.isEmpty())
         return;
 
-    if (columns <= 0)
-        columns = qCeil(qSqrt(qreal(count)));
-    int rows = qCeil(qreal(count) / columns);
-
-    int hAxis, vAxis, dAxis;
-    fixturePlaneAxes(m_monProps->pointOfView(), hAxis, vAxis, dAxis);
-    Q_UNUSED(dAxis)
-    QVector3D centroid = selectedFixturesCentroid();
-
-    qreal colStep = columns > 1 ? width / (columns - 1) : 0;
-    qreal rowStep = rows > 1 ? height / (rows - 1) : 0;
-    qreal angleRad = qDegreesToRadians(angleDegrees);
-
-    for (int i = 0; i < count; i++)
-    {
-        quint32 itemID = fixtures.at(i);
-        quint32 fxID = FixtureUtils::itemFixtureID(itemID);
-        quint16 headIndex = FixtureUtils::itemHeadIndex(itemID);
-        quint16 linkedIndex = FixtureUtils::itemLinkedIndex(itemID);
-
-        if (m_monProps->fixtureFlags(fxID, headIndex, linkedIndex) & MonitorProperties::LockedFlag)
-            continue;
-
-        int col = i % columns;
-        int row = i / columns;
-        qreal h = -width / 2.0 + col * colStep;
-        qreal v = -height / 2.0 + row * rowStep;
-
-        qreal rh = h * qCos(angleRad) - v * qSin(angleRad);
-        qreal rv = h * qSin(angleRad) + v * qCos(angleRad);
-
-        QVector3D newPos = centroid;
-        setVecAxis(newPos, hAxis, vecAxis(centroid, hAxis) + rh);
-        setVecAxis(newPos, vAxis, vecAxis(centroid, vAxis) + rv);
-
-        applyArrangedFixturePosition(itemID, newPos);
-    }
+    applyLayoutResult(MonitorLayout::arrangeGrid(layoutItems(fixtures), m_monProps->pointOfView(),
+                                                 width, height, columns, angleDegrees));
 
     m_doc->setModified();
     emit fixturesPositionChanged();
@@ -2077,42 +1775,15 @@ void ContextManager::arrangeFixturesInGrid(qreal width, qreal height, int column
 void ContextManager::arrangeFixturesInLine(qreal length, qreal angleDegrees, bool lookAtCenter)
 {
     QList<quint32> fixtures = sortedSelectedFixtures();
-    int count = fixtures.count();
-    if (count == 0)
+    if (fixtures.isEmpty())
         return;
 
-    int hAxis, vAxis, dAxis;
-    fixturePlaneAxes(m_monProps->pointOfView(), hAxis, vAxis, dAxis);
-    QVector3D centroid = selectedFixturesCentroid();
-
-    qreal angleRad = qDegreesToRadians(angleDegrees);
-    qreal step = count > 1 ? length / (count - 1) : 0;
-    qreal startOffset = -length / 2.0;
-
-    for (int i = 0; i < count; i++)
-    {
-        quint32 itemID = fixtures.at(i);
-        quint32 fxID = FixtureUtils::itemFixtureID(itemID);
-        quint16 headIndex = FixtureUtils::itemHeadIndex(itemID);
-        quint16 linkedIndex = FixtureUtils::itemLinkedIndex(itemID);
-
-        if (m_monProps->fixtureFlags(fxID, headIndex, linkedIndex) & MonitorProperties::LockedFlag)
-            continue;
-
-        qreal dist = startOffset + i * step;
-        QVector3D newPos = centroid;
-        setVecAxis(newPos, hAxis, vecAxis(centroid, hAxis) + dist * qCos(angleRad));
-        setVecAxis(newPos, vAxis, vecAxis(centroid, vAxis) + dist * qSin(angleRad));
-
-        applyArrangedFixturePosition(itemID, newPos);
-
-        if (lookAtCenter)
-            faceFixtureTowards(itemID, newPos, centroid, hAxis, vAxis, dAxis);
-    }
+    bool rotated = applyLayoutResult(MonitorLayout::arrangeLine(layoutItems(fixtures), m_monProps->pointOfView(),
+                                                                length, angleDegrees, lookAtCenter));
 
     m_doc->setModified();
     emit fixturesPositionChanged();
-    if (lookAtCenter)
+    if (rotated)
         emit fixturesRotationChanged();
 }
 
@@ -2122,34 +1793,7 @@ void ContextManager::rotateFixturesAroundCentroid(qreal angleDegrees)
     if (fixtures.isEmpty())
         return;
 
-    int hAxis, vAxis, dAxis;
-    fixturePlaneAxes(m_monProps->pointOfView(), hAxis, vAxis, dAxis);
-    Q_UNUSED(dAxis)
-    QVector3D centroid = selectedFixturesCentroid();
-
-    qreal angleRad = qDegreesToRadians(angleDegrees);
-    qreal cosA = qCos(angleRad);
-    qreal sinA = qSin(angleRad);
-
-    for (quint32 itemID : fixtures)
-    {
-        quint32 fxID = FixtureUtils::itemFixtureID(itemID);
-        quint16 headIndex = FixtureUtils::itemHeadIndex(itemID);
-        quint16 linkedIndex = FixtureUtils::itemLinkedIndex(itemID);
-
-        if (m_monProps->fixtureFlags(fxID, headIndex, linkedIndex) & MonitorProperties::LockedFlag)
-            continue;
-
-        QVector3D currPos = effectiveFixturePosition(itemID);
-        qreal h = vecAxis(currPos, hAxis) - vecAxis(centroid, hAxis);
-        qreal v = vecAxis(currPos, vAxis) - vecAxis(centroid, vAxis);
-
-        QVector3D newPos = currPos;
-        setVecAxis(newPos, hAxis, vecAxis(centroid, hAxis) + (h * cosA - v * sinA));
-        setVecAxis(newPos, vAxis, vecAxis(centroid, vAxis) + (h * sinA + v * cosA));
-
-        applyArrangedFixturePosition(itemID, newPos);
-    }
+    applyLayoutResult(MonitorLayout::rotateAroundCentroid(layoutItems(fixtures), m_monProps->pointOfView(), angleDegrees));
 
     m_doc->setModified();
     emit fixturesPositionChanged();
@@ -2161,21 +1805,7 @@ void ContextManager::moveFixturesToCenter()
     if (fixtures.isEmpty())
         return;
 
-    QVector3D offset = FixtureUtils::gridCenterPosition(m_monProps) - selectedFixturesCentroid();
-    if (offset.isNull())
-        return;
-
-    for (quint32 itemID : fixtures)
-    {
-        quint32 fxID = FixtureUtils::itemFixtureID(itemID);
-        quint16 headIndex = FixtureUtils::itemHeadIndex(itemID);
-        quint16 linkedIndex = FixtureUtils::itemLinkedIndex(itemID);
-
-        if (m_monProps->fixtureFlags(fxID, headIndex, linkedIndex) & MonitorProperties::LockedFlag)
-            continue;
-
-        applyArrangedFixturePosition(itemID, effectiveFixturePosition(itemID) + offset);
-    }
+    applyLayoutResult(MonitorLayout::moveToCenter(layoutItems(fixtures), FixtureUtils::gridCenterPosition(m_monProps)));
 
     m_doc->setModified();
     emit fixturesPositionChanged();
