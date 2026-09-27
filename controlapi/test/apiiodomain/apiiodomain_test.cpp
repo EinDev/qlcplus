@@ -60,9 +60,9 @@ void ApiIoDomain_Test::init()
     // pattern as apifunctionsdomain_test.cpp's init(). startUniverses() is
     // also needed here (unlike that suite): each Universe only actually
     // applies its GenericFader-held values into postGMValues on its own
-    // worker QThread (Universe::processFaders(), ticked via MasterTimer's
-    // tickReady() -> Universe::tick() queued connection - see
-    // InputOutputMap::addUniverse()), and that thread is only started by
+    // worker QThread (Universe::processFaders(), woken by
+    // MasterTimer::timerTick() calling Universe::tick() directly on the timer
+    // thread), and that thread is only started by
     // InputOutputMap::startUniverses() (normally done by qmlui's
     // App::initDoc(), not by a bare `new Doc()` - see this same file's
     // older dmxEventOnlyDeliveredAfterSubscribe() comment, written before

@@ -154,6 +154,17 @@ void MasterTimer::timerTick()
     timerTickFunctions(universes);
     timerTickDMXSources(universes);
 
+    /* Wake every Universe writer thread right here, on the timer thread,
+     * instead of through a queued tickReady() -> Universe::tick() connection:
+     * a queued slot runs on the main thread, so any main thread stall (a slow
+     * UI operation, a modal dialog, a slow Control API handler) used to hold
+     * back the DMX output of every universe for as long as it lasted.
+     * Universe::tick() only releases a QSemaphore, and the universe list is
+     * still claimed here, so a Universe cannot be deleted while it is ticked
+     * (removeUniverse() / removeAllUniverses() delete under the same mutex). */
+    foreach (Universe *universe, universes)
+        universe->tick();
+
     doc->inputOutputMap()->releaseUniverses();
 
     m_beatRequested = false;

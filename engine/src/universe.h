@@ -374,6 +374,9 @@ public:
     quint32 faderCycles() const;
 
 public slots:
+    /** Wake this universe's writer thread for one fader cycle. Called by
+     *  MasterTimer::timerTick() on the timer thread (not the main thread);
+     *  it only touches the thread-safe m_semaphore. */
     void tick();
 
 protected:

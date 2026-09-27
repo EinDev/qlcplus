@@ -75,6 +75,9 @@ public:
     static uint tick();
 
 signals:
+    /** Emitted from the timer thread at the end of every tick. Universes are
+     *  no longer ticked through this signal: timerTick() wakes them directly,
+     *  so a busy main thread cannot hold back DMX output. */
     void tickReady();
 
 private:
