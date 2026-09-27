@@ -534,7 +534,7 @@ public:
     QString fileName() const override { return m_fileName; }
     void setFileName(const QString &fileName) override { m_fileName = fileName; }
     bool newWorkspace() override { m_doc->clearContents(); m_fileName.clear(); return true; }
-    bool loadWorkspace(const QString &fileName) override { m_doc->clearContents(); m_fileName = fileName; return true; }
+    bool loadWorkspace(const QString &fileName) override { m_doc->clearContents(); m_fileName = fileName; m_pathLoads++; return true; }
     bool saveWorkspace(const QString &fileName) override { m_savedTo = fileName; return true; }
     void slotLoadDocFromMemory(QByteArray &xmlData) override { m_doc->clearContents(); m_loaded = xmlData; m_loads++; }
     QStringList recentFiles() const override { return QStringList(); }
@@ -546,6 +546,7 @@ public:
     QString m_savedTo;
     QByteArray m_loaded;
     int m_loads = 0;
+    int m_pathLoads = 0;
 };
 
 const char *kWorkspaceXml =
@@ -601,6 +602,58 @@ void ApiCoreDomain_Test::projectOpenUploadRejectsNonWorkspace()
     }
     // the current project was never thrown away
     QCOMPARE(host->m_loads, 0);
+
+    // right DTD, wrong root element: App::loadXML() would give up after clearing the project
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("core.project.open"),
+        uploadParams(QByteArray("<?xml version=\"1.0\"?>\n<!DOCTYPE Workspace>\n<FixtureDefinition/>\n"), QStringLiteral("x.qxw")));
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("INVALID_PARAMS"));
+    QCOMPARE(host->m_loads, 0);
+}
+
+void ApiCoreDomain_Test::projectOpenPathRejectsBadFilesWithoutClearing()
+{
+    useFakeHost();
+    FakeProjectHost *host = static_cast<FakeProjectHost *>(m_host);
+    helloAndGetClientId();
+
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    auto writeFile = [&](const QString &name, const QByteArray &content)
+    {
+        QFile f(dir.filePath(name));
+        if (f.open(QIODevice::WriteOnly) == false)
+            return QString();
+        f.write(content);
+        f.close();
+        return f.fileName();
+    };
+    auto openPath = [&](const QString &path)
+    {
+        QJsonObject params;
+        params.insert(QStringLiteral("source"), QStringLiteral("path"));
+        params.insert(QStringLiteral("path"), path);
+        return sendAndWaitForReply(QStringLiteral("core.project.open"), params);
+    };
+    auto code = [](const QJsonObject &reply) { return reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(); };
+
+    // missing file, empty path, a directory: NOT_FOUND
+    QCOMPARE(code(openPath(dir.filePath(QStringLiteral("missing.qxw")))), QStringLiteral("NOT_FOUND"));
+    QCOMPARE(code(openPath(QString())), QStringLiteral("NOT_FOUND"));
+    QCOMPARE(code(openPath(dir.path())), QStringLiteral("NOT_FOUND"));
+    // not a workspace: INVALID_PARAMS
+    QCOMPARE(code(openPath(writeFile(QStringLiteral("text.qxw"), QByteArray("hello world")))), QStringLiteral("INVALID_PARAMS"));
+    QCOMPARE(code(openPath(writeFile(QStringLiteral("empty.qxw"), QByteArray()))), QStringLiteral("INVALID_PARAMS"));
+    QCOMPARE(code(openPath(writeFile(QStringLiteral("fixture.qxf"),
+        QByteArray("<?xml version=\"1.0\"?>\n<!DOCTYPE FixtureDefinition>\n<FixtureDefinition/>\n")))), QStringLiteral("INVALID_PARAMS"));
+    // the host was never asked to load, so the current project is still there
+    QCOMPARE(host->m_pathLoads, 0);
+
+    // a real workspace, also as a file: URL, still opens
+    const QString good = writeFile(QStringLiteral("good.qxw"), QByteArray(kWorkspaceXml));
+    QCOMPARE(openPath(good).value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(host->m_pathLoads, 1);
+    QCOMPARE(openPath(QUrl::fromLocalFile(good).toString()).value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(host->m_pathLoads, 2);
 }
 
 void ApiCoreDomain_Test::projectOpenUploadHasNoPathButReportsName()

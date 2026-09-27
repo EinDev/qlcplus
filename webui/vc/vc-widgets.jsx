@@ -102,6 +102,87 @@ function VCButtonBody({ w }) {
   );
 }
 
+/* ---------------------------------------------------------------- Slider Click & Go */
+/**
+ * VCSliderItem.qml's Click & Go popup. Colors: ColorTool's primary (RGB) and secondary (white / amber /
+ * UV as an RGB triplet) colour, committed like VCSlider::setClickAndGoColors() through setConfig's
+ * cngPrimaryColor / cngSecondaryColor (which also moves the fader to 128). Preset: PresetsTool - the
+ * capabilities of the slider's first level channel; clicking one sets the slider to the value under
+ * the pointer (10% edges = the capability's min / max, PresetCapabilityItem.qml), within the slider's
+ * range, through vc.slider.setValue.
+ */
+function VCSliderClickAndGo({ w, kind, lo, hi, onClose }) {
+  const vc = useVC();
+  const cfg = w.typeConfig || {};
+  const [caps, setCaps] = React.useState(null);
+  const [title, setTitle] = React.useState('');
+  const [colors, setColors] = React.useState({ primary: cfg.cngPrimaryColor || '#000000', secondary: cfg.cngSecondaryColor || '#000000' });
+  const timer = React.useRef(null);
+  React.useEffect(() => () => clearTimeout(timer.current), []);
+  React.useEffect(() => {
+    if (kind !== 'Preset') return;
+    const first = (cfg.levelChannels || [])[0];
+    if (!first) { setCaps([]); return; }
+    let alive = true;
+    vc.qlc.call('fixtures.get', { fixtureId: String(first.fixtureId) })
+      .then(f => { if (alive) setTitle(f.model + ' - ' + ((f.channelList || [])[first.channel] || {}).name); return window.FF && window.FF.modeChannels ? window.FF.modeChannels(vc.qlc, f) : null; })
+      .then(chs => { if (!alive) return; const ch = (chs || []).find(c => Number(c.index) === Number(first.channel)); setCaps(ch ? ch.capabilities || [] : []); })
+      .catch(() => { if (alive) setCaps([]); });
+    return () => { alive = false; };
+  }, [kind, w.id]);
+  const setColor = (key, hex) => {
+    setColors(c => Object.assign({}, c, { [key]: hex }));
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      vcStructural(vc.qlc, 'vc.widget.setConfig', { widgetId: String(w.id), config: key === 'primary' ? { cngPrimaryColor: hex } : { cngSecondaryColor: hex } })
+        .then(() => vc.refresh && vc.refresh())
+        .catch(e => vc.notice('Click & Go: ' + ((e && e.message) || 'failed')));
+    }, 200);
+  };
+  const pick = (cap, e) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - r.left, edge = r.width * 0.1;
+    const raw = x <= edge ? cap.min : x >= r.width - edge ? cap.max : cap.min + (cap.max - cap.min) * (x - edge) / Math.max(1, r.width - 2 * edge);
+    const value = Math.round(Math.min(Math.max(raw, lo), hi));
+    vc.act.slide(w.id, value);
+    onClose();
+  };
+  const { CustomPopupDialog } = window.PatchDesignSystem_5432c9;
+  const colorRow = (key, label) => (
+    <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, height: 30 }}>
+      <RobotoText label={label} fontSize="var(--text-size-small)" height="auto" style={{ width: 170 }} />
+      <span style={{ position: 'relative', width: 60, height: 24, borderRadius: 4, border: '2px solid var(--bg-light)', background: colors[key], overflow: 'hidden' }}>
+        <input type="color" value={colors[key]} data-vc-cng-color={key} onChange={(e) => setColor(key, e.target.value)}
+          style={{ position: 'absolute', inset: 0, opacity: 0, width: '100%', height: '100%', cursor: 'pointer' }} />
+      </span>
+      <RobotoText label={colors[key]} fontSize="var(--text-size-small)" labelColor="var(--fg-light)" height="auto" />
+    </label>
+  );
+  /* Rendered into document.body: inside the widget it would be clipped by the body (overflow hidden)
+     and scaled with the canvas. The fixed layer is what CustomPopupDialog's absolute backdrop fills. */
+  return ReactDOM.createPortal((
+    <div style={{ position: 'fixed', inset: 0, zIndex: 200 }} onPointerDown={(e) => e.stopPropagation()}>
+    <CustomPopupDialog open title={kind === 'Colors' ? 'Click & Go colours' : 'Click & Go presets' + (title ? ' — ' + title : '')} width={kind === 'Colors' ? 380 : 460}
+      standardButtons={['Close']} onClicked={onClose} onClose={onClose}>
+      <div data-vc-cng-popup={kind} style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: '60vh', overflow: 'auto' }} onPointerDown={(e) => e.stopPropagation()}>
+        {kind === 'Colors' ? [colorRow('primary', 'Primary (red / green / blue)'), colorRow('secondary', 'Secondary (white / amber / UV)')] : null}
+        {kind === 'Preset' && caps == null ? <RobotoText label="Loading capabilities…" fontSize="var(--text-size-small)" labelColor="var(--fg-medium)" height="auto" /> : null}
+        {kind === 'Preset' && caps && !caps.length ? <RobotoText label="The slider has no level channel with capabilities (pick channels in its properties)." fontSize="var(--text-size-small)" labelColor="var(--fg-medium)" wrapText height="auto" /> : null}
+        {kind === 'Preset' && caps ? caps.filter(c => c.min <= hi && c.max >= lo).map((c, i) => (
+          <button key={i} type="button" data-vc-cng-cap={i} title={c.name + ' (' + c.min + '-' + c.max + ')'} onClick={(e) => pick(c, e)}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, height: 28, padding: '0 6px', background: 'var(--bg-control)', border: '1px solid var(--bg-strong)', borderRadius: 3, cursor: 'pointer', color: 'var(--fg-main)', textAlign: 'left' }}>
+            {c.color1 ? <span style={{ width: 18, height: 18, flex: 'none', background: c.color2 ? 'linear-gradient(135deg, ' + c.color1 + ' 50%, ' + c.color2 + ' 50%)' : c.color1, border: '1px solid var(--bg-strong)' }} /> : null}
+            <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 'var(--text-size-small)' }}>{c.name}</span>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--fg-light)' }}>{c.min + '-' + c.max}</span>
+          </button>
+        )) : null}
+      </div>
+    </CustomPopupDialog>
+    </div>
+  ), document.body);
+}
+window.VCSliderClickAndGo = VCSliderClickAndGo;
+
 /* ---------------------------------------------------------------- Slider / Knob */
 function VCSliderBody({ w }) {
   const vc = useVC();
@@ -118,21 +199,64 @@ function VCSliderBody({ w }) {
   const percent = cfg.valueDisplayStyle === 'PercentageValue' || cfg.valueDisplayStyle === 'Percentage';
   /* VCSliderItem.qml: submaster faders get a green track, grand master the red one. */
   const track = cfg.sliderMode === 'Submaster' ? '#77DD73' : cfg.sliderMode === 'GrandMaster' ? 'var(--override-red)' : 'var(--fader-track)';
-  const faderH = Math.max(30, g.height - 60);
-  const knobSize = Math.max(30, Math.min(g.width - 10, g.height - 56));
+  /* VCSliderItem.qml: a Level slider monitoring its channels shows the channel value read back from
+     the output as a green bar at its right edge, and a reset button (red while the operator's fader
+     overrides what the channels carry). vc.slider.monitorValueChanged is subscribe-gated. */
+  const monitoring = cfg.sliderMode === 'Level' && cfg.monitorEnabled !== false;
+  const [mon, setMon] = React.useState({ value: Number(w.monitorValue) || 0, overriding: !!w.isOverriding });
+  React.useEffect(() => { setMon({ value: Number(w.monitorValue) || 0, overriding: !!w.isOverriding }); }, [w.monitorValue, w.isOverriding]);
+  React.useEffect(() => {
+    if (!monitoring || !vc.qlc.online) return;
+    const c = vc.qlc.client && vc.qlc.client();
+    if (c && c.subscribe) c.subscribe(['vc.slider.monitorValueChanged']).catch(() => {});
+    return vc.qlc.subscribeTo('vc.slider.monitorValueChanged', (d) => {
+      if (d && String(d.widgetId) === String(w.id)) setMon({ value: Number(d.monitorValue) || 0, overriding: !!d.isOverriding });
+    });
+  }, [monitoring, vc.qlc.online, w.id]);
+  const resetOverride = (e) => {
+    e.stopPropagation();
+    vc.qlc.call('vc.slider.resetOverride', { widgetId: String(w.id) }).catch(err => vc.notice('vc.slider.resetOverride: ' + ((err && err.message) || 'failed')));
+  };
+  const cng = cfg.sliderMode === 'Level' && (cfg.clickAndGoType === 'Colors' || cfg.clickAndGoType === 'Preset') ? cfg.clickAndGoType : null;
+  const [cngOpen, setCngOpen] = React.useState(false);
+  const extraH = (monitoring ? 26 : 0) + (cng ? 30 : 0);
+  const faderH = Math.max(30, g.height - 60 - extraH);
+  const knobSize = Math.max(30, Math.min(g.width - 10, g.height - 56 - extraH));
   const move = (nv) => { if (!canSlide) { vc.notice('This server has no ' + VC_METHODS.SET_VALUE + ' yet — sliders are view-only'); return; } vc.act.slide(w.id, nv); };
+  const stop = (e) => e.stopPropagation();
   return (
-    <div title={(style.caption || 'Slider') + (canSlide ? '' : ' — setValue not supported by this server')}
+    <div title={(style.caption || 'Slider') + (canSlide ? '' : ' — setValue not supported by this server')} data-vc-slider-body=""
       style={{ position: 'absolute', inset: 0, background: style.backgroundColor || 'var(--bg-strong)', border: '2px solid var(--border-color-dark)', borderRadius: 4,
         display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '4px 2px', color: style.foregroundColor || 'var(--fg-main)', overflow: 'hidden', pointerEvents: vc.edit ? 'none' : 'auto' }}>
       <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, height: 18, lineHeight: '18px', flex: 'none' }}>{percent ? Math.round(v / 2.55) + '%' : v}</span>
-      <div style={{ flex: 1, minHeight: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
+      <div style={{ flex: 1, minHeight: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', position: 'relative' }}>
         {knob
           ? <VCKnob value={v} from={lo} to={hi} size={knobSize} disabled={!canSlide && false} onMoved={move} onPressChange={(on) => vc.act.sliderPress(w.id, on)} />
           : <VCFader value={v} from={lo} to={hi} height={faderH} width={Math.min(38, g.width - 8)} trackColor={track} inverted={!!cfg.invertedAppearance}
               onMoved={move} onPressChange={(on) => vc.act.sliderPress(w.id, on)} />}
+        {monitoring ? (
+          <div data-vc-slider-monitor={mon.value} title={'Monitored channel level: ' + mon.value}
+            style={{ position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)', height: faderH, width: 7, background: 'var(--bg-light)', border: '1px solid var(--bg-strong)', boxSizing: 'border-box' }}>
+            <div style={{ position: 'absolute', left: 1, right: 1, background: '#00FF00', height: 'calc((100% - 2px) * ' + (mon.value / 255) + ')',
+              top: cfg.invertedAppearance ? 1 : 'auto', bottom: cfg.invertedAppearance ? 'auto' : 1 }} />
+          </div>
+        ) : null}
       </div>
+      {monitoring ? (
+        <IconButton faSource="fa_xmark" faColor="var(--bg-control)" size={24} bgColor={mon.overriding ? 'red' : 'var(--bg-light)'} data-vc-slider-override={mon.overriding ? 'on' : 'off'}
+          tooltip={mon.overriding ? 'The fader overrides the monitored channels: click to follow them again' : 'Following the monitored channels'}
+          onClick={resetOverride} onPointerDown={stop} style={{ flex: 'none', marginTop: 2 }} />
+      ) : null}
+      {cng ? (
+        <button type="button" data-vc-slider-cng={cng} title={'Click & Go: ' + (cng === 'Colors' ? 'pick a colour' : 'pick a preset')} onPointerDown={stop}
+          onClick={(e) => { stop(e); setCngOpen(true); }}
+          style={{ flex: 'none', width: 30, height: 26, marginTop: 2, borderRadius: 4, border: '1px solid var(--bg-lighter)', cursor: 'pointer', padding: 3, background: 'var(--bg-control)' }}>
+          <span style={{ display: 'block', width: '100%', height: '100%', borderRadius: 2,
+            background: cng === 'Colors' ? (cfg.cngPrimaryColor || '#000000') : 'linear-gradient(135deg, ' + (cfg.cngPrimaryColor || '#444') + ' 50%, ' + (cfg.cngSecondaryColor && cfg.cngSecondaryColor !== '#000000' ? cfg.cngSecondaryColor : 'var(--bg-light)') + ' 50%)' }} />
+        </button>
+      ) : null}
       <span style={Object.assign({ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%', flex: 'none' }, vcFontCss(style), { fontSize: 13 })}>{style.caption || ''}</span>
+      {cngOpen && window.VCSliderClickAndGo ? <window.VCSliderClickAndGo w={w} kind={cng} lo={lo} hi={hi} onClose={() => setCngOpen(false)} /> : null}
       <VCDisabledVeil on={w.isDisabled} />
     </div>
   );

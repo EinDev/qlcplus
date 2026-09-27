@@ -492,6 +492,10 @@ function VCKeyBindings() {
         case 'Slider':
           if (controlId === 2) q.call('vc.slider.flash', { widgetId: id, on: down }).catch(ack('vc.slider.flash'));
           return;
+        case 'Animation':
+          /* VCAnimation::slotInputValueChanged: "Intensity" (0) follows the key (255 down / 0 up) */
+          if (controlId === 0) { q.call('vc.animation.setFaderLevel', { widgetId: id, level: down ? 255 : 0 }).catch(ack('vc.animation.setFaderLevel')); return; }
+          break;
         default: break;
       }
       if (!down) return; // every other control acts on the key press only (the engine ignores value 0)
@@ -528,9 +532,15 @@ function VCKeyBindings() {
           else if (controlId >= 30) q.call('vc.widget.preset.apply', { widgetId: id, presetId: controlId - 30 }).catch(ack('vc.widget.preset.apply'));
           return;
         }
-        case 'XYPad': case 'Animation':
+        case 'XYPad':
+          /* VCXYPad registers its presets at INPUT_PRESETS_BASE_ID (30) + preset id */
           if (controlId >= 30) q.call('vc.widget.preset.apply', { widgetId: id, presetId: controlId - 30 }).catch(ack('vc.widget.preset.apply'));
           else c.notice(w.widgetType + ' key bindings for "' + controlId + '" are not supported in the web UI yet');
+          return;
+        case 'Animation':
+          /* VCAnimation registers each preset under its own id (control->m_id, from 31 up): the
+             control id IS the preset id - subtracting 30 like the pad applied the wrong preset */
+          q.call('vc.widget.preset.apply', { widgetId: id, presetId: controlId }).catch(ack('vc.widget.preset.apply'));
           return;
         default:
           c.notice(w.widgetType + ' key bindings are not supported in the web UI yet');

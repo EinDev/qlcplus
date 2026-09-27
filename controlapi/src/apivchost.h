@@ -458,6 +458,16 @@ public:
      *  Returns false when $presetId (known to exist) is not a knob preset. */
     virtual bool vcAnimationSetPresetKnobValue(quint32 id, int presetId, int value, QString *error) = 0;
 
+    /** vc.slider.resetOverride - VCSlider::setIsOverriding(false): a monitoring Level slider moved by
+     *  hand follows the monitored channels again (VCSliderItem.qml's red X button). $id is known to be
+     *  a Slider. Not pure: hosts without monitoring support answer that it is not supported. */
+    virtual bool vcSliderResetOverride(quint32 id, QString *error)
+    {
+        Q_UNUSED(id)
+        if (error) *error = QStringLiteral("Slider monitoring is not supported by this host");
+        return false;
+    }
+
     /** vc.audioTriggers.setCaptureEnabled - VCAudioTriggers::setCaptureEnabled(). */
     virtual bool vcAudioTriggersSetCaptureEnabled(quint32 id, bool enabled, QString *error) = 0;
 
@@ -544,6 +554,22 @@ public:
     virtual void vcAnimationStyleChanged(quint32 widgetId, int algorithmIndex, const QStringList &colors) = 0;
     virtual void vcAudioTriggersCaptureEnabledChanged(quint32 widgetId, bool enabled) = 0;
     virtual void vcAudioTriggersLevelsChanged(quint32 widgetId, const QList<int> &levels) = 0;
+
+    /** VCSlider::monitorValue() / isOverriding() changed (Level mode with monitorEnabled): the DMX
+     *  value read back from the slider's channels (0..255) and whether the operator's own fader
+     *  position currently overrides it. Arrives at the monitored universe's write rate. */
+    virtual void vcSliderMonitorChanged(quint32 widgetId, int monitorValue, bool isOverriding)
+    {
+        Q_UNUSED(widgetId) Q_UNUSED(monitorValue) Q_UNUSED(isOverriding)
+    }
+
+    /** VCXYPad::fixturePositions() changed: where each controlled head actually points, read back
+     *  from the universe output, as (x, y) in 0.0..1.0 of the pad area (inverted Y already applied,
+     *  like the yellow dots of VCXYPadItem.qml). Empty in floor mode / with no fixtures. */
+    virtual void vcXyPadFixturePositionsChanged(quint32 widgetId, const QList<QPointF> &positions)
+    {
+        Q_UNUSED(widgetId) Q_UNUSED(positions)
+    }
 };
 
 #endif

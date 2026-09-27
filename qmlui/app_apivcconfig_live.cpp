@@ -54,6 +54,7 @@
 #include "virtualconsole/vcanimation.h"
 #include "virtualconsole/vcanimationpreset.h"
 #include "virtualconsole/vcaudiotriggers.h"
+#include "virtualconsole/vcslider.h"
 
 namespace
 {
@@ -1159,6 +1160,22 @@ bool applyAnimationPreset(VCWidget *w, int presetId, QString *error)
  * Live seeds
  *****************************************************************************/
 
+QList<QPointF> xyPadFixturePositions(VCWidget *w)
+{
+    QList<QPointF> out;
+    VCXYPad *pad = qobject_cast<VCXYPad *>(w);
+    if (pad == nullptr)
+        return out;
+    // VCXYPad keeps them in the 0..256 space VCXYPadItem.qml draws with (x / 255 * width)
+    for (const QVariant &v : pad->fixturePositions())
+    {
+        const QVariantMap m = v.toMap();
+        out.append(QPointF(qBound(0.0, m.value(QStringLiteral("x")).toDouble() / 255.0, 1.0),
+                           qBound(0.0, m.value(QStringLiteral("y")).toDouble() / 255.0, 1.0)));
+    }
+    return out;
+}
+
 void appendLiveSeed(VCWidget *w, QJsonObject &obj)
 {
     if (w == nullptr)
@@ -1170,6 +1187,24 @@ void appendLiveSeed(VCWidget *w, QJsonObject &obj)
             VCXYPad *pad = qobject_cast<VCXYPad *>(w);
             obj.insert(QStringLiteral("floorPosition"), vectorToJson(pad->floorPosition()));
             obj.insert(QStringLiteral("activePresetId"), pad->activePresetId());
+            // seed of vc.xyPad.fixturePositionsChanged
+            QJsonArray positions;
+            for (const QPointF &p : xyPadFixturePositions(w))
+            {
+                QJsonObject o;
+                o.insert(QStringLiteral("x"), p.x());
+                o.insert(QStringLiteral("y"), p.y());
+                positions.append(o);
+            }
+            obj.insert(QStringLiteral("fixturePositions"), positions);
+        }
+        break;
+        case VCWidget::SliderWidget:
+        {
+            // seed of vc.slider.monitorValueChanged
+            VCSlider *slider = qobject_cast<VCSlider *>(w);
+            obj.insert(QStringLiteral("monitorValue"), slider->monitorValue());
+            obj.insert(QStringLiteral("isOverriding"), slider->isOverriding());
         }
         break;
         case VCWidget::ClockWidget:

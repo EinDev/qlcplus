@@ -239,6 +239,8 @@
             momentary flash button (requires adjustFlashEnabled in the widget's config). Live (§4b),
             mirrors vc.button.press's Flash semantics. -> ack. */
         flash: function (widgetId, on) { return self.call('vc.slider.flash', { widgetId: widgetId, 'on': !!on }); },
+        /** Level slider with monitoring: stop overriding and follow the channels again (the red X). -> ack */
+        resetOverride: function (widgetId) { return self.call('vc.slider.resetOverride', { widgetId: widgetId }); },
         /** widgetId: string. channels: [{fixtureId, channel}] — bulk replace of the whole Level-
             mode channel list. baseRevision: integer. Document-state. -> {docRevision}. NOTE: no
             dedicated *Changed event was found for this mutation in the fragment (only vc.widget.
@@ -573,6 +575,7 @@
     'vc.slider.monitorValueChanged',       // subscribe-gated: ~per-DMX-frame while monitoring
     'vc.xyPad.positionChanged',            // subscribe-gated: continuous drag
     'vc.xyPad.floorPositionChanged',       // subscribe-gated: continuous drag
+    'vc.xyPad.fixturePositionsChanged',    // subscribe-gated: where the heads point, follows the output
     'vc.xyPad.activePresetChanged',
     'vc.frame.currentPageChanged',
     'vc.frame.pageChanged',                // web UI contract name (2026-09): {widgetId, page}

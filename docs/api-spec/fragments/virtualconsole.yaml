@@ -1901,7 +1901,9 @@ messages:
       - data
       description: 'Level-mode + monitorEnabled only: the live DMX value read back from the slider''s
         configured channels (which may differ from the slider''s own $value when not overriding - e.g.
-        another source is driving those channels). Subscribe-gated, see notes.md.
+        another source is driving those channels). Subscribe-gated, see notes.md. Also sent when
+        isOverriding changes (the operator moved the fader, or vc.slider.resetOverride); vc.widget.get /
+        list seed both fields.
 
         '
       properties:
@@ -1959,6 +1961,82 @@ messages:
       oneOf:
       - $ref: '#/components/messages/GenericAckResponse/payload'
       - $ref: '#/components/messages/ErrorResponse/payload'
+  VcSliderResetOverrideRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.slider.resetOverride
+        params:
+          type: object
+          required:
+          - widgetId
+          description: VCSlider::setIsOverriding(false) - VCSliderItem.qml's red X button. A Level slider
+            with monitorEnabled that the operator moved by hand stops overriding and follows its monitored
+            channels again (vc.slider.monitorValueChanged reports isOverriding false). Live, no
+            baseRevision; INVALID_STATE for a slider that is not in Level mode with monitoring, or disabled.
+          properties:
+            widgetId:
+              type: string
+  VcSliderResetOverrideResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/GenericAckResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcXyPadFixturePositionsChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      description: 'VCXYPad::fixturePositions() changed: where each controlled head really points, read
+        back from the universe output (pan / tilt range, reverse flags and the pad''s inverted Y applied)
+        - the yellow dots of VCXYPadItem.qml. One entry per head, in the pad''s fixture order; empty in
+        floor mode. Follows the output while the heads move: subscribe-gated. vc.widget.get / list seed
+        it as fixturePositions.
+
+        '
+      properties:
+        type:
+          const: event
+        topic:
+          const: vc.xyPad.fixturePositionsChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - widgetId
+          - positions
+          properties:
+            widgetId:
+              type: string
+            positions:
+              type: array
+              items:
+                type: object
+                required:
+                - x
+                - y
+                properties:
+                  x:
+                    type: number
+                    description: 0.0 (left) .. 1.0 (right) of the pad area
+                  y:
+                    type: number
+                    description: 0.0 (top) .. 1.0 (bottom) of the pad area
   VcSliderSetLevelChannelsRequest:
     payload:
       type: object
@@ -4398,6 +4476,11 @@ schemas:
         type: string
       pointSize:
         type: number
+        description: QFont::pointSize(); -1 when the font is sized in pixels (the default widget font
+          is), then pixelSize carries the size. Writing pointSize switches the font to points.
+      pixelSize:
+        type: number
+        description: Read-only. QFont::pixelSize(), -1 when the font is sized in points.
       bold:
         type: boolean
       italic:
@@ -5838,6 +5921,24 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/vcSliderFlashResponse'
+  sendVcSliderResetOverride:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcSliderResetOverrideRequest'
+  receiveVcSliderResetOverrideResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcSliderResetOverrideResponse'
+  receiveVcXyPadFixturePositionsChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcXyPadFixturePositionsChangedEvent'
   sendVcSliderSetLevelChannels:
     action: send
     channel:

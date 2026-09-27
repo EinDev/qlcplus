@@ -490,6 +490,9 @@ function VCWidgetProperties({ widgets, functions }) {
   const style = w.style || {};
   const cfg = w.typeConfig || {};
   const font = style.font || {};
+  /* A font patch as the server takes it: pixelSize is read-only and a pointSize of -1 (pixel-sized
+     default font) must not be written back (QFont::setPointSize refuses it). */
+  const fontPatch = (patch) => { const f = Object.assign({}, font, patch); delete f.pixelSize; if (!(f.pointSize > 0)) delete f.pointSize; return f; };
   /* A multi-selection is styled with ONE vc.widget.bulkStyle (VirtualConsole::setWidgetsCaption/Font/...). */
   const setStyle = (patch) => many && e.bulkStyle ? e.bulkStyle(widgets.map(x => x.id), patch) : widgets.forEach(x => e.updateWidget(x.id, { style: patch }));
   const setConfig = (patch) => e.setConfig(w.id, patch);
@@ -512,14 +515,25 @@ function VCWidgetProperties({ widgets, functions }) {
               <CustomTextInput key={w.id + ':' + (style.caption || '')} text={style.caption || ''} editing width="100%" height={22} onTextConfirmed={(t) => { if (t !== (style.caption || '')) setStyle({ caption: t }); }} style={{ fontSize: 'var(--text-size-small)' }} />
             </span>
           </PropRow>
-          <PropRow label="Background color"><ColorField value={style.backgroundColor} onChange={(c) => setStyle({ backgroundColor: c })} /></PropRow>
+          <PropRow label="Background color"><span data-vc-color="background" style={{ display: 'contents' }}><ColorField value={style.backgroundColor} onChange={(c) => setStyle({ backgroundColor: c })} /></span></PropRow>
           {window.VCBackgroundImageRow ? <window.VCBackgroundImageRow widgets={widgets} setStyle={setStyle} PropRow={PropRow} /> : null}
           {!many && window.VCZIndexRow ? <window.VCZIndexRow w={w} PropRow={PropRow} /> : null}
-          <PropRow label="Foreground color"><ColorField value={style.foregroundColor} onChange={(c) => setStyle({ foregroundColor: c })} /></PropRow>
+          <PropRow label="Foreground color"><span data-vc-color="foreground" style={{ display: 'contents' }}><ColorField value={style.foregroundColor} onChange={(c) => setStyle({ foregroundColor: c })} /></span></PropRow>
+          {/* VCWidgetProperties.qml's font dialog: family, size, bold / italic */}
           <PropRow label="Font">
-            <CustomSpinBox value={font.pointSize || 12} from={6} to={72} width={64} height={24} suffix="pt" onValueModified={(v) => setStyle({ font: Object.assign({}, font, { pointSize: v }) })} />
-            <CustomCheckBox checked={!!font.bold} size={22} onToggled={(b) => setStyle({ font: Object.assign({}, font, { bold: b }) })} tooltip="Bold" />
-            <RobotoText label="Bold" fontSize="var(--text-size-small)" height="auto" />
+            <span data-vc-font-family="" style={{ flex: 1, display: 'flex', alignItems: 'center', height: 26, background: 'var(--bg-control)', border: '1px solid var(--spin-border)', borderRadius: 'var(--radius-spin)', padding: '0 5px', minWidth: 0 }}
+              title="Font family (a font installed on the machine running QLC+)">
+              <CustomTextInput key={w.id + ':f:' + (font.family || '')} text={font.family || ''} editing width="100%" height={22} placeholder="Roboto Condensed"
+                onTextConfirmed={(t) => { if (t.trim() && t.trim() !== (font.family || '')) setStyle({ font: fontPatch({ family: t.trim() }) }); }}
+                style={{ fontSize: 'var(--text-size-small)', fontFamily: font.family ? '"' + font.family + '", var(--font-roboto)' : undefined }} />
+            </span>
+          </PropRow>
+          <PropRow label="">
+            <span data-vc-font-size=""><CustomSpinBox value={font.pointSize > 0 ? font.pointSize : font.pixelSize > 0 ? Math.round(font.pixelSize * 0.75) : 12} from={6} to={72} width={64} height={24} suffix="pt" onValueModified={(v) => setStyle({ font: fontPatch({ pointSize: v }) })} /></span>
+            <span data-vc-font-bold=""><CustomCheckBox checked={!!font.bold} size={22} onToggled={(b) => setStyle({ font: fontPatch({ bold: b }) })} tooltip="Bold" /></span>
+            <RobotoText label="Bold" fontSize="var(--text-size-small)" height="auto" style={{ flex: 'none' }} />
+            <span data-vc-font-italic=""><CustomCheckBox checked={!!font.italic} size={22} onToggled={(b) => setStyle({ font: fontPatch({ italic: b }) })} tooltip="Italic" /></span>
+            <RobotoText label="Italic" fontSize="var(--text-size-small)" height="auto" style={{ flex: 'none', fontStyle: 'italic' }} />
           </PropRow>
         </div>
       ))}

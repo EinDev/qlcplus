@@ -300,10 +300,11 @@ and a second tab checked for the pushed event:
   table with the MIDI channel / message / parameter mapping, behaviour, sensitivity, custom
   feedback, colour table, MIDI channel labels, save / reopen / delete - the `.qxi` lands in the
   QLC+ host's user profile folder, `QLCPLUS_USER_INPUTPROFILE_DIR` in a sandbox) with channel
-  auto-detection over `io.inputProfile.learn.*`. Built but only unit-tested (the sandbox has no
-  IO plugins): the per-patch parameter editor (`io/PatchProperties.jsx`, `io.patch.setParameters`,
-  plus "Configure plugin" which opens the plugin's native dialog on the QLC+ host and "Rescan"),
-  per-output pause / blackout, extra output lines per universe, feedback lines, profile assignment.
+  auto-detection over `io.inputProfile.learn.*`. Driven for real through the Loopback plugin on
+  2026-09-27 (see the partials entry below): output / extra output / input / feedback lines,
+  per-output pause / blackout, profile assignment, learn, Rescan. Still only unit-tested: the
+  per-patch parameter editor for network plugins (`io/PatchProperties.jsx`, `io.patch.setParameters`)
+  and "Configure plugin" (opens the plugin's native dialog on the QLC+ host; Loopback has neither).
 - **Toolbar**: Stop all with the running count, BPM set / tap / off with the beat pulse, Undo /
   Redo (desktop history), Design / Operate mode, New / Open / Save / Save as (server-side paths,
   discard prompt when the project is modified).
@@ -365,6 +366,26 @@ and a second tab checked for the pushed event:
   degrees, Position 3D in metres (they were percent / percent / millimetres before, which the
   engine read as DMX / degrees / metres).
 
+- **Partial rows, VC / Show / I/O** (2026-09-27, driver `tools/e2e/partials-vc.js` against a
+  `partialsvc` sandbox on 9330/9331 started with `-Plugins loopback`; the Loopback plugin's outputs
+  feed its own inputs, so real I/O is read back through passthrough universes): I/O - output patch,
+  a second output on the same universe, input patches, per-output pause (the frame is held) and
+  blackout (intensity zeroed on that output only), a universe added from the toolbar receiving data
+  at once, feedback line, input profile assignment, profile learn from a real signal, plugin Rescan /
+  lines, audio input sample rate / channels, output buffer size and device, and the input signal
+  level meter (`io.audio.setConfig`, `io.audio.inputPreview.set`; the sandbox keeps its settings in
+  `<sandbox>\Settings`, never in the host's registry). Virtual Console - external-control
+  auto-detection from a real input signal, custom feedback with the profile's colour table and MIDI
+  channel routing, feedback values arriving on the feedback line; Operate-mode keys for cue list
+  (play / next / previous / stop), speed dial (tap / multiply / divide / reset), slider flash and
+  animation (intensity, colour preset); the Level slider's monitor bar and override reset; Click & Go
+  colours and presets; frame collapse (the frame shrinks to its header); animation colour swatch and
+  knob; XY pad Universes tab, fixture removal, head position dots and inverted Y; audio triggers VC
+  widget bar and volume; slider display style / knob / Submaster / Grand Master value and channel
+  mode / value limits; widget colours, font family / size / bold / italic, align right / bottom,
+  distribute vertically, bulk colours and font. Show Manager - create a Show with "+", move tracks
+  up / down, delete a track (with confirmation when it has items), the Timings panel (start / end /
+  duration), align start / end to the cursor, Cut time, snap to grid, markers (time division), zoom.
 - **Fixture Editor** (2026-09-27, `FixtureEditor.jsx` + `fixtureeditor/*.jsx`, Ctrl+6, over
   `fixturedefs.*`; driver `tools/e2e/fixture-editor.js` against a `fixdefs` sandbox on ports
   9200/9201 started with `dev-webui-sandbox.ps1 -UserFixtureDir C:\qlcsandbox\fixdefs\UserFixtures`,

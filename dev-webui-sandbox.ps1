@@ -11,6 +11,9 @@
   -d --api --webui on the given ports, serving the web UI straight from a source tree. stdout/stderr
   go to a timestamped log in the sandbox directory. Waits until the API port accepts connections.
 
+  Application settings (QSettings: audio devices, UI settings, ...) go to <sandbox>\Settings
+  (QLCPLUS_SETTINGS_DIR), never to the registry the real QLC+ reads.
+
   Reading from C:\qlcplus is all this script does to the live install. Never point -ApiPort/-WebUiPort
   at 9010/9011 (the live instance).
 
@@ -33,6 +36,10 @@
 .PARAMETER UserModifiersDir  Same for the user channel modifier templates (QLCPLUS_USER_MODIFIERS_DIR): created on
                        first use as a copy of %UserProfile%\QLC+\ModifiersTemplates, so fixtures.modifiers.save /
                        rename / delete never touch the real folder. Pass "" (default) to leave it unset.
+.PARAMETER Plugins     IO plugins to put into the sandbox's Plugins\ folder, from <BuildDir>\plugins\<name>\src\<name>.dll.
+                       Only "loopback" is allowed (its outputs feed its own inputs, nothing leaves the machine);
+                       anything else is refused. Plugins\ is re-synced on every launch, so a sandbox started
+                       without -Plugins has none again.
 
 .EXAMPLE
   .\dev-webui-sandbox.ps1 -Name efx -BuildDir .\build -WebUiRoot .\webui -ApiPort 9120 -WebUiPort 9121
@@ -49,7 +56,8 @@ param(
     [switch]$NoLaunch,
     [switch]$ShowWindow,
     [string]$UserFixtureDir = "",
-    [string]$UserModifiersDir = ""
+    [string]$UserModifiersDir = "",
+    [string[]]$Plugins = @()
 )
 
 $ErrorActionPreference = "Stop"
@@ -109,6 +117,20 @@ foreach ($pair in @(@($exeSrc, (Join-Path $dest $exeName)), @($dllSrc, (Join-Pat
     }
 }
 
+# IO plugins: exactly the requested whitelisted ones, nothing else (see -Plugins).
+$allowedPlugins = @("loopback")
+$bad = @($Plugins | Where-Object { $_ -notin $allowedPlugins })
+if ($bad.Count) { throw "Plugin(s) not allowed in a sandbox: $($bad -join ', '). Only: $($allowedPlugins -join ', ')" }
+$pluginDir = Join-Path $dest "Plugins"
+if (Test-Path $pluginDir) { Get-ChildItem $pluginDir -Filter *.dll | Remove-Item -Force }
+foreach ($pl in $Plugins) {
+    $src = Join-Path $BuildDir "plugins\$pl\src\$pl.dll"
+    if (-not (Test-Path $src)) { throw "Missing plugin $src (build the '$pl' target first)" }
+    New-Item -ItemType Directory -Force $pluginDir | Out-Null
+    Copy-Item $src (Join-Path $pluginDir "$pl.dll") -Force
+    Write-Host "Plugin: $pl"
+}
+
 # Strip every patch so nothing is ever output, even if a plugin somehow loads.
 $xml = Get-Content $Project -Raw
 $stripped = [regex]::Replace($xml, '^\s*<(Output|Input|Feedback)\b[^>]*/>\s*\r?\n', '', 'Multiline')
@@ -162,6 +184,10 @@ if ($UserModifiersDir) {
     $env:QLCPLUS_USER_MODIFIERS_DIR = (Resolve-Path $UserModifiersDir).Path
     Write-Host "User modifier templates: $env:QLCPLUS_USER_MODIFIERS_DIR"
 }
+# Application settings (QSettings) in <sandbox>\Settings\*.ini instead of the registry the real
+# QLC+ reads (qmlui/main.cpp honours this variable).
+$prevSettingsDir = $env:QLCPLUS_SETTINGS_DIR
+$env:QLCPLUS_SETTINGS_DIR = Join-Path $dest "Settings"
 try {
     # Minimized by default so test runs don't pop windows over the user's desktop (the web UI is
     # driven headlessly; nobody needs to see the desktop window). -ShowWindow opens it normally.
@@ -169,6 +195,8 @@ try {
     $p = Start-Process -FilePath (Join-Path $dest $exeName) -ArgumentList $args -WorkingDirectory $dest `
         -RedirectStandardOutput $out -RedirectStandardError $err -PassThru -WindowStyle $windowStyle
 } finally {
+    if ($null -eq $prevSettingsDir) { Remove-Item Env:\QLCPLUS_SETTINGS_DIR -ErrorAction SilentlyContinue }
+    else { $env:QLCPLUS_SETTINGS_DIR = $prevSettingsDir }
     if ($null -eq $prevProfileDir) { Remove-Item Env:\QLCPLUS_USER_INPUTPROFILE_DIR -ErrorAction SilentlyContinue }
     else { $env:QLCPLUS_USER_INPUTPROFILE_DIR = $prevProfileDir }
     if ($null -eq $prevFixtureDir) { Remove-Item Env:\QLCPLUS_USER_FIXTURE_DIR -ErrorAction SilentlyContinue }

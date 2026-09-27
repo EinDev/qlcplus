@@ -46,6 +46,7 @@ private slots:
     void helloReturnsWelcome();
     void requestBeforeHelloIsUnauthorized();
     void universeCreateBumpsRevision();
+    void universeCreateStartsTheUniverseThread();
     void universeCreateWithStaleRevisionConflicts();
     void grandMasterSetValueBroadcastsLiveEvent();
     void blackoutToggleBroadcastsLiveEvent();

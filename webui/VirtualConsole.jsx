@@ -385,7 +385,10 @@ function VirtualConsole() {
     Object.keys(byParent).forEach(k => byParent[k].sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0)));
     const render = (parentKey) => (byParent[parentKey] || []).filter(w => w.isVisible !== false).map(w => {
       const g = dragGeom[w.id] || w.geometry || { x: 0, y: 0, width: 100, height: 40 };
-      const box = { position: 'absolute', left: g.x, top: g.y, width: g.width, height: g.height, boxSizing: 'border-box', zIndex: w.zIndex || 0 };
+      /* VCFrameItem.qml: a collapsed frame shrinks to its header strip (2 x bigItemHeight wide, one
+         list item high); the stored geometry is kept for when it expands again. */
+      const collapsed = (w.widgetType === 'Frame' || w.widgetType === 'SoloFrame') && w.typeConfig && w.typeConfig.isCollapsed;
+      const box = { position: 'absolute', left: g.x, top: g.y, width: collapsed ? 188 : g.width, height: collapsed ? 26 : g.height, boxSizing: 'border-box', zIndex: w.zIndex || 0 };
       /* VcFrameConfig.showHeader when the server exposes it; otherwise a frame whose children start
          inside the 26px header band runs headerless in the desktop app. A collapsed frame shows only
          its header (VCFrameItem.qml hides the whole body). */

@@ -873,6 +873,78 @@ void ApiIoConfigDomain_Test::audioSetDefaultDeviceRoundTrips()
     QVERIFY(settings.contains(QStringLiteral("audio/output")) == false);
 }
 
+void ApiIoConfigDomain_Test::audioSetConfigWritesSettingsAndBroadcasts()
+{
+    hello(m_client);
+
+    // defaults (no keys set: init() removed the audio group)
+    QJsonObject result = sendAndWaitForReply(QStringLiteral("io.audio.listDevices"), QJsonObject()).value(QStringLiteral("result")).toObject();
+    QCOMPARE(result.value(QStringLiteral("inputSampleRate")).toInt(), 44100);
+    QCOMPARE(result.value(QStringLiteral("inputChannels")).toInt(), 1);
+    QCOMPARE(result.value(QStringLiteral("outputBufferMs")).toInt(), 100);
+
+    QSignalSpy spy(m_client, &QWebSocket::textMessageReceived);
+    QJsonObject params;
+    params.insert(QStringLiteral("inputSampleRate"), 48000);
+    params.insert(QStringLiteral("inputChannels"), 2);
+    params.insert(QStringLiteral("outputBufferMs"), 250);
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("io.audio.setConfig"), params).value(QStringLiteral("ok")).toBool(), true);
+    QVERIFY(QTest::qWaitFor([&]() { return eventsWithTopic(spy, QStringLiteral("io.audio.configChanged")).count() >= 1; }, 2000));
+    QJsonObject data = eventsWithTopic(spy, QStringLiteral("io.audio.configChanged")).first().value(QStringLiteral("data")).toObject();
+    QCOMPARE(data.value(QStringLiteral("inputSampleRate")).toInt(), 48000);
+    QCOMPARE(data.value(QStringLiteral("inputChannels")).toInt(), 2);
+    QCOMPARE(data.value(QStringLiteral("outputBufferMs")).toInt(), 250);
+
+    // the same keys InputOutputManager / AudioCapture / AudioRenderer read
+    QSettings settings;
+    QCOMPARE(settings.value(QStringLiteral("audio/samplerate")).toInt(), 48000);
+    QCOMPARE(settings.value(QStringLiteral("audio/channels")).toInt(), 2);
+    QCOMPARE(settings.value(QStringLiteral("audio/outputBufferMs")).toInt(), 250);
+    result = sendAndWaitForReply(QStringLiteral("io.audio.listDevices"), QJsonObject()).value(QStringLiteral("result")).toObject();
+    QCOMPARE(result.value(QStringLiteral("inputSampleRate")).toInt(), 48000);
+
+    // back to a default value removes the key, like InputOutputManager's setters
+    params = QJsonObject();
+    params.insert(QStringLiteral("inputSampleRate"), 44100);
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("io.audio.setConfig"), params).value(QStringLiteral("ok")).toBool(), true);
+    settings.sync();
+    QVERIFY(settings.contains(QStringLiteral("audio/samplerate")) == false);
+    QCOMPARE(settings.value(QStringLiteral("audio/channels")).toInt(), 2); // untouched
+
+    // invalid values change nothing
+    const QList<QPair<QString, int>> bad = { { QStringLiteral("inputSampleRate"), 12345 }, { QStringLiteral("inputChannels"), 3 },
+                                             { QStringLiteral("outputBufferMs"), 5 }, { QStringLiteral("outputBufferMs"), 2000 } };
+    for (const auto &b : bad)
+    {
+        params = QJsonObject();
+        params.insert(b.first, b.second);
+        QJsonObject reply = sendAndWaitForReply(QStringLiteral("io.audio.setConfig"), params);
+        QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("INVALID_PARAMS"));
+    }
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("io.audio.setConfig"), QJsonObject())
+                 .value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("INVALID_PARAMS"));
+    settings.sync();
+    QCOMPARE(settings.value(QStringLiteral("audio/outputBufferMs")).toInt(), 250);
+}
+
+void ApiIoConfigDomain_Test::audioInputPreviewValidatesAndStops()
+{
+    // Only the paths that do not open the host's sound card: turning the preview on needs a real
+    // audio input (covered end to end by webui/tools/e2e/partials-vc.js).
+    hello(m_client);
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("io.audio.inputPreview.set"), QJsonObject());
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("INVALID_PARAMS"));
+    QJsonObject params;
+    params.insert(QStringLiteral("enabled"), QStringLiteral("yes"));
+    reply = sendAndWaitForReply(QStringLiteral("io.audio.inputPreview.set"), params);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("INVALID_PARAMS"));
+
+    params.insert(QStringLiteral("enabled"), false);
+    reply = sendAndWaitForReply(QStringLiteral("io.audio.inputPreview.set"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(reply.value(QStringLiteral("result")).toObject().value(QStringLiteral("capturing")).toBool(), false);
+}
+
 /*********************************************************************
  * io.simpleDesk.sendKeypadCommand (ApiIoDomain)
  *********************************************************************/

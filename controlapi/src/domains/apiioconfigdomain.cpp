@@ -405,6 +405,17 @@ QJsonObject audioDeviceToJson(const QString &name, const QString &privateName)
     return obj;
 }
 
+/** PopupAudioConfiguration.qml's values, from the QSettings keys InputOutputManager uses. */
+QJsonObject audioConfigToJson()
+{
+    QSettings settings;
+    QJsonObject obj;
+    obj.insert(QStringLiteral("inputSampleRate"), settings.value(QLatin1String(SETTINGS_AUDIO_INPUT_SRATE), AUDIO_DEFAULT_SAMPLE_RATE).toInt());
+    obj.insert(QStringLiteral("inputChannels"), settings.value(QLatin1String(SETTINGS_AUDIO_INPUT_CHANNELS), AUDIO_DEFAULT_CHANNELS).toInt());
+    obj.insert(QStringLiteral("outputBufferMs"), settings.value(QLatin1String(SETTINGS_AUDIO_OUTPUT_BUFFER), DEFAULT_AUDIO_OUTPUT_BUFFER_MS).toInt());
+    return obj;
+}
+
 } // namespace
 
 ApiIoConfigDomain::ApiIoConfigDomain(Doc *doc, ApiServer *server, ApiIoDomain *ioDomain, QObject *parent)
@@ -428,6 +439,8 @@ ApiIoConfigDomain::ApiIoConfigDomain(Doc *doc, ApiServer *server, ApiIoDomain *i
 ApiIoConfigDomain::~ApiIoConfigDomain()
 {
     stopLearning();
+    m_previewSessions.clear();
+    detachAudioPreview();
 }
 
 void ApiIoConfigDomain::registerMethods()
@@ -928,6 +941,66 @@ void ApiIoConfigDomain::stopLearning()
     m_learnProfileName.clear();
 }
 
+void ApiIoConfigDomain::attachAudioPreview()
+{
+    if (m_previewCapture.isNull() == false)
+        return;
+    m_previewCapture = m_doc->audioInputCapture();
+    if (m_previewCapture.isNull())
+        return;
+    // AudioCapture lives in the engine's audio library: string-based connect (see CLAUDE.md), and
+    // dataProcessed comes from the capture thread, so this is a queued connection.
+    connect(m_previewCapture.data(), SIGNAL(dataProcessed(double*,int,double,quint32)),
+            this, SLOT(slotAudioPreviewData(double*,int,double,quint32)));
+    m_previewCapture->registerBandsNumber(FREQ_SUBBANDS_DEFAULT_NUMBER);
+    m_previewThrottle.invalidate();
+}
+
+void ApiIoConfigDomain::detachAudioPreview()
+{
+    if (m_previewCapture.isNull())
+        return;
+    m_previewCapture->unregisterBandsNumber(FREQ_SUBBANDS_DEFAULT_NUMBER);
+    disconnect(m_previewCapture.data(), SIGNAL(dataProcessed(double*,int,double,quint32)),
+               this, SLOT(slotAudioPreviewData(double*,int,double,quint32)));
+    m_previewCapture.clear();
+}
+
+void ApiIoConfigDomain::restartAudioPreview()
+{
+    const bool running = m_previewCapture.isNull() == false;
+    detachAudioPreview();
+    m_doc->destroyAudioCapture();
+    if (running)
+        attachAudioPreview();
+}
+
+void ApiIoConfigDomain::slotAudioPreviewData(double *spectrumBands, int size, double maxMagnitude, quint32 power)
+{
+    Q_UNUSED(spectrumBands)
+    Q_UNUSED(size)
+    Q_UNUSED(maxMagnitude)
+    if (m_previewThrottle.isValid() && m_previewThrottle.elapsed() < 50)
+        return;
+    m_previewThrottle.restart();
+
+    QJsonObject data;
+    data.insert(QStringLiteral("level"), int(qMin(power, quint32(0x7FFF))));
+    for (const QPointer<ApiSession> &s : m_previewSessions)
+    {
+        if (s.isNull() == false)
+            s->send(ApiEnvelope::buildEvent(QStringLiteral("io.audio.inputLevel"), data, QString()));
+    }
+}
+
+void ApiIoConfigDomain::slotPreviewSessionDisconnected(ApiSession *session)
+{
+    m_previewSessions.removeAll(session);
+    m_previewSessions.removeAll(QPointer<ApiSession>());
+    if (m_previewSessions.isEmpty())
+        detachAudioPreview();
+}
+
 void ApiIoConfigDomain::slotLearnSessionDisconnected(ApiSession *session)
 {
     if (m_learnSession == session)
@@ -1068,6 +1141,98 @@ void ApiIoConfigDomain::registerAudioMethods()
         result.insert(QStringLiteral("outputs"), outputs);
         result.insert(QStringLiteral("inputDevice"), inputDevice.isEmpty() ? AUDIO_DEFAULT_DEVICE : inputDevice);
         result.insert(QStringLiteral("outputDevice"), outputDevice.isEmpty() ? AUDIO_DEFAULT_DEVICE : outputDevice);
+        const QJsonObject config = audioConfigToJson();
+        for (auto it = config.begin(); it != config.end(); ++it)
+            result.insert(it.key(), it.value());
+        session->send(ApiEnvelope::buildOkResponse(id, result));
+    });
+
+    // io.audio.setConfig {inputSampleRate?, inputChannels?, outputBufferMs?} -> {}
+    // PopupAudioConfiguration.qml's fields, written exactly like InputOutputManager's setters:
+    // host-wide QSettings (the default value removes the key), and a changed input format tears
+    // the running audio capture down so the next user re-opens it with the new format.
+    dispatcher->registerMethod(QStringLiteral("io.audio.setConfig"), [doc, this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        static const QList<int> sampleRates = { 8000, 11025, 22050, 32000, 44100, 48000 };
+        const bool hasRate = params.contains(QStringLiteral("inputSampleRate"));
+        const bool hasChannels = params.contains(QStringLiteral("inputChannels"));
+        const bool hasBuffer = params.contains(QStringLiteral("outputBufferMs"));
+        const int rate = params.value(QStringLiteral("inputSampleRate")).toInt(-1);
+        const int channels = params.value(QStringLiteral("inputChannels")).toInt(-1);
+        const int buffer = params.value(QStringLiteral("outputBufferMs")).toInt(-1);
+        QString problem;
+        if (hasRate == false && hasChannels == false && hasBuffer == false)
+            problem = QStringLiteral("Nothing to set: pass inputSampleRate, inputChannels and/or outputBufferMs");
+        else if (hasRate && sampleRates.contains(rate) == false)
+            problem = QStringLiteral("inputSampleRate must be one of 8000, 11025, 22050, 32000, 44100, 48000");
+        else if (hasChannels && channels != 1 && channels != 2)
+            problem = QStringLiteral("inputChannels must be 1 (mono) or 2 (stereo)");
+        else if (hasBuffer && (buffer < 10 || buffer > 1000))
+            problem = QStringLiteral("outputBufferMs must be 10..1000");
+        if (problem.isEmpty() == false)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams, problem));
+            return;
+        }
+
+        QSettings settings;
+        auto write = [&settings](const char *key, int value, int defaultValue)
+        {
+            if (settings.value(QLatin1String(key), defaultValue).toInt() == value)
+                return false;
+            if (value == defaultValue)
+                settings.remove(QLatin1String(key));
+            else
+                settings.setValue(QLatin1String(key), value);
+            return true;
+        };
+        bool inputChanged = false, changed = false;
+        if (hasRate && write(SETTINGS_AUDIO_INPUT_SRATE, rate, AUDIO_DEFAULT_SAMPLE_RATE))
+            inputChanged = true;
+        if (hasChannels && write(SETTINGS_AUDIO_INPUT_CHANNELS, channels, AUDIO_DEFAULT_CHANNELS))
+            inputChanged = true;
+        if (hasBuffer && write(SETTINGS_AUDIO_OUTPUT_BUFFER, buffer, DEFAULT_AUDIO_OUTPUT_BUFFER_MS))
+            changed = true;
+        settings.sync();
+        if (inputChanged)
+            restartAudioPreview(); // Doc::destroyAudioCapture(), re-opening a running preview
+
+        session->send(ApiEnvelope::buildOkResponse(id, QJsonObject()));
+        if (inputChanged || changed)
+            m_server->broadcast(QStringLiteral("io.audio.configChanged"), audioConfigToJson(), session->clientId(), false);
+    });
+
+    // io.audio.inputPreview.set {enabled} -> {}
+    // PopupAudioConfiguration.qml's "Signal level" check (InputOutputManager::enableAudioInputPreview):
+    // while at least one client has it on, the host's audio input runs and every previewing client
+    // gets io.audio.inputLevel (~20/s). Per client; a disconnect ends that client's preview.
+    dispatcher->registerMethod(QStringLiteral("io.audio.inputPreview.set"), [this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        QJsonValue enabled = params.value(QStringLiteral("enabled"));
+        if (enabled.isBool() == false)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams,
+                QStringLiteral("enabled (boolean) is required")));
+            return;
+        }
+        m_previewSessions.removeAll(QPointer<ApiSession>());
+        const bool had = m_previewSessions.contains(session);
+        if (enabled.toBool() && had == false)
+        {
+            m_previewSessions.append(session);
+            connect(session, &ApiSession::disconnected, this, &ApiIoConfigDomain::slotPreviewSessionDisconnected, Qt::UniqueConnection);
+        }
+        else if (enabled.toBool() == false && had)
+        {
+            m_previewSessions.removeAll(session);
+        }
+        if (m_previewSessions.isEmpty())
+            detachAudioPreview();
+        else
+            attachAudioPreview();
+
+        QJsonObject result;
+        result.insert(QStringLiteral("capturing"), m_previewCapture.isNull() == false);
         session->send(ApiEnvelope::buildOkResponse(id, result));
     });
 
@@ -1109,7 +1274,7 @@ void ApiIoConfigDomain::registerAudioMethods()
         else
             settings.setValue(QLatin1String(key), privateName);
         if (isInput)
-            doc->destroyAudioCapture();
+            restartAudioPreview(); // Doc::destroyAudioCapture(), re-opening a running preview
 
         session->send(ApiEnvelope::buildOkResponse(id, QJsonObject()));
 

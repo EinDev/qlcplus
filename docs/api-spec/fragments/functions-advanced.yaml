@@ -4845,7 +4845,7 @@ schemas:
         description: Read-only here (Video::muted()); no API setter yet
       resolution:
         type: object
-        description: Detected source resolution, absent until the host probed the file
+        description: Read-only, detected from the source; absent until the host probed the file
         properties:
           width:
             type: integer
@@ -4856,50 +4856,10 @@ schemas:
         description: Video::totalDuration(); 0 for a picture or an unprobed source
       videoCodec:
         type: string
-      audioCodec:
-        type: string
-      resolution:
-        type: object
-        description: Read-only, detected from the source
-        properties:
-          width:
-            type: integer
-          height:
-            type: integer
-      videoCodec:
-        type: string
         description: Read-only, detected
       audioCodec:
         type: string
         description: Read-only, detected
-      customGeometry:
-        type:
-        - object
-        - 'null'
-        properties:
-          x:
-            type: integer
-          y:
-            type: integer
-          width:
-            type: integer
-          height:
-            type: integer
-      rotation:
-        type: object
-        properties:
-          x:
-            type: number
-          y:
-            type: number
-          z:
-            type: number
-      zIndex:
-        type: integer
-      screen:
-        type: integer
-      fullscreen:
-        type: boolean
   FunctionsRgbMatrixDetail:
     type: object
     required:

@@ -595,3 +595,33 @@ event rather than caching it across a mutation.
 - Global BPM message gap (`io.bpm.*` / `core.bpm.*` - see Cross-domain
   touch points above) - not this fragment's resource to define, but
   `vc.speedDial.tap` depends on it existing somewhere for full fidelity.
+
+## Implemented 2026-09-27: slider monitor readback, override reset, XY pad head positions, fonts
+
+- **`vc.slider.monitorValueChanged`** was specified but never sent; it is now (subscribe-gated) for
+  `VCSlider::monitorValueChanged` and `isOverridingChanged` (Level mode + `monitorEnabled`):
+  `{widgetId, monitorValue, isOverriding}`. `vc.widget.get` / `list` seed both fields. The relay is
+  queued onto the GUI thread (the monitor value is computed in `writeDMXLevel()` on the MasterTimer
+  thread). Arrives through `ApiVcLiveListenerExt::vcSliderMonitorChanged` (non-pure, default no-op, so
+  other hosts do not have to implement it).
+- **NEW `vc.slider.resetOverride`** (live): `VCSlider::setIsOverriding(false)`, the red X of
+  VCSliderItem.qml. INVALID_STATE unless the slider is in Level mode with monitoring.
+- **NEW `vc.xyPad.fixturePositionsChanged`** (subscribe-gated) with `positions[{x, y}]` in 0..1 of the
+  pad area: `VCXYPad::fixturePositions()`, read back from the output, so pan / tilt range, reverse
+  flags and `invertedAppearance` are applied - the yellow dots of VCXYPadItem.qml. Seeded as
+  `fixturePositions`. Note on inverted Y: in the desktop the pad's own cursor is not flipped; inverting
+  changes the DMX written (`y = 1 - y`) and the read-back maps it back, so a full-range head's dot stays
+  under the cursor and the visible difference is the tilt output (and the dots of heads with a custom
+  range / reverse).
+- **Click & Go** needs no new method: the colours go through `setConfig`'s `cngPrimaryColor` /
+  `cngSecondaryColor` (already `setClickAndGoColors()`, fader to 128), a preset is a `vc.slider.setValue`
+  inside the chosen capability's range (the web UI reads the capabilities through `fixtures.defs.*`).
+- **`VcFont.pixelSize`** (read-only): the default widget font is sized in pixels, so its `pointSize`
+  is -1; clients use `pixelSize` then, and must not write a pointSize <= 0 back.
+- **Animation external controls**: VCAnimation registers each preset control under the preset's own
+  id (31 and up), unlike VCXYPad / VCSpeedDial (`30 + presetId`). A client mapping a key binding's
+  `controlId` to a preset must use the widget type's rule (the web UI applied the wrong preset before).
+- **Deleting widgets over the API** no longer leaves the operator's other selected widgets in
+  `isEditing` (they ignored MIDI and keys until reselected): `VirtualConsole::deleteVCWidgets()`
+  removes only the deleted widgets from the selection (unit-tested helper `vcselectionprune.h`; the
+  VirtualConsole itself needs a QQuickView + ContextManager, so the fix is not unit-tested end to end).

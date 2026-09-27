@@ -20,6 +20,8 @@
 
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QList>
+#include <QPointF>
 #include <QString>
 #include <QStringList>
 
@@ -132,6 +134,10 @@ namespace ApiVcConfig
     /** The animation's colour slots as "#rrggbb" strings ("" for an unset slot), in slot order -
      *  shared by animationConfigToJson() and the vc.animation.styleChanged relay. */
     QStringList animationColorStrings(VCWidget *w);
+
+    /** VCXYPad::fixturePositions() as 0.0..1.0 pad fractions - shared by appendLiveSeed() and the
+     *  vc.xyPad.fixturePositionsChanged relay. Empty for any other widget type. */
+    QList<QPointF> xyPadFixturePositions(VCWidget *w);
 }
 
 #endif

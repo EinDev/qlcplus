@@ -97,6 +97,17 @@ int main(int argc, char *argv[])
     QApplication::setApplicationName(APPNAME);
     QApplication::setApplicationVersion(QString(APPVERSION));
 
+    /* QLCPLUS_SETTINGS_DIR: keep every QSettings() of this process in an .ini file under that
+     * folder instead of the per-user registry / plist / config file that every other QLC+ on the
+     * machine shares. dev-webui-sandbox.ps1 sets it so a throwaway test instance can change
+     * application settings (audio devices, UI settings, ...) without touching the real ones. */
+    const QByteArray settingsDir = qgetenv("QLCPLUS_SETTINGS_DIR");
+    if (settingsDir.isEmpty() == false)
+    {
+        QSettings::setDefaultFormat(QSettings::IniFormat);
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, QString::fromLocal8Bit(settingsDir));
+    }
+
     printVersion();
 
     QCommandLineParser parser;

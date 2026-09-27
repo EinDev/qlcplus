@@ -675,6 +675,7 @@ public:
     bool vcClockRemoveSchedule(quint32 id, int index, QString *error) override;
     bool vcAnimationSetFaderLevel(quint32 id, int level, QString *error) override;
     bool vcAnimationSetPresetKnobValue(quint32 id, int presetId, int value, QString *error) override;
+    bool vcSliderResetOverride(quint32 id, QString *error) override;
     bool vcAudioTriggersSetCaptureEnabled(quint32 id, bool enabled, QString *error) override;
     bool vcAudioTriggersSetBarConfig(quint32 id, int index, const QJsonObject &patch, QString *error) override;
 

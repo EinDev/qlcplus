@@ -144,6 +144,12 @@ public:
      *  domain must broadcast these with a null originClientId. */
     void simulateClockTick(quint32 id, int currentTime, bool running);
     void simulateAudioLevels(quint32 id, const QList<int> &levels);
+    /** A Level slider's monitored channels changed (VCSlider::monitorValueChanged). */
+    void simulateSliderMonitor(quint32 id, int monitorValue, bool isOverriding);
+    /** The heads of an XY pad moved (VCXYPad::fixturePositionsChanged). */
+    void simulateXyFixturePositions(quint32 id, const QList<QPointF> &positions);
+    bool vcSliderResetOverride(quint32 id, QString *error) override;
+    bool sliderOverriding(quint32 id) const { return m_widgets.value(id).sliderOverriding; }
 
     /** Every fake CueList pretends its Chaser has exactly this many steps (named "Step 1".."Step N"),
      *  so index-range validation in the domain has something real to check against. */
@@ -202,6 +208,8 @@ private:
         int nextPresetId = 16;                            // first id VCSpeedDial/VCXYPad assign
         QString framePin;                                 // Frame/SoloFrame: empty = no PIN set
         bool flashing = false;                            // Slider (Adjust): vc.slider.flash state
+        int monitorValue = 0;                             // Slider (Level): monitored channel value
+        bool sliderOverriding = false;                    // Slider (Level): fader overrides the monitor
         QJsonArray inputSources;                          // VcInputSource entries (ApiVcInputDomain)
         QJsonArray keySequences;                          // {keySequence, controlId} entries (ApiVcInputDomain)
         // XY Pad / Clock / Animation / AudioTriggers slice (ApiVcLiveDomain)
