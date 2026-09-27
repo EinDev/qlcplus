@@ -126,16 +126,25 @@ try {
 }
 Write-Host "Started $exeName pid $($p.Id); log: $out / $err"
 
+# Ready = THIS process listens on both ports. A plain TCP connect to 127.0.0.1:<port> is not
+# enough: other software can squat a port on IPv4 loopback (Logitech's lghub_updater holds
+# 127.0.0.1:9180), which made the old check report "Ready" before QLC+ was listening.
 $deadline = (Get-Date).AddSeconds(90)
 $ready = $false
 while ((Get-Date) -lt $deadline) {
     if ($p.HasExited) { throw "Process exited with $($p.ExitCode); see $err" }
-    try {
-        $c = New-Object Net.Sockets.TcpClient
-        $c.Connect("127.0.0.1", $ApiPort); $c.Close(); $ready = $true; break
-    } catch { Start-Sleep -Milliseconds 500 }
+    $ports = @(Get-NetTCPConnection -State Listen -OwningProcess $p.Id -ErrorAction SilentlyContinue |
+        Select-Object -ExpandProperty LocalPort)
+    if ($ports -contains $ApiPort -and $ports -contains $WebUiPort) { $ready = $true; break }
+    Start-Sleep -Milliseconds 500
 }
-if (-not $ready) { throw "API port $ApiPort not accepting connections after 90 s; see $err" }
+if (-not $ready) { throw "$exeName (pid $($p.Id)) is not listening on API port $ApiPort and web UI port $WebUiPort after 90 s; see $err" }
+$squatters = @(Get-NetTCPConnection -State Listen -LocalPort $ApiPort, $WebUiPort -ErrorAction SilentlyContinue |
+    Where-Object { $_.OwningProcess -ne $p.Id })
+foreach ($s in $squatters) {
+    $holder = (Get-Process -Id $s.OwningProcess -ErrorAction SilentlyContinue).ProcessName
+    Write-Warning "Port $($s.LocalPort) on $($s.LocalAddress) is also held by $holder (pid $($s.OwningProcess)); connect via localhost/[::1] or pick other ports."
+}
 Write-Host "Ready: web UI http://localhost:$WebUiPort/  API ws://localhost:$ApiPort/"
 
 exit 0
