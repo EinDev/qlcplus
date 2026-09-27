@@ -53,7 +53,7 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | Open a project file from the local machine (native file dialog, drag-and-drop onto the window) | ActionsMenu.qml, MainView.qml ("Drop a project or fixture file") | missing | U; core.project.open already specs `source: upload` with base64 content, so a browser file picker / drop zone is possible; server support of `upload` unverified. The native dialog itself is n/a, server-side path + recent files cover the desktop use |
 | Save project (Ctrl+S) | ActionsMenu.qml | live | - |
 | Save project as (server-side path) | ActionsMenu.qml | live | - |
-| Import fixtures / functions from another project | ActionsMenu.qml, popup/PopupImportProject.qml, importmanager.cpp | missing | spec+S+U; nothing in the spec for project import |
+| Import fixtures / functions from another project | ActionsMenu.qml, popup/PopupImportProject.qml, importmanager.cpp | live | - ; sandbox 2026-09-27; Script / Show ids are not remapped (upstream limitation, same as the desktop) |
 | Collect media into project (fork asset store) | ActionsMenu.qml, MainView.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/functions-misc.js (functions.media.collect) |
 | Reload changed media | ActionsMenu.qml, MainView.qml | live | - ; sandbox 2026-09-27 (Actions menu dialog over functions.media.status / reload) |
 | Remove unused media | ActionsMenu.qml, MainView.qml | live | - ; sandbox 2026-09-27 (functions.media.removeUnused) |
@@ -171,7 +171,7 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | Video editor: Spout output mode, sender name / size, replace file (fork) | fixturesfunctions/VideoEditor.qml | live | - ; sandbox 2026-09-27; sender size settable, sender name follows the function name (read-only as on the desktop) |
 | Show function: edit on the timeline | fixturesfunctions/FunctionManager.qml | live | - ; sandbox 2026-09-27 on the Show Manager screen |
 | Adjust a running function's intensity attribute | FunctionDelegate.qml (via the VC "Adjust" slider mode), functions.adjustAttribute | live | - ; sandbox 2026-09-27 (functions.adjustAttribute intensity slider) |
-| Show Wizard (stage wizard: show type, fixture roles, venue, effects, controller, generate) | fixturesfunctions/RightPanel.qml, stagewizard/ShowWizard.qml, stagewizard/WizardStep1ShowType.qml ... WizardStep6Summary.qml | missing | spec+S+U; the generator runs in the desktop process |
+| Show Wizard (stage wizard: show type, fixture roles, venue, effects, controller, generate) | fixturesfunctions/RightPanel.qml, stagewizard/ShowWizard.qml, stagewizard/WizardStep1ShowType.qml ... WizardStep6Summary.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/wizard-import.js; controller step tested with no controller only; click a box to pick the target instead of drag-and-drop; API generation is not on the desktop undo stack |
 
 ## 2D / 3D / DMX / Universe grid views
 
@@ -377,7 +377,7 @@ duplicate a feature row above say so.
 | DMX channel dump | popup/PopupDMXDump.qml | partial | U for the target Scene, spec+S+U for the filters |
 | Disclaimer | popup/PopupDisclaimer.qml | n/a | - ; desktop first-run notice |
 | Folder browser (server-side file picker) | popup/PopupFolderBrowser.qml | live | - ; sandbox 2026-09-27 as window.ServerFileBrowser over core.fs.list, used by the Audio / Video editors; the Open-project dialog still takes a typed path plus recent files |
-| Import from project | popup/PopupImportProject.qml | missing | spec+S+U |
+| Import from project | popup/PopupImportProject.qml | live | - ; sandbox 2026-09-27 (server path, browse or upload; imported scenes reference the imported fixtures) |
 | Input channel editor | popup/PopupInputChannelEditor.qml | missing | S: io.inputProfile.save |
 | Enter a number (select every Nth) | popup/PopupInputNumber.qml | partial | U; built, not clicked |
 | Invert selection in group(s) | popup/PopupInvertGroupSelection.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/fixtures-views.js |
@@ -425,8 +425,8 @@ the total is larger than the number of distinct actions). Recompute after editin
 
 | Status | Rows |
 | --- | --- |
-| live | 205 |
+| live | 208 |
 | partial | 58 |
-| missing | 30 |
+| missing | 27 |
 | n/a | 21 |
 | total | 314 |
