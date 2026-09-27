@@ -86,9 +86,18 @@ async function clickCheck(page, label) {
    entries are plain leaf elements appended later in the DOM, so the wanted label's LAST match is the entry. */
 async function pickCombo(page, rootSel, currentLabel, wantedLabel) {
   await page.waitFor('!!document.querySelector(' + JSON.stringify(rootSel) + ')', 8000);
-  await page.eval('document.querySelector(' + JSON.stringify(rootSel) + ').scrollIntoView({ block: "center" })');
-  await page.click(leafByText(rootSel, currentLabel));
-  await sleep(200);
+  /* The popup entry only exists while the combo is open; a panel re-render right before the click can
+     swallow it (e.g. the bar list rebuilt after a bar-count change), so open again once if needed. */
+  const count = 'Array.from(document.querySelectorAll("*")).filter(el => el.children.length === 0 && el.textContent.trim() === ' + JSON.stringify(wantedLabel) + ' && el.getBoundingClientRect().width > 0).length';
+  for (let attempt = 0; ; attempt++) {
+    await page.waitFor('!!(' + leafByText(rootSel, currentLabel).toString() + ')()', 8000);
+    await page.eval('document.querySelector(' + JSON.stringify(rootSel) + ').scrollIntoView({ block: "center" })');
+    const before = await page.eval(count);
+    await page.click(leafByText(rootSel, currentLabel));
+    if (await page.waitFor(count + ' > ' + before, 2000).catch(() => false)) break;
+    if (attempt >= 2) throw new Error('combo ' + rootSel + ' did not open');
+    await sleep(300);
+  }
   await page.click(leafByText(null, wantedLabel, true));
   await sleep(200);
 }
@@ -456,7 +465,7 @@ async function dragEl(page, selector, fromFrac, toFrac, horizontal) {
     check(new RegExp('<Type>FixtureGroup</Type>\\s*<Name>[^<]*</Name>\\s*<Group ID="' + groups[0].id + '"/>').test(padBlock), 'XML fixture-group preset');
     check(new RegExp('<Type>Scene</Type>\\s*<Name>[^<]*</Name>\\s*<FuncID>' + scene.id + '</FuncID>').test(padBlock), 'XML Scene preset');
     const clockBlock = block('Clock', CAP.clock, clockId);
-    check(/Type="Countdown" Hours="0" Minutes="1" Seconds="30"/.test(clockBlock) && !/Time="/.test(clockBlock), 'XML countdown 00:01:30 as Hours/Minutes/Seconds');
+    check(/Type="Countdown" Hours="0" Minutes="1" Seconds="30"/.test(clockBlock) && !/\sTime="/.test(clockBlock), 'XML countdown 00:01:30 as Hours/Minutes/Seconds');
     check(new RegExp('<Schedule Function="' + scene.id + '" StartTime="20:00:00" StopTime="23:\\d\\d:\\d\\d" WeekFlags="176"/>').test(clockBlock), 'XML schedule 20:00 - 23:xx Fri+Sat repeat');
     const animBlock = block('Matrix', CAP.anim, animId);
     check(new RegExp('<Function ID="' + matrix.id + '" InstantApply="true"/>').test(animBlock), 'XML attached matrix with instant apply');
@@ -482,6 +491,14 @@ async function dragEl(page, selector, fromFrac, toFrac, horizontal) {
     eq([g.functionID, g.presets.length, g.instantChanges], [String(matrix.id), 6, true], 'reopened: animation matrix, presets');
     g = await cfgOf(audioId);
     eq([g.barsNumber, g.bars[1].type, g.bars[2].functionId], [4, 'DMXBar', String(scene.id)], 'reopened: audio triggers bars');
+
+    /* A show saved by an earlier QLC+ 5 build: the countdown was written as Time="HH:mm:ss" holding the
+       milliseconds as if they were seconds (5000 ms -> "01:23:20"). It must still load as 5000 ms. */
+    const oldPath = path.join(path.dirname(SAVE_PATH), 'oldtime.qxw');
+    fs.writeFileSync(oldPath, xml.replace(/(<Clock\b[^>]*Type="Countdown") Hours="\d+" Minutes="\d+" Seconds="\d+"/, '$1 Time="01:23:20"'));
+    await srv.call('core.project.open', { source: 'path', path: oldPath });
+    g = await poll(async () => { const c = await cfgOf(clockId); return c.clockType === 'Countdown' ? c : null; }, 10000);
+    eq(g && g.targetTime, 5000, 'an old-format Time="01:23:20" countdown still loads as 5000 ms');
   } catch (e) {
     failures++;
     console.log('  EXCEPTION ' + (e && e.stack || e));
