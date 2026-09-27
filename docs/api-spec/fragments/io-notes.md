@@ -214,6 +214,12 @@ sendKeypadCommand`, `commandHistory` on `io.simpleDesk.get`, the
   (`io.simpleDesk.commandHistoryChanged`, `history` in the response and
   `commandHistory` on `io.simpleDesk.get`). `accepted` mirrors qmlui: every
   non-empty command is accepted, `channelsChanged` says what it wrote.
+  Behaviour change for web users, now identical to the desktop: a bare
+  relative command on the remembered selection (`1 THRU 4`, then `+ 10`)
+  writes the absolute value 10 - `KeyPadParser` stores the operand instead
+  of adding it in that branch (`webui/io/keypad-parser.js` had corrected
+  this locally; its header documents the deviation). An engine quirk worth
+  fixing upstream, not a regression of the server path.
 - Not exercised in the browser (the sandbox has no IO plugins): parameter
   editing, per-output pause/blackout, additional outputs, feedback,
   profile assignment and learn - all unit-tested against the plugin stub.

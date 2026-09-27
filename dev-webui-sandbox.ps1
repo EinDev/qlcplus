@@ -92,9 +92,17 @@ $err = Join-Path $dest "log-$stamp.err.txt"
 $args = @("-d", "-o", $projectCopy, "--api", "--api-port", $ApiPort, "--webui", "--webui-port", $WebUiPort, "--webui-root", $WebUiRoot)
 # Input profiles saved/deleted through the API land in the sandbox, never in the user's real
 # %UserProfile%\QLC+\InputProfiles (InputOutputMap::userProfileDirectory() honours this variable).
+# $env: is process-wide, so restore it right after the child has inherited it - otherwise a
+# dev-build-run.ps1 from this same shell would start the LIVE instance on the sandbox folder.
+$prevProfileDir = $env:QLCPLUS_USER_INPUTPROFILE_DIR
 $env:QLCPLUS_USER_INPUTPROFILE_DIR = Join-Path $dest "InputProfiles"
-$p = Start-Process -FilePath (Join-Path $dest $exeName) -ArgumentList $args -WorkingDirectory $dest `
-    -RedirectStandardOutput $out -RedirectStandardError $err -PassThru
+try {
+    $p = Start-Process -FilePath (Join-Path $dest $exeName) -ArgumentList $args -WorkingDirectory $dest `
+        -RedirectStandardOutput $out -RedirectStandardError $err -PassThru
+} finally {
+    if ($null -eq $prevProfileDir) { Remove-Item Env:\QLCPLUS_USER_INPUTPROFILE_DIR -ErrorAction SilentlyContinue }
+    else { $env:QLCPLUS_USER_INPUTPROFILE_DIR = $prevProfileDir }
+}
 Write-Host "Started $exeName pid $($p.Id); log: $out / $err"
 
 $deadline = (Get-Date).AddSeconds(90)
