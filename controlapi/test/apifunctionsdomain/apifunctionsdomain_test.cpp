@@ -358,6 +358,44 @@ void ApiFunctionsDomain_Test::deleteRemovesFunction()
     QVERIFY(m_doc->function(functionId) == nullptr);
 }
 
+void ApiFunctionsDomain_Test::deleteRunningFunctionStopsItFirst()
+{
+    // Crash audit: Doc::deleteFunction() frees the Function without
+    // stopping it, and MasterTimer keeps raw Function* in its running list
+    // and start queue - deleting a running (or just-started) function left
+    // a dangling pointer the MasterTimer thread dereferenced on its next tick.
+    helloAndGetClientId();
+    QJsonObject idParams;
+    idParams.insert(QStringLiteral("functionId"), QString::number(m_scene->id()));
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("functions.start"), idParams).value(QStringLiteral("ok")).toBool(), true);
+    QVERIFY(QTest::qWaitFor([this]() { return m_scene->isRunning(); }, 2000));
+    QCOMPARE(m_doc->masterTimer()->runningFunctions(), 1);
+
+    QJsonObject params = idParams;
+    params.insert(QStringLiteral("baseRevision"), int(m_doc->docRevision()));
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("functions.delete"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    // Must be off MasterTimer's list by the time the delete is acknowledged
+    QCOMPARE(m_doc->masterTimer()->runningFunctions(), 0);
+    m_scene = nullptr;
+
+    // Same thing for a function whose start is still queued: start + delete
+    // back to back, before MasterTimer's next tick picks the start up.
+    Scene *second = new Scene(m_doc);
+    second->setValue(Fixture::invalidId(), 0, 255);
+    QVERIFY(m_doc->addFunction(second));
+    QJsonObject secondId;
+    secondId.insert(QStringLiteral("functionId"), QString::number(second->id()));
+    QJsonObject secondDelete = secondId;
+    secondDelete.insert(QStringLiteral("baseRevision"), int(m_doc->docRevision()));
+    m_client->sendTextMessage(buildRequest(QStringLiteral("functions.start"), secondId, QStringLiteral("t-start")));
+    reply = sendAndWaitForReply(QStringLiteral("functions.delete"), secondDelete);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(m_doc->masterTimer()->runningFunctions(), 0);
+    QTest::qWait(100); // a few MasterTimer ticks: must not touch the freed function
+    QCOMPARE(m_doc->masterTimer()->runningFunctions(), 0);
+}
+
 void ApiFunctionsDomain_Test::renameChangesName()
 {
     helloAndGetClientId();

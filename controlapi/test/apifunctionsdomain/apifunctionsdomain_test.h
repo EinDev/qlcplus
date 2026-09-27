@@ -59,6 +59,7 @@ private slots:
     void getReturnsGenericAndSceneTypeDetail();
     void listFiltersByType();
     void deleteRemovesFunction();
+    void deleteRunningFunctionStopsItFirst();
     void renameChangesName();
     void moveChangesPath();
     void updateChangesGenericProperties();

@@ -21,6 +21,8 @@
 #include <QFileInfo>
 #include <QSet>
 #include <QHash>
+#include <QThread>
+#include <QElapsedTimer>
 
 #include "apifunctionsdomain.h"
 #include "apiserver.h"
@@ -52,6 +54,39 @@
 #include "doc.h"
 
 namespace {
+
+// Stop @function and block until MasterTimer no longer references it, so the
+// caller may free it. Function::stopAndWait() alone isn't enough: a function
+// whose start is still queued (start() sets m_stop=false, preRun() only runs
+// on MasterTimer's next tick) reports isRunning()==false, so stopAndWait()
+// returns at once while MasterTimer's start queue still holds the pointer.
+// Returns false if MasterTimer didn't let go within ~2 s.
+bool stopAndWaitForMasterTimer(Function *function)
+{
+    if (function->isRunning() == false && function->stopped())
+        return true;
+
+    const FunctionParent source = FunctionParent::master(FunctionParent::ControlApi);
+    QElapsedTimer watchdog;
+    watchdog.start();
+    if (function->isRunning() == false)
+    {
+        // Queued: MasterTimer will preRun() it on its next tick (and, since
+        // it's already flagged stopped, postRun() it on the one after).
+        function->stop(source);
+        while (function->isRunning() == false && watchdog.elapsed() < 1000)
+            QThread::msleep(1);
+        if (function->isRunning() == false)
+            return false;
+    }
+    if (function->stopAndWait(source) == false)
+        return false;
+    // postRun() clears m_running before MasterTimer finishes with the
+    // pointer (it still emits functionStopped(id) and drops it from its
+    // list afterwards, in the same tick): let that tick complete.
+    QThread::msleep(MasterTimer::tick() + 5);
+    return true;
+}
 
 // functionId is carried as a JSON string on the wire (functions-core.yaml),
 // unlike io.*'s plain-integer universeId - toUInt()'s ok-flag distinguishes
@@ -1042,6 +1077,16 @@ void ApiFunctionsDomain::registerMethods()
         }
 
         quint32 functionId = function->id();
+        // Doc::deleteFunction() frees the object without stopping it, but
+        // MasterTimer keeps raw Function* in its running list and start
+        // queue: stop it and wait until MasterTimer has let go of it first,
+        // like FunctionManager::deleteFunction() does for the Qt UI.
+        if (stopAndWaitForMasterTimer(function) == false)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidState,
+                                                            QStringLiteral("Function could not be stopped; not deleted")));
+            return;
+        }
         if (doc->deleteFunction(functionId) == false)
         {
             session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInternal,
