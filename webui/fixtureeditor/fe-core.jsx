@@ -106,7 +106,12 @@
     React.useEffect(() => { const fn = () => set(v => v + 1); store.listeners.add(fn); return () => store.listeners.delete(fn); }, []);
     return store;
   };
-  FE.say = function (text, error) { store.status = { text: text || '', error: !!error, at: Date.now() }; emit(); };
+  /** Status line message; cleared after a while so the line falls back to the session revision. */
+  FE.say = function (text, error) {
+    const at = Date.now();
+    store.status = { text: text || '', error: !!error, at }; emit();
+    setTimeout(() => { if (store.status.at === at) { store.status = { text: '', error: false, at: 0 }; emit(); } }, error ? 12000 : 6000);
+  };
   FE.ui = function (sid) { if (!store.ui[sid]) store.ui[sid] = { tab: 'general', channelId: null, capIndex: -1, modeId: null, chanSel: [], slotSel: [], headSel: [] }; return store.ui[sid]; };
   FE.setUi = function (sid, patch) { Object.assign(FE.ui(sid), patch); emit(); };
   FE.session = (sid) => store.sessions[sid] || null;
@@ -164,7 +169,8 @@
   /** Subscribe once per client object to the domain's events. Returns an unsubscribe. */
   FE.bindEvents = function (qlc) {
     const offs = [
-      qlc.subscribeTo('fixturedefs.session.opened', (d) => FE.putSession(d, false)),
+      /* an imported file is not in the library yet: the server counts it as modified from the start */
+      qlc.subscribeTo('fixturedefs.session.opened', (d) => FE.putSession(Object.assign({ isModified: d.source === 'imported' }, d), false)),
       qlc.subscribeTo('fixturedefs.session.updated', (d) => { if (!applyUpdated(d)) FE.putSession(Object.assign({ isModified: true }, d), false); }),
       qlc.subscribeTo('fixturedefs.session.closed', (d) => dropSession(d.sessionId)),
       qlc.subscribeTo('fixturedefs.saved', (d) => {

@@ -238,7 +238,7 @@
     function importFile(file) {
       if (!file) return;
       file.arrayBuffer().then(buf => qlc.call('fixturedefs.session.import', { fileName: file.name, qxfBase64: FE.bytesToBase64(buf) }))
-        .then(r => { FE.putSession(r, true); FE.say('Imported ' + file.name + ' - save it to add it to the user library'); }).catch(fail('Import'));
+        .then(r => { FE.putSession(Object.assign({ isModified: true }, r), true); FE.say('Imported ' + file.name + ' - save it to add it to the user library'); }).catch(fail('Import'));
     }
     async function deleteDefinition(manufacturer, model) {
       try {
