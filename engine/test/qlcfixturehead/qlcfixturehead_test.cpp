@@ -385,6 +385,49 @@ void QLCFixtureHead_Test::cacheUndefinedChannel()
     m_ch2->setGroup(QLCChannel::NoGroup);
 }
 
+void QLCFixtureHead_Test::cacheChannelsGobo()
+{
+    QLCFixtureDef def;
+    QLCChannel *index = new QLCChannel();
+    index->setPreset(QLCChannel::GoboIndex);    // indexing: never the wheel
+    def.addChannel(index);
+    QLCChannel *custom = new QLCChannel();
+    custom->setGroup(QLCChannel::Gobo);          // custom gobo channel
+    def.addChannel(custom);
+    QLCChannel *wheelFine = new QLCChannel();
+    wheelFine->setPreset(QLCChannel::GoboWheelFine);
+    def.addChannel(wheelFine);
+    QLCChannel *wheel = new QLCChannel();
+    wheel->setPreset(QLCChannel::GoboWheel);    // explicitly the wheel: wins
+    def.addChannel(wheel);
+    QVERIFY(index->group() == QLCChannel::Gobo && wheel->group() == QLCChannel::Gobo);
+
+    QLCFixtureMode mode(&def);
+    for (int i = 0; i < 4; i++)
+        mode.insertChannel(def.channels().at(i), i);
+
+    /* the preset wheel wins over the earlier custom gobo channel */
+    QLCFixtureHead head;
+    for (int i = 0; i < 4; i++)
+        head.addChannel(i);
+    head.cacheChannels(&mode);
+    QCOMPARE(head.channelNumber(QLCChannel::Gobo, QLCChannel::MSB), quint32(3));
+
+    /* without a preset wheel, the first non-index coarse gobo channel */
+    QLCFixtureHead head2;
+    head2.addChannel(0);
+    head2.addChannel(1);
+    head2.addChannel(2);
+    head2.cacheChannels(&mode);
+    QCOMPARE(head2.channelNumber(QLCChannel::Gobo, QLCChannel::MSB), quint32(1));
+
+    /* an index channel alone is not a gobo wheel */
+    QLCFixtureHead head3;
+    head3.addChannel(0);
+    head3.cacheChannels(&mode);
+    QVERIFY(head3.channelNumber(QLCChannel::Gobo, QLCChannel::MSB) == QLCChannel::invalid());
+}
+
 void QLCFixtureHead_Test::loadWrongRoot()
 {
     QXmlStreamReader xmlReader("<Foo><Channel>0</Channel></Foo>");

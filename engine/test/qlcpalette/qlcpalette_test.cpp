@@ -1203,14 +1203,11 @@ void QLCPalette_Test::fixturesGobo()
     QList<SceneValue> list = p.valuesFromFixtures(&doc, QList<quint32>() << b->id());
     QCOMPARE(list.size(), 0);
 
-    /* The mover does have a gobo wheel, but QLCFixtureHead::cacheChannels()
-       never maps the Gobo group, so Fixture::channelNumber(QLCChannel::Gobo)
-       cannot resolve it and Gobo palettes currently produce no values. */
-    QVERIFY(m->channelNumber(QLCChannel::Gobo, QLCChannel::MSB) == QLCChannel::invalid());
+    /* the mover's gobo wheel is mapped by QLCFixtureHead::cacheChannels(),
+       so the palette writes its value there */
+    QCOMPARE(m->channelNumber(QLCChannel::Gobo, QLCChannel::MSB), quint32(MoverGobo));
     list = p.valuesFromFixtures(&doc, QList<quint32>() << m->id());
-    QEXPECT_FAIL("", "Gobo channels are not cached by QLCFixtureHead::cacheChannels()", Continue);
     QCOMPARE(list.size(), 1);
-    QEXPECT_FAIL("", "Gobo channels are not cached by QLCFixtureHead::cacheChannels()", Continue);
     QCOMPARE(valueOf(list, m->id(), MoverGobo), 42);
 }
 
