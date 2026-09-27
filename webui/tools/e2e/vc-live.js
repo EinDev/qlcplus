@@ -398,9 +398,16 @@ async function dragEl(page, selector, fromFrac, toFrac, horizontal) {
     await typeInto(page, 'input[data-e2e="audio-bars-number"]', '3', true);
     g = await poll(async () => { const c = await cfgOf(audioId); return c.barsNumber === 4 ? c : null; });
     check(!!g, '3 spectrum bars + volume = 4 bars');
+    /* The server answers this second client before the page has re-read the widget list, so the panel
+       can still show the fresh 17 bars here. Acting on that stale layout made this step flaky: pickCombo
+       scrolled the panel to centre bar 1's combo in the long list, then the list shrank to 4 rows, the
+       panel's scroll clamped back to the top and the click (or the popup-entry click) landed on whatever
+       had moved under it - the "Spectrum Bars" header, collapsing the section. Wait for the new count. */
+    await page.waitFor('document.querySelectorAll(\'[data-e2e="audio-bar-list"] [data-e2e-bar]\').length === 4', 8000);
     await pickCombo(page, '[data-e2e="audio-bar-type-1"]', 'None', 'DMX');
     g = await poll(async () => { const c = await cfgOf(audioId); return c.bars[1].type === 'DMXBar' ? c : null; });
     check(!!g, 'bar 1 is a DMX bar');
+    await page.waitFor('!!document.querySelector(\'[data-e2e="audio-bar-info-1"]\')', 8000); // the edit button stays disabled until the new type renders
     await clickSel(page, 'button[data-e2e="audio-bar-edit-1"]');
     await clickSel(page, '[data-e2e="audio-bar-editor-1"] [data-vc-levelpick]');
     await page.waitFor('document.querySelectorAll(\'[data-e2e="audio-bar-editor-1"] [data-vc-levelfx]\').length > 0', 8000);
@@ -412,6 +419,7 @@ async function dragEl(page, selector, fromFrac, toFrac, horizontal) {
     await pickCombo(page, '[data-e2e="audio-bar-type-2"]', 'None', 'Function');
     g = await poll(async () => { const c = await cfgOf(audioId); return c.bars[2].type === 'FunctionBar' ? c : null; });
     check(!!g, 'bar 2 is a Function bar');
+    await page.waitFor('!!document.querySelector(\'[data-e2e="audio-bar-info-2"]\')', 8000);
     await clickSel(page, 'button[data-e2e="audio-bar-edit-2"]');
     await typeInto(page, 'input[data-e2e="audio-fn-2"]', scene.name);
     await clickSel(page, '[data-e2e="audio-fn-2-matches"] [data-e2e-fn="' + scene.id + '"]');
@@ -497,7 +505,9 @@ async function dragEl(page, selector, fromFrac, toFrac, horizontal) {
     const oldPath = path.join(path.dirname(SAVE_PATH), 'oldtime.qxw');
     fs.writeFileSync(oldPath, xml.replace(/(<Clock\b[^>]*Type="Countdown") Hours="\d+" Minutes="\d+" Seconds="\d+"/, '$1 Time="01:23:20"'));
     await srv.call('core.project.open', { source: 'path', path: oldPath });
-    g = await poll(async () => { const c = await cfgOf(clockId); return c.clockType === 'Countdown' ? c : null; }, 10000);
+    /* Until the new file has loaded the widget still belongs to out.qxw (a Countdown too, 90000 ms):
+       wait for that one to be replaced, or this reads the previous project. */
+    g = await poll(async () => { const c = await cfgOf(clockId); return c.clockType === 'Countdown' && c.targetTime !== 90000 ? c : null; }, 10000);
     eq(g && g.targetTime, 5000, 'an old-format Time="01:23:20" countdown still loads as 5000 ms');
   } catch (e) {
     failures++;
