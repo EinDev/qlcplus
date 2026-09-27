@@ -67,6 +67,19 @@
         setVolume: function (params) { return self.call('functions.audio.setVolume', params); }
       },
 
+      media: {
+        /**
+         * Re-import an Audio/Video's managed copy from the file it was imported from (the
+         * editors' Reload button); an external file is re-probed in place. Structural: needs
+         * baseRevision, bumps docRevision only when something was actually re-pointed.
+         * functions.media.reloaded follows (also for a queued background copy landing later).
+         * @param {object} params - {functionId: string, baseRevision: integer}
+         * @returns {Promise<object>} result - the refreshed Audio/Video typeDetail + {status: 'reloaded'|'unchanged'|'queued'|'missing'|'notManaged', error?: string}
+         * @see docs/api-spec/fragments/functions-advanced.yaml (method: functions.media.reload)
+         */
+        reload: function (params) { return self.call('functions.media.reload', params); }
+      },
+
       rgbmatrix: {
         /**
          * Live-rendered pixel frame for one algorithm step, at the bound Fixture Group's size —
@@ -414,6 +427,10 @@
     'functions.video.layerChanged',
     'functions.video.screenTargetChanged',
     // video — live/subscribe-gated (§4b), per-instance: `functions.video.<functionId>.playback`
-    'functions.video.playback'
+    'functions.video.playback',
+    // audio + video media store: {functionId, source, managed, origin..., status:'reloaded'} after a
+    // managed copy was re-imported (functions.media.reload, the QML editors' Reload button, or a
+    // queued background copy landing) — originClientId is always null
+    'functions.media.reloaded'
   ];
 })();

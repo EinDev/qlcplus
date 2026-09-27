@@ -81,10 +81,13 @@ quint32 Script::totalDuration()
 {
     quint32 totalDuration = 0;
 
+    // Same throwaway, never-started runner as syntaxErrorsLines(): safe to
+    // delete right away instead of leaking one per call (this is called for
+    // every function summary the UI / API builds).
     ScriptRunner *runner = new ScriptRunner(doc(), m_data);
     runner->collectScriptData();
     totalDuration = runner->currentWaitTime();
-    //runner->deleteLater();
+    delete runner;
 
     qDebug() << "Script total duration:" << totalDuration;
 
@@ -224,9 +227,14 @@ QList<quint32> Script::fixtureList() const
 
 QStringList Script::syntaxErrorsLines() const
 {
+    // A throwaway runner that is never started: collectScriptData() builds
+    // its own QJSEngine, evaluates the source and deletes the engine again,
+    // and every Engine.* slot is a no-op while m_running is false. Deleting
+    // it here (instead of leaking one per syntax check) is safe for the same
+    // reason - ~ScriptRunner()'s stop() returns immediately when not running.
     ScriptRunner *runner = new ScriptRunner(doc(), m_data);
     QStringList errorList = runner->collectScriptData();
-    //runner->deleteLater();
+    delete runner;
 
     return errorList;
 }

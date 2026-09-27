@@ -186,6 +186,19 @@
          * @see docs/api-spec/fragments/core.yaml (method: core.settings.set)
          */
         set: function (params) { return self.call('core.settings.set', params); }
+      },
+
+      fs: {
+        /**
+         * Read-only listing of one directory on the machine the engine runs on, for server-side
+         * file pickers (core.project.open path, functions.audio/video.setSource, ...). Empty /
+         * omitted path lists the roots (home + drives) with no entries; every response carries
+         * `roots` too. Directories always pass the extension filter.
+         * @param {object} [params] - {path?: string — absolute host path, extensions?: string[] — glob patterns like '*.mp3', includeFiles?: boolean — default true}
+         * @returns {Promise<object>} result - {path, parent: string|null, entries: [{name, path, isDir, size, mtime}], roots: [{name, path}]}
+         * @see docs/api-spec/fragments/core.yaml (method: core.fs.list); errors: INVALID_PARAMS (relative path), NOT_FOUND (missing / not a directory)
+         */
+        list: function (params) { return self.call('core.fs.list', params || {}); }
       }
     };
   }

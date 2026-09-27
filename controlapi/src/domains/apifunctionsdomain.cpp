@@ -37,10 +37,15 @@
 #include "sequence.h"
 #include "efx.h"
 #include "collection.h"
-#include "script.h"
+// scriptwrapper.h, not script.h: on a qmlui build the engine DLL compiles the
+// JavaScript scriptv4 Script, and instantiateFunction()'s `new Script(doc)`
+// must allocate that class' size, not the legacy line-command Script's.
+#include "scriptwrapper.h"
 #include "rgbmatrix.h"
 #include "show.h"
 #include "audio.h"
+#include "audiodecoder.h"
+#include "audioparameters.h"
 #include "video.h"
 #include "mediaassets.h"
 #include "fixture.h"
@@ -305,11 +310,113 @@ void mediaSourceToJson(Doc *doc, Function *function, const QString &source, QJso
     obj.insert(QStringLiteral("originChanged"), assets->originChanged(function));
 }
 
+QString bpmStateToString(Audio::BpmAnalysisState state)
+{
+    switch (state)
+    {
+    case Audio::Analyzing: return QStringLiteral("analyzing");
+    case Audio::Done:      return QStringLiteral("done");
+    case Audio::Failed:    return QStringLiteral("failed");
+    default:               return QStringLiteral("notAnalyzed");
+    }
+}
+
+/** FunctionsAudioConfig (functions-advanced.yaml): the editable Audio
+ *  properties plus what AudioEditor.qml shows read-only (decoder info, BPM) */
+QJsonObject audioConfigToJson(Audio *audio)
+{
+    QJsonObject cfg;
+    cfg.insert(QStringLiteral("sourceFileName"), audio->getSourceFileName());
+    cfg.insert(QStringLiteral("volume"), audio->volume());
+    cfg.insert(QStringLiteral("duration"), double(audio->totalDuration()));
+    cfg.insert(QStringLiteral("audioDevice"), audio->audioDevice());
+    cfg.insert(QStringLiteral("muted"), audio->muted());
+
+    QJsonObject bpm;
+    bpm.insert(QStringLiteral("state"), bpmStateToString(audio->bpmAnalysisState()));
+    bpm.insert(QStringLiteral("value"), audio->detectedBpm());
+    bpm.insert(QStringLiteral("confidence"), audio->bpmConfidence());
+    cfg.insert(QStringLiteral("bpm"), bpm);
+
+    AudioDecoder *decoder = audio->getAudioDecoder();
+    AudioParameters ap = decoder != nullptr ? decoder->audioParameters() : AudioParameters();
+    cfg.insert(QStringLiteral("sampleRate"), decoder != nullptr ? int(ap.sampleRate()) : 0);
+    cfg.insert(QStringLiteral("channels"), decoder != nullptr ? ap.channels() : 0);
+    cfg.insert(QStringLiteral("bitrate"), decoder != nullptr ? decoder->bitrate() : 0);
+    return cfg;
+}
+
+QString outputModeToString(Video::OutputMode mode)
+{
+    switch (mode)
+    {
+    case Video::Fullscreen: return QStringLiteral("fullscreen");
+    case Video::Spout:      return QStringLiteral("spout");
+    default:                return QStringLiteral("windowed");
+    }
+}
+
+/** FunctionsVideoConfig (functions-advanced.yaml) */
+QJsonObject videoConfigToJson(Video *video)
+{
+    QJsonObject cfg;
+    cfg.insert(QStringLiteral("sourceUrl"), video->sourceUrl());
+    cfg.insert(QStringLiteral("isPicture"), video->isPicture());
+
+    QRect geometry = video->customGeometry();
+    if (geometry.isNull())
+    {
+        cfg.insert(QStringLiteral("customGeometry"), QJsonValue());
+    }
+    else
+    {
+        QJsonObject g;
+        g.insert(QStringLiteral("x"), geometry.x());
+        g.insert(QStringLiteral("y"), geometry.y());
+        g.insert(QStringLiteral("width"), geometry.width());
+        g.insert(QStringLiteral("height"), geometry.height());
+        cfg.insert(QStringLiteral("customGeometry"), g);
+    }
+
+    QJsonObject rot;
+    rot.insert(QStringLiteral("x"), double(video->rotation().x()));
+    rot.insert(QStringLiteral("y"), double(video->rotation().y()));
+    rot.insert(QStringLiteral("z"), double(video->rotation().z()));
+    cfg.insert(QStringLiteral("rotation"), rot);
+
+    cfg.insert(QStringLiteral("zIndex"), video->zIndex());
+    cfg.insert(QStringLiteral("screen"), video->screen());
+    cfg.insert(QStringLiteral("fullscreen"), video->fullscreen());
+    cfg.insert(QStringLiteral("outputMode"), outputModeToString(video->outputMode()));
+
+    QJsonObject spout;
+    spout.insert(QStringLiteral("width"), video->spoutSize().width());
+    spout.insert(QStringLiteral("height"), video->spoutSize().height());
+    cfg.insert(QStringLiteral("spoutSize"), spout);
+
+    cfg.insert(QStringLiteral("volume"), video->volume());
+    cfg.insert(QStringLiteral("muted"), video->muted());
+
+    QSize res = video->resolution();
+    if (res.isValid() && res.isEmpty() == false)
+    {
+        QJsonObject r;
+        r.insert(QStringLiteral("width"), res.width());
+        r.insert(QStringLiteral("height"), res.height());
+        cfg.insert(QStringLiteral("resolution"), r);
+    }
+    cfg.insert(QStringLiteral("detectedDurationMs"), double(video->totalDuration()));
+    cfg.insert(QStringLiteral("videoCodec"), video->videoCodec());
+    cfg.insert(QStringLiteral("audioCodec"), video->audioCodec());
+    return cfg;
+}
+
 QJsonObject audioDetailToJson(Doc *doc, Audio *audio)
 {
     QJsonObject obj;
     obj.insert(QStringLiteral("functionId"), QString::number(audio->id()));
     mediaSourceToJson(doc, audio, audio->getSourceFileName(), obj);
+    obj.insert(QStringLiteral("config"), audioConfigToJson(audio));
     obj.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
     return obj;
 }
@@ -319,6 +426,7 @@ QJsonObject videoDetailToJson(Doc *doc, Video *video)
     QJsonObject obj;
     obj.insert(QStringLiteral("functionId"), QString::number(video->id()));
     mediaSourceToJson(doc, video, video->sourceUrl(), obj);
+    obj.insert(QStringLiteral("config"), videoConfigToJson(video));
     obj.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
     return obj;
 }
@@ -622,6 +730,11 @@ void ApiFunctionsDomain::setTypeDetailProvider(int functionType, TypeDetailProvi
 QJsonObject ApiFunctionsDomain::typeDetail(Function *function)
 {
     return typeDetailToJson(function);
+}
+
+bool ApiFunctionsDomain::applyMediaSource(Doc *doc, Function *function, const QString &source, QString *error)
+{
+    return ::applyMediaSource(doc, function, source, error);
 }
 
 void ApiFunctionsDomain::registerMethods()

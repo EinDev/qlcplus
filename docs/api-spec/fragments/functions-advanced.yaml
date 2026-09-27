@@ -435,6 +435,7 @@ messages:
           type: object
           required:
           - syntaxErrorLines
+          - syntaxErrors
           - functionRefs
           - fixtureRefs
           properties:
@@ -446,9 +447,26 @@ messages:
                 text (Script::setData) INCLUDING blank lines - i.e. usable directly as a 1-based index
                 into functions.script.setSource''s source split on newlines. This is a DIFFERENT numbering
                 space from functionRefs/fixtureRefs''s `line` below - do not mix the two when highlighting
-                source lines in an editor.
+                source lines in an editor. On a qmlui (scriptv4) build the source is evaluated by a QJSEngine
+                (ScriptRunner::collectScriptData) and this is the line the JavaScript error was raised on -
+                one entry per error, 0 when the engine reported no line.
 
                 '
+            syntaxErrors:
+              type: array
+              description: 'One entry per error, same order as syntaxErrorLines, with the engine''s message
+                (scriptv4: the QJSEngine error text, e.g. "SyntaxError: Expected token `;''"; legacy: the
+                tokenizer''s "Unrecognized command" message). Empty when the script is valid.'
+              items:
+                type: object
+                required:
+                - line
+                - message
+                properties:
+                  line:
+                    type: integer
+                  message:
+                    type: string
             functionRefs:
               type: array
               description: 'Functions referenced via startfunction. NOTE: despite the name, the engine''s
@@ -473,16 +491,16 @@ messages:
                     type: integer
             fixtureRefs:
               type: array
-              description: 'Fixtures referenced via setfixture. `line` here uses the same 0-based, blank-skipping
-                tokenized-list numbering as functionRefs.line above - see its note on the two distinct
-                line-number spaces in this response.
+              description: 'Fixtures referenced via setfixture / Engine.setFixture. `line` here uses the same
+                0-based, blank-skipping tokenized-list numbering as functionRefs.line above - see its note
+                on the two distinct line-number spaces in this response. On a qmlui (scriptv4) build the
+                engine''s Script::fixtureList() reports ids only, so `line` is omitted there.
 
                 '
               items:
                 type: object
                 required:
                 - fixtureId
-                - line
                 properties:
                   fixtureId:
                     type: string
@@ -530,14 +548,42 @@ messages:
           type: object
           required:
           - commands
+          - snippets
           properties:
             commands:
               type: array
-              description: 'The Script::*Cmd keyword set: stoponexit, startfunction, stopfunction, blackout,
-                wait, waitkey, waitfunctionstart, waitfunctionstop, setfixture, systemcommand, label,
-                jump'
+              description: 'The Script::*Cmd keyword set. On a qmlui (QLC+ 5) build the engine''s Script is
+                the JavaScript-based scriptv4 (engine/src/scriptv4.cpp, selected by engine/src/scriptwrapper.h)
+                and the keywords are the `Engine.<method>` names its ScriptRunner exposes: Engine.startFunction,
+                Engine.stopFunction, Engine.isFunctionRunning, Engine.setFunctionAttribute, Engine.setFixture,
+                Engine.getChannelValue, Engine.waitTime, Engine.waitFunctionStart, Engine.waitFunctionStop,
+                Engine.setBlackout, Engine.stopOnExit, Engine.systemCommand, Engine.setBPM, Engine.random.
+                A legacy (QLC+ 4) build would report the line-command keywords instead (stoponexit,
+                startfunction, stopfunction, blackout, wait, waitkey, waitfunctionstart, waitfunctionstop,
+                setfixture, systemcommand, label, jump).'
               items:
                 type: string
+            snippets:
+              type: array
+              description: 'Editor helper entries mirroring ScriptEditor.qml''s "Add a method call at cursor
+                position" menu: `insert` is the text to place at the cursor (e.g. "Engine.startFunction();"),
+                `caretOffset` how many characters before the end of `insert` the caret should land (3 puts
+                it between the parentheses), `label`/`icon` are for the menu row.'
+              items:
+                type: object
+                required:
+                - label
+                - insert
+                properties:
+                  label:
+                    type: string
+                  insert:
+                    type: string
+                  caretOffset:
+                    type: integer
+                  icon:
+                    type: string
+                    description: A hint name (play, stop, sliders, hourglass, dice, moon, terminal), not a path
   FunctionsScriptSetSourceRequest:
     payload:
       type: object
@@ -2108,6 +2154,7 @@ messages:
           type: object
           required:
           - extensions
+          - devices
           properties:
             extensions:
               type: array
@@ -2117,6 +2164,25 @@ messages:
                 plugins' own reported form (e.g. AudioDecoderMad returns '*.mp3', not the bare extension
                 'mp3') - a client filtering an Open dialog should match against these patterns, not treat
                 them as bare suffixes.
+            devices:
+              type: array
+              description: 'Audio OUTPUT devices on the engine host (AudioPluginCache::audioDevicesList()
+                filtered on AUDIO_CAP_OUTPUT), the values functions.audio.setDevice accepts. The first entry
+                is always {id: "", name: "Default device"} - the global default output, what AudioEditor.qml''s
+                combo shows first. Added 2026-09-27 so a client can populate the device picker; capture
+                devices are deliberately not listed here.'
+              items:
+                type: object
+                required:
+                - id
+                - name
+                properties:
+                  id:
+                    type: string
+                    description: The opaque privateName to pass as audioDevice; empty = default
+                  name:
+                    type: string
+                    description: Human-readable device name
   FunctionsAudioSetSourceRequest:
     payload:
       type: object
@@ -2205,6 +2271,10 @@ messages:
               type: integer
               description: Duration the decoder detected in the new file (Audio::totalDuration() right
                 after load)
+            name:
+              type: string
+              description: The function's name after the change - the engine setter renames an Audio
+                after its file, like the QML editor's Replace (added 2026-09-27)
             docRevision:
               type: integer
   FunctionsAudioSetVolumeRequest:
@@ -2571,6 +2641,7 @@ messages:
             screens:
               type: array
               description: Displays available on the engine host machine for functions.video.setScreenTarget
+                (QGuiApplication::screens(); empty on a headless engine)
               items:
                 type: object
                 required:
@@ -2581,6 +2652,21 @@ messages:
                     type: integer
                   name:
                     type: string
+                  geometry:
+                    type: object
+                    properties:
+                      x:
+                        type: integer
+                      y:
+                        type: integer
+                      width:
+                        type: integer
+                      height:
+                        type: integer
+            spoutAvailable:
+              type: boolean
+              description: Whether this build can drive the fork's Spout output mode (functions.video.setScreenTarget
+                outputMode=spout). Added 2026-09-27.
   FunctionsVideoSetSourceRequest:
     payload:
       type: object
@@ -2681,6 +2767,10 @@ messages:
               type: string
             audioCodec:
               type: string
+            name:
+              type: string
+              description: The function's name after the change - the engine setter renames a Video
+                after its file / URL (added 2026-09-27)
             docRevision:
               type: integer
   FunctionsVideoSetGeometryRequest:
@@ -3017,6 +3107,16 @@ messages:
               description: Index into functions.video.listCapabilities' screens array
             fullscreen:
               type: boolean
+              description: 'Only applied when it differs from the current Video::fullscreen(): a Video in
+                the fork''s spout output mode is not silently dropped back to windowed by a client that
+                sends fullscreen=false without knowing about Spout. Send outputMode to pick the mode
+                explicitly.'
+            outputMode:
+              type: string
+              enum: [windowed, fullscreen, spout]
+              description: Optional (added 2026-09-27). When present it wins over `fullscreen` and sets
+                Video::setOutputMode directly; spout is refused with UNSUPPORTED on a build without Spout
+                (functions.video.listCapabilities reports spoutAvailable).
             baseRevision:
               type: integer
   FunctionsVideoSetScreenTargetResponse:
@@ -3068,6 +3168,7 @@ messages:
           - functionId
           - screen
           - fullscreen
+          - outputMode
           - docRevision
           properties:
             functionId:
@@ -3076,6 +3177,9 @@ messages:
               type: integer
             fullscreen:
               type: boolean
+            outputMode:
+              type: string
+              enum: [windowed, fullscreen, spout]
             docRevision:
               type: integer
   FunctionsVideoPlaybackEvent:
@@ -3436,20 +3540,110 @@ schemas:
       audioDevice:
         type: string
         description: Output device identifier on the engine host; empty = global default
+      muted:
+        type: boolean
+        description: Read-only here (Audio::muted(), the editors' Mute checkbox); no API setter yet
+      bpm:
+        type: object
+        description: Result of the fork's offline BPM analysis (Audio::detectedBpm() etc.), read-only
+        properties:
+          state:
+            type: string
+            enum: [notAnalyzed, analyzing, done, failed]
+          value:
+            type: number
+          confidence:
+            type: number
+      sampleRate:
+        type: integer
+        description: Decoder-reported sample rate in Hz (0 when no decoder is loaded)
+      channels:
+        type: integer
+        description: Decoder-reported channel count (0 when no decoder is loaded)
+      bitrate:
+        type: integer
+        description: Decoder-reported bitrate in kb/s (0 when no decoder is loaded)
   FunctionsVideoConfig:
     type: object
     required:
     - sourceUrl
     - customGeometry
+    - rotation
     - zIndex
     - screen
     - fullscreen
+    - outputMode
     properties:
       sourceUrl:
         type: string
       isPicture:
         type: boolean
         description: Read-only, detected from the source
+      customGeometry:
+        type:
+        - object
+        - 'null'
+        description: null when the video renders at its natural / fullscreen size (Video::customGeometry().isNull())
+        properties:
+          x:
+            type: integer
+          y:
+            type: integer
+          width:
+            type: integer
+          height:
+            type: integer
+      rotation:
+        type: object
+        properties:
+          x:
+            type: number
+          y:
+            type: number
+          z:
+            type: number
+      zIndex:
+        type: integer
+      screen:
+        type: integer
+        description: Index into functions.video.listCapabilities' screens
+      fullscreen:
+        type: boolean
+        description: outputMode == fullscreen (kept for the original request/event shapes)
+      outputMode:
+        type: string
+        enum: [windowed, fullscreen, spout]
+        description: Video::OutputMode. spout is this fork's Spout texture-sharing output (Windows only);
+          its window / sender is desktop-only, the mode itself is document state.
+      spoutSize:
+        type: object
+        description: Spout sender size, 0x0 = native resolution. Read-only here (no API setter yet).
+        properties:
+          width:
+            type: integer
+          height:
+            type: integer
+      volume:
+        type: number
+        description: Read-only here (Video::volume(), 0-100); no API setter yet
+      muted:
+        type: boolean
+        description: Read-only here (Video::muted()); no API setter yet
+      resolution:
+        type: object
+        description: Detected source resolution, absent until the host probed the file
+        properties:
+          width:
+            type: integer
+          height:
+            type: integer
+      detectedDurationMs:
+        type: integer
+        description: Video::totalDuration(); 0 for a picture or an unprobed source
+      videoCodec:
+        type: string
+      audioCodec:
+        type: string
       resolution:
         type: object
         description: Read-only, detected from the source
@@ -3516,7 +3710,9 @@ schemas:
         type: string
       source:
         type: string
-        description: Full raw script text (Script::data())
+        description: 'Full raw script text (Script::data()). Deliberately no syntax errors here: on a
+          scriptv4 build a syntax check evaluates the body in a QJSEngine without an interrupt, which a
+          read path must never do - call functions.script.validate explicitly.'
       docRevision:
         type: integer
   FunctionsShowDetail:

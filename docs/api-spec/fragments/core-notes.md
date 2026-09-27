@@ -73,3 +73,27 @@ Server: `controlapi/src/domains/apicoredomain.cpp`. Tests:
   next step); everything answers `UNSUPPORTED` when the server runs
   without a qmlui host, which is also why `controlapi/test` can only cover
   that path - the happy path needs the real app.
+
+## Implemented 2026-09-27: `core.fs.list` (server-side file browser)
+
+Server: the end of `ApiCoreDomain::registerMethods()` in
+`controlapi/src/domains/apicoredomain.cpp`. Tests: `fsList*` cases in
+`controlapi/test/apicoredomain/`. Web UI: `webui/ff/ServerFileBrowser.jsx`
+(`window.ServerFileBrowser`), used by the Audio and Video editors' "Replace
+file" buttons; `App.jsx`'s Open dialog still takes a typed path plus recent
+files and can adopt the same component.
+
+- Read-only listing of one host directory, modelled on
+  `qmlui/folderbrowser.cpp` (`QDir::AllDirs | Files | NoDotAndDotDot`,
+  dirs first, case-insensitive name order, hidden entries never listed).
+  `path` empty lists the roots (home + `QDir::drives()`) and every response
+  also carries `roots`, so a picker needs one call per navigation step.
+- Filtering is by glob patterns (`extensions: ["*.mp3", ...]`), the same
+  form `functions.audio.listCapabilities` / `functions.video.listCapabilities`
+  report, applied through `QDir::setNameFilters` - directories always pass.
+- Errors: relative path -> `INVALID_PARAMS`; missing or not a directory ->
+  `NOT_FOUND`. No path is ever created; a directory the process cannot read
+  simply lists empty.
+- Deliberately no `core.fs.read`/`write`: media enters the project through
+  the setSource methods (which copy into the media store), project files
+  through `core.project.open`.

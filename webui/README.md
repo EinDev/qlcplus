@@ -97,8 +97,21 @@ and a second tab checked for the pushed event:
   canvas draws the server-computed pattern and animates the heads along it) - both exercised end to
   end on 2026-09-27 in a sandbox instance by `tools/e2e/efx-collection.js`, with the saved `.qxw`
   checked. Not in the EFX editor: the fake-3D sphere preview and adding one specific head of a
-  multi-head fixture (every head is added). Editors for Script, Audio, Video and Show are still
-  placeholders.
+  multi-head fixture (every head is added). The Show editor is still a placeholder.
+- **Script / Audio / Video editors** (added 2026-09-27, verified against a `media` sandbox on ports
+  9140/9141 by `webui/tools/e2e/media.js`): Script - line-numbered editor, insert-method menu from
+  `functions.script.listCommands`, function / fixture ID pickers, server-side syntax check with the
+  error line marked in the gutter, Save / Ctrl+S via `functions.script.setSource`. Audio - Replace
+  file through the server-side file browser (`functions.audio.setSource`, the file is copied into the
+  project's media store and the origin recorded), Reload (`functions.media.reload`), duration,
+  playback mode, output device (from `functions.audio.listCapabilities`), volume, fade in / out.
+  Video - Replace file / URL, output screen and mode (windowed / fullscreen / Spout), custom
+  geometry, rotation, layer. Read-only there, no API setter yet: mute, Detect BPM, video volume,
+  Spout sender size. Media info (duration, sample rate, resolution, codecs) comes from the engine's
+  decoders / the desktop probe; an instance started without its `Plugins` directory reports none.
+- **Server-side file browser** (`webui/ff/ServerFileBrowser.jsx`, `window.ServerFileBrowser`):
+  drives / home, path crumbs, a typed path, glob filters over `core.fs.list`. Used by the Audio and
+  Video editors; the Open-project dialog still takes a typed path plus recent files.
 - **Virtual Console**: page switch; Toggle and Flash buttons with state colouring from
   `vc.button.stateChanged`; slider and knob with the value pushed to every tab; cue list
   play / next / previous / stop / jump with the current step highlighted; XY pad; speed dial

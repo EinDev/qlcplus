@@ -35,6 +35,7 @@ class ApiFixtureGroupDomain;
 class ApiVcDomain;
 class ApiRgbMatrixDomain;
 class ApiEfxCollectionDomain;
+class ApiMediaDomain;
 class Doc;
 
 /** Default port for the control API's WebSocket server. Distinct from
@@ -147,6 +148,7 @@ private:
     ApiVcDomain *m_vcDomain;
     ApiRgbMatrixDomain *m_rgbMatrixDomain;
     ApiEfxCollectionDomain *m_efxCollectionDomain;
+    ApiMediaDomain *m_mediaDomain;
 };
 
 #endif
