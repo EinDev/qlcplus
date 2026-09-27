@@ -172,6 +172,21 @@ and a second tab checked for the pushed event:
 - **Server-side file browser** (`webui/ff/ServerFileBrowser.jsx`, `window.ServerFileBrowser`):
   drives / home, path crumbs, a typed path, glob filters over `core.fs.list`. Used by the Audio and
   Video editors; the Open-project dialog still takes a typed path plus recent files.
+- **Show Wizard and Import from project** (added 2026-09-27, `webui/Wizard.jsx`,
+  `webui/ff/ImportProject.jsx`, verified against a `wizard` sandbox on ports 9270/9271 by
+  `webui/tools/e2e/wizard-import.js`): the six-step stage wizard (hat button on the F&F right rail
+  and Actions menu) over `core.wizard.getOptions/preview/generate` - show type cards, group boxes
+  (the project's groups, new named ones, the wizard's fixture browser patching straight into the
+  highlighted box, patched fixtures added from a list), server-detected capabilities and role
+  pickers, venue cards and stage size, effects per family with All / None and availability, the
+  controller list and mapping options, summary rows, selected effects and the clickable VC layout
+  preview, Generate. Import from project (Actions menu) over `core.project.importList/import`:
+  server path typed or picked with the file browser, or a browser upload; fixture (groups,
+  universes, fixtures, linked names) and function (folders) trees with search; ticking a function
+  ticks its dependencies. Not in the web UI: undo of a generation or an import (the API bypasses
+  the desktop undo history), dragging fixtures from the browser onto a box (a click on the box picks
+  the target instead); the controller step could only be exercised with no controller patched
+  (the sandbox has no plugins).
 - **Virtual Console**: page switch; Toggle and Flash buttons with state colouring from
   `vc.button.stateChanged`; slider and knob with the value pushed to every tab; cue list
   play / next / previous / stop / jump with the current step highlighted; XY pad; speed dial

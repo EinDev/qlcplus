@@ -27233,7 +27233,8 @@ components:
           type: array
           items:
             type: string
-          description: Fixtures newly patched (not name-matched)
+          description: Source ids of the fixtures newly patched (not name-matched); fixtureIdMap gives
+            their new ids
         skippedFixtureIds:
           type: array
           items:

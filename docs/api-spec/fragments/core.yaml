@@ -1766,7 +1766,7 @@ schemas:
       fixtureGroupIdMap: { type: object, additionalProperties: { type: string } }
       paletteIdMap: { type: object, additionalProperties: { type: string } }
       functionIdMap: { type: object, additionalProperties: { type: string } }
-      createdFixtureIds: { type: array, items: { type: string }, description: "Fixtures newly patched (not name-matched)" }
+      createdFixtureIds: { type: array, items: { type: string }, description: "Source ids of the fixtures newly patched (not name-matched); fixtureIdMap gives their new ids" }
       skippedFixtureIds:
         type: array
         items: { type: string }

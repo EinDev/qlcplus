@@ -105,3 +105,43 @@ files and can adopt the same component.
   `startupFunctionId`. Doc::setStartupFunction() does not mark the document modified on its own,
   so the handler calls setModified() (the id is saved as `<Workspace Autostart>`). Registered by
   `ApiFunctionsMiscDomain` (not this domain's file) to keep the slice in one place.
+
+## Implemented 2026-09-27: Show Wizard (core.wizard.*) and Import from project
+
+Server: `controlapi/src/domains/apiwizarddomain.cpp` + `apiwizardhost.h` (host implemented by
+`qmlui/app_apiwizard.cpp`), `controlapi/src/domains/apiimportdomain.cpp` over the engine's
+`ProjectImporter` (`engine/src/projectimporter.{h,cpp}`, which qmlui's ImportManager now delegates
+to as well), `controlapi/src/domains/apidocchanges.cpp` for the created events. Tests:
+`controlapi/test/apiwizarddomain/` (fake host - JSON plumbing only) and
+`controlapi/test/apiimportdomain/` (real engine, every remap rule). Web UI: `webui/Wizard.jsx`,
+`webui/ff/ImportProject.jsx`; sandbox driver `webui/tools/e2e/wizard-import.js`.
+
+- **Wizard shape.** One choice set (`CoreWizardChoices`) instead of per-step state on the server:
+  every call builds a fresh `StageWizard` and walks it forward through the steps like the QML dialog
+  (step-entry side effects in order: groups loaded, stage default + suggested size, effect list +
+  show-type defaults, controller re-scan), so `preview` is exactly what `generate` builds and the
+  desktop's own wizard instance is never touched. Omitted optional fields mean "the wizard's
+  default", e.g. no `effects` = the show type's defaults, no `controller` = the auto-picked single
+  patched controller. Unavailable effects in `effects` are ignored.
+- **Catalogue text** (show type / stage / role descriptions and placement blurbs) lives only in the
+  QML today; `ApiWizardDomain` carries a copy, so a wording change there needs the same change here.
+- **Seam.** `StageWizard::groupsModel()` now also reports `groupId`, `role` and the capability flags
+  of every box, and `fixtureRoleModel()` the `groupId` (additive, the QML ignores them).
+- **Events.** A generation or an import is announced with every domain's usual created events
+  (`fixtures.patched`, `fixtures.group.created`, `functions.created` in id order, `palette.created`
+  from its own signal, `vc.page.created`, `vc.widget.created` for every new widget, and for a
+  wizard that placed new groups two `fixtures.monitor.changed`: stage and items), then one summary
+  event, `core.wizard.generated` / `core.project.imported`. The responses carry the same data.
+- **Not undoable**: both bypass Tardis, like every API edit (see `ApiProjectHost`). The desktop
+  wizard's "fully undoable" note does not hold for the API.
+- **Import is stateless**: `importList` and `import` each parse the source again (path or
+  base64 upload); an upload's relative media paths resolve against this project's folder.
+  `dependencies` in `importList` is the full closure; `import` recomputes it server side.
+- **Engine bugs fixed on the way** (they affected the desktop popup too): EFX heads were remapped
+  through the FUNCTION id map (imported EFX kept the source fixture ids); a palette matched by name
+  was recorded in the fixture map (scenes lost the palette); a hidden function (a Sequence's bound
+  scene) ended the import function tree instead of being skipped; a new fixture could be placed
+  across a universe boundary (negative address); a skipped fixture's linked items wrote a name onto
+  fixture id 0; a fixture with no resolvable definition dereferenced null.
+- **Known gaps**: Script functions and Show tracks are copied without remapping the ids inside them
+  (upstream behaviour); the controller step's mapping could only be exercised with no controller.

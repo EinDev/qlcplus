@@ -136,7 +136,7 @@
       </div>
     );
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0, height: '100%' }} data-wizard="browser">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0, minHeight: 0, height: '100%' }} data-wizard="browser">
         <RobotoText label="Fixture Browser" fontBold fontSize={13} height={20} />
         <FF.Note text="Pick a definition and add it: it is patched at the next free address and put into the highlighted group." />
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search…" style={Object.assign({ width: '100%' }, inputStyle)} data-wizard="browser-search" />
@@ -310,9 +310,9 @@
         const assigned = new Set([].concat(...st.boxes.map(b => b.fixtureIds)));
         const unassigned = fixtures.filter(f => !assigned.has(String(f.id)));
         return (
-          <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr 1fr', gap: 10, height: 430 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr 1fr', gridTemplateRows: 'minmax(0, 1fr)', gap: 10, height: 460 }}>
             <FixtureBrowser qlc={qlc} target={activeBox} onPatched={(ids) => { loadFixtures(); if (activeBox) assign(activeBox.key, ids.map(String)); }} />
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0, minHeight: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center' }}>
                 <RobotoText label="Fixture Groups" fontBold fontSize={13} height={24} style={{ flex: 1 }} />
                 <GenericButton label="+ Add group" width={100} height={24} fontSize={12} data-wizard="add-group"
@@ -348,7 +348,7 @@
                 </div>
               ) : null}
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0, minHeight: 0 }}>
               <RobotoText label="Detected capabilities & roles" fontBold fontSize={13} height={24} />
               <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {!selectedBoxes.length ? <FF.Note text="Tick a group box to detect its capabilities here." /> : null}
