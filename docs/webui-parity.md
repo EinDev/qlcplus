@@ -46,11 +46,11 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | --- | --- | --- | --- |
 | Switch context: Fixtures & Functions / Virtual Console / Simple Desk / Input-Output | MainView.qml | live | - |
 | Switch context: Show Manager | MainView.qml | live | - ; sandbox 2026-09-27, screen registered (Ctrl+5), driver webui/tools/e2e/show.js |
-| Keyboard shortcuts for toolbar actions (Ctrl+1..5 contexts, Ctrl+S, Ctrl+B, Ctrl+Z / Ctrl+Y) | MainView.qml, ShortcutsEditor.qml | partial | U; App.jsx has Ctrl+digit and "Hold Ctrl to see shortcuts" hints, not in the README verified list; the full QML shortcut set is not mapped |
+| Keyboard shortcuts for toolbar actions (Ctrl+1..5 contexts, Ctrl+S, Ctrl+B, Ctrl+Z / Ctrl+Y) | MainView.qml, ShortcutsEditor.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/tools-misc.js; table-driven and rebindable (web layout: Ctrl+4 I/O, Ctrl+5 Show Manager); per-screen keys (VC bindings, keypad, Show Manager) are not in the editor |
 | New project (with "save changes first?" prompt) | ActionsMenu.qml | live | - |
 | Open project by server-side path | ActionsMenu.qml, popup/PopupFolderBrowser.qml | live | - |
 | Open recent file | ActionsMenu.qml | live | - |
-| Open a project file from the local machine (native file dialog, drag-and-drop onto the window) | ActionsMenu.qml, MainView.qml ("Drop a project or fixture file") | missing | U; core.project.open already specs `source: upload` with base64 content, so a browser file picker / drop zone is possible; server support of `upload` unverified. The native dialog itself is n/a, server-side path + recent files cover the desktop use |
+| Open a project file from the local machine (native file dialog, drag-and-drop onto the window) | ActionsMenu.qml, MainView.qml ("Drop a project or fixture file") | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/tools-misc.js (upload button + drag-and-drop, unsaved-changes guard) |
 | Save project (Ctrl+S) | ActionsMenu.qml | live | - |
 | Save project as (server-side path) | ActionsMenu.qml | live | - |
 | Import fixtures / functions from another project | ActionsMenu.qml, popup/PopupImportProject.qml, importmanager.cpp | live | - ; sandbox 2026-09-27; Script / Show ids are not remapped (upstream limitation, same as the desktop) |
@@ -61,21 +61,21 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | Blackout toggle (Ctrl+B) | MainView.qml | live | - |
 | Stop all running functions | MainView.qml | live | - |
 | BPM display, set, tap, off, beat indicator | MainView.qml, KeyPad.qml (Tap) | live | - |
-| Beat generator source selection (disabled / internal / plugin / audio) | BeatGeneratorsPanel.qml, MainView.qml | missing | U; core.bpm.set has a `generator` enum with exactly these values; the web UI only sends bpm / off |
-| Dump DMX values on a Scene (toolbar button) | MainView.qml, popup/PopupDMXDump.qml | partial | U for "dump to existing Scene" (io.simpleDesk.dump has targetSceneId, the web UI creates a new Scene only); spec+S+U for the popup's fixture / universe / channel-type filters (io.simpleDesk.dump only has nonZeroOnly) |
+| Beat generator source selection (disabled / internal / plugin / audio) | BeatGeneratorsPanel.qml, MainView.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/tools-misc.js; the source switch is live; plugin / audio beat delivery unverified in the plugin-less sandbox |
+| Dump DMX values on a Scene (toolbar button) | MainView.qml, popup/PopupDMXDump.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/tools-misc.js (non-zero / selected fixtures / channel-type filters, new or existing Scene) |
 | Operate / Design mode toggle | MainView.qml | live | - |
 | Toggle fullscreen | ActionsMenu.qml | n/a | - ; browser-native (F11) |
 | Language switch | ActionsMenu.qml | n/a | - ; browser / OS locale is native; the web UI has no translations yet, which is a separate concern |
-| UI Settings editor (theme colours, scaling factor, save to file) | ActionsMenu.qml, UISettingsEditor.qml | missing | U; purely client-side (App.jsx has a `window.QLCUISettingsDialog` hook, nothing registers it); core.settings covers engine settings only |
-| Keyboard Shortcuts editor (rebind, import / export JSON, load defaults, shortcut hints toggle) | ActionsMenu.qml, ShortcutsEditor.qml | missing | U; client-side |
+| UI Settings editor (theme colours, scaling factor, save to file) | ActionsMenu.qml, UISettingsEditor.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/tools-misc.js; colours / scale / reset / save / load (desktop qlcplusUiStyle.json shape); engine settings write built but not exercised |
+| Keyboard Shortcuts editor (rebind, import / export JSON, load defaults, shortcut hints toggle) | ActionsMenu.qml, ShortcutsEditor.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/tools-misc.js |
 | Network: client setup (connect to another QLC+) | ActionsMenu.qml, popup/PopupNetworkClient.qml | n/a | - ; the web UI is the remote client |
 | Network: server setup (native server, web server, encryption key) | ActionsMenu.qml, popup/PopupNetworkServer.qml | n/a | - ; server process settings of the machine running QLC+ |
 | Client access request (allow / deny a connecting client) | MainView.qml, popup/PopupNetworkConnect.qml | n/a | - ; belongs to the host session |
-| DMX Address tool (DIP switch calculator) | ActionsMenu.qml, DMXAddressTool.qml | missing | U; pure client-side |
+| DMX Address tool (DIP switch calculator) | ActionsMenu.qml, DMXAddressTool.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/tools-misc.js |
 | About dialog | ActionsMenu.qml, popup/PopupAbout.qml | live | - |
 | First-run disclaimer | MainView.qml, popup/PopupDisclaimer.qml | n/a | - ; desktop first-run notice |
-| Legacy Show timing warning and conversion (ADR 0001) | MainView.qml, showmanager/LegacyShowTimingDialog.qml, showmanager/LegacyShowTimingConvertDialog.qml | missing | spec+S+U; fork-specific, nothing in functions.show.* covers the conversion |
-| Key-cast toast (shows the shortcut that just fired) and click hints | MainView.qml, FeedbackToast.qml, ShortcutsEditor.qml | missing | U |
+| Legacy Show timing warning and conversion (ADR 0001) | MainView.qml, showmanager/LegacyShowTimingDialog.qml, showmanager/LegacyShowTimingConvertDialog.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/tools-misc.js (upload path live; detection from a file on disk unit-tested; conversion is not on the undo stack) |
+| Key-cast toast (shows the shortcut that just fired) and click hints | MainView.qml, FeedbackToast.qml, ShortcutsEditor.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/tools-misc.js (shared toast for App shortcuts and VC key bindings, click hints) |
 | Network / connection button (host, port, connect, disconnect) | - (web UI only) | live | - ; no Qt equivalent, listed for completeness |
 
 ## Fixtures & Functions - fixture side
@@ -283,11 +283,11 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | Reset the whole universe | SimpleDesk.qml | live | - |
 | Keypad commands (THRU, AT / @, FULL, ZERO, BY, +, -, +%, -%, CLR) | KeyPad.qml, SimpleDesk.qml | live | - ; since 2026-09-27 through the engine parser (io.simpleDesk.sendKeypadCommand), browser parser as fallback; sandbox-verified |
 | Commands history (reload a past command) | SimpleDesk.qml | live | - ; sandbox 2026-09-27; the server's shared history (io.simpleDesk.get commandHistory + commandHistoryChanged) |
-| Channel value debug (which functions / sources contribute to a channel) | SimpleDesk.qml | missing | spec+S+U |
+| Channel value debug (which functions / sources contribute to a channel) | SimpleDesk.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/tools-misc.js (io.dmx.channel.inspect); the desktop Simple Desk's own overrides are not visible to the API |
 | Fixture list side panel | SimpleDesk.qml | live | - |
 | Dump to a new Scene (name, non-zero only) | SimpleDesk.qml, popup/PopupDMXDump.qml | live | - |
-| Dump into an existing Scene | popup/PopupDMXDump.qml | missing | U; io.simpleDesk.dump has targetSceneId |
-| Dump filters (fixtures, universes, channel types) | popup/PopupDMXDump.qml | missing | spec+S+U |
+| Dump into an existing Scene | popup/PopupDMXDump.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/tools-misc.js |
+| Dump filters (fixtures, universes, channel types) | popup/PopupDMXDump.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/tools-misc.js (fixtures and channel types; the desktop's separate RGB/CMY/WAUV box maps onto channel types) |
 | Tap tempo from the keypad | KeyPad.qml | live | - ; same core.bpm.tap as the toolbar |
 
 ## Input / Output
@@ -332,7 +332,7 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | Preview the Show at the cursor while stopped / paused | showmanager/ShowManager.qml | missing | spec+S+U |
 | Snap to grid, markers, zoom | showmanager/ShowManager.qml | partial | U; implemented client-side, not browser-driven |
 | Track Spout output size (set, unset, mismatch prompt) | showmanager/TrackDelegate.qml, popup/PopupTrackSpoutSize.qml, popup/PopupSpoutSizeMismatch.qml | missing | spec+S+U; the Spout sender is desktop-only, but its size is document state that the operator sets in this dialog (arguably n/a) |
-| Legacy Show timing conversion | showmanager/LegacyShowTimingDialog.qml, showmanager/LegacyShowTimingConvertDialog.qml | missing | spec+S+U; duplicate of the toolbar row |
+| Legacy Show timing conversion | showmanager/LegacyShowTimingDialog.qml, showmanager/LegacyShowTimingConvertDialog.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/tools-misc.js (upload path live; detection from a file on disk unit-tested; conversion is not on the undo stack) |
 
 ## Fixture Editor
 
@@ -374,7 +374,7 @@ duplicate a feature row above say so.
 | Channel wizard | popup/PopupChannelWizard.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/fixture-editor.js |
 | Create palette | popup/PopupCreatePalette.qml | partial | U; see the palette rows |
 | Custom feedback | popup/PopupCustomFeedback.qml | partial | U; lower / upper / monitor values live (sandbox 2026-09-27); colour table and MIDI routing need a patched input profile |
-| DMX channel dump | popup/PopupDMXDump.qml | partial | U for the target Scene, spec+S+U for the filters |
+| DMX channel dump | popup/PopupDMXDump.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/tools-misc.js |
 | Disclaimer | popup/PopupDisclaimer.qml | n/a | - ; desktop first-run notice |
 | Folder browser (server-side file picker) | popup/PopupFolderBrowser.qml | live | - ; sandbox 2026-09-27 as window.ServerFileBrowser over core.fs.list, used by the Audio / Video editors; the Open-project dialog still takes a typed path plus recent files |
 | Import from project | popup/PopupImportProject.qml | live | - ; sandbox 2026-09-27 (server path, browse or upload; imported scenes reference the imported fixtures) |
@@ -391,12 +391,12 @@ duplicate a feature row above say so.
 | Rename items with numbering | popup/PopupRenameItems.qml | partial | U; functions live (sandbox 2026-09-27); the same dialog for fixtures not browser-driven |
 | Spout size mismatch | popup/PopupSpoutSizeMismatch.qml | missing | spec+S+U; duplicate of the track Spout row |
 | Track Spout output size | popup/PopupTrackSpoutSize.qml | missing | spec+S+U; duplicate of the track Spout row |
-| DMX Address tool | DMXAddressTool.qml, DMXAddressWidget.qml | missing | U |
+| DMX Address tool | DMXAddressTool.qml, DMXAddressWidget.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/tools-misc.js |
 | Usage list | UsageList.qml | live | - ; sandbox 2026-09-27 |
-| UI Settings editor | UISettingsEditor.qml, UISettings.qml | missing | U |
-| Shortcuts editor | ShortcutsEditor.qml | missing | U |
+| UI Settings editor | UISettingsEditor.qml, UISettings.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/tools-misc.js; colours / scale / reset / save / load (desktop qlcplusUiStyle.json shape); engine settings write built but not exercised |
+| Shortcuts editor | ShortcutsEditor.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/tools-misc.js (rebind, collision warning, defaults, import / export in the desktop format, hints toggle) |
 | External controls panel (input sources + key sequences of a widget) | ExternalControls.qml, ExternalControlDelegate.qml, KeyboardSequenceDelegate.qml | live | - ; sandbox 2026-09-27, webui/vc/vc-external.jsx |
-| Beat generators panel | BeatGeneratorsPanel.qml | missing | U; core.bpm.set generator enum |
+| Beat generators panel | BeatGeneratorsPanel.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/tools-misc.js |
 | Colour tool (basic / full / filters) | ColorTool.qml, ColorToolBasic.qml, ColorToolFull.qml, ColorToolFilters.qml, ColorToolPrimary.qml, MultiColorBox.qml | partial | U; filters tab missing, see the fixture-side row |
 | Time edit tool (typed time, tap, infinite) | TimeEditTool.qml | live | - ; inline "500, 1.5s, 2m, inf" fields |
 | Day-time tool (clock schedule times) | DayTimeTool.qml | live | - ; sandbox 2026-09-27 |
@@ -406,15 +406,15 @@ duplicate a feature row above say so.
 | Single-axis tool (pan or tilt only fixtures) | SingleAxisTool.qml | partial | U; pan / tilt spin boxes exist, a single-axis layout is not checked |
 | Chaser step widget (per-step times popup) | ChaserWidget.qml, ChaserStepDelegate.qml | live | - |
 | Zoom item (view zoom controls) | ZoomItem.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/fixtures-views.js |
-| Feedback toast | FeedbackToast.qml | missing | U; the web UI has its own notices (VCNotice, Note), the key-cast toast is missing |
+| Feedback toast | FeedbackToast.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/tools-misc.js |
 
 ## Settings
 
 | Qt UI action | Where in qmlui (file) | Web UI status | Blocker / notes |
 | --- | --- | --- | --- |
-| UI settings: theme colours, scaling factor, reset to default, save to file | UISettingsEditor.qml | missing | U; client-side (localStorage or a downloadable file) |
-| Shortcuts editor: rebind, load defaults, import / export, show shortcut hints | ShortcutsEditor.qml | missing | U; client-side |
-| Beat generator source (disabled / internal / plugin / audio) | BeatGeneratorsPanel.qml | missing | U; core.bpm.set generator enum; duplicate of the toolbar row |
+| UI settings: theme colours, scaling factor, reset to default, save to file | UISettingsEditor.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/tools-misc.js |
+| Shortcuts editor: rebind, load defaults, import / export, show shortcut hints | ShortcutsEditor.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/tools-misc.js (rebind, collision warning, defaults, import / export in the desktop format, hints toggle) |
+| Beat generator source (disabled / internal / plugin / audio) | BeatGeneratorsPanel.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/tools-misc.js; the source switch is live; plugin / audio beat delivery unverified in the plugin-less sandbox |
 | Engine settings: working path, engine log locale | - (no QML UI; core.settings.get / set) | n/a | - ; no Qt UI equivalent, spec-only, listed so nobody re-adds it as a gap |
 
 ## Summary
@@ -425,8 +425,8 @@ the total is larger than the number of distinct actions). Recompute after editin
 
 | Status | Rows |
 | --- | --- |
-| live | 208 |
-| partial | 58 |
-| missing | 27 |
+| live | 230 |
+| partial | 55 |
+| missing | 8 |
 | n/a | 21 |
 | total | 314 |
