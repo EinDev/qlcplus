@@ -97,3 +97,11 @@ files and can adopt the same component.
 - Deliberately no `core.fs.read`/`write`: media enters the project through
   the setSource methods (which copy into the media store), project files
   through `core.project.open`.
+
+## Implemented 2026-09-27: autostart function
+
+- NEW `core.project.setStartupFunction` (4a, `functionId` null clears) and
+  `core.project.startupFunctionChanged`; `core.project.get` / `core.project.loaded` carry
+  `startupFunctionId`. Doc::setStartupFunction() does not mark the document modified on its own,
+  so the handler calls setModified() (the id is saved as `<Workspace Autostart>`). Registered by
+  `ApiFunctionsMiscDomain` (not this domain's file) to keep the slice in one place.

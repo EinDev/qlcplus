@@ -2048,11 +2048,16 @@ messages:
           type: object
           required:
           - functionId
-          - values
           - baseRevision
+          anyOf:
+          - required:
+            - values
+          - required:
+            - captureLive
           description: 'Captures a set of live DMX values into a step (Sequence:: applyDumpValues) - the
             typical "record current state as a cue" operation. Values are normalized against the bound
-            Scene''s channel set (missing channels default to 0).
+            Scene''s channel set (missing channels default to 0). Either values or captureLive: true.
+            Every step is re-normalised, so the stepsChanged event carries one replace of /steps.
 
             '
           properties:
@@ -2060,6 +2065,11 @@ messages:
               type: string
             values:
               $ref: '#/components/schemas/FunctionsSceneValues'
+            captureLive:
+              type: boolean
+              description: Additive (2026-09-27). Instead of values, snapshot the live pre-Grand-Master
+                output of every channel the bound Scene holds, the same source FunctionManager::dumpDmxValues()
+                reads (passthrough applied). INVALID_STATE when the Sequence has no bound Scene.
             targetStepIndex:
               type: integer
               description: Omit to append a new step.
@@ -2774,6 +2784,185 @@ messages:
       oneOf:
       - $ref: '#/components/messages/FunctionsStepsMutationOkResponse/payload'
       - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsCloneRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.clone
+        params:
+          type: object
+          required:
+          - baseRevision
+          description: 'FunctionManager::cloneFunctions(): Function::createCopy() of each id, named ''<name>
+            (Copy)'' in the same folder; a Sequence copy gets its own copy of the bound Scene (re-bound,
+            steps re-pointed). One functions.created per copy (not for the Sequence''s hidden Scene copy).
+            NOT_FOUND if any id is unknown (nothing is copied then).'
+          properties:
+            functionIds:
+              type: array
+              items:
+                type: string
+              minItems: 1
+              description: Functions to copy (functionId alone is accepted too).
+            functionId: &id002
+              type: string
+            baseRevision: &id001
+              type: integer
+  FunctionsCloneResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsCloneOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsCloneOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - functionIds
+          - docRevision
+          properties:
+            functionIds:
+              type: array
+              items:
+                type: string
+              description: The new ids, in request order.
+            docRevision: *id001
+  FunctionsUsageRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.usage
+        params:
+          type: object
+          required:
+          - functionId
+          description: 'UsageList.qml / FunctionManager::usageList() plus the VC side. An unknown id is
+            not an error: the lists are simply empty.'
+          properties:
+            functionId: *id002
+  FunctionsUsageResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsUsageOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsUsageOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - functions
+          - widgets
+          - vcAvailable
+          - isStartupFunction
+          properties:
+            functions:
+              type: array
+              description: 'Doc::getUsage(): functions referencing it.'
+              items:
+                type: object
+                required:
+                - functionId
+                - name
+                - type
+                - position
+                properties:
+                  functionId: *id002
+                  name:
+                    type: string
+                  type:
+                    type: string
+                  position:
+                    type: integer
+                    description: Collection member index / Chaser step index / Show track position, as Doc::getUsage()
+                      reports it.
+            widgets:
+              type: array
+              description: 'Virtual Console widgets referencing it (vc.widget.usage shape: VcWidgetSnapshot);
+                empty when no VC host is present.'
+              items:
+                type: object
+            vcAvailable:
+              type: boolean
+            isStartupFunction:
+              type: boolean
+  FunctionsAttributeChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.attributeChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - functionId
+          - attributeIndex
+          - value
+          description: 'Broadcast after functions.adjustAttribute (live, not subscribe-gated: one per adjust
+            call).'
+          properties:
+            functionId: *id002
+            attributeIndex:
+              type: integer
+            attributeName:
+              type: string
+            value:
+              type: number
 schemas:
   FunctionsTypeEnum:
     type: string
@@ -4190,3 +4379,33 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/functionsStepsReplaceStepResponse'
+  sendFunctionsClone:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsCloneRequest'
+  receiveFunctionsCloneResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsCloneResponse'
+  sendFunctionsUsage:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsUsageRequest'
+  receiveFunctionsUsageResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsUsageResponse'
+  receiveFunctionsAttributeChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsAttributeChangedEvent'

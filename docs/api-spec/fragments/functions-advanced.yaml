@@ -3297,6 +3297,743 @@ messages:
           - 'null'
         data:
           $ref: '#/components/schemas/FunctionsMediaReloadResult'
+  FunctionsMediaStatusRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.media.status
+        params:
+          type: object
+          required: []
+          description: Read-only summary for the Actions menu media entries (Collect / Reload changed /
+            Remove unused).
+          properties: {}
+  FunctionsMediaStatusResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsMediaStatusOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsMediaStatusOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - storeDir
+          - staging
+          - external
+          - unused
+          - changed
+          properties:
+            storeDir:
+              type: string
+            staging:
+              type: boolean
+              description: True for an untitled project (the store is a staging dir until the first save).
+            external:
+              type: array
+              items: &id001
+                type: object
+                required:
+                - path
+                - size
+                properties:
+                  path:
+                    type: string
+                  size:
+                    type: number
+              description: Referenced Audio/Video sources outside the store (what collect copies).
+            unused:
+              type: array
+              items: *id001
+              description: Store files no function references (what removeUnused deletes).
+            changed:
+              type: array
+              description: Audio/Video whose origin file differs from the stored copy (functions.media.reload
+                candidates).
+              items:
+                type: object
+                properties:
+                  functionId: &id003
+                    type: string
+                  name:
+                    type: string
+                  type:
+                    type: string
+                  running:
+                    type: boolean
+            pendingImports:
+              type: array
+              items:
+                type: string
+  FunctionsMediaCollectRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.media.collect
+        params:
+          type: object
+          required:
+          - baseRevision
+          description: 'App::collectMedia() / MediaAssets::collectExternal(): copy every external source
+            into the project''s media store and relink the functions (large files are queued in the background).
+            Broadcasts functions.media.collected with the same counts.'
+          properties:
+            baseRevision: &id002
+              type: integer
+  FunctionsMediaCollectResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsMediaCollectOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsMediaCollectOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - copied
+          - queued
+          - failed
+          - docRevision
+          properties:
+            copied:
+              type: integer
+            queued:
+              type: integer
+            failed:
+              type: integer
+            error:
+              type:
+              - string
+              - 'null'
+            storeDir:
+              type: string
+            docRevision: *id002
+  FunctionsMediaCollectedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.media.collected
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - copied
+          - queued
+          - failed
+          - docRevision
+          properties:
+            copied:
+              type: integer
+            queued:
+              type: integer
+            failed:
+              type: integer
+            error:
+              type:
+              - string
+              - 'null'
+            storeDir:
+              type: string
+            docRevision: *id002
+  FunctionsMediaRemoveUnusedRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.media.removeUnused
+        params:
+          type: object
+          required: []
+          description: 'MediaAssets::removeUnreferenced(): deletes store files nothing references (files
+            outside the store layout or still referenced are refused). Files on disk, not project state:
+            no baseRevision.'
+          properties:
+            files:
+              type: array
+              items:
+                type: string
+              description: Absolute paths from functions.media.status.unused; omitted = every unused file.
+  FunctionsMediaRemoveUnusedResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsMediaRemoveUnusedOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsMediaRemoveUnusedOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - removed
+          - complete
+          - unused
+          properties:
+            removed:
+              type: integer
+            complete:
+              type: boolean
+            error:
+              type:
+              - string
+              - 'null'
+            unused:
+              type: array
+              items: *id001
+  FunctionsAudioDetectBpmRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.audio.detectBpm
+        params:
+          type: object
+          required:
+          - functionId
+          description: 'AudioEditor::detectBpm(): (re)starts the background BPM analysis (Audio::requestBpmDetection(true)).
+            Needs a decoder plugin for the file; INVALID_STATE when the file is missing. The result arrives
+            as functions.audio.bpmChanged and in functions.get config.bpm.'
+          properties:
+            functionId: *id003
+  FunctionsAudioDetectBpmResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsAudioDetectBpmOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsAudioDetectBpmOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - bpm
+          properties:
+            bpm: &id004
+              type: object
+              properties:
+                state:
+                  type: string
+                  enum:
+                  - notAnalyzed
+                  - analyzing
+                  - done
+                  - failed
+                value:
+                  type: number
+                confidence:
+                  type: number
+  FunctionsAudioBpmChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.audio.bpmChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - functionId
+          - bpm
+          properties:
+            functionId: *id003
+            bpm: *id004
+  FunctionsAudioSetMutedRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.audio.setMuted
+        params:
+          type: object
+          required:
+          - functionId
+          - muted
+          - baseRevision
+          properties:
+            functionId: *id003
+            muted:
+              type: boolean
+            baseRevision: *id002
+  FunctionsAudioSetMutedResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsAudioSetMutedOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsAudioSetMutedOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - docRevision
+          properties:
+            docRevision: *id002
+  FunctionsAudioMutedChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.audio.mutedChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - functionId
+          - muted
+          - docRevision
+          properties:
+            functionId: *id003
+            muted:
+              type: boolean
+            docRevision: *id002
+  FunctionsVideoSetVolumeRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.video.setVolume
+        params:
+          type: object
+          required:
+          - functionId
+          - volume
+          - baseRevision
+          properties:
+            functionId: *id003
+            volume:
+              type: number
+              minimum: 0
+              maximum: 1
+            baseRevision: *id002
+  FunctionsVideoSetVolumeResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsVideoSetVolumeOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsVideoSetVolumeOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - docRevision
+          properties:
+            docRevision: *id002
+  FunctionsVideoVolumeChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.video.volumeChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - functionId
+          - volume
+          - docRevision
+          properties:
+            functionId: *id003
+            volume:
+              type: number
+            docRevision: *id002
+  FunctionsVideoSetMutedRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.video.setMuted
+        params:
+          type: object
+          required:
+          - functionId
+          - muted
+          - baseRevision
+          properties:
+            functionId: *id003
+            muted:
+              type: boolean
+            baseRevision: *id002
+  FunctionsVideoSetMutedResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsVideoSetMutedOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsVideoSetMutedOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - docRevision
+          properties:
+            docRevision: *id002
+  FunctionsVideoMutedChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.video.mutedChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - functionId
+          - muted
+          - docRevision
+          properties:
+            functionId: *id003
+            muted:
+              type: boolean
+            docRevision: *id002
+  FunctionsVideoSetSpoutSizeRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.video.setSpoutSize
+        params:
+          type: object
+          required:
+          - functionId
+          - width
+          - height
+          - baseRevision
+          description: 'VideoEditor::setSpoutSize(): the Spout sender size; 0 (or any value <= 0) in either
+            axis = the video''s native size. The sender name is not settable: it follows the function name
+            (FunctionsVideoConfig.spoutSenderName, read-only).'
+          properties:
+            functionId: *id003
+            width:
+              type: integer
+            height:
+              type: integer
+            baseRevision: *id002
+  FunctionsVideoSetSpoutSizeResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsVideoSetSpoutSizeOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsVideoSetSpoutSizeOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - docRevision
+          properties:
+            docRevision: *id002
+  FunctionsVideoSpoutSizeChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.video.spoutSizeChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - functionId
+          - spoutSize
+          - docRevision
+          properties:
+            functionId: *id003
+            spoutSize:
+              type: object
+              properties:
+                width:
+                  type: integer
+                height:
+                  type: integer
+            docRevision: *id002
+  FunctionsRgbmatrixSaveToSequenceRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.rgbmatrix.saveToSequence
+        params:
+          type: object
+          required:
+          - functionId
+          - baseRevision
+          description: 'RGBMatrixEditor::saveToSequence(): a hidden Scene named after the fixture group
+            holding the channels of the matrix''s control mode (RGB also writes CMY heads), plus a Sequence
+            ''<matrix> Sequence'' bound to it with one step per rendered matrix step (Per Step duration
+            = the matrix duration, fade modes Per Step when the matrix fades). Ping Pong renders 2n-2 steps
+            (one bounce). INVALID_STATE without a fixture group or algorithm. Broadcasts functions.created
+            for the Sequence.'
+          properties:
+            functionId: *id003
+            baseRevision: *id002
+  FunctionsRgbmatrixSaveToSequenceResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsRgbmatrixSaveToSequenceOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsRgbmatrixSaveToSequenceOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - sequenceId
+          - sceneId
+          - stepsCount
+          - docRevision
+          properties:
+            sequenceId: *id003
+            sceneId: *id003
+            stepsCount:
+              type: integer
+            docRevision: *id002
 schemas:
   FunctionsRgbMatrixAlgorithmType:
     type: string
@@ -3633,12 +4370,16 @@ schemas:
           its window / sender is desktop-only, the mode itself is document state.
       spoutSize:
         type: object
-        description: Spout sender size, 0x0 = native resolution. Read-only here (no API setter yet).
+        description: Spout sender size, 0x0 = native resolution. Set with functions.video.setSpoutSize.
         properties:
           width:
             type: integer
           height:
             type: integer
+      spoutSenderName:
+        type: string
+        description: Read-only. The Spout sender name (Video::defaultSpoutSenderName()), derived from the
+          function name - rename the function to change it.
       volume:
         type: number
         description: Read-only here (Video::volume(), 0-100); no API setter yet
@@ -4497,3 +5238,147 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/functionsMediaReloadedEvent'
+  sendFunctionsMediaStatus:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsMediaStatusRequest'
+  receiveFunctionsMediaStatusResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsMediaStatusResponse'
+  sendFunctionsMediaCollect:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsMediaCollectRequest'
+  receiveFunctionsMediaCollectResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsMediaCollectResponse'
+  receiveFunctionsMediaCollected:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsMediaCollectedEvent'
+  sendFunctionsMediaRemoveUnused:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsMediaRemoveUnusedRequest'
+  receiveFunctionsMediaRemoveUnusedResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsMediaRemoveUnusedResponse'
+  sendFunctionsAudioDetectBpm:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsAudioDetectBpmRequest'
+  receiveFunctionsAudioDetectBpmResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsAudioDetectBpmResponse'
+  receiveFunctionsAudioBpmChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsAudioBpmChangedEvent'
+  sendFunctionsAudioSetMuted:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsAudioSetMutedRequest'
+  receiveFunctionsAudioSetMutedResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsAudioSetMutedResponse'
+  receiveFunctionsAudioMutedChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsAudioMutedChangedEvent'
+  sendFunctionsVideoSetVolume:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsVideoSetVolumeRequest'
+  receiveFunctionsVideoSetVolumeResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsVideoSetVolumeResponse'
+  receiveFunctionsVideoVolumeChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsVideoVolumeChangedEvent'
+  sendFunctionsVideoSetMuted:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsVideoSetMutedRequest'
+  receiveFunctionsVideoSetMutedResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsVideoSetMutedResponse'
+  receiveFunctionsVideoMutedChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsVideoMutedChangedEvent'
+  sendFunctionsVideoSetSpoutSize:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsVideoSetSpoutSizeRequest'
+  receiveFunctionsVideoSetSpoutSizeResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsVideoSetSpoutSizeResponse'
+  receiveFunctionsVideoSpoutSizeChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsVideoSpoutSizeChangedEvent'
+  sendFunctionsRgbmatrixSaveToSequence:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsRgbmatrixSaveToSequenceRequest'
+  receiveFunctionsRgbmatrixSaveToSequenceResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsRgbmatrixSaveToSequenceResponse'
