@@ -13,7 +13,7 @@
  * (sideFaderLevel/nextStepIndex/primaryTop, factor/tapTimeValue, typeConfig.presets) and followed
  * through vc.cueList.sideFaderChanged / vc.speedDial.factorChanged / tapChanged / presetsChanged.
  */
-const { RobotoText, IconButton, GenericButton, CustomSpinBox, CustomCheckBox, CustomComboBox, CustomTextInput } = window.PatchDesignSystem_5432c9;
+const { RobotoText, IconButton, GenericButton, CustomSpinBox, CustomCheckBox, CustomComboBox } = window.PatchDesignSystem_5432c9;
 
 const VC_CUE_METHODS = {
   SIDE_FADER: 'vc.cueList.setSideFaderLevel',
@@ -45,17 +45,55 @@ function useVCWidgetEvent(vc, topic, widgetId, handler) {
   React.useEffect(() => vc.qlc.subscribeTo(topic, (d) => { if (d && String(d.widgetId) === String(widgetId)) ref.current(d); }), [vc.qlc, topic, widgetId, vc.qlc.online]);
 }
 
-/** The speed dial's preset list: seeded from typeConfig.presets, kept current by vc.speedDial.presetsChanged. */
-function useSpeedDialPresets(vc, w) {
+/** A fresh vc.widget.get of the widget on mount: the list snapshot the screen hands down can be stale
+    for the fields only this file follows (presetsChanged / sideFaderChanged / factorChanged are not
+    among the screen's refresh topics, and a body remounts when edit mode is toggled). */
+function useFreshWidget(vc, w) {
+  const [fresh, setFresh] = React.useState(null);
+  React.useEffect(() => {
+    let alive = true;
+    if (!vc.qlc.online) return undefined;
+    vc.qlc.call('vc.widget.get', { widgetId: String(w.id) }).then(r => { if (alive && r) setFresh(r); }).catch(() => {});
+    return () => { alive = false; };
+  }, [w.id, vc.qlc.online]);
+  return fresh;
+}
+
+/** The speed dial's preset list: seeded from typeConfig.presets (then the fresh snapshot), kept current
+    by vc.speedDial.presetsChanged. */
+function useSpeedDialPresets(vc, w, fresh) {
   const seed = (w.typeConfig && w.typeConfig.presets) || [];
   const key = JSON.stringify(seed);
   const [presets, setPresets] = React.useState(seed);
   React.useEffect(() => { setPresets(seed); }, [key]);
+  React.useEffect(() => { if (fresh && fresh.typeConfig && Array.isArray(fresh.typeConfig.presets)) setPresets(fresh.typeConfig.presets); }, [fresh]);
   useVCWidgetEvent(vc, 'vc.speedDial.presetsChanged', w.id, (d) => setPresets(d.presets || []));
   return presets;
 }
 
+/** CustomSpinBox commits on every keystroke; structural edits want one call per value, so these
+    fields keep a draft and commit on Enter / blur. */
+function DraftSpin({ value, from, to, suffix, width, onCommit, tag }) {
+  const [draft, setDraft] = React.useState(value);
+  React.useEffect(() => { setDraft(value); }, [value]);
+  const commit = () => { if (Math.round(draft) !== Math.round(value)) onCommit(Math.round(draft)); };
+  return <CustomSpinBox value={draft} from={from} to={to} suffix={suffix} showControls={false} width={width} height={24} onValueModified={setDraft}
+    onKeyDown={(e) => { if (e.key === 'Enter') commit(); }} onBlur={commit} data-e2e={tag} />;
+}
+
 function vcCueMask(cfg) { return Array.isArray(cfg.visibilityMask) ? cfg.visibilityMask : []; }
+
+/** Collapsible sections with this file's own expanded-by-default state (VCWidgetProperties' `section`
+    helper only knows the built-in keys and would start ours collapsed). Same SectionBox look. */
+function useCueSections(collapsedKeys) {
+  const { SectionBox } = window.PatchDesignSystem_5432c9;
+  const [open, setOpen] = React.useState(() => { const o = {}; (collapsedKeys || []).forEach(k => { o[k] = false; }); return o; });
+  return (key, label, body) => (
+    <SectionBox key={key} sectionLabel={label} isExpanded={open[key] !== false} onToggle={() => setOpen(o => Object.assign({}, o, { [key]: o[key] === false }))}>
+      {open[key] !== false ? <div data-e2e-section={key}>{body}</div> : null}
+    </SectionBox>
+  );
+}
 
 function vcCueMethodError(vc, method) {
   return (e) => {
@@ -86,7 +124,10 @@ function VCCueListBodyEx({ w }) {
      the crossfade bookkeeping) and playbackChanged; the operator's own drag wins while pressed. */
   const [sf, setSf] = React.useState({ level: w.sideFaderLevel != null ? Number(w.sideFaderLevel) : faderMax, next: w.nextStepIndex != null ? Number(w.nextStepIndex) : -1, primaryTop: w.primaryTop !== false });
   const pressing = React.useRef(false);
-  React.useEffect(() => { setSf(s => ({ level: w.sideFaderLevel != null ? Number(w.sideFaderLevel) : s.level, next: w.nextStepIndex != null ? Number(w.nextStepIndex) : s.next, primaryTop: w.primaryTop != null ? w.primaryTop !== false : s.primaryTop })); }, [w.sideFaderLevel, w.nextStepIndex, w.primaryTop]);
+  const seedFrom = (x) => setSf(s => ({ level: x.sideFaderLevel != null ? Number(x.sideFaderLevel) : s.level, next: x.nextStepIndex != null ? Number(x.nextStepIndex) : s.next, primaryTop: x.primaryTop != null ? x.primaryTop !== false : s.primaryTop }));
+  React.useEffect(() => { seedFrom(w); }, [w.sideFaderLevel, w.nextStepIndex, w.primaryTop]);
+  const fresh = useFreshWidget(vc, w);
+  React.useEffect(() => { if (fresh && !pressing.current) seedFrom(fresh); }, [fresh]);
   useVCWidgetEvent(vc, 'vc.cueList.sideFaderChanged', w.id, (d) => setSf(s => ({ level: pressing.current || d.level == null ? s.level : Number(d.level), next: d.nextStepIndex != null ? Number(d.nextStepIndex) : s.next, primaryTop: d.primaryTop != null ? !!d.primaryTop : s.primaryTop })));
   useVCWidgetEvent(vc, 'vc.cueList.playbackChanged', w.id, (d) => { if (d.nextStepIndex != null || d.primaryTop != null) setSf(s => ({ level: s.level, next: d.nextStepIndex != null ? Number(d.nextStepIndex) : s.next, primaryTop: d.primaryTop != null ? !!d.primaryTop : s.primaryTop })); });
   const throttled = useThrottledSender(33);
@@ -193,9 +234,11 @@ function VCSpeedDialBodyEx({ w }) {
   const [blink, setBlink] = React.useState(false);
   React.useEffect(() => { if (w.factor) setFactor(w.factor); }, [w.factor]);
   React.useEffect(() => { if (w.tapTimeValue != null) setTapTime(Number(w.tapTimeValue) || 0); }, [w.tapTimeValue]);
+  const fresh = useFreshWidget(vc, w);
+  React.useEffect(() => { if (fresh) { if (fresh.factor) setFactor(fresh.factor); if (fresh.tapTimeValue != null) setTapTime(Number(fresh.tapTimeValue) || 0); } }, [fresh]);
   useVCWidgetEvent(vc, 'vc.speedDial.factorChanged', w.id, (d) => { if (d.factor) setFactor(d.factor); });
   useVCWidgetEvent(vc, 'vc.speedDial.tapChanged', w.id, (d) => setTapTime(Number(d.tapTimeValue) || 0));
-  const presets = useSpeedDialPresets(vc, w);
+  const presets = useSpeedDialPresets(vc, w, fresh);
   /* VCSpeedDialItem.qml tapTimer: the TAP border blinks at the tapped interval while a series is set. */
   React.useEffect(() => {
     if (!(tapTime > 0)) { setBlink(false); return; }
@@ -217,6 +260,9 @@ function VCSpeedDialBodyEx({ w }) {
   const dialMin = Number(cfg.timeMinimumValue) || 0, dialMaxRaw = Number(cfg.timeMaximumValue) || 0;
   const dialMax = dialMaxRaw > dialMin ? dialMaxRaw : dialMin + 10000;
   const g = w.geometry || { width: 200, height: 175 };
+  /* Knob diameter: whatever height is left once the other visible rows took theirs. */
+  const knobBudget = (g.height || 175) - 12 - (style.caption ? 20 : 0) - (has('Beats') ? 58 : 0) - (timeRow ? 27 : 0) - (has('Multipliers') ? 37 : 0) - (has('Apply') ? 29 : 0) - (presets.length ? 27 : 0);
+  const knobSize = Math.max(36, Math.min((g.width || 200) - (has('Tap') ? 120 : 24), knobBudget));
   const factorBtn = (f) => (
     <GenericButton key={f} label={SPEED_FACTOR_LABEL[f]} width="100%" height={26} fontSize="var(--text-size-small)" bgColor={factor === f ? SPEED_ACTIVE : 'var(--bg-control)'}
       disabled={!canFactor} onClick={(e) => { stop(e); pickFactor(f); }} onPointerDown={stop} data-e2e={'speed-factor-' + f} />
@@ -229,25 +275,25 @@ function VCSpeedDialBodyEx({ w }) {
   return (
     <div data-e2e="speed-body" data-factor={factor} data-tap={tapTime} style={{ position: 'absolute', inset: 0, background: style.backgroundColor || 'var(--bg-strong)', border: '2px solid var(--border-color-dark)', borderRadius: 4, display: 'flex', flexDirection: 'column', gap: 3, padding: 4, overflow: 'hidden', color: style.foregroundColor || 'var(--fg-main)', pointerEvents: vc.edit ? 'none' : 'auto' }}>
       {style.caption ? <span style={Object.assign({ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 'none', textAlign: 'center' }, vcFontCss(style), { fontSize: 13 })}>{style.caption}</span> : null}
-      {has('Dial') || has('Beats') || has('Tap') ? (
-        <div style={{ display: 'flex', gap: 4, flex: has('Dial') ? 1 : 'none', minHeight: 0 }}>
+      {has('Dial') || has('Tap') ? (
+        <div style={{ display: 'flex', gap: 4, flex: has('Dial') ? 1 : 'none', minHeight: has('Dial') ? 50 : 0 }}>
           {has('Dial') ? (
-            <div style={{ flex: 2, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onPointerDown={stop} data-e2e="speed-dial">
-              <VCKnob value={vcClamp(ms, dialMin, dialMax)} from={dialMin} to={dialMax} size={Math.max(36, Math.min(g.width / 2 - 12, g.height - 90))} disabled={!canSet} onMoved={setDialMs} />
-            </div>
-          ) : null}
-          {has('Beats') ? (
-            <div style={{ flex: 2, minWidth: 0, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 3, alignContent: 'center' }}>
-              {['OneSixteenth', 'OneEighth', 'OneFourth', 'Half', 'Two', 'Four', 'Eight', 'Sixteen'].map(factorBtn)}
+            <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onPointerDown={stop} data-e2e="speed-dial">
+              <VCKnob value={vcClamp(ms, dialMin, dialMax)} from={dialMin} to={dialMax} size={knobSize} disabled={!canSet} onMoved={setDialMs} />
             </div>
           ) : null}
           {has('Tap') ? (
-            <div style={{ flex: 1, minWidth: 48, display: 'flex' }}>
+            <div style={{ flex: has('Dial') ? 'none' : 1, width: has('Dial') ? '35%' : 'auto', minWidth: 48, display: 'flex' }}>
               <GenericButton label="TAP" width="100%" height="100%" fontSize="var(--text-size-default)" disabled={!canTap} data-e2e="speed-tap"
                 bgColor={blink ? 'var(--keypad-enter-hover)' : 'var(--keypad-enter)'} hoverColor="var(--keypad-enter-hover)" pressedColor="var(--keypad-enter-pressed)"
-                onPointerDown={(e) => { if (e.button === 0) { stop(e); tap(); } }} onClick={stop} onContextMenu={resetTap} style={{ minHeight: 34, border: '2px solid ' + (blink ? '#00FF00' : 'var(--bg-medium)') }} />
+                onPointerDown={(e) => { if (e.button === 0) { stop(e); tap(); } }} onClick={stop} onContextMenu={resetTap} style={{ minHeight: 38, border: '2px solid ' + (blink ? '#00FF00' : 'var(--bg-medium)') }} />
             </div>
           ) : null}
+        </div>
+      ) : null}
+      {has('Beats') ? (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 3, flex: 'none' }}>
+          {['OneSixteenth', 'OneEighth', 'OneFourth', 'Half', 'Two', 'Four', 'Eight', 'Sixteen'].map(factorBtn)}
         </div>
       ) : null}
       {timeRow ? (
@@ -286,7 +332,8 @@ function VCSpeedDialBodyEx({ w }) {
 }
 
 /* ================================================================ Cue list properties */
-function VCCueListProps({ w, cfg, setConfig, functions, section, PropRow, CheckRow, FunctionPicker }) {
+function VCCueListProps({ w, cfg, setConfig, functions, PropRow, CheckRow, FunctionPicker }) {
+  const section = useCueSections([]);
   const chasers = React.useMemo(() => functions.filter(f => f.type === 'Chaser' || f.type === 'Sequence'), [functions]);
   const mode = cfg.sideFaderMode || 'None';
   return (
@@ -318,6 +365,19 @@ function VCCueListProps({ w, cfg, setConfig, functions, section, PropRow, CheckR
 }
 
 /* ================================================================ Speed dial properties */
+/** A fully controlled one-line text field in the design system's bordered-box look. (CustomTextInput
+    keeps its own copy of the text and only re-syncs after paint, which drops keystrokes that arrive
+    faster than a frame - fine for a person, not for a scripted run.) */
+function TextField({ value, onChange, onConfirm, placeholder, tag }) {
+  return (
+    <span style={{ flex: 1, display: 'flex', alignItems: 'center', height: 26, background: 'var(--bg-control)', border: '1px solid var(--spin-border)', borderRadius: 'var(--radius-spin)', padding: '0 5px', gap: 4 }}>
+      <input value={value} placeholder={placeholder} data-e2e={tag} onChange={(e) => onChange(e.target.value)}
+        onBlur={() => { if (onConfirm) onConfirm(value); }} onKeyDown={(e) => { if (e.key === 'Enter' && onConfirm) onConfirm(value); }}
+        style={{ width: '100%', height: 22, padding: 0, background: 'transparent', border: 'none', outline: 'none', color: 'var(--fg-main)', fontFamily: 'var(--font-roboto)', fontSize: 'var(--text-size-small)' }} />
+    </span>
+  );
+}
+
 /** Text filter over functions.list, one row per match; picking one calls onPick(f). */
 function FunctionSearch({ functions, exclude, onPick, placeholder }) {
   const [needle, setNeedle] = React.useState('');
@@ -326,9 +386,9 @@ function FunctionSearch({ functions, exclude, onPick, placeholder }) {
   const matches = n ? functions.filter(f => !f.hidden && exclude.indexOf(String(f.id)) === -1 && (f.name.toLowerCase().indexOf(n) !== -1 || String(f.id) === n)).slice(0, 40) : [];
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '4px 6px' }}>
-      <span style={{ display: 'flex', alignItems: 'center', height: 26, background: 'var(--bg-control)', border: '1px solid var(--spin-border)', borderRadius: 'var(--radius-spin)', padding: '0 5px', gap: 4 }}>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
         <img src={D.icon('search')} alt="" style={{ width: 14, height: 14 }} />
-        <CustomTextInput text={needle} editing placeholder={placeholder || 'Search functions'} width="100%" height={22} onTextConfirmed={setNeedle} onChange={(e) => setNeedle(e.target.value)} style={{ fontSize: 'var(--text-size-small)' }} data-e2e="speed-fn-search" />
+        <TextField value={needle} onChange={setNeedle} placeholder={placeholder || 'Search functions'} tag="speed-fn-search" />
       </span>
       {n ? (
         <div style={{ maxHeight: 190, overflow: 'auto', border: 'var(--border-dark)' }} data-e2e="speed-fn-matches">
@@ -345,8 +405,9 @@ function FunctionSearch({ functions, exclude, onPick, placeholder }) {
   );
 }
 
-function VCSpeedDialProps({ w, cfg, setConfig, functions, section, PropRow, CheckRow }) {
+function VCSpeedDialProps({ w, cfg, setConfig, functions, PropRow, CheckRow }) {
   const vc = useVC();
+  const section = useCueSections([]);
   const mask = vcCueMask(cfg);
   const has = (flag) => mask.indexOf(flag) !== -1;
   const list = Array.isArray(cfg.functions) ? cfg.functions : [];
@@ -356,7 +417,7 @@ function VCSpeedDialProps({ w, cfg, setConfig, functions, section, PropRow, Chec
   const toggleFlag = (flag, on) => setConfig({ visibilityMask: on ? mask.concat(mask.indexOf(flag) === -1 ? [flag] : []) : mask.filter(x => x !== flag) });
   const [inMs, setInMs] = React.useState(false);
   const unit = inMs ? 1 : 1000;
-  const presets = useSpeedDialPresets(vc, w);
+  const presets = useSpeedDialPresets(vc, w, useFreshWidget(vc, w));
   const [sel, setSel] = React.useState(-1);
   const [pName, setPName] = React.useState('');
   const [pTime, setPTime] = React.useState(0);
@@ -364,12 +425,16 @@ function VCSpeedDialProps({ w, cfg, setConfig, functions, section, PropRow, Chec
   React.useEffect(() => { if (sel >= 0 && !selected) { setSel(-1); setPName(''); setPTime(0); } }, [presets]);
   const select = (p) => { setSel(p.presetId); setPName(p.name); setPTime(Number(p.valueMs) || 0); };
   const structural = (method, params) => vcStructural(vc.qlc, method, Object.assign({ widgetId: String(w.id) }, params)).catch(vcCueMethodError(vc, method));
-  const addPreset = () => structural(VC_CUE_METHODS.PRESET_ADD, { preset: { name: pName.trim(), valueMs: Math.round(pTime) } }).then(r => { if (r && r.presetId != null) setSel(r.presetId); });
+  /* After adding, the editor is cleared for the next preset; click a row to edit an existing one. */
+  const addPreset = () => structural(VC_CUE_METHODS.PRESET_ADD, { preset: { name: pName.trim(), valueMs: Math.round(pTime) } }).then(r => { if (r && r.presetId != null) { setSel(-1); setPName(''); setPTime(0); } });
   const removePreset = () => { if (sel >= 0) structural(VC_CUE_METHODS.PRESET_REMOVE, { presetId: sel }).then(() => { setSel(-1); setPName(''); setPTime(0); }); };
-  const updateName = (t) => { setPName(t); if (selected && t.trim() && t.trim() !== selected.name) structural(VC_CUE_METHODS.PRESET_UPDATE, { presetId: sel, name: t.trim() }); };
+  const updateName = (t) => { if (selected && t.trim() && t.trim() !== selected.name) structural(VC_CUE_METHODS.PRESET_UPDATE, { presetId: sel, name: t.trim() }); };
   const updateTime = (v) => { setPTime(v); if (selected && Math.round(v) !== Number(selected.valueMs)) structural(VC_CUE_METHODS.PRESET_UPDATE, { presetId: sel, valueMs: Math.round(v) }); };
-  const factorCombo = (f, key, tag) => (
-    <CustomComboBox width={72} height={22} currValue={f[key] || (key === 'durationFactor' ? 'One' : 'None')} onValueChanged={(v) => { if (v !== f[key]) setFactor(f.functionID, key, v); }} model={SPEED_FACTOR_MODEL} data-e2e={tag} />
+  const factorCombo = (f, key, label, tag) => (
+    <span style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, gap: 1 }}>
+      <span style={{ fontSize: 'var(--text-size-menubar)', color: 'var(--fg-light)' }}>{label}</span>
+      <CustomComboBox width="100%" height={22} currValue={f[key] || (key === 'durationFactor' ? 'One' : 'None')} onValueChanged={(v) => { if (v !== f[key]) setFactor(f.functionID, key, v); }} model={SPEED_FACTOR_MODEL} data-e2e={tag} />
+    </span>
   );
   return (
     <>
@@ -377,16 +442,18 @@ function VCSpeedDialProps({ w, cfg, setConfig, functions, section, PropRow, Chec
         <div data-e2e="speed-functions">
           {list.length ? (
             <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '0 6px', height: 'var(--list-item-height)', fontSize: 'var(--text-size-menubar)', color: 'var(--fg-light)' }}>
-                <span style={{ flex: 1 }}>Function</span><span style={{ width: 72 }}>Fade In</span><span style={{ width: 72 }}>Fade Out</span><span style={{ width: 72 }}>Duration</span><span style={{ width: 24 }} />
-              </div>
               {list.map(f => {
                 const fn = byId[String(f.functionID)];
+                /* VCSpeedDialProperties.qml's one-line table would not fit 300px: name row + factor row. */
                 return (
-                  <div key={f.functionID} data-e2e="speed-fn-row" data-fid={f.functionID} style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '1px 6px', minHeight: 'var(--list-item-height)' }}>
-                    <RobotoText label={fn ? fn.name : 'Function #' + f.functionID} fontSize="var(--text-size-small)" height="auto" wrapText style={{ flex: 1, minWidth: 0 }} />
-                    {factorCombo(f, 'fadeInFactor', 'speed-fn-fadein')}{factorCombo(f, 'fadeOutFactor', 'speed-fn-fadeout')}{factorCombo(f, 'durationFactor', 'speed-fn-duration')}
-                    <IconButton faSource="fa_minus" size={22} tooltip="Remove this function" onClick={() => setList(list.filter(x => String(x.functionID) !== String(f.functionID)))} data-e2e="speed-fn-remove" />
+                  <div key={f.functionID} data-e2e="speed-fn-row" data-fid={f.functionID} style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '3px 6px', borderBottom: 'var(--border-dark)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <RobotoText label={fn ? fn.name : 'Function #' + f.functionID} fontSize="var(--text-size-small)" height="auto" style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} />
+                      <IconButton faSource="fa_minus" size={22} tooltip="Remove this function" onClick={() => setList(list.filter(x => String(x.functionID) !== String(f.functionID)))} data-e2e="speed-fn-remove" />
+                    </div>
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      {factorCombo(f, 'fadeInFactor', 'Fade in', 'speed-fn-fadein')}{factorCombo(f, 'fadeOutFactor', 'Fade out', 'speed-fn-fadeout')}{factorCombo(f, 'durationFactor', 'Duration (+tap)', 'speed-fn-duration')}
+                    </div>
                   </div>
                 );
               })}
@@ -401,10 +468,10 @@ function VCSpeedDialProps({ w, cfg, setConfig, functions, section, PropRow, Chec
           {has('Tap') ? <CheckRow label="Tap button controls the global BPM rate" checked={!!cfg.controlBPM} onToggle={(b) => setConfig({ controlBPM: typeof b === 'boolean' ? b : !cfg.controlBPM })} /> : null}
           {has('Dial') ? <CheckRow label="Reset multiplier factor when the dial value changes" checked={!!cfg.resetOnDialChange} onToggle={(b) => setConfig({ resetOnDialChange: typeof b === 'boolean' ? b : !cfg.resetOnDialChange })} /> : null}
           <PropRow label="Dial time range">
-            <CustomSpinBox value={Math.floor((Number(cfg.timeMinimumValue) || 0) / unit)} from={0} to={100000} width={70} height={24} suffix={inMs ? 'ms' : 's'} onValueModified={(v) => setConfig({ timeMinimumValue: v * unit })} data-e2e="speed-range-min" />
+            <DraftSpin value={Math.floor((Number(cfg.timeMinimumValue) || 0) / unit)} from={0} to={100000} width={64} suffix={inMs ? 'ms' : 's'} onCommit={(v) => setConfig({ timeMinimumValue: v * unit })} tag="speed-range-min" />
             <RobotoText label="to" fontSize="var(--text-size-small)" height="auto" />
-            <CustomSpinBox value={Math.floor((Number(cfg.timeMaximumValue) || 0) / unit)} from={0} to={100000} width={70} height={24} suffix={inMs ? 'ms' : 's'} onValueModified={(v) => setConfig({ timeMaximumValue: v * unit })} data-e2e="speed-range-max" />
-            <GenericButton label={inMs ? 'ms' : 'S'} width={30} height={24} fontSize="var(--text-size-menubar)" onClick={() => setInMs(!inMs)} />
+            <DraftSpin value={Math.floor((Number(cfg.timeMaximumValue) || 0) / unit)} from={0} to={100000} width={64} suffix={inMs ? 'ms' : 's'} onCommit={(v) => setConfig({ timeMaximumValue: v * unit })} tag="speed-range-max" />
+            <GenericButton label={inMs ? 'ms' : 'S'} width={30} height={24} fontSize="var(--text-size-menubar)" onClick={() => setInMs(!inMs)} tooltip="Seconds / milliseconds" />
           </PropRow>
           {!has('Tap') && !has('Dial') ? <RobotoText label="Enable the Tap or Dial control below for their options" fontSize="var(--text-size-menubar)" labelColor="var(--fg-medium)" wrapText height="auto" style={{ padding: '0 6px 4px' }} /> : null}
         </div>
@@ -419,12 +486,10 @@ function VCSpeedDialProps({ w, cfg, setConfig, functions, section, PropRow, Chec
       {section('speedPresets', 'Presets', (
         <div data-e2e="speed-preset-editor">
           <PropRow label="Preset name">
-            <span style={{ flex: 1, display: 'flex', alignItems: 'center', height: 26, background: 'var(--bg-control)', border: '1px solid var(--spin-border)', borderRadius: 'var(--radius-spin)', padding: '0 5px' }}>
-              <CustomTextInput key={w.id + ':' + sel} text={pName} editing width="100%" height={22} onChange={(e) => setPName(e.target.value)} onTextConfirmed={updateName} style={{ fontSize: 'var(--text-size-small)' }} data-e2e="speed-preset-name" />
-            </span>
+            <TextField value={pName} onChange={setPName} onConfirm={updateName} placeholder="Name" tag="speed-preset-name" />
           </PropRow>
           <PropRow label="Preset time">
-            <CustomSpinBox value={Math.round(pTime)} from={0} to={3600000} suffix="ms" showControls={false} width={100} height={24} onValueModified={updateTime} data-e2e="speed-preset-time" />
+            <DraftSpin value={Math.round(pTime)} from={0} to={3600000} suffix="ms" width={100} onCommit={updateTime} tag="speed-preset-time" />
           </PropRow>
           <div style={{ display: 'flex', gap: 4, padding: '2px 6px', justifyContent: 'flex-end' }}>
             <IconButton faSource="fa_plus" size={26} tooltip="Add a preset" disabled={!pName.trim() || !(pTime > 0)} onClick={addPreset} data-e2e="speed-preset-add" />
