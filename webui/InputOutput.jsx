@@ -423,7 +423,7 @@ function InputOutput() {
           </SectionBox>
           <SectionBox sectionLabel="Desktop only" isExpanded>
             <div style={{ padding: 6, display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {['Plugin configuration dialogs open on the QLC+ host machine, not in this browser', 'Input signal indicator on the input patch (no input event on the API)', 'Audio sample rate, channels, buffer size and input level check', 'Beat generator selection'].map(t => (
+              {['Plugin configuration dialogs open on the QLC+ host machine, not in this browser', 'Input signal indicator on the input patch (no input event on the API)', 'Audio input signal level check', 'Beat generator selection'].map(t => (
                 <RobotoText key={t} label={'· ' + t} fontSize={12} labelColor={noteText} wrapText height="auto" />
               ))}
             </div>
