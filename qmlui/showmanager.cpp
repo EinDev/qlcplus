@@ -2625,7 +2625,7 @@ double ShowManager::legacyBeatPseudoUnitToMs(int bpmNumber)
     if (bpmNumber <= 0)
         return 0.0;
 
-    // Old encoding (TimeUtils.js posToBeat(), pre-398388c7a) stored
+    // Old encoding (TimeUtils.js posToBeat(), pre-e008dd107) stored
     // beatCount * 1000. Inverse of TimingUtils.qml's msToBeatPseudo()
     // (round((ms / (60000 / bpm)) * 1000)): realMs = pseudo * (60000/bpm) / 1000
     return (60000.0 / bpmNumber) / 1000.0;

@@ -43,7 +43,7 @@ namespace
 
     /** Flush the coalesced, queued rebuild() that TreeFlatModel::
      *  slotSourceStructureChanged() posts for every signal of a burst after the
-     *  first (see commit 087954395). Needs a live QCoreApplication - hence
+     *  first (see commit 2c4eeeb8b). Needs a live QCoreApplication - hence
      *  QTEST_GUILESS_MAIN below - since posted events are never delivered
      *  without one. */
     void flushDeferredRebuild()
@@ -332,7 +332,7 @@ void TreeFlatModel_Test::deletingLastFunctionOfExpandedFolderMirrorsFunctionMana
 // The create-folder-then-delete sequence arriving in ONE synchronous call stack
 // (e.g. a pipelined control API batch), so a coalesced rebuild is already pending
 // when the removal happens and slotSourceStructureChanged() takes its deferred
-// path. This is the case commit 96b0cb80a only half-fixed: it made the FIRST
+// path. This is the case commit 859f491a7 only half-fixed: it made the FIRST
 // signal of a burst rebuild synchronously, but a removal arriving later in the
 // same burst still left the flat model holding rows into the subtree that removal
 // freed - including, for an expanded nested folder, that folder's child TreeModel
@@ -388,7 +388,7 @@ void TreeFlatModel_Test::createFolderThenDeleteInOneBurstNeverDanglesOwner()
 // folder's destructor tears down that folder's child TreeModel. Before the fix,
 // the FIRST folder's teardown bubbled a structureChanged out of the middle of
 // clear()'s loop - the flat model's synchronous first-of-burst rebuild()
-// (96b0cb80a) then re-walked the half-cleared tree and cached the not-yet-deleted
+// (859f491a7) then re-walked the half-cleared tree and cached the not-yet-deleted
 // items and, for every still-expanded folder among them, that folder's child
 // TreeModel as the `owner` of its visible rows. The very same loop freed all of
 // them a moment later, and every later structureChanged of the burst (including

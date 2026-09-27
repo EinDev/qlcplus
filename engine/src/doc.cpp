@@ -1142,13 +1142,13 @@ QList<Show *> Doc::possiblyAffectedLegacyBeatShows(const QString &creatorVersion
 {
     QList<Show *> result;
 
-    // ADR 0001 decision 4: files saved before the canonical-ms fix (398388c7a)
+    // ADR 0001 decision 4: files saved before the canonical-ms fix (e008dd107)
     // may hold Show timeline values written under the old, ambiguous
     // beat-pseudo-count convention. The fix itself did not bump APPVERSION,
     // so "APPVERSION < 5.3.1" (the bump introduced alongside this detection)
     // is the best available cutoff, not "< the version the fix actually
     // landed in" - this is intentionally coarse and over-inclusive:
-    // - Files saved by a fixed build between 398388c7a and the 5.3.1 bump
+    // - Files saved by a fixed build between e008dd107 and the 5.3.1 bump
     //   are flagged unnecessarily (harmless: the user can pick "already
     //   correct" per Show).
     // - Missing/unparseable Creator/Version info (very old files, or files

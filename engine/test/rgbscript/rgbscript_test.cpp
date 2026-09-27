@@ -628,7 +628,7 @@ void RGBScript_Test::malformedProperties()
 void RGBScript_Test::wavesCircularOption()
 {
     // Hand-verified regression test for the Circular option added to Waves
-    // in commit a47a5c9df. Uses width=10 (span), taillength=30% (-> 3 tail
+    // in commit 5bc04b49a. Uses width=10 (span), taillength=30% (-> 3 tail
     // pixels), direction=Right, orientation=Horizontal, tailfade=No (so a
     // filled pixel is exactly $color and an unfilled one is exactly 0, no
     // rounding to account for).

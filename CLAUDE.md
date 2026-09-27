@@ -118,7 +118,7 @@ This moves the user's actual cursor — always say so before using it, same as
 for screenshots.
 
 **Caution, not yet trustworthy as a verification method**: this was built to
-self-check the drag-and-drop ghost fix around commit `867ed7051`. A single
+self-check the drag-and-drop ghost fix around commit `93fabff0d`. A single
 scripted drag + one log trace + one screenshot looked clean and got reported
 to the user as "verified end-to-end" — the user then reproduced it manually
 and the bug was still there. Don't repeat that mistake: one passing automated

@@ -333,7 +333,7 @@ Server: `controlapi/src/domains/apifixturesdomain.cpp` (mode, RGB panel,
   (the earlier notes' workaround was unpatch + patch). The final footprint is
   validated (range + overlap, excluding the fixture itself) before anything
   changes, then mode, address and universe are applied with signals blocked
-  and ONE `changed()` (the 03dd410cf idiom), so `Doc::slotFixtureChanged()`
+  and ONE `changed()` (the 1dd8e44d8 idiom), so `Doc::slotFixtureChanged()`
   never sees a transient footprint - covered by
   `updateModeWithMoveIgnoresTransientOverlap` (a Debug test binary aborts on
   the `Q_ASSERT` otherwise). The Qt UI's `FixtureManager::setFixtureModeIndex()`

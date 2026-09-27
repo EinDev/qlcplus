@@ -134,7 +134,7 @@ void FixtureUtils_Test::alignLeftViewMovesOnlyTheAlignedAxis()
 }
 
 // Reimplements the comparator ContextManager::sortedSelectedFixtures() uses
-// (qmlui/contextmanager.cpp, commit a71fdd756) - ContextManager itself can't
+// (qmlui/contextmanager.cpp, commit dc152c7c5) - ContextManager itself can't
 // be constructed headlessly (needs a live QQuickView*), so this exercises the
 // same rule directly against real Fixture/Doc objects and hand-packed itemIDs:
 // primary key is DMX order (Fixture::operator<), with head index then linked
@@ -204,7 +204,7 @@ void FixtureUtils_Test::dmxOrderSortWithHeadTiebreak()
 }
 
 // ContextManager::isGroupFullySelected() (qmlui/contextmanager.cpp, added in
-// 73ea55c7b/cb3abe039/34cbbac79) drives the group-row-highlight feature in
+// a968cbb49/5a660b59e/61d608baf) drives the group-row-highlight feature in
 // both FixtureGroupsBar.qml and the left-hand Fixture Groups list.
 // ContextManager itself needs a live QQuickView* to construct, but the check
 // only ever touches Doc/FixtureGroup/MonitorProperties, so its logic was

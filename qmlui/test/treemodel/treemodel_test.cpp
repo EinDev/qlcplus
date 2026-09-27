@@ -27,7 +27,7 @@
 
 // TreeModel::setData()/TreeFlatModel::slotSourceRoleChanged() both look up a
 // "contextManager" QML context property and call its isBatchSelection() slot
-// dynamically (via QMetaObject::invokeMethod(), see commit 5bf602c57 - it's
+// dynamically (via QMetaObject::invokeMethod(), see commit 06b14beb4 - it's
 // called this way specifically so these files don't need to #include
 // contextmanager.h). This stand-in lets tests actually flip that flag and
 // verify the suppression path fires, without any real ContextManager/

@@ -1,7 +1,7 @@
 # Web UI import: verification, gap list and completeness audit (2026-09-26)
 
 Scope: `webui/` (the browser front end for the Control API) as imported from the design-system
-prototype and rewired against the server in `controlapi/src` at `07ff871e5`. Method availability
+prototype and rewired against the server in `controlapi/src` at `b7ea08689`. Method availability
 below is per that source tree (`registerMethod(...)` grep) and confirmed read-only against the
 running instance (QLC+ 5.3.1 GIT, SF3.qxw). The running binary may lag master, so "server has X"
 means "the source registers X".

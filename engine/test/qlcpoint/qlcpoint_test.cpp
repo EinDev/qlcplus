@@ -52,7 +52,7 @@ void QLCPoint_Test::hash()
 void QLCPoint_Test::lessThan()
 {
     // ContextManager::groupOrSortedSelectedFixtures() (qmlui/contextmanager.cpp,
-    // commit cb3abe039) relies on QLCPoint::operator< sorting row-major (y then
+    // commit 5a660b59e) relies on QLCPoint::operator< sorting row-major (y then
     // x) so that iterating a QMap<QLCPoint, GroupHead> (FixtureGroup::headsMap())
     // already yields a Fixture Group's grid in top-left-to-bottom-right order.
     // This was never directly verified - do so here.

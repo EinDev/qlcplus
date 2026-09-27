@@ -927,7 +927,7 @@ void FixtureGroup_Test::save()
 }
 
 // Reimplements FixtureGroupEditor::regenerateFromDmxOrder() (qmlui/fixturegroupeditor.cpp,
-// commit 59179fd53) against real Fixture/FixtureGroup objects. FixtureGroupEditor itself can't
+// commit 29df65f2f) against real Fixture/FixtureGroup objects. FixtureGroupEditor itself can't
 // be constructed in a headless test (it requires a live QQuickView*), so this mirrors the exact
 // algorithm - sort the group's fixtures by DMX address (Fixture::operator<), then re-populate
 // the grid row-major with an auto-or-given row count - to protect the rule it depends on.

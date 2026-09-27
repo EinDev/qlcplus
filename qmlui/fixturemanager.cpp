@@ -939,7 +939,7 @@ void FixtureManager::updateGroupsTree(Doc *doc, TreeModel *treeModel, QString se
     // caller's own tree via modelProvider) through a TreeFlatModel, so suspending
     // here left it holding dangling pointers for the whole rebuild - the same bug
     // already hit and reverted for FunctionManager::updateFunctionsTree() (see
-    // commit 087954395). The performance problem this was solving (one full
+    // commit 2c4eeeb8b). The performance problem this was solving (one full
     // TreeFlatModel re-flatten per addItem() during a bulk repopulate) is now
     // fixed at its source in TreeFlatModel::slotSourceStructureChanged(), which
     // coalesces bursts of structureChanged into a single deferred rebuild() - no
