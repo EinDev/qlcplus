@@ -1154,17 +1154,17 @@ void ApiFixturesDomain_Test::createRgbPanelNeverCreatesUniverses()
 {
     helloAndGetClientId();
     int universes = int(m_doc->inputOutputMap()->universesCount());
-    // Last universe, address 500: the 12-channel rows do not fit there, and
+    // Last universe, address 505: the 12-channel rows do not fit there, and
     // the Qt UI would create a new universe for them - the API refuses.
     QJsonObject reply = sendAndWaitForReply(QStringLiteral("fixtures.createRgbPanel"),
-                                            rgbPanelParams(universes - 1, 500, 4, 2, m_doc->docRevision()));
+                                            rgbPanelParams(universes - 1, 505, 4, 2, m_doc->docRevision()));
     QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
     QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("INVALID_PARAMS"));
     QCOMPARE(int(m_doc->inputOutputMap()->universesCount()), universes);
     QCOMPARE(m_doc->fixtures().count(), 0);
 
     // A row that does not fit the rest of universe 0 rolls into universe 1.
-    reply = sendAndWaitForReply(QStringLiteral("fixtures.createRgbPanel"), rgbPanelParams(0, 500, 4, 2, m_doc->docRevision()));
+    reply = sendAndWaitForReply(QStringLiteral("fixtures.createRgbPanel"), rgbPanelParams(0, 505, 4, 2, m_doc->docRevision()));
     QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
     QJsonArray ids = reply.value(QStringLiteral("result")).toObject().value(QStringLiteral("fixtureIds")).toArray();
     Fixture *first = m_doc->fixture(ids.at(0).toString().toUInt());
