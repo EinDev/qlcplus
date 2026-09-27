@@ -164,6 +164,23 @@ bool Audio::setSourceFileName(QString filename)
 {
     resetBpmResult();
 
+    // The renderer thread reads m_decoder while playing - and keeps doing
+    // so during a fade-out after the function has stopped. Replacing the
+    // source (Control API source/reload, the background media copy
+    // landing, the audio editor) used to free the decoder under it: stop
+    // playback first (postRun on MasterTimer is the last engine-thread
+    // access to m_audio_out), then tear the renderer down here.
+    if (isRunning())
+        stopAndWait(FunctionParent::master(FunctionParent::GenericOverride));
+    if (isRunning())
+        return false; // MasterTimer didn't let go: keep the current source
+    if (m_audio_out != NULL)
+    {
+        m_audio_out->stop();
+        delete m_audio_out;
+        m_audio_out = NULL;
+    }
+
     if (m_sourceFileName.isEmpty() == false)
     {
         // unload previous source
