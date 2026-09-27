@@ -401,3 +401,15 @@ Server: `controlapi/src/domains/apifixturesdomain.cpp` (mode, RGB panel,
   lives entirely in qmlui's `SceneEditor` on `InputOutputMap::inputValueChanged`; there is no engine
   hook or API to route an input line to a browser console. Pan/tilt mode and the fader window shift
   are offered as on-screen console navigation instead.
+## Implemented 2026-09-27: `fixtures.monitor.getBackground`
+
+- Read-only: returns `{path, mimeType, contentBase64}` of the stage's common 2D background
+  picture so a browser can draw the file it picked on the host (the Qt 2D view reads it
+  directly). Only the file the stage already references is read; picture extensions only
+  (`INVALID_PARAMS` otherwise), missing / unreadable / over 16 MB is `NOT_FOUND`. Test:
+  `getBackgroundReturnsThePictureBytes` in `controlapi/test/apimonitordomain/`.
+- The DMX-driven position / rotation settings (per-axis inverts, `rotationScale`,
+  `positionRange`) needed no server change: `setPlacement` already carried them; the web UI
+  gates the block on `Position X/Y/Z` / `Rotation X/Y/Z` channel groups from `fixtures.get`,
+  like `ContextManager::selectedFixtureHasDmxTransform()`, and writes them on the base item.
+- Web driver for the partial rows: `webui/tools/e2e/partials-ff.js` (sandbox `partialsff`).

@@ -35,6 +35,7 @@
 #include "mastertimer.h"
 #include "function.h"
 #include "qlcfile.h"
+#include "qlcconfig.h"
 
 #define MASTERTIMER_FREQUENCY "mastertimer/frequency"
 
@@ -746,7 +747,7 @@ void ApiCoreDomain::registerMethods()
     // qmlui/folderbrowser.cpp: dirs first, case-insensitive name order,
     // hidden entries and ./.. never listed, glob name filters apply to files
     // only. Nothing is ever created, renamed or deleted here.
-    d->registerMethod(QStringLiteral("core.fs.list"), [](ApiSession *session, const QString &id, const QJsonObject &params)
+    d->registerMethod(QStringLiteral("core.fs.list"), [this](ApiSession *session, const QString &id, const QJsonObject &params)
     {
         QJsonArray roots;
         QJsonObject home;
@@ -759,6 +760,26 @@ void ApiCoreDomain::registerMethods()
             QJsonObject entry;
             entry.insert(QStringLiteral("name"), drive.absolutePath());
             entry.insert(QStringLiteral("path"), drive.absolutePath());
+            roots.append(entry);
+        }
+        // Places after the drives: the folder of the loaded project (where
+        // 2D backgrounds / RGB matrix images usually live) and the gobo
+        // picture folder the Fixture Editor's picture capabilities use
+        // (App::goboSystemPath() in the desktop UI).
+        const QString projectDir = m_doc->workspacePath();
+        if (projectDir.isEmpty() == false && QDir(projectDir).exists())
+        {
+            QJsonObject entry;
+            entry.insert(QStringLiteral("name"), QStringLiteral("Project"));
+            entry.insert(QStringLiteral("path"), QDir(projectDir).absolutePath());
+            roots.append(entry);
+        }
+        const QDir goboDir = QLCFile::systemDirectory(GOBODIR);
+        if (goboDir.exists())
+        {
+            QJsonObject entry;
+            entry.insert(QStringLiteral("name"), QStringLiteral("Gobos"));
+            entry.insert(QStringLiteral("path"), goboDir.absolutePath());
             roots.append(entry);
         }
 

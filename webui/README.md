@@ -121,7 +121,32 @@ and a second tab checked for the pushed event:
   another definition / mode / universe / address, auto-connect channels, apply - Scenes, groups,
   2D positions and VC widgets follow. Fixture Tools gained a Highlight (locate) toggle. Not in the
   browser: the Qt3D view itself (position / rotation editing is the parity), uploading a background
-  picture (the file must already be on the server), DMX-driven position / rotation per axis.
+  picture (it is picked from the QLC+ machine, see below).
+- **F&F partial rows closed** (added 2026-09-27, verified against a `partialsff` sandbox on ports
+  9320/9321 with the SF3 project by `webui/tools/e2e/partials-ff.js`, 76 checks, every one read back
+  from the server): select every odd / every Nth ("Enter a number"); lock (a locked fixture refuses
+  drag and is skipped by Move to centre) and hide (not drawn) from the fixture properties; alt-click
+  on a head of a multi-head fixture (SF3 Strobe Tube, 8 heads) selects that head only - the Fixture
+  Tools then write only that head's channels and Fixture Groups' "Add selected (heads)" assigns just
+  those heads (`fixtures.group.assignHead`); align left, distribute horizontally / vertically,
+  arrange grid / line / circle with face centre and detect from placement, rotate around the
+  centroid, move to centre; stage units (Meters / Feet, size converted), width / depth, point of view
+  and the initial point-of-view prompt of a new project; SettingsView2D's "DMX Position/Rotation"
+  block (invert position / rotation X/Y/Z, rotation scale %, position range m) in the 2D settings and
+  the fixture properties, shown only for fixtures with Position / Rotation channels (SF3 FX Drone);
+  the 2D background picture picked with the server file browser and drawn in the view
+  (`fixtures.monitor.getBackground`), Reset; Highlight, basic colour and typed hex on a Tilt Bar,
+  the single-axis tilt tool; the Channels console's fader window shift (21-channel Strobe Tube, 12
+  faders per page) and Pan & Tilt mode (one moving head per page, only its pan / tilt faders);
+  palettes Position 3D / Shutter / Gobo / Zoom created from the dialog,
+  a palette renamed (double-click) and its value changed; the Sequence bound-Scene picker (it now
+  keeps the hidden scene it started with, so a rebind can be undone); RGB Matrix float / string
+  script properties (a test script the driver writes into the sandbox's RGBScripts folder), Text
+  font size / bold / italic, X / Y offsets, Image path picked with "Browse..."; fixtures renamed with
+  numbering; the Fixture Editor's gobo picture picked with "Browse..." (starts in the gobo folder,
+  saved relative to it). `core.fs.list` now also lists the places "Project" (folder of the loaded
+  project) and "Gobos". Not driven here: Tilt / Pan+Tilt palettes (their degree units are being
+  reworked in `FixtureDialogs.jsx`).
 - **Fixture-side leftovers** (added 2026-09-27, `webui/ff/FixtureMisc.jsx`, verified against an
   `fxmisc` sandbox on ports 9250/9251 started with `-UserModifiersDir C:\qlcsandbox\fxmisc\UserModifiers`
   by `webui/tools/e2e/fixtures-misc.js`): fixture detail - mode combo (`fixtures.update {mode}`,
@@ -171,8 +196,9 @@ and a second tab checked for the pushed event:
   media. RGB Matrix editor: Save to Sequence. The Qt "Function Preview" toggle is start / stop of
   the function (the engine does not distinguish a preview), which the header already offers.
 - **Server-side file browser** (`webui/ff/ServerFileBrowser.jsx`, `window.ServerFileBrowser`):
-  drives / home, path crumbs, a typed path, glob filters over `core.fs.list`. Used by the Audio and
-  Video editors; the Open-project dialog still takes a typed path plus recent files.
+  drives / home plus the "Project" and "Gobos" places, path crumbs, a typed path, glob filters over
+  `core.fs.list`. Used by the Audio and Video editors, the 2D background, the RGB Matrix image and
+  the Fixture Editor's gobo picture; the Open-project dialog still takes a typed path plus recent files.
 - **Show Wizard and Import from project** (added 2026-09-27, `webui/Wizard.jsx`,
   `webui/ff/ImportProject.jsx`, verified against a `wizard` sandbox on ports 9270/9271 by
   `webui/tools/e2e/wizard-import.js`): the six-step stage wizard (hat button on the F&F right rail

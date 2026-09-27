@@ -201,14 +201,24 @@
     }, [qlc.online, current]);
     React.useEffect(() => { setDetail(null); if (current != null && qlc.online) loadDetail(current); }, [current, qlc.online]);
     const memberIds = detail ? Array.from(new Set((detail.heads || []).map(h => String(h.fixtureId)))) : [];
-    const addable = fixtureIds.map(String).filter(id => memberIds.indexOf(id) === -1);
+    /* Heads picked individually in the 2D view (alt-click) are assigned one by one
+       (fixtures.group.assignHead); other selected fixtures join with all their heads. */
+    const headSel = FF.useHeadSelection ? FF.useHeadSelection() : { byFixture: {} };
+    const addOps = [];
+    fixtureIds.map(String).forEach(id => {
+      const hs = headSel.byFixture[id];
+      if (hs && hs.length) hs.forEach(h => { if (!(detail && (detail.heads || []).some(x => String(x.fixtureId) === id && Number(x.headIndex) === h))) addOps.push(['fixtures.group.assignHead', { groupId: String(current), fixtureId: id, headIndex: h }]); });
+      else if (memberIds.indexOf(id) === -1) addOps.push(['fixtures.group.assignFixture', { groupId: String(current), fixtureId: id }]);
+    });
+    const addable = addOps;
+    const addLabel = 'Add ' + addOps.length + ' selected' + (addOps.some(o => o[0] === 'fixtures.group.assignHead') ? ' (heads)' : '');
     const create = () => {
       setCreating(false);
       FF.mutate(qlc, 'fixtures.group.create', { name: newName || 'New group' }).then(r => { if (r && r.groupId != null) setCurrent(String(r.groupId)); loadList(); }).catch(() => {});
     };
     const rename = (name) => { if (current == null || !name) return; FF.mutate(qlc, 'fixtures.group.rename', { groupId: String(current), name }).catch(() => {}); };
     const remove = () => { setConfirm(false); if (current == null) return; FF.mutate(qlc, 'fixtures.group.delete', { groupId: String(current) }).then(() => setCurrent(null)).catch(() => {}); };
-    const addSelected = () => FF.mutateSeq(qlc, addable.map(id => ['fixtures.group.assignFixture', { groupId: String(current), fixtureId: id }])).then(() => loadDetail(current)).catch(() => loadDetail(current));
+    const addSelected = () => FF.mutateSeq(qlc, addOps).then(() => loadDetail(current)).catch(() => loadDetail(current));
     const unassign = (id) => FF.mutate(qlc, 'fixtures.group.unassignFixture', { groupId: String(current), fixtureId: String(id) }).then(() => loadDetail(current)).catch(() => {});
     const g = (groups || []).find(x => String(x.id) === String(current));
     return (
@@ -236,7 +246,7 @@
               <RobotoText label={g.size.columns + '×' + g.size.rows} fontSize={12} labelColor="var(--fg-light)" />
             </div>
             <div style={{ display: 'flex', gap: 4 }}>
-              <GenericButton label={'Add ' + addable.length + ' selected'} width={120} height={24} disabled={!addable.length} onClick={addSelected} />
+              <span data-group-add="1"><GenericButton label={addLabel} width={150} height={24} disabled={!addable.length} onClick={addSelected} /></span>
               <IconButton faSource={FF.GLYPH.crosshairs} size={24} tooltip="Select the group's fixtures in the tree" disabled={!memberIds.length} onClick={() => onSelectFixtures(memberIds)} />
             </div>
             <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>

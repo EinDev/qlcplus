@@ -155,6 +155,11 @@
     const upd = (patch) => FE.act(qlc, 'fixturedefs.channel.capability.update', Object.assign({ sessionId: sid, channelId: ch.channelId, capabilityIndex: capIndex }, patch));
     const res = cap.resources || [];
     const setRes = (i, v) => { const n = res.slice(); n[i] = v; if (type === 'DoubleColor' && n.length < 2) n[1 - i] = n[1 - i] || '#000000'; upd({ resources: n }); };
+    /* ChannelEditor.qml opens its picture dialog in App::goboSystemPath(); core.fs.list reports it as the "Gobos" place */
+    const [goboPick, setGoboPick] = React.useState(null);
+    const openGoboPicker = () => qlc.call('core.fs.list', { path: '' })
+      .then(r => { const g = ((r && r.roots) || []).find(x => x.name === 'Gobos'); setGoboPick({ dir: g ? g.path : '' }); })
+      .catch(() => setGoboPick({ dir: '' }));
     return (
       <div style={{ marginTop: 8, padding: 8, border: '1px solid var(--bg-light)', borderRadius: 4, display: 'flex', flexDirection: 'column', gap: 4 }} data-fe="capability-detail">
         <RobotoText label={'Capability [' + cap.min + ' - ' + cap.max + '] ' + cap.name} fontSize={14} fontBold height={24} />
@@ -175,9 +180,13 @@
         {type === 'Picture' ? (
           <FE.Row label="Picture" title="Path of the gobo picture on the QLC+ machine (e.g. a file in its Gobos folder)">
             <FE.Text value={res[0] || ''} placeholder="Gobos/Others/gobo00001.svg" onCommit={t => upd({ resources: t ? [t] : [] })} data-fe="cap-picture" />
+            <span data-fe="cap-picture-browse"><GenericButton label="Browse…" width={70} height={24} disabled={!window.ServerFileBrowser} onClick={openGoboPicker} /></span>
           </FE.Row>
         ) : null}
-        {type === 'Picture' ? <RobotoText label="Uploading a picture from this browser is not available: type the path of a gobo picture that exists on the QLC+ machine." fontSize={12} labelColor="var(--fg-medium)" wrapText height="auto" /> : null}
+        {type === 'Picture' ? <RobotoText label="Pick a picture from the gobo folder of the QLC+ machine (Browse starts there, like the desktop editor), or type its path. Uploading a new picture from this browser is not offered." fontSize={12} labelColor="var(--fg-medium)" wrapText height="auto" /> : null}
+        {type === 'Picture' && goboPick && window.ServerFileBrowser ? <window.ServerFileBrowser open qlc={qlc} title="Gobo picture" initialPath={goboPick.dir}
+          filters={[window.ServerFileBrowser.filter('Pictures', ['*.svg', '*.png', '*.jpg', '*.jpeg', '*.bmp', '*.gif']), window.ServerFileBrowser.filter('All files', [])]}
+          onClose={() => setGoboPick(null)} onPick={p => upd({ resources: [p] })} /> : null}
         {cap.preset === 'Alias' ? <AliasEditor qlc={qlc} s={s} ch={ch} capIndex={capIndex} /> : null}
       </div>
     );

@@ -112,7 +112,15 @@
 
   function FixtureTools({ qlc, fixtureIds, fixtures, sceneId, sceneName }) {
     const D = window.QLCData;
-    const items = useToolFixtures(qlc, fixtureIds);
+    const allItems = useToolFixtures(qlc, fixtureIds);
+    /* Heads picked individually in the 2D view (alt-click): the tools only touch those heads'
+       channels of that fixture (FixtureHeadDelegate.qml selection). */
+    const heads = FF.useHeadSelection ? FF.useHeadSelection() : { keys: [], byFixture: {}, channels: {} };
+    const items = React.useMemo(() => allItems.map(it => {
+      const allow = heads.channels[String(it.detail.id)];
+      return allow && allow.length ? Object.assign({}, it, { channels: it.channels.filter(c => allow.indexOf(c.index) !== -1), heads: heads.byFixture[String(it.detail.id)] }) : it;
+    }), [allItems, heads]);
+    const headCount = items.reduce((n, it) => n + (it.heads ? it.heads.length : 0), 0);
     const [target, setTarget] = React.useState('live');
     React.useEffect(() => { setTarget(sceneId != null ? 'scene' : 'live'); }, [sceneId]);
     const toScene = target === 'scene' && sceneId != null;
@@ -203,7 +211,7 @@
     return (
       <div style={{ display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '8px 10px 4px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <RobotoText label={'Fixture Tools · ' + fixtureIds.length + ' fixture' + (fixtureIds.length === 1 ? '' : 's')} fontBold fontSize={14} />
+          <RobotoText label={'Fixture Tools · ' + fixtureIds.length + ' fixture' + (fixtureIds.length === 1 ? '' : 's') + (headCount ? ' · ' + headCount + ' head' + (headCount === 1 ? '' : 's') : '')} fontBold fontSize={14} data-ff-tools-title="1" />
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <RobotoText label="Target" fontSize={13} labelColor="var(--fg-light)" style={{ width: 44 }} />
             <FF.Choice options={sceneId != null ? ['live', 'scene'] : ['live']} value={toScene ? 'scene' : 'live'} onChange={setTarget}

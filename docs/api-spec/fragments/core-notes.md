@@ -156,3 +156,12 @@ file name was stored and Save wrote it relative to the engine's working director
 reports the uploaded name until the next new / open / close. The uploaded `<Creator><Version>` is kept
 for `functions.show.legacyTiming.get`. Like the desktop's network project sync, an upload does not
 raise the desktop's own legacy-timing popup or error log; the web UI asks through the API instead.
+
+## Implemented 2026-09-27: "Project" and "Gobos" places in `core.fs.list`
+
+- `roots` now ends with two places after the drives: `Project` (the folder of the loaded
+  project file, `Doc::workspacePath()`, only when the project has one) and `Gobos` (the gobo
+  picture folder of the installation, `QLCFile::systemDirectory(GOBODIR)`, the folder the
+  desktop Fixture Editor opens for picture capabilities, only when it exists). Home and the
+  drives keep their positions. Used by the web 2D background, RGB Matrix image and gobo picture
+  pickers. Test: `fsListRootsIncludeProjectFolder` in `controlapi/test/apicoredomain/`.

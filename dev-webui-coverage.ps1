@@ -27,7 +27,7 @@
   generator (monocart-coverage-reports) into webui/tools/coverage/node_modules (git-ignored,
   never installed with the web UI).
 
-.PARAMETER Drivers   Only run these (efx, rgb, media, vclayout, show, vccue, vclive, fixtures, io, vcinput, fixdefs). Default: all.
+.PARAMETER Drivers   Only run these (efx, rgb, media, vclayout, show, vccue, vclive, fixtures, io, vcinput, fixdefs, partialsff). Default: all.
 .PARAMETER BuildDir  CMake build directory with qmlui\qlcplus5.exe (default: build).
 .PARAMETER ReportOnly  Skip the drivers; regenerate the report from the last run's raw dumps.
 .PARAMETER Force     Restart a sandbox even if its process is already running.
@@ -66,6 +66,7 @@ $all = @(
     @{ Name = "fxmisc";   Api = 9250; Web = 9251; Script = "fixtures-misc.js";  Args = @(); Sandbox = @{ UserModifiersDir = "C:\qlcsandbox\fxmisc\UserModifiers" } },
     @{ Name = "io";       Api = 9190; Web = 9191; Script = "io.js";             Args = @("--api", "9190", "--web", "9191") },
     @{ Name = "vcinput";  Api = 9220; Web = 9221; Script = "vc-input.js";       Args = @() },
+    @{ Name = "partialsff"; Api = 9320; Web = 9321; Script = "partials-ff.js";  Args = @() },
     @{ Name = "wizard";   Api = 9270; Web = 9271; Script = "wizard-import.js";  Args = @("9270", "9271", "C:\qlcsandbox\wizard") },
     @{ Name = "tools";    Api = 9260; Web = 9261; Script = "tools-misc.js";     Args = @("--userdir", "C:\qlcsandbox\tools\UserFixtures"); Sandbox = @{ UserFixtureDir = "C:\qlcsandbox\tools\UserFixtures" } },
     @{ Name = "vcshow";   Api = 9310; Web = 9311; Script = "vc-show-leftovers.js"; Args = @("--api", "9310", "--web", "9311", "--sandbox", "C:\qlcsandbox\vcshow") },

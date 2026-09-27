@@ -37,6 +37,7 @@ private slots:
     void getListsStageAndUnplacedFixtures();
     void setStageUpdatesGridAndBumpsRevision();
     void setStageWithStaleRevisionConflicts();
+    void getBackgroundReturnsThePictureBytes();
     void setPlacementWritesPositionGelAndFlags();
     void setPlacementSkipsLockedItems();
     void setPlacementAddsAndRemovesLinkedCopy();

@@ -76,6 +76,37 @@
   const itemKey = (it) => it.fixtureId + ':' + (it.headIndex || 0) + ':' + (it.linkedIndex || 0);
   const keyOf = (it) => ({ fixtureId: String(it.fixtureId), headIndex: it.headIndex || 0, linkedIndex: it.linkedIndex || 0 });
 
+  /* ---- individually selected heads (FixtureHeadDelegate.qml) ---------------------------------
+     Alt-click on a head in the 2D view selects that head only; the live tools then write only the
+     head's channels and the Fixture Groups panel assigns only those heads. Shared through FF so the
+     tools panel (a sibling of the view) sees it: {keys: ['fid:head:linked'], byFixture: {fid:
+     [head, ...]}, channels: {fid: [channel index, ...]}}. */
+  const headStore = { value: { keys: [], byFixture: {}, channels: {} }, listeners: new Set() };
+  FF.setHeadSelection = function (keys, headChannelsOf) {
+    const byFixture = {}, channels = {};
+    (keys || []).forEach(k => {
+      const [fid, head] = k.split(':');
+      const h = Number(head);
+      (byFixture[fid] = byFixture[fid] || []).indexOf(h) === -1 && byFixture[fid].push(h);
+      const chs = headChannelsOf ? headChannelsOf(fid, h) : null;
+      (chs || []).forEach(c => { (channels[fid] = channels[fid] || []).indexOf(c) === -1 && channels[fid].push(c); });
+    });
+    headStore.value = { keys: (keys || []).slice(), byFixture, channels };
+    headStore.listeners.forEach(fn => fn(headStore.value));
+  };
+  FF.useHeadSelection = function () {
+    const [v, setV] = React.useState(headStore.value);
+    React.useEffect(() => { headStore.listeners.add(setV); setV(headStore.value); return () => { headStore.listeners.delete(setV); }; }, []);
+    return v;
+  };
+  /** Does item `it` belong to the head selection `keys` (true when none of its fixture's heads is picked)? */
+  function headMatch(keys, it) {
+    const fid = String(it.fixtureId), linked = it.linkedIndex || 0;
+    const mine = keys.filter(k => k.split(':')[0] === fid);
+    if (!mine.length) return true;
+    return mine.some(k => { const p = k.split(':'); return Number(p[2]) === linked && ((it.heads || 1) > 1 || Number(p[1]) === (it.headIndex || 0)); });
+  }
+
   /* ---- shared monitor store ------------------------------------------------------------------ */
   const stores = new WeakMap();
   function storeFor(client) {
@@ -165,8 +196,41 @@
       </span>
     );
   }
+  /* ---- DMX-driven position / rotation (SettingsView2D.qml "DMX Position/Rotation") -------------
+     Only for fixtures with Position X/Y/Z or Rotation X/Y/Z channels
+     (ContextManager::selectedFixtureHasDmxTransform); the flags / scale / range live on the
+     fixture's base item (fid, 0, 0), like ContextManager::setFixtureDmxTransformFlags(). */
+  const DMX_GROUPS = ['Position X', 'Position Y', 'Position Z', 'Rotation X', 'Rotation Y', 'Rotation Z'];
+  const hasDmxTransform = (det) => !!(det && (det.channelList || []).some(c => DMX_GROUPS.indexOf(c.group) !== -1));
+  const DMX_FLAGS = [['invertPositionX', 'Invert Position X'], ['invertPositionY', 'Invert Position Y'], ['invertPositionZ', 'Invert Position Z'],
+    ['invertRotationX', 'Invert Rotation X'], ['invertRotationY', 'Invert Rotation Y'], ['invertRotationZ', 'Invert Rotation Z']];
+  function DmxTransformBox({ items, onWrite }) {
+    if (!items.length) return null;
+    const first = items[0];
+    const all = (k) => items.every(it => it.flags && it.flags[k]);
+    return (
+      <div data-ff-dmx-transform="1" style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingTop: 4 }}>
+        <RobotoText label={'DMX Position/Rotation' + (items.length > 1 ? ' · ' + items.length + ' fixtures' : '')} fontBold fontSize={13} />
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, auto)', gap: '2px 14px', justifyContent: 'start' }}>
+          {DMX_FLAGS.map(([k, l]) => <FlagCheck key={k} id={k} label={l} checked={all(k)} onToggled={v => onWrite({ [k]: v })} />)}
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} data-dmx-field="rotationScale" title="Rotation scale: how far the Rotation channels turn the fixture (100% = the channel's full range)">
+            <RobotoText label="Rotation scale" fontSize={13} labelColor="var(--fg-light)" />
+            <CustomSpinBox value={Math.round((first.rotationScale != null ? first.rotationScale : 1) * 100)} from={10} to={1000} width={90} height={24} suffix="%" onValueModified={v => onWrite({ rotationScale: v / 100 })} data-dmx="rotationScale" />
+          </span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} data-dmx-field="positionRange" title="Position range: the distance in metres the full Position channel range covers">
+            <RobotoText label="Position range" fontSize={13} labelColor="var(--fg-light)" />
+            <CustomSpinBox value={Math.round(first.positionRange != null ? first.positionRange : 800)} from={1} to={1000000} width={110} height={24} suffix="m" onValueModified={v => onWrite({ positionRange: v })} data-dmx="positionRange" />
+          </span>
+        </div>
+      </div>
+    );
+  }
+
   function FixturePlacementProps({ qlc, fixtureId, fixtures }) {
     const { monitor, patch } = FF.useMonitor(qlc);
+    const detMap = FF.useFixtureDetails(qlc, [String(fixtureId)]);
     if (!monitor) return <RobotoText label="Loading placement…" fontSize={13} labelColor="var(--fg-medium)" />;
     const items = monitor.items.filter(it => String(it.fixtureId) === String(fixtureId)).sort((a, b) => a.headIndex - b.headIndex || a.linkedIndex - b.linkedIndex);
     if (!items.length) return null;
@@ -205,10 +269,11 @@
               <FlagCheck id="locked" label="Lock position" checked={it.flags.locked} onToggled={v => write(it, { locked: v })} />
               <FlagCheck id="hidden" label="Hidden in views" checked={it.flags.hidden} onToggled={v => write(it, { hidden: v })} />
             </div>
+            {!it.headIndex && !it.linkedIndex && hasDmxTransform(detMap[String(fixtureId)]) ? <DmxTransformBox items={[it]} onWrite={fields => write(it, fields)} /> : null}
           </div>
         ))}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <GenericButton label="Add linked copy" width={120} height={24} onClick={addLinked} />
+          <GenericButton label="Add linked copy" width={140} height={24} onClick={addLinked} />
           <FF.Note text="A linked copy shows the same fixture a second time in the 2D / 3D views (e.g. a mirrored patch)." />
         </div>
         {others.length ? null : null}
@@ -365,7 +430,9 @@
     const { monitor, patch, reload } = FF.useMonitor(qlc);
     const stage = monitor && monitor.stage;
     const [scale, setScale] = React.useState(null);       /* px per mm; null = fit */
-    const [headSel, setHeadSel] = React.useState([]);      /* item keys "fid:head:linked" selected individually */
+    const headSel = FF.useHeadSelection().keys;           /* item keys "fid:head:linked" selected individually */
+    const headChannelsOf = (fid, h) => { const it = monitor && monitor.items.find(i => String(i.fixtureId) === String(fid) && ((i.heads || 1) > 1 || (i.headIndex || 0) === h)); return it && it.headChannels ? it.headChannels[(it.heads || 1) > 1 ? h : (it.headIndex || 0)] || it.headChannels[h] || null : null; };
+    const setHeadSel = (next) => { const keys = typeof next === 'function' ? next(headSel) : next; FF.setHeadSelection(keys, headChannelsOf); };
     const [drag, setDrag] = React.useState(null);          /* {startX, startY, dx, dy} in px */
     const [band, setBand] = React.useState(null);          /* {x0,y0,x1,y1} in mm */
     const [dlg, setDlg] = React.useState(null);            /* 'arrange' | 'rotate' | 'nth' | 'invert' | 'settings' | 'aim' */
@@ -384,12 +451,12 @@
       if (!monitor) return [];
       return monitor.items.filter(it => !(it.flags && it.flags.hidden) && (universeFilter == null || it.universe === universeFilter));
     }, [monitor, universeFilter]);
-    const selectedItems = React.useMemo(() => {
-      const heads = new Set(headSel);
-      const perFixture = {};
-      headSel.forEach(k => { perFixture[k.split(':')[0]] = true; });
-      return items.filter(it => selected.has(String(it.fixtureId)) && (!perFixture[String(it.fixtureId)] || heads.has(itemKey(it))));
-    }, [items, selected, headSel.join('|')]);
+    const selectedItems = React.useMemo(() => items.filter(it => selected.has(String(it.fixtureId)) && headMatch(headSel, it)), [items, selected, headSel.join('|')]);
+    /* A head of a fixture that is no longer selected (tree click, select all ...) drops out */
+    React.useEffect(() => {
+      const keep = headSel.filter(k => selected.has(k.split(':')[0]));
+      if (keep.length !== headSel.length) setHeadSel(keep);
+    }, [selected, headSel.join('|')]);
     const selectedKeys = React.useMemo(() => selectedItems.map(keyOf), [selectedItems]);
 
     /* Live colours for the watched universe */
@@ -397,6 +464,22 @@
     const dmx = useUniverseDmx(qlc, watched, !!monitor);
     const liveIds = React.useMemo(() => items.filter(it => it.universe === watched).map(it => String(it.fixtureId)).filter((v, i, a) => a.indexOf(v) === i), [items, watched]);
     const details = FF.useFixtureDetails(qlc, liveIds);
+    /* Fixture details of the selection, for the DMX Position/Rotation settings */
+    const selIds = React.useMemo(() => Array.from(new Set(selectedItems.map(it => String(it.fixtureId)))), [selectedItems]);
+    const selDetails = FF.useFixtureDetails(qlc, selIds);
+
+    /* Stage background picture: a file on the QLC+ host, fetched as bytes to draw it here */
+    const [bgPick, setBgPick] = React.useState(false);
+    const [bgUrl, setBgUrl] = React.useState(null);
+    const bgPath = stage ? stage.backgroundImage || '' : '';
+    React.useEffect(() => {
+      setBgUrl(null);
+      if (!bgPath || !qlc.online) return undefined;
+      let alive = true;
+      qlc.call('fixtures.monitor.getBackground').then(r => { if (alive && r && r.contentBase64) setBgUrl('data:' + r.mimeType + ';base64,' + r.contentBase64); })
+        .catch(e => { if (alive) setStatus('Background: ' + ((e && e.message) || 'not readable')); });
+      return () => { alive = false; };
+    }, [bgPath, qlc.online]);
 
     /* Groups (for the overlay and "invert selection in groups") */
     const loadGroups = React.useCallback(() => {
@@ -427,7 +510,7 @@
           const dx = (e.clientX - drag.startX) / L().pxPerMm, dy = (e.clientY - drag.startY) / L().pxPerMm;
           const { items, stage, headSel, patch, commitPlacement } = L();
           if (Math.abs(e.clientX - drag.startX) > 2 || Math.abs(e.clientY - drag.startY) > 2) {
-            const moving = items.filter(it => drag.sel.indexOf(String(it.fixtureId)) !== -1 && !(it.flags && it.flags.locked) && (!headSel.length || !headSel.some(k => k.split(':')[0] === String(it.fixtureId)) || headSel.indexOf(itemKey(it)) !== -1));
+            const moving = items.filter(it => drag.sel.indexOf(String(it.fixtureId)) !== -1 && !(it.flags && it.flags.locked) && headMatch(headSel, it));
             const list = moving.map(it => { const p2 = project(stage, it.position); return Object.assign(keyOf(it), { position: unproject(stage, { x: p2.x + dx, y: p2.y + dy }, it.position) }); });
             if (list.length) { patch(list.map(l => { const it = moving.find(m => itemKey(m) === itemKey(l)); return Object.assign({}, it, { position: l.position, placed: true }); })); commitPlacement(list, 'drag'); }
           }
@@ -515,8 +598,11 @@
       const id = String(it.fixtureId);
       const add = e.ctrlKey || e.metaKey || e.shiftKey;
       if (e.altKey && (it.headIndex || it.linkedIndex || (it.heads || 1) > 1)) {
-        /* Alt-click: toggle this head / linked copy individually (FixtureHeadDelegate.qml) */
-        const k = itemKey(it);
+        /* Alt-click: toggle this head / linked copy individually (FixtureHeadDelegate.qml). On a
+           multi-head item the head is the circle under the pointer. */
+        const circle = e.target && e.target.closest ? e.target.closest('circle[data-head]') : null;
+        const h = (it.heads || 1) > 1 ? (circle ? Number(circle.getAttribute('data-head')) : 0) : (it.headIndex || 0);
+        const k = it.fixtureId + ':' + h + ':' + (it.linkedIndex || 0);
         setHeadSel(h => h.indexOf(k) === -1 ? h.concat([k]) : h.filter(x => x !== k));
         if (!selected.has(id)) onSelectFixtures((selectedFixtureIds || []).map(String).concat([id]));
         return;
@@ -591,33 +677,46 @@
           {sep}
           {btn('3dpoint', 'Pick a 3D point: aim the selected moving heads at a stage position', () => setDlg(dlg === 'aim' ? null : 'aim'), { checked: dlg === 'aim' || aimPick, 'data-tool': 'aim' })}
           <div style={{ flex: 1 }} />
-          <RobotoText label={status || (selectedItems.length ? selectedItems.length + ' item' + (selectedItems.length === 1 ? '' : 's') + ' selected' + (sel1 ? ' · ' + sel1.name + ' @ ' + (sel1.position.x / u).toFixed(2) + ' / ' + (sel1.position.y / u).toFixed(2) + ' / ' + (sel1.position.z / u).toFixed(2) + ' ' + unitLabel : '') : items.length + ' fixture items · ' + POV_LABELS[effectivePov(stage)] + (stage.pointOfView === 'Undefined' ? ' (not chosen yet)' : ''))}
+          <RobotoText label={status || (selectedItems.length ? selectedItems.length + ' item' + (selectedItems.length === 1 ? '' : 's') + ' selected' + (headSel.length ? ' (' + headSel.length + ' head' + (headSel.length === 1 ? '' : 's') + ')' : '') + (sel1 ? ' · ' + sel1.name + ' @ ' + (sel1.position.x / u).toFixed(2) + ' / ' + (sel1.position.y / u).toFixed(2) + ' / ' + (sel1.position.z / u).toFixed(2) + ' ' + unitLabel : '') : items.length + ' fixture items · ' + POV_LABELS[effectivePov(stage)] + (stage.pointOfView === 'Undefined' ? ' (not chosen yet)' : ''))}
             fontSize={12} labelColor="var(--fg-light)" style={{ maxWidth: 520, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} data-status="1" />
         </div>
 
         {dlg === 'settings' ? (
           <div data-ff-2d-settings="1" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, padding: '4px 8px', background: 'var(--bg-stronger)', borderBottom: 'var(--border-dark)', flex: 'none' }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><RobotoText label="Point of view" fontSize={13} labelColor="var(--fg-light)" />
-              <CustomComboBox width={140} currValue={effectivePov(stage)} model={POVS.map(p => ({ mLabel: POV_LABELS[p], mValue: p }))} onValueChanged={v => setStage({ pointOfView: v })} /></span>
+              <CustomComboBox width={140} currValue={effectivePov(stage)} model={POVS.map(p => ({ mLabel: POV_LABELS[p], mValue: p }))} onValueChanged={v => setStage({ pointOfView: v })} data-stage="pov" /></span>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><RobotoText label="Units" fontSize={13} labelColor="var(--fg-light)" />
-              <CustomComboBox width={90} currValue={stage.gridUnits} model={[{ mLabel: 'Meters', mValue: 'Meters' }, { mLabel: 'Feet', mValue: 'Feet' }]} onValueChanged={v => {
+              <CustomComboBox width={90} currValue={stage.gridUnits} data-stage="units" model={[{ mLabel: 'Meters', mValue: 'Meters' }, { mLabel: 'Feet', mValue: 'Feet' }]} onValueChanged={v => {
                 /* Like SettingsView2D.qml: convert the size so the stage keeps its physical extent */
                 const f = v === 'Feet' ? 3.28084 : 1 / 3.28084;
                 if (v !== stage.gridUnits) setStage({ gridUnits: v, gridSize: { x: Math.round(stage.gridSize.x * f * 100) / 100, y: Math.round(stage.gridSize.y * f * 100) / 100, z: Math.round(stage.gridSize.z * f * 100) / 100 } });
               }} /></span>
             {['x', 'y', 'z'].map((a, i) => (
               <span key={a} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><RobotoText label={['Width', 'Height', 'Depth'][i]} fontSize={13} labelColor="var(--fg-light)" />
-                <CustomSpinBox value={Math.round(stage.gridSize[a])} from={1} to={1000} width={70} height={24} suffix={unitLabel} onValueModified={v => setStage({ gridSize: Object.assign({}, stage.gridSize, { [a]: v }) })} /></span>
+                <CustomSpinBox value={Math.round(stage.gridSize[a])} from={1} to={1000} width={70} height={24} suffix={unitLabel} onValueModified={v => setStage({ gridSize: Object.assign({}, stage.gridSize, { [a]: v }) })} data-stage-size={a} /></span>
             ))}
             <FlagCheck id="labels" label="Show labels" checked={stage.showLabels} onToggled={v => setStage({ showLabels: v })} />
             <FlagCheck id="groups" label="Show fixture groups" checked={showGroups} onToggled={setShowGroups} />
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              <RobotoText label={'Background: ' + (stage.backgroundImage || 'none')} fontSize={12} labelColor="var(--fg-medium)" style={{ maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis' }} />
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} data-ff-background="1">
+              <RobotoText label={'Background: ' + (stage.backgroundImage ? stage.backgroundImage.split(/[\\/]/).pop() : 'none')} fontSize={12} labelColor="var(--fg-medium)" style={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={stage.backgroundImage || ''} />
+              <GenericButton label="Pick…" width={56} height={22} disabled={!FF.ServerFileBrowser} onClick={() => setBgPick(true)} />
               <GenericButton label="Reset" width={50} height={22} disabled={!stage.backgroundImage} onClick={() => setStage({ backgroundImage: '' })} />
             </span>
-            <FF.Note text="The background is a file on the server; pick it in the desktop app (the browser cannot upload files here). The 3D stage type is edited in the desktop 3D view." />
+            <FF.Note text="The background picture is a file on the QLC+ machine (the browser file picker browses that machine; the Project place is the project's folder). The 3D stage type is edited in the desktop 3D view." />
+            {(() => {
+              const base = selIds.filter(id => hasDmxTransform(selDetails[id]))
+                .map(id => monitor.items.find(i => String(i.fixtureId) === id && !i.headIndex && !i.linkedIndex)).filter(Boolean);
+              return base.length ? (
+                <div style={{ flexBasis: '100%' }}>
+                  <DmxTransformBox items={base} onWrite={fields => commitPlacement(base.map(it => Object.assign(keyOf(it), fields)), 'dmxt:' + Object.keys(fields).join(','))} />
+                </div>
+              ) : null;
+            })()}
           </div>
         ) : null}
+        {FF.ServerFileBrowser && bgPick ? <FF.ServerFileBrowser open qlc={qlc} title="2D view background picture"
+          filters={[FF.ServerFileBrowser.filter('Pictures', ['*.png', '*.jpg', '*.jpeg', '*.bmp', '*.gif', '*.svg', '*.webp']), FF.ServerFileBrowser.filter('All files', [])]}
+          onClose={() => setBgPick(false)} onPick={p => setStage({ backgroundImage: p })} /> : null}
 
         {dlg === 'aim' ? (
           <div data-ff-aim="1" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, padding: '4px 8px', background: 'var(--bg-stronger)', borderBottom: 'var(--border-dark)', flex: 'none' }}>
@@ -636,11 +735,12 @@
           <svg ref={svgRef} data-ff-stage="1" width={vb.w * pxPerMm} height={vb.h * pxPerMm} viewBox={vb.x + ' ' + vb.y + ' ' + vb.w + ' ' + vb.h}
             style={{ display: 'block', margin: 10, background: '#222', userSelect: 'none' }} onMouseDown={onBgDown}>
             <rect x={0} y={0} width={size.w} height={size.h} fill="#2b2b2b" stroke="#555" strokeWidth={Math.max(1, 1 / pxPerMm)} />
+            {bgUrl ? <image href={bgUrl} x={0} y={0} width={size.w} height={size.h} preserveAspectRatio="xMidYMid meet" data-ff-bg-image="1" style={{ pointerEvents: 'none' }} /> : null}
             {gridLines}
             {groupBoxes}
             {items.map(it => {
               const p = project(stage, it.position), s = size2D(stage, it);
-              const isSel = selected.has(String(it.fixtureId)) && (!headSel.some(k => k.split(':')[0] === String(it.fixtureId)) || headSel.indexOf(itemKey(it)) !== -1);
+              const isSel = selected.has(String(it.fixtureId)) && headMatch(headSel, it);
               const moving = dragOffsetMm && isSel && !(it.flags && it.flags.locked) && drag.sel.indexOf(String(it.fixtureId)) !== -1;
               const x = p.x + (moving ? dragOffsetMm.x : 0), y = p.y + (moving ? dragOffsetMm.y : 0);
               const rot = rotation2D(stage, it.rotation);
@@ -658,9 +758,9 @@
                     const cx = (h % lay.cols) * cellW + cellW / 2, cy = Math.floor(h / lay.cols) * cellH + cellH / 2;
                     const headItem = Object.assign({}, it, { headIndex: heads > 1 ? h : (it.headIndex || 0) });
                     const fill = headColour(headItem, det, dmx);
-                    const hk = it.fixtureId + ':' + h + ':' + (it.linkedIndex || 0);
+                    const hk = it.fixtureId + ':' + (heads > 1 ? h : (it.headIndex || 0)) + ':' + (it.linkedIndex || 0);
                     const hSel = headSel.indexOf(hk) !== -1;
-                    return <circle key={h} data-head={h} cx={cx} cy={cy} r={r} fill={fill || (it.gelColor ? it.gelColor : '#000')} fillOpacity={fill ? 1 : (it.gelColor ? 0.35 : 1)} stroke={hSel ? '#0978FF' : '#aaa'} strokeWidth={Math.max(1, (hSel ? 2 : 0.7) / pxPerMm)} />;
+                    return <circle key={h} data-head={h} data-head-sel={hSel ? '1' : undefined} cx={cx} cy={cy} r={r} fill={fill || (it.gelColor ? it.gelColor : '#000')} fillOpacity={fill ? 1 : (it.gelColor ? 0.35 : 1)} stroke={hSel ? '#0978FF' : '#aaa'} strokeWidth={Math.max(1, (hSel ? 2 : 0.7) / pxPerMm)} />;
                   })}
                   {stage.showLabels ? <text x={s.w / 2} y={s.h + font} fontSize={font} fill="#ddd" textAnchor="middle" fontFamily="var(--font-roboto)" style={{ pointerEvents: 'none' }}>{it.name}</text> : null}
                 </g>

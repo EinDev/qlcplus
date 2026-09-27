@@ -277,6 +277,12 @@
          */
         setStage: function (params) { return self.call('fixtures.monitor.setStage', params); },
         /**
+         * Read-only: {path, mimeType, contentBase64} of the stage's 2D background picture (a file
+         * on the QLC+ host), so the browser can draw it. NOT_FOUND when none is set / missing.
+         * @see docs/api-spec/fragments/fixtures.yaml (method: fixtures.monitor.getBackground)
+         */
+        getBackground: function (params) { return self.call('fixtures.monitor.getBackground', params); },
+        /**
          * Bulk partial update of fixture preview items (position, rotation, gelColor, flags,
          * linked copies via linkedIndex >= 1 / remove). Locked items ignore position/rotation
          * (reported in result.skippedLocked) unless the entry also sets locked=false.
