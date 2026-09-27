@@ -59,7 +59,8 @@ default until "Use server default" is pressed.
 | `ff/FixtureRemap.jsx` | Fixture Remap dialog over `fixtures.remap.suggestChannelMap` / `apply`. |
 | `VirtualConsole.jsx` | Pages + widgets at their real geometry, live interaction, Design-mode layout editing, Grand Master. |
 | `vc/vc-shared.jsx`, `vc/vc-widgets.jsx`, `vc/vc-edit.jsx` | VC context + pointer-event fader/knob; one body per widget type (button, slider/knob, cue list, XY pad, speed dial, frame, label); selection/move/resize wrapper, widget palette and properties panel. |
-| `SimpleDesk.jsx` | 512 channel strips per universe, live DMX values + overrides, keypad, dump to scene. |
+| `SimpleDesk.jsx` | 512 channel strips per universe, live DMX values + overrides, keypad, dump to scene, channel value debug (`io.dmx.channel.inspect`). |
+| `misc/shortcuts.jsx`, `misc/tools-misc.jsx` | App-level tools mounted through `window.QLCAppOverlays` / `QLCToolbarItems` / `QLCMenuItems`: the rebindable shortcut registry `window.QLCShortcuts` + Keyboard Shortcuts editor + key-cast toast; DMX dump dialog, DMX Address tool, UI Settings (`window.QLCUISettingsDialog`), legacy Show timing dialog, .qxf import. |
 | `InputOutput.jsx` | Universe table: rename, passthrough, monitor, add / remove (last universe only), input / output (several per universe) / feedback / profile pickers over `io.plugin.list` + `io.patch.*`, per-output pause / blackout, blackout; right panel with plugins (rescan / configure), input profiles, Grand Master, audio devices. |
 | `io/io-shared.jsx`, `io/PatchProperties.jsx`, `io/InputProfileEditor.jsx`, `io/GrandMasterPanel.jsx`, `io/AudioDevices.jsx` | The I/O screen's sub-components: shared row / field helpers, the per-patch plugin parameter dialog (`io.patch.setParameters`, `io.plugin.configure/rescan`), the input profile editor with channel detection (`io.inputProfile.*`), Grand Master level + modes, host audio device pickers (`io.audio.*`). |
 | `ShowManager.jsx` | Show Manager (Ctrl+5): show picker / create / rename, tracks (add, rename, mute, solo, move, delete), the timeline with time or BPM markers, zoom and grid, items (drag across time and tracks, resize, lock, colour, copy / paste, delete, function picker adding at the cursor), alignment and timing panel, ripple insert / cut, transport with the playhead cursor. Registers `window.QLCScreens.show`. |
@@ -259,6 +260,11 @@ and a second tab checked for the pushed event:
   (`io.simpleDesk.sendKeypadCommand`; the channel selection is remembered across commands and
   the commands history is the server's, shared with every client - "server" in the header);
   the browser parser (`io/keypad-parser.js`) stays as the fallback for servers without it.
+  Also 2026-09-27 (driver `tools/e2e/tools-misc.js`, sandbox `tools` 9260/9261): the channel
+  value debug popup shows the engine trace from `io.dmx.channel.inspect` (pre / post Grand Master,
+  the web desk override, every fader on the channel with its owning Function and what started it,
+  the last write), and the dump button opens the shared DMX dump dialog preset to the fixture picked
+  in the list.
 - **Input / Output**: universe rename / passthrough / add / delete (last universe only), patch
   pickers (an instance without IO plugins shows just "None"), input profiles list, blackout.
   Added 2026-09-27 (verified against an `io` sandbox on ports 9190/9191 by
@@ -275,6 +281,25 @@ and a second tab checked for the pushed event:
 - **Toolbar**: Stop all with the running count, BPM set / tap / off with the beat pulse, Undo /
   Redo (desktop history), Design / Operate mode, New / Open / Save / Save as (server-side paths,
   discard prompt when the project is modified).
+- **Toolbar / settings tools** (2026-09-27, driver `tools/e2e/tools-misc.js`, sandbox `tools` on
+  9260/9261, every effect read back over a second API client): open a `.qxw` from this computer
+  (Open dialog button, or drop the file on the window; `core.project.open` `upload`, the project then
+  has no server path, so Save asks for one); a dropped `.qxf` lands in the user fixture library
+  (`fixturedefs.session.import` + `save`) with "Open in Fixture Editor"; beat generator source in the
+  BPM panel (disabled / internal / plugin / audio; plugin and audio only deliver beats with a
+  beat-capable input on the QLC+ machine); the DMX dump dialog (main toolbar button, Ctrl+Shift+D,
+  Simple Desk): new or existing Scene, all channels or the selected fixtures, channel types,
+  non-zero only; DMX Address tool (DIP switches, reverse, colour); UI Settings (the colour tokens,
+  scaling factor, reset, save / load `qlcplusUiStyle.json`, all kept in this browser; plus the engine
+  settings `core.settings.get/set`); Keyboard Shortcuts (Actions menu): every App-level action
+  (context switches, file actions, undo / redo, blackout, stop all, DMX dump, fullscreen, tap tempo)
+  rebindable with a collision warning, reset / load defaults, import / export in the desktop's
+  `qlcplusShortcuts.json` format, "Show shortcut hints" toggle; one key-cast toast for App shortcuts
+  and Virtual Console key bindings, click hints on the toolbar buttons; the legacy Show timing
+  dialog after loading a project saved before 5.3.1 (ADR 0001: convert with a preview, or mark as
+  already correct). Not in the browser: the engine settings were only read in the sandbox (it
+  shares the desktop's settings store), the desktop's separate "RGB/CMY/WAUV" dump box (those are
+  Intensity-group channels), per-screen keys (VC, keypad, Show Manager) in the shortcuts editor.
 
 - **Show Manager** (2026-09-27, driver `tools/e2e/show.js` on the SF3 Show "Midnight City"): show
   picker and creation, rename; add / rename / mute / solo / move / delete tracks; two Scenes added
@@ -320,7 +345,7 @@ and a second tab checked for the pushed event:
   does not synthesise) and Ctrl+S (the toolbar Save was driven).
 
 Still not available in the web UI: the 2D / 3D / DMX monitor views, fixture-address
-remap, UI settings, audio sample rate / channels / buffer size and the input
+remap, audio sample rate / channels / buffer size and the input
 level check, the input signal indicator on a patch. Disconnected, every screen keeps
 working on its built-in mock data (`data.js`), clearly labelled as such.
 

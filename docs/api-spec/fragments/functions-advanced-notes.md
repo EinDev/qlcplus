@@ -327,3 +327,21 @@ registered; behaviour notes and the few additive deviations:
   ported; renders through a private RGBMatrixStep like getPreview). Deliberate difference: the Qt editor
   compares its step cursor against the doubled Ping Pong count, so it never bounces (and runs off the
   end on Backward); the API bounces once (2n-2 steps) and wraps Backward correctly.
+
+## Implemented 2026-09-27: legacy Show timing, `functions.show.legacyTiming.*` (ADR 0001)
+
+- `get {showId?, bpm?}` lists the Shows `Doc::possiblyAffectedLegacyBeatShows()` flags for the
+  project's Creator/Version, which the server re-reads from the project file on disk (`source:
+  "file"`) or takes from a `core.project.open` upload (`"upload"`); a project never loaded from a file
+  (`"none"`) is not checked, unlike the Doc helper, which treats a missing version as old. With
+  `showId` it adds the desktop convert dialog's preview (first / last three items by start time) at
+  `bpm` (default: the Show's time-division BPM).
+- `convert {showId, bpm, baseRevision}` rescales every item with ShowManager::convertLegacyBeatShow()'s
+  formula (value * 60000 / bpm / 1000, rounded), bumps docRevision once and broadcasts
+  `functions.updated {functionId, docRevision}`. Not on the desktop undo stack (no API edit is), and a
+  Show open in the desktop Show Manager is not redrawn until it is reopened (ShowManager::refreshView
+  is qmlui-only).
+- `dismiss {showId}` is the desktop's "already correct": runtime state only, like the desktop dialog
+  (no persisted marker - re-saving the project with this build stops the flagging for good).
+- Converted / dismissed Shows are remembered by ApiToolsDomain until the Doc is cleared or loaded
+  again, so a reconnecting client is not asked twice. Tests: `controlapi/test/apitoolsdomain`.

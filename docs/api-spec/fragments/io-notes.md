@@ -223,3 +223,29 @@ sendKeypadCommand`, `commandHistory` on `io.simpleDesk.get`, the
 - Not exercised in the browser (the sandbox has no IO plugins): parameter
   editing, per-output pause/blackout, additional outputs, feedback,
   profile assignment and learn - all unit-tested against the plugin stub.
+
+## Implemented 2026-09-27: dump fixture filter, channel inspection (toolbar / settings slice)
+
+- `io.simpleDesk.dump` gained `fixtureIds` (string or number ids): only those fixtures are dumped,
+  combined with `channelGroups` and `nonZeroOnly`; an unknown id answers `NOT_FOUND` before any
+  Scene is created. This is PopupDMXDump.qml's "Dump the selected fixture channels"; the earlier
+  note that the API has no selection concept is superseded - the client sends its own selection.
+  The desktop's "RGB/CMY/WAUV" type box has no filter of its own: colour mixing channels are
+  `Intensity`-group channels in QLCChannel.
+- New `io.dmx.channel.inspect {universeId, channel}` (ApiToolsDomain,
+  `controlapi/src/domains/apitoolsdomain.cpp`): SimpleDesk::debugChannelInfo() as data - fixture and
+  channel, pre / post Grand Master value, this API's Simple Desk override, every GenericFader holding
+  the channel (`source`: `function` with the owning Function and `Function::sources()` as `startedBy`
+  [function / VC widget id / engine MasterId name], `controlApiSimpleDesk`, `desktopTool` with the
+  GenericDMXSource `feature`, or `unidentified` for untagged faders: the desktop Simple Desk, VC
+  sliders in level mode, CueStacks, Scripts), and `Universe::lastChannelWrite()`. The desktop Simple
+  Desk's own held values are not visible to the API (they live in qmlui's SimpleDesk). Read-only,
+  not subscribe-gated (one-shot).
+- ApiIoDomain names its per-universe faders "Control API Simple Desk" so the inspection can
+  attribute them.
+- Fixed while testing: the API Simple Desk resolved a fixture channel with `Fixture::address()`
+  (the low 9 bits) against the universe-qualified address, so overrides on fixtures in universe 2 and
+  up landed on a bogus channel; and a project load (InputOutputMap::loadXML() deletes and re-creates
+  every Universe without `universeRemoved`) left ApiIoDomain holding the deleted Universe's fader, so
+  every web Simple Desk override silently stopped reaching the output until the universe was reset.
+  Both covered by `apiiodomain_test`.

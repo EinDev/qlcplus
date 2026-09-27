@@ -145,3 +145,14 @@ to as well), `controlapi/src/domains/apidocchanges.cpp` for the created events. 
   fixture id 0; a fixture with no resolvable definition dereferenced null.
 - **Known gaps**: Script functions and Show tracks are copied without remapping the ids inside them
   (upstream behaviour); the controller step's mapping could only be exercised with no controller.
+## Implemented 2026-09-27: `core.project.open` with `source: upload`
+
+The bytes are validated before the host sees them (`INVALID_PARAMS` for empty / non-base64 content
+or anything whose DTD is not `Workspace`): App's in-memory loader clears the current project first
+and then gives up silently, so an unchecked bad upload used to leave an empty project behind an `ok`
+answer. After a successful upload `filePath` stays null (the host's file name is left empty, so
+`core.project.save` answers `INVALID_STATE` and a client routes to Save As - before, the bare client
+file name was stored and Save wrote it relative to the engine's working directory) and `fileName`
+reports the uploaded name until the next new / open / close. The uploaded `<Creator><Version>` is kept
+for `functions.show.legacyTiming.get`. Like the desktop's network project sync, an upload does not
+raise the desktop's own legacy-timing popup or error log; the web UI asks through the API instead.

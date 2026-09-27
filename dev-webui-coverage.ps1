@@ -67,6 +67,7 @@ $all = @(
     @{ Name = "io";       Api = 9190; Web = 9191; Script = "io.js";             Args = @("--api", "9190", "--web", "9191") },
     @{ Name = "vcinput";  Api = 9220; Web = 9221; Script = "vc-input.js";       Args = @() },
     @{ Name = "wizard";   Api = 9270; Web = 9271; Script = "wizard-import.js";  Args = @("9270", "9271", "C:\qlcsandbox\wizard") },
+    @{ Name = "tools";    Api = 9260; Web = 9261; Script = "tools-misc.js";     Args = @("--userdir", "C:\qlcsandbox\tools\UserFixtures"); Sandbox = @{ UserFixtureDir = "C:\qlcsandbox\tools\UserFixtures" } },
     # Sandbox = extra dev-webui-sandbox.ps1 parameters. The fixture editor writes .qxf files, so its
     # user fixture folder must point into the sandbox (the driver refuses otherwise).
     @{ Name = "fixdefs";  Api = 9200; Web = 9201; Script = "fixture-editor.js"; Args = @("--api", "9200", "--web", "9201", "--userdir", "C:\qlcsandbox\fixdefs\UserFixtures");
