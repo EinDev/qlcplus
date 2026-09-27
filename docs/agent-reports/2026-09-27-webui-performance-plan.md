@@ -2,8 +2,8 @@
 
 Scope: the browser web UI (`webui/`) and the WebSocket Control API behind it (`controlapi/`),
 running against the real show file (`<test project>` = SF3: 236 fixtures, 6 universes,
-956 functions, 15 VC pages, 386 VC widgets). This is a plan. Only P1b has been implemented so
-far; see "DMX output off the main thread - implemented" near the end. Every number in the
+956 functions, 15 VC pages, 386 VC widgets). This is a plan. P1b is implemented (see "DMX output off the
+main thread - implemented" near the end); other items may have landed separately, check `git log`. Every number in the
 "Baseline" section was measured. Anything marked **estimate** was not.
 
 ## TL;DR
@@ -544,8 +544,8 @@ Side effects, all bounded:
   against the writer's `tryAcquire()`. Worst case: two tokens, i.e. one extra short fader cycle.
 - The output cadence now follows the Windows timer queue directly instead of the main-thread event
   loop. That queue sometimes fires a late tick and the next one on time, so two cycles land less
-  than 8 ms apart more often (see `<8 ms` below). Each cycle uses its real elapsed time, so fades
-  are not sped up; a plugin just sends one extra, nearly identical frame.
+  than 8 ms apart more often (see `< 8 ms` below): a catch-up cycle after a late one, not a
+  duplicate. Each cycle uses its real elapsed time, so fades are not sped up.
 
 ### Soak test (measured)
 
@@ -568,7 +568,7 @@ agents' sandboxes and builds running at the same time):
 Numbers are summed over all 6 universes (a cycle is one `processFaders()` + `dumpOutput()`; 50 Hz
 means one every 20 ms). "Cycles" is the share of expected 50 Hz cycles that happened.
 
-| Phase | Build | Cycles | Max gap | Gaps 45-100 ms | 100-500 ms | > 500 ms | < 8 ms (double frame) | Main thread max stall seen by ping |
+| Phase | Build | Cycles | Max gap | Gaps 45-100 ms | 100-500 ms | > 500 ms | < 8 ms (catch-up cycle) | Main thread max stall seen by ping |
 |---|---|---|---|---|---|---|---|---|
 | A idle | before | 99.96% | 205 ms | 46 | 12 | 0 | 494 | 192 ms |
 | A idle | after | 100.00% | **72 ms** | 232 | **0** | 0 | 3391 | 119 ms |
@@ -589,8 +589,10 @@ means one every 20 ms). "Cycles" is the share of expected 50 Hz cycles that happ
 - **Idle (A)**: after, the largest gap is 72 ms instead of 205 ms. The remaining 60-80 ms gaps hit
   all universes at the same moment, so they come from the timer thread being scheduled late on a
   loaded machine, not from the main thread; the before build has them too, hidden behind larger
-  main-thread gaps. The larger count of 45-100 ms gaps and `< 8 ms` pairs after the change is
-  that same timer-queue jitter, now visible directly at the output.
+  main-thread gaps. The larger count of 45-100 ms gaps and `< 8 ms` catch-up cycles after the change
+  is probably that same timer-queue jitter, now visible directly at the output (writer-thread
+  scheduling on a loaded Debug box is an equally possible cause; the mechanism was not isolated,
+  and it is benign either way: no cycle is lost).
 - No crash, no assert, no "thread did not stop" message, no failed API call in either run
   (Debug build; per run: 6 universe create/delete cycles, 24 patch set/remove calls, 12 of them on a
   busy universe, 5 project reloads each followed by 6 re-patches).
