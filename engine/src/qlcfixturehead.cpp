@@ -212,6 +212,18 @@ void QLCFixtureHead::cacheChannels(const QLCFixtureMode* mode)
         {
             m_shutterChannels << i;
         }
+        else if (ch->group() == QLCChannel::Gobo && ch->controlByte() == QLCChannel::MSB &&
+                 ch->preset() != QLCChannel::GoboIndex)
+        {
+            // The head's gobo wheel (what a Gobo palette writes): the first
+            // coarse Gobo channel that is not an indexing channel, unless a
+            // later one is explicitly flagged as the gobo wheel.
+            quint32 mapped = channelNumber(QLCChannel::Gobo, QLCChannel::MSB);
+            if (mapped == QLCChannel::invalid() ||
+                (ch->preset() == QLCChannel::GoboWheel &&
+                 mode->channels().at(mapped)->preset() != QLCChannel::GoboWheel))
+                setMapIndex(QLCChannel::Gobo, QLCChannel::MSB, i);
+        }
         else if (ch->group() == QLCChannel::PositionX || ch->group() == QLCChannel::PositionY ||
                  ch->group() == QLCChannel::PositionZ || ch->group() == QLCChannel::RotationX ||
                  ch->group() == QLCChannel::RotationY || ch->group() == QLCChannel::RotationZ ||

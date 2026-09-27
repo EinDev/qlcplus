@@ -21,9 +21,13 @@
 #include <QObject>
 #include <QJsonObject>
 
+#include <QJsonArray>
+
 class Doc;
 class ApiServer;
 class QWebSocket;
+class QLCFixtureDef;
+class QLCPalette;
 
 /**
  * End-to-end test: a real ApiServer listening on an ephemeral localhost
@@ -51,7 +55,21 @@ private slots:
     void deleteRemovesPaletteAndBroadcasts();
     void deleteWithStaleRevisionConflicts();
 
+    void applyEveryTypeMatchesEngine_data();
+    void applyEveryTypeMatchesEngine();
+    void applyFansDimmerAcrossFixtures();
+    void applyWritesGoboWheel();
+    void applyValidatesParams();
+    void applyOverridesAreReleasable();
+
 private:
+    /** Adds a fixture of @def at @address (monitor position @posMm) to m_doc */
+    quint32 addFixture(QLCFixtureDef *def, quint32 address, float xMm = 0);
+    /** Adds @palette to m_doc and applies it over the API to @ids */
+    QJsonObject applyPalette(QLCPalette *palette, const QJsonArray &ids);
+    /** The reply's channels must equal QLCPalette::valuesFromFixtures() */
+    void verifyMatchesEngine(const QJsonObject &reply, QLCPalette *palette, const QList<quint32> &ids);
+
     /** Send a request and wait for exactly one more text message to arrive
      *  on client, returning it parsed as a JSON object. */
     QJsonObject sendAndWaitForReply(const QString &method, const QJsonObject &params, const QString &requestId = QStringLiteral("t-1"));
@@ -62,6 +80,9 @@ private:
     Doc *m_doc;
     ApiServer *m_apiServer;
     QWebSocket *m_client;
+    QLCFixtureDef *m_moverDef;
+    QLCFixtureDef *m_barDef;
+    bool m_helloed;
 };
 
 #endif

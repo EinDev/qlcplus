@@ -355,6 +355,15 @@ and a second tab checked for the pushed event:
   degrees up to the selected fixtures' range, applied with each fixture's own range; a Gobo
   palette keeps its value through save / reopen. Input channel editor: sensitivity range per type
   (10..100 slider / knob, 1..20 encoder).
+- **Palette apply** (2026-09-27, `ff/FixtureDialogs.jsx`; driver `tools/e2e/palette-apply.js`
+  against a `palapply` sandbox on ports 9350/9351): double-click / "Apply to N selected" call
+  `palette.apply`, the engine's `QLCPalette::valuesFromFixtures` like the desktop's double-click,
+  so every type (Dimmer, Colour, Pan, Tilt, Pan + Tilt, Position 3D, Shutter, Gobo, Zoom) and the
+  fanning apply exactly as there, as Simple Desk overrides that "Release fixtures" clears; the
+  browser-side Colour / Dimmer / Pan / Tilt maths is only a fallback for a server without it. The
+  value editors use the desktop's units: Dimmer stored as DMX and edited as percent, Zoom in beam
+  degrees, Position 3D in metres (they were percent / percent / millimetres before, which the
+  engine read as DMX / degrees / metres).
 
 - **Fixture Editor** (2026-09-27, `FixtureEditor.jsx` + `fixtureeditor/*.jsx`, Ctrl+6, over
   `fixturedefs.*`; driver `tools/e2e/fixture-editor.js` against a `fixdefs` sandbox on ports

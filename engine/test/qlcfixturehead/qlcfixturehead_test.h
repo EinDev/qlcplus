@@ -42,6 +42,7 @@ private slots:
     void doublePanTilt();
     void heapInstance();
     void cacheUndefinedChannel();
+    void cacheChannelsGobo();
     void loadWrongRoot();
 
     void cleanupTestCase();

@@ -1856,6 +1856,12 @@ channels:
         $ref: '#/components/messages/PaletteDeleteOkResponse'
       paletteDeletedEvent:
         $ref: '#/components/messages/PaletteDeletedEvent'
+      paletteApplyRequest:
+        $ref: '#/components/messages/PaletteApplyRequest'
+      paletteApplyResponse:
+        $ref: '#/components/messages/PaletteApplyResponse'
+      paletteApplyOkResponse:
+        $ref: '#/components/messages/PaletteApplyOkResponse'
 operations:
   sendHello:
     action: send
@@ -6360,6 +6366,18 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/paletteDeletedEvent'
+  sendPaletteApply:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/paletteApplyRequest'
+  receivePaletteApplyResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/paletteApplyResponse'
 components:
   messages:
     HelloRequest:
@@ -27412,6 +27430,95 @@ components:
                 type: integer
               docRevision:
                 type: integer
+    PaletteApplyRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: palette.apply
+          params:
+            type: object
+            required:
+            - paletteId
+            - fixtureIds
+            description: 'Applies a palette to fixtures on the live output, exactly like a double-click
+              in the desktop Palette manager (PaletteManager::previewPalette): the channel values come
+              from the engine''s own QLCPalette::valuesFromFixtures() - every palette type (Dimmer, Color,
+              Pan, Tilt, PanTilt, Position3D, Shutter, Gobo, Zoom) and the palette''s fanning across the
+              given fixtures, ordered by the fanning layout. The values are written as live Simple Desk
+              overrides (io.simpleDesk.*; released the usual way, e.g. io.simpleDesk.resetChannel), the
+              same path fixtures.monitor.aimAt uses. Live (§4b): no baseRevision, nothing is saved. Heads
+              are not addressable: the engine takes whole fixtures and fills every head itself. A fixture
+              the palette type does not map to (no gobo wheel, no zoom channel, a shutter without the
+              palette''s preset...) simply contributes nothing.'
+            properties:
+              paletteId:
+                type: integer
+              fixtureIds:
+                type: array
+                minItems: 1
+                description: Fixture ids (strings, as elsewhere; numbers are accepted). The server has
+                  no notion of the client's selection, so this is required and must not be empty; every
+                  id must exist.
+                items:
+                  type:
+                  - string
+                  - integer
+    PaletteApplyResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/PaletteApplyOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    PaletteApplyOkResponse:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - ok
+        - result
+        properties:
+          type:
+            const: response
+          id:
+            type: string
+          ok:
+            const: true
+          result:
+            type: object
+            required:
+            - channels
+            properties:
+              channels:
+                type: array
+                description: The values written, in valuesFromFixtures() order. address is the absolute
+                  DMX address (universe*512+channel), channel the fixture-relative channel index. Empty
+                  when the palette maps to no channel of the given fixtures (still ok).
+                items:
+                  type: object
+                  required:
+                  - fixtureId
+                  - channel
+                  - address
+                  - value
+                  properties:
+                    fixtureId:
+                      type: string
+                    channel:
+                      type: integer
+                    address:
+                      type: integer
+                    value:
+                      type: integer
   schemas:
     CoreBpmState:
       type: object
@@ -32169,16 +32276,17 @@ components:
       description: 'Direct JSON mirror of QLCPalette::values()''s QVariantList - one array element per
         stored value, in the same order the engine keeps them, with no per-type object wrapper (see palette-notes.md
         for why this shape was chosen over a type-specific object). Meaning per PaletteTypeEnum value:
-        Dimmer, Zoom: [level] - one float, 0.0-100.0 (percent; QLCPalette::setValue(float)). Color: [packed]
-        - one string, "#rrggbb" or "#rrggbbwwaauv" (RGB, optionally followed by White/Amber/UV) exactly
-        as produced/consumed by QLCPalette::colorToString()/stringToColor() - build/parse it with those
-        semantics, don''t hand-roll hex concatenation. Pan, Tilt: [value] - one integer, the raw pan-or-tilt
-        value. PanTilt: [pan, tilt] - two integers, in that order. Position3D: [x, y, z] - three floats.
-        Shutter: [value1, value2] - two integers; QLCPalette itself does not document what these two mean
-        beyond "2 values" (see its loadXML''s Shutter case) - treated generically here, pass-through only.
-        Gobo: treated generically (engine''s own loadXML has no Gobo case today - see qlcpalette.cpp)
-        - whatever values() currently holds, round-tripped as-is. An empty array (or an absent `values`
-        on palette.create) means "use QLCPalette''s post-construction default", i.e. QLCPalette::resetValues().'
+        Dimmer: [level] - DMX 0-255, written as-is by valuesFromFixtures() (the desktop''s IntensityTool
+        stores percent * 2.55). Zoom: [degrees] - one float, the beam angle, mapped over each fixture''s
+        lens range by Fixture::zoomToValues() (BeamTool.qml). Color: [packed] - one string, "#rrggbb"
+        or "#rrggbbwwaauv" (RGB, optionally followed by White/Amber/UV) exactly as produced/consumed by
+        QLCPalette::colorToString()/stringToColor() - build/parse it with those semantics, don''t hand-roll
+        hex concatenation. Pan, Tilt: [degrees] - one integer (Fixture::positionToValues()). PanTilt:
+        [pan, tilt] - two integers (degrees), in that order. Position3D: [x, y, z] - three floats, the
+        target point in metres in stage space (Position3DTool.qml stores metres). Shutter: [preset, percent]
+        - a QLCCapability::Preset ordinal and 0-100 within the matching capability''s range (valuesFromFixtures()).
+        Gobo: [dmx] - the gobo wheel''s DMX value. An empty array (or an absent `values` on palette.create)
+        means "use QLCPalette''s post-construction default", i.e. QLCPalette::resetValues().'
     PaletteSummary:
       type: object
       required:

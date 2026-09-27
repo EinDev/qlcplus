@@ -6,8 +6,12 @@
  * with fixtures.patch {universe, address, definition, name, quantity, gap}; the next free address
  * comes from fixtures.findAvailableAddress. Without fixtures.defs.* on the server only a generic
  * dimmer can be patched and the dialog says so.
- * Palettes: palette.list/get/create/update/delete; "apply to selection" is client-side (there is
- * no server-side palette apply) via FF.paletteValues → io.simpleDesk.setChannels.
+ * Palettes: palette.list/get/create/update/delete; "apply to selection" is palette.apply (the
+ * engine's QLCPalette::valuesFromFixtures, every type plus fanning, written as Simple Desk
+ * overrides). Only when the server lacks palette.apply does the browser compute Color / Dimmer /
+ * Pan / Tilt itself (FF.paletteValues → io.simpleDesk.setChannels).
+ * Value units are the desktop's: Dimmer DMX 0-255 (edited as percent, like IntensityTool.qml),
+ * Pan / Tilt degrees, Zoom beam degrees (BeamTool.qml), Position 3D metres (Position3DTool.qml).
  */
 (function () {
   'use strict';
@@ -316,12 +320,29 @@
     );
   }
 
+  /** A decimal number input (metres, degrees); commits on change like the spin boxes do. */
+  function NumberField({ value, onChange, step, min, max, suffix, e2e }) {
+    const [text, setText] = React.useState(String(value));
+    React.useEffect(() => { if (Number(text) !== value) setText(String(value)); }, [value]);
+    return (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+        <input type="number" value={text} step={step} min={min} max={max} data-e2e={e2e} style={Object.assign({ width: 100 }, inputStyle)}
+          onChange={e => { setText(e.target.value); const n = parseFloat(e.target.value); if (isFinite(n)) onChange(n); }} />
+        {suffix ? <RobotoText label={suffix} fontSize={13} labelColor="var(--fg-light)" /> : null}
+      </span>
+    );
+  }
+
   function PaletteValueEditor({ type, values, onChange, ranges }) {
     const v = values || [];
+    /* Position 3D: the target point in METRES in stage space (Position3DTool.qml stores metres;
+       QLCPalette::valuesFromFixtures aims each fixture's beam at it) */
     if (type === 'Position3D') return <>
       {['X', 'Y', 'Z'].map((axis, i) => (
-        <FF.Row key={axis} label={axis} width={60}><CustomSpinBox value={Number(v[i]) || 0} from={-100000} to={100000} width={110} suffix=" mm"
-          onValueModified={x => { const n = [Number(v[0]) || 0, Number(v[1]) || 0, Number(v[2]) || 0]; n[i] = x; onChange(n); }} /></FF.Row>
+        <FF.Row key={axis} label={axis} width={60}>
+          <NumberField value={Number(v[i]) || 0} step={0.1} suffix="m" e2e={'palette-pos3d-' + axis.toLowerCase()}
+            onChange={x => { const n = [Number(v[0]) || 0, Number(v[1]) || 0, Number(v[2]) || 0]; n[i] = x; onChange(n); }} />
+        </FF.Row>
       ))}
     </>;
     if (type === 'Shutter') return <>
@@ -329,8 +350,17 @@
       <FF.Row label="Amount" width={60}><CustomSpinBox value={Number(v[1]) || 0} from={0} to={100} suffix="%" width={90} onValueModified={x => onChange([Number(v[0]) || 7, x])} /></FF.Row>
     </>;
     if (type === 'Gobo') return <FF.Row label="DMX" width={60}><CustomSpinBox value={Math.round(Number(v[0]) || 0)} from={0} to={255} width={90} onValueModified={x => onChange([x])} /></FF.Row>;
-    if (type === 'Zoom') return <FF.Row label="Zoom" width={60}><CustomSpinBox value={Math.round(Number(v[0]) || 0)} from={0} to={100} suffix="%" width={90} onValueModified={x => onChange([x])} /></FF.Row>;
-    if (type === 'Dimmer') return <FF.Row label="Level" width={60}><CustomSpinBox value={Math.round(Number(v[0]) || 0)} from={0} to={100} suffix="%" width={90} onValueModified={x => onChange([x])} /></FF.Row>;
+    /* Zoom: the beam angle in degrees (BeamTool.qml), mapped over each fixture's lens range */
+    if (type === 'Zoom') return <FF.Row label="Zoom" width={60}>
+      <NumberField value={Number(v[0]) || 0} step={0.5} min={0} max={360} suffix="°" e2e="palette-zoom" onChange={x => onChange([x])} />
+    </FF.Row>;
+    /* Dimmer: stored as DMX 0-255, edited as percent like IntensityTool.qml (percent * 2.55).
+       Rounded to a whole DMX value: IntensityTool stores the raw product (50 % = 127.4999...),
+       which the engine applies as 127 but saves as "127.5" and reloads as 128. */
+    if (type === 'Dimmer') return <FF.Row label="Level" width={60}>
+      <CustomSpinBox value={Math.round((Number(v[0]) || 0) / 2.55)} from={0} to={100} suffix="%" width={90} onValueModified={x => onChange([Math.round(x * 2.55)])} />
+      <RobotoText label={'DMX ' + Math.round(Number(v[0]) || 0)} fontSize={12} labelColor="var(--fg-light)" />
+    </FF.Row>;
     if (type === 'Color') {
       const c = FF.parsePaletteColour(v[0] || '#ffffff') || { rgb: { r: 255, g: 255, b: 255 } };
       return <FF.Row label="Colour" width={60}>
@@ -376,11 +406,27 @@
       qlc.call('palette.get', { paletteId: Number(current) }).then(d => { if (alive) setDetail(d); }).catch(() => {});
       return () => { alive = false; };
     }, [current, qlc.online, JSON.stringify(palettes || [])]);
-    const apply = (p) => {
-      if (!items.length) { setApplied('Select fixtures in the tree first'); return; }
+    const plural = (n, word) => n + ' ' + word + (n === 1 ? '' : 's');
+    /* Fallback for a server without palette.apply: the browser maps Color / Dimmer / Pan / Tilt. */
+    const applyInBrowser = (p) => {
       let n = 0, unsupported = false;
       items.forEach(it => { const w = FF.paletteValues(p, it.channels, it.detail.physical); if (w === null) { unsupported = true; return; } if (w.length) { n++; FF.writeLive(qlc, it.detail, w, 'pal:' + it.detail.id); } });
-      setApplied(unsupported ? 'Applying ' + p.type + ' palettes is not available (no channel mapping)' : 'Applied "' + p.name + '" to ' + n + ' fixture' + (n === 1 ? '' : 's') + ' (live output)');
+      setApplied(unsupported ? 'This server cannot apply ' + p.type + ' palettes (no palette.apply)' : 'Applied "' + p.name + '" to ' + plural(n, 'fixture') + ' (live output)');
+    };
+    /* PaletteManager::previewPalette: the server runs QLCPalette::valuesFromFixtures (every type,
+       fanning) and writes the values as Simple Desk overrides ("Release fixtures" clears them). */
+    const apply = (p) => {
+      if (!fixtureIds.length) { setApplied('Select fixtures in the tree first'); return; }
+      if (qlc.isUnsupported('palette.apply')) { applyInBrowser(p); return; }
+      qlc.call('palette.apply', { paletteId: Number(p.id), fixtureIds: fixtureIds.map(String) }).then(r => {
+        const chs = (r && r.channels) || [];
+        const n = new Set(chs.map(c => c.fixtureId)).size;
+        setApplied(chs.length ? 'Applied "' + p.name + '" to ' + plural(n, 'fixture') + ', ' + plural(chs.length, 'channel') + ' (live output)'
+          : '"' + p.name + '" has nothing to set on the selected fixtures (no matching ' + p.type + ' channel)');
+      }).catch(err => {
+        if (qlc.isUnsupported('palette.apply')) applyInBrowser(p);
+        else setApplied('Could not apply "' + p.name + '": ' + ((err && err.message) || err));
+      });
     };
     const applyCurrent = () => { if (detail) apply(detail); };
     /* the selected fixtures' widest pan / tilt range (PositionTool.qml's panMaxDegrees / tiltMaxDegrees) */
@@ -403,7 +449,7 @@
       }).catch(() => {});
     };
     const remove = () => { setConfirm(false); if (current == null) return; FF.mutate(qlc, 'palette.delete', { paletteId: Number(current) }).then(() => setCurrent(null)).catch(() => {}); };
-    const defaultValues = (t) => t === 'Dimmer' ? [100] : t === 'Color' ? ['#ffffff'] : t === 'PanTilt' ? [Math.round(ranges.pan / 2), Math.round(ranges.tilt / 2)] : t === 'Position3D' ? [0, 0, 0] : t === 'Shutter' ? [7, 100] : t === 'Gobo' ? [0] : t === 'Zoom' ? [50]
+    const defaultValues = (t) => t === 'Dimmer' ? [255] : t === 'Color' ? ['#ffffff'] : t === 'PanTilt' ? [Math.round(ranges.pan / 2), Math.round(ranges.tilt / 2)] : t === 'Position3D' ? [0, 0, 0] : t === 'Shutter' ? [7, 100] : t === 'Gobo' ? [0] : t === 'Zoom' ? [50]
       : t === 'Pan' ? [Math.round(ranges.pan / 2)] : t === 'Tilt' ? [Math.round(ranges.tilt / 2)] : [127];
     return (
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -431,9 +477,8 @@
             <PaletteValueEditor type={detail.type} values={detail.values} ranges={ranges} onChange={vals => update({ values: vals })} />
             <GenericButton label={'Apply to ' + fixtureIds.length + ' selected'} width={170} height={24} disabled={!fixtureIds.length} onClick={applyCurrent} />
             {FANNABLE.indexOf(detail.type) !== -1 && detail.fanning ? <PaletteFanningEditor type={detail.type} fanning={detail.fanning} onChange={fan => update({ fanning: fan })} /> : null}
-          </> : <FF.Note text="Click a palette to edit it, double-click to apply it to the selected fixtures (live output). Applying is done by the browser: Color sets RGB/CMY/WAUV channels, Dimmer the intensity, Pan/Tilt the position." />}
-          {applied ? <RobotoText label={applied} fontSize={12} labelColor="var(--fg-light)" wrapText height="auto" /> : null}
-          <FF.Note text="The API has no palette-apply / live fixture-control method; Shutter, Gobo, Zoom and Position3D palettes cannot be applied from here (put them in a Scene instead). Fanning is used by the engine when the palette runs in a Scene." />
+          </> : <FF.Note text="Click a palette to edit it, double-click to apply it to the selected fixtures (live output, fanning included; Release fixtures in the tools clears it)." />}
+          {applied ? <RobotoText label={applied} fontSize={12} labelColor="var(--fg-light)" wrapText height="auto" data-e2e="palette-applied" /> : null}
         </div>
         <CustomPopupDialog open={!!draft} title="New palette" width={380} standardButtons={['Cancel', 'Create']} onClicked={(b) => { if (b === 'Create') create(); else setDraft(null); }} onClose={() => setDraft(null)}>
           {draft ? <div data-e2e="palette-create" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>

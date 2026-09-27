@@ -22,6 +22,7 @@
 #include <QString>
 
 class ApiServer;
+class ApiIoDomain;
 class Doc;
 
 /**
@@ -40,13 +41,19 @@ class Doc;
  * methods, which call doc->setModified() by hand for exactly this reason),
  * so palette.update's handler calls doc->setModified() and broadcasts
  * palette.updated directly, with no slot involved.
+ *
+ * palette.apply is live control (§4b), not document state: it hands the
+ * palette's QLCPalette::valuesFromFixtures() result (the desktop's
+ * PaletteManager::previewPalette maths, fanning included) to
+ * ApiIoDomain::overrideChannels(), the Simple Desk override path
+ * fixtures.monitor.aimAt also uses, so the usual release clears it.
  */
 class ApiPaletteDomain : public QObject
 {
     Q_OBJECT
 
 public:
-    ApiPaletteDomain(Doc *doc, ApiServer *server, QObject *parent = nullptr);
+    ApiPaletteDomain(Doc *doc, ApiServer *server, ApiIoDomain *ioDomain, QObject *parent = nullptr);
 
 private:
     void registerMethods();
@@ -58,6 +65,7 @@ private slots:
 private:
     Doc *m_doc;
     ApiServer *m_server;
+    ApiIoDomain *m_ioDomain;
 
     /** Requesting client's id, stashed by palette.create's handler just
      *  before calling Doc::addPalette() (whose paletteAdded signal fires

@@ -111,9 +111,10 @@ None of `palette.created`/`.updated`/`.deleted` are subscribe-gated - all
 - **`valuesFromFixtures`/`valuesFromFixtureGroups`/`previewPalette`** - these
   apply a palette's values to live DMX output for preview, which is §4b
   runtime behavior layered on top of the §4a resource this fragment defines,
-  not part of the resource's CRUD. Belongs with whatever live-preview/context
-  domain eventually covers `qmlui/contextmanager.cpp`-level "set these
-  channels to these values" actions, not here.
+  not part of the resource's CRUD. *Superseded 2026-09-27*: `palette.apply`
+  (see "Implemented 2026-09-27: palette.apply" below) now covers
+  `valuesFromFixtures`/`previewPalette`; `valuesFromFixtureGroups` is still
+  not exposed.
 - **`addPaletteToNewScene`** - this is Scene creation with a side-effect on a
   palette, i.e. `functions.scene.*` territory once that domain exists, not a
   palette operation.
@@ -149,9 +150,43 @@ the repo owner's general "prefer fewer, more general methods" steer in
   now treat it as one integer, the wheel's DMX value that `valuesFromFixtures()` writes;
   `engine/test/qlcpalette` round-trips every palette type (`saveLoadEveryType`). Note that applying a
   Gobo palette to a fixture still produces nothing: `QLCFixtureHead::cacheChannels()` never maps the
-  Gobo group (the existing `fixturesGobo` XFAIL) - separate, not changed.
+  Gobo group (the existing `fixturesGobo` XFAIL) - separate, not changed. (Fixed later the same day,
+  see "Implemented 2026-09-27: palette.apply" below.)
 - **Values are unchanged on the wire, the web UI now reads them right**: Pan / Tilt / PanTilt values
   are DEGREES (`Fixture::positionToValues`: `dmx16 = deg * 65535 / focusPanMax|focusTiltMax`, 360 / 270
   when the definition says 0). The web palette editor offered them as 0-255 and "apply to selection"
   wrote them as DMX; it now edits degrees up to the selected fixtures' range and converts per fixture
   with that fixture's own range (clamped - the engine would wrap past it).
+
+## Implemented 2026-09-27: palette.apply
+
+- NEW `palette.apply` {paletteId, fixtureIds} -> {channels: [{fixtureId, channel, address, value}]}:
+  the desktop's double-click on a palette (`PaletteManager::previewPalette`). The values come from
+  `QLCPalette::valuesFromFixtures()` itself, so every type and the fanning (ordered by the fanning
+  layout over the fixtures' monitor positions) are the desktop's maths, not a re-implementation.
+  They are written through `ApiIoDomain::overrideChannels()`, i.e. as Simple Desk overrides like
+  `fixtures.monitor.aimAt`: each one broadcasts `io.simpleDesk.channelChanged` and the web UI's
+  "Release fixtures" (`io.simpleDesk.resetChannel`) clears them. The desktop writes into
+  ContextManager's own generic fader instead; the web client has no such per-client fader, and the
+  override path is the one the other web fixture tools already release.
+- Live (§4b): no `baseRevision`, nothing saved, no event of its own.
+- `fixtureIds` is required and non-empty (the server does not know the client's selection); an
+  unknown id is `NOT_FOUND` rather than skipped, because `valuesFromFixtures()` skips a missing
+  fixture *before* advancing the fan progress and would silently shift the fan across the rest.
+- Heads are not addressable: `valuesFromFixtures()` takes fixture ids and fills every head itself
+  (Dimmer / Color per head, Shutter per head's shutter channels). A per-head apply would need a new
+  engine entry point; not done. `valuesFromFixtureGroups()` (apply to a fixture group) is a possible
+  follow-up (`groupIds`), not exposed yet.
+- **Engine fix**: a Gobo palette now writes the gobo wheel. `QLCFixtureHead::cacheChannels()` never
+  mapped the Gobo group, so `Fixture::channelNumber(QLCChannel::Gobo)` was always invalid and Gobo
+  palettes wrote nothing (on the desktop too - the "applying a Gobo palette still produces nothing"
+  note above). It now maps the first coarse Gobo channel that is not a `GoboIndex`, preferring one
+  with the `GoboWheel` preset; `engine/test/qlcpalette`'s `fixturesGobo` passes (no longer XFAIL).
+- **`PaletteValues` units corrected** (the description said Dimmer / Zoom were 0-100 percent):
+  Dimmer is DMX 0-255 (`valuesFromFixtures()` writes it as-is; the desktop IntensityTool stores
+  percent * 2.55), Zoom is the beam angle in degrees (`Fixture::zoomToValues()`), Position 3D is
+  metres. The web palette editor had stored percent / percent / millimetres; it now uses these units.
+- Known engine quirk, not changed: `Fixture::zoomToValues()` divides by the lens range, so a
+  definition with `DegreesMin == DegreesMax` (every SF3 custom definition has 0 / 0) gets a
+  meaningless zoom value (0 / 0 as an integer; 255 on this build's zoom channel) - the desktop does
+  the same.
