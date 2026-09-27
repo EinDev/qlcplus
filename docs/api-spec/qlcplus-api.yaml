@@ -20362,7 +20362,15 @@ components:
               (VirtualConsole::disableAutoDetection(), which takes no widget/client argument at all) cancels
               whichever widget currently holds the slot, regardless of which client started it. A multi-client
               UI should treat "someone is learning" as global state - e.g. disable the learn button everywhere
-              else while any client has one in progress - rather than assuming per-client isolation.'
+              else while any client has one in progress - rather than assuming per-client isolation. IMPLEMENTED
+              (2026-09-27, ApiVcInputDomain): the API keeps its own single slot rather than VirtualConsole''s
+              (no placeholder source is parked on the widget while waiting). While client A holds it,
+              a start from client B is refused with INVALID_STATE (details.clientId = holder, details.widgetId)
+              instead of silently stealing it; A may re-arm another widget/control; stop from any client
+              cancels; A disconnecting releases it. The first signal on ANY input line is bound (vc.widget.inputSource.set
+              semantics), docRevision bumps, and vc.widget.inputSourcesChanged is broadcast to every client
+              with originClientId = A. Unlike the desktop learn, that signal is still dispatched normally
+              to widgets already mapped to it.'
             properties:
               widgetId:
                 type: string
@@ -26098,6 +26106,24 @@ components:
         monitorChannel:
           type: integer
           description: See VcWidgetInputSourceSetRequest.params.monitorChannel - absent when not overridden.
+        universeName:
+          type: string
+          description: Read-only display name of the universe (InputOutputMap::inputSourceNames(), the
+            same text the desktop External controls panel shows, e.g. "1 -UNPATCHED-"); "None" for an
+            invalid source.
+        channelName:
+          type: string
+          description: Read-only display name of the channel (1-based number plus the input profile's
+            channel name when a profile is patched, the number plus "?" otherwise); "None" for an invalid
+            source.
+        supportsCustomFeedback:
+          type: boolean
+          description: Read-only - true when the universe's input profile declares this channel as a Button
+            (the desktop app only offers the custom feedback popup then).
+        invalid:
+          type: boolean
+          description: Read-only - true for a source with no universe/channel yet (a desktop auto-detection
+            that never received a signal leaves one behind; universe/channel are 4294967295 then).
     VcPage:
       type: object
       required:

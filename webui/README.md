@@ -134,6 +134,26 @@ and a second tab checked for the pushed event:
   from functions" (a button, adjust slider or cue list per picked function), "Create a widget
   matrix" (buttons or sliders in a new frame / solo frame) and the Usage popup. XY Pad,
   Animation, Audio Triggers and Clock configuration is still view-only.
+- **External controls + key bindings** (`webui/vc/vc-external.jsx`, added 2026-09-27, verified
+  against a `vcinput` sandbox on ports 9220/9221 by `webui/tools/e2e/vc-input.js`): every widget's
+  property panel has an "External controls" section (ExternalControls.qml): input sources picked
+  by hand (universe + channel, or a channel of the input profile patched on that universe), the
+  control each one drives, custom feedback values (lower / upper / monitor, plus the profile's
+  colour table and MIDI channel routing when it has them), remove; keyboard combinations recorded
+  by pressing them in the browser (re-record, change control, remove); auto-detection of a
+  controller input (`vc.widget.inputDetect.*` - arming, the single server-wide slot and cancel were
+  exercised; a real controller signal cannot reach the plugin-less sandbox, so the binding itself
+  is only unit-tested). All of it is saved in the `.qxw` (`<Input .../>`, `<Key>...</Key>`).
+  **Key bindings are honoured by the browser**: the server cannot see the browser's keyboard, so
+  while the Virtual Console screen is shown, edit mode is off and no text field has focus, a key
+  combination bound on a widget of the current page triggers it through the normal live methods -
+  button press / release (`vc.button.press`), cue list next / previous / play / stop, frame
+  next / previous page, page shortcut, enable, collapse, speed dial tap / factor / reset / apply /
+  preset, slider flash, XY pad / animation presets. A matched key is swallowed, so a widget
+  binding wins over the App shortcuts (Ctrl+1..5, Space tap, Ctrl+B/S/Z/Y), like the desktop VC;
+  unbound keys fall through. A small key-cast strip shows which combination fired what. Not
+  mapped in the browser: animation intensity and audio-trigger capture bindings (no live method
+  yet), and VC page activation keys (no API for page bindings).
 - **Cue List + Speed dial** (`webui/vc/vc-props-cue.jsx`, added 2026-09-27, verified against a
   `vccue` sandbox on ports 9170/9171 by `webui/tools/e2e/vc-cue.js`): cue list properties (attach /
   detach a Chaser or Sequence, Play/Pause+Stop vs Play/Stop+Pause layout, next/previous behaviour,
