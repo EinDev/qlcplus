@@ -45,6 +45,34 @@
        */
       redo: function (params) { return self.call('core.redo', params); },
 
+      wizard: {
+        /**
+         * The Show Wizard's catalogues (show types, roles, stage types, effects) plus the
+         * project's fixture groups (with detected capabilities) and patched input controllers.
+         * @returns {Promise<object>} result - CoreWizardOptions
+         * @see docs/api-spec/fragments/core.yaml (method: core.wizard.getOptions)
+         */
+        getOptions: function (params) { return self.call('core.wizard.getOptions', params || {}); },
+
+        /**
+         * Read-only dry run of a choice set: resolved roles, effect defaults/availability, stage
+         * size, controller mapping preview and the summary rows.
+         * @param {object} params - {choices: CoreWizardChoices}
+         * @returns {Promise<object>} result - CoreWizardPreview
+         * @see docs/api-spec/fragments/core.yaml (method: core.wizard.preview)
+         */
+        preview: function (params) { return self.call('core.wizard.preview', params); },
+
+        /**
+         * Generates groups, palettes, functions and a Virtual Console frame for the choice set.
+         * Not undoable. Broadcasts the usual created events, then core.wizard.generated.
+         * @param {object} params - {choices: CoreWizardChoices, baseRevision}
+         * @returns {Promise<object>} result - {docRevision, fixtureGroupIds, functionIds, paletteIds, vcPageIndexes, vcWidgetIds}
+         * @see docs/api-spec/fragments/core.yaml (method: core.wizard.generate)
+         */
+        generate: function (params) { return self.call('core.wizard.generate', params); }
+      },
+
       project: {
         /**
          * Discards the current document (unsaved changes are lost) and replaces it with a
@@ -68,6 +96,27 @@
          * @see docs/api-spec/fragments/core.yaml (method: core.project.open)
          */
         open: function (params) { return self.call('core.project.open', params); },
+
+        /**
+         * Read-only: lists another project's fixtures (by universe, with linked items), fixture
+         * groups, palettes and visible functions (with each one's dependency closure), as the
+         * desktop "Import from project" popup shows them. Stateless — import takes the source again.
+         * @param {object} params - {source: 'path'|'upload', path?, fileName?, contentBase64?}
+         * @returns {Promise<object>} result - {fileName?, universes, fixtures, fixtureGroups, palettes, functions}
+         * @see docs/api-spec/fragments/core.yaml (method: core.project.importList)
+         */
+        importList: function (params) { return self.call('core.project.importList', params); },
+
+        /**
+         * Imports the selected fixtures / fixture groups / functions (plus their dependencies) of
+         * another project. Name-matched fixtures, groups and palettes are reused; functions are
+         * copied with new ids and every reference is remapped. Broadcasts fixtures.patched,
+         * fixtures.group.created, functions.created, palette.created, then core.project.imported.
+         * @param {object} params - {source, path?|contentBase64?, fixtureIds?: string[], fixtureGroupIds?: string[], functionIds?: string[], baseRevision}
+         * @returns {Promise<object>} result - {docRevision, fixtureIdMap, fixtureGroupIdMap, paletteIdMap, functionIdMap (source id -> new id), createdFixtureIds, skippedFixtureIds (source ids)}
+         * @see docs/api-spec/fragments/core.yaml (method: core.project.import)
+         */
+        import: function (params) { return self.call('core.project.import', params); },
 
         /**
          * Closes the current project. The engine always has *a* document open, so this is
@@ -224,6 +273,8 @@
     'core.project.saved',            // {docRevision, filePath, fileName} — NOT fired for saveAs target='download'
     'core.project.recentFilesChanged', // {files: [{filePath, fileName}]}
     'core.project.startupFunctionChanged', // {startupFunctionId: string|null, docRevision}
+    'core.project.imported',         // CoreProjectImported — after the per-resource created events of an import
+    'core.wizard.generated',         // CoreWizardGenerated — after the per-resource created events of a generation
     'core.mode.changed',             // {mode:'design'|'operate'}
     'core.history.changed',          // {direction:'undo'|'redo', stepsApplied, docRevision, canUndo, canRedo, undoText?, redoText?}
     'core.bpm.changed',              // {bpm, generator} — web UI contract (2026-09)

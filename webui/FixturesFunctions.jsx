@@ -710,6 +710,7 @@ function FixturesFunctions() {
             <IconButton imgSource={D.icon('intensity')} checked={panel === 'tools'} onClick={() => setPanel(panel === 'tools' ? null : 'tools')} tooltip="Fixture tools: intensity, colour, position, presets" />
             <IconButton imgSource={D.icon('palette')} checked={panel === 'palettes'} onClick={() => setPanel(panel === 'palettes' ? null : 'palettes')} tooltip="Palettes" />
             <IconButton imgSource={D.icon('group')} checked={panel === 'groups'} onClick={() => setPanel(panel === 'groups' ? null : 'groups')} tooltip="Fixture Groups" />
+            {window.QLCWizard ? <IconButton faSource={''} faColor="yellow" disabled={!live} onClick={window.QLCWizard.open} tooltip="Show Wizard" data-wizard="open" /> : null}
             <IconButton imgSource={D.icon('fixture-editor')} disabled tooltip="Fixture editor — not available in the web UI" />
             <IconButton imgSource={D.icon('uniview')} disabled tooltip="Universe view — not available in the web UI" />
           </div>}>
