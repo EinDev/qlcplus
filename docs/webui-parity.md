@@ -121,9 +121,9 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | Bottom-panel external controller mapping of the fixture faders | fixturesfunctions/BottomPanel.qml | n/a | - ; the desktop's mapping lives entirely in the qmlui SceneEditor on inputValueChanged with no engine hook; external controllers drive the rig through VC input sources, which the web UI configures |
 | Palettes: list and search | fixturesfunctions/PaletteManager.qml | live | - ; search box not checked |
 | Palettes: create Dimmer / Colour palette | popup/PopupCreatePalette.qml, PaletteFanningBox.qml | live | - |
-| Palettes: create Position / Pan / Tilt / Shutter / Gobo / Position 3D palette | popup/PopupCreatePalette.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-ff.js (Pan / Tilt / Pan+Tilt in degrees with the fixtures' range, Position 3D, Shutter, Gobo, Zoom) |
+| Palettes: create Position / Pan / Tilt / Shutter / Gobo / Position 3D palette | popup/PopupCreatePalette.qml | live | - ; sandbox 2026-09-27 (partials-ff.js, palette-apply.js); units as on the desktop: Pan / Tilt degrees, Position 3D metres, Zoom beam degrees, Dimmer edited in % and stored as DMX |
 | Palettes: "Also create a Scene" on create | popup/PopupCreatePalette.qml | live | - ; sandbox 2026-09-27 |
-| Palettes: apply to the selected fixtures | fixturesfunctions/PaletteManager.qml | partial | S; the desktop applies every palette type (with fanning) through QLCPalette::valuesFromFixtures; the web UI computes Color / Dimmer / Pan / Tilt in the browser only and cannot apply Shutter / Gobo / Zoom / Position 3D palettes (no server apply method yet) |
+| Palettes: apply to the selected fixtures | fixturesfunctions/PaletteManager.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/palette-apply.js; every type plus fanning through palette.apply (the engine's valuesFromFixtures, the desktop's own maths), DMX read back, Release clears it; Gobo palettes now write the gobo wheel (engine fix, desktop too) |
 | Palettes: edit (rename, change value) | fixturesfunctions/PaletteManager.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-ff.js |
 | Palettes: delete | fixturesfunctions/PaletteManager.qml | live | - |
 | Palette fanning (type, layout, amount, per-axis ordering) | PaletteFanningBox.qml | live | - ; sandbox 2026-09-27 (colour palette fanned Linear 60%, saved in the .qxw) |
@@ -425,8 +425,8 @@ the total is larger than the number of distinct actions). Recompute after editin
 
 | Status | Rows |
 | --- | --- |
-| live | 261 |
-| partial | 32 |
+| live | 262 |
+| partial | 31 |
 | missing | 0 |
 | n/a | 21 |
 | total | 314 |
