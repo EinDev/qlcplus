@@ -79,6 +79,7 @@ private slots:
     void updateModeRejectsOverlap();
     void updateModeWithMoveIgnoresTransientOverlap();
     void updateModeShrinkPrunesSettingsAndKeepsScene();
+    void updateModeAppliesToSameType();
     void updateUnknownModeIsNotFound();
     void getReportsChannelBehaviourAndModes();
 

@@ -46,7 +46,7 @@
     const change = (mode) => {
       if (mode === detail.mode) return;
       setBusy(true);
-      FF.mutate(qlc, 'fixtures.update', { fixtureId: String(detail.id), mode }).catch(() => {}).then(() => setBusy(false));
+      FF.mutate(qlc, 'fixtures.update', { fixtureId: String(detail.id), mode, applyToSameType: applySameTypeDefault }).catch(() => {}).then(() => setBusy(false));
     };
     return (
       <FF.Row label="Mode">

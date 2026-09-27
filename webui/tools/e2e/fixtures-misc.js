@@ -329,6 +329,34 @@ async function main() {
     const dragged = await until(async () => { const g = await ggrp(); return headAt(g, 4, 0) === moving && !headAt(g, 2, 3) ? g : null; }, 'drag').catch(() => null);
     check(!!dragged, 'dragging the head at (3,4) onto the empty cell (5,1) moves it', moving);
     await shot(page, 'grid-editor');
+    /* regenerate in DMX order: 16 heads -> 4x4, row r = the r-th panel row by address */
+    await clickFn(page, btnText('Regenerate in DMX order', '[data-grid-editor]'), 'Regenerate');
+    const regen = await until(async () => { const g = await ggrp(); return g.size.columns === 4 && g.size.rows === 4 && g.heads.length === 16 && g.heads.every(h => h.fixtureId === panelIds[h.y] && h.headIndex === h.x) ? g : null; }, 'regenerate', 12000).catch(() => null);
+    check(!!regen, 'Regenerate in DMX order: 4x4, row y holds the y-th panel row, head x at column x');
+    await page.waitFor(`document.querySelectorAll('[data-grid-cell]').length === 16`, 8000);
+    const transformCheck = async (label, sel, fn) => {
+      const g = await ggrp(); const before = {}; g.heads.forEach(h => { before[h.fixtureId + ':' + h.headIndex] = [h.x, h.y]; });
+      await clickFn(page, sel, label);
+      const ok = await until(async () => { const n = await ggrp(); return n.heads.length === 16 && n.heads.every(h => { const b = before[h.fixtureId + ':' + h.headIndex]; const t = fn(b[0], b[1]); return b && h.x === t[0] && h.y === t[1]; }) ? n : null; }, label, 12000).catch(() => null);
+      check(!!ok, label + ' on the whole group');
+    };
+    await transformCheck('Flip horizontally', q('[data-grid-flip="h"]'), (x, y) => [3 - x, y]);
+    await transformCheck('Flip vertically', q('[data-grid-flip="v"]'), (x, y) => [x, 3 - y]);
+    await transformCheck('Rotate 180°', btnText('180°', '[data-grid-editor]'), (x, y) => [3 - x, 3 - y]);
+    await transformCheck('Rotate 270°', btnText('270°', '[data-grid-editor]'), (x, y) => [y, 3 - x]);
+    /* remove one head, then place it back by picking it and clicking the empty cell */
+    const gp = await ggrp();
+    const h00 = gp.heads.find(h => h.x === 0 && h.y === 0);
+    await clickSel(page, '[data-grid-cell="0,0"]');
+    await clickFn(page, btnText('Remove', '[data-grid-editor]'), 'Remove');
+    check(await until(async () => { const g = await ggrp(); return g.heads.length === 15 && !headAt(g, 0, 0); }, 'removed').catch(() => false), 'Remove takes the selected head out of the group');
+    await clickSel(page, `[data-grid-head="${h00.fixtureId}:${h00.headIndex}"]`);
+    await clickSel(page, '[data-grid-cell="0,0"]');
+    check(await until(async () => { const g = await ggrp(); return g.heads.length === 16 && headAt(g, 0, 0) === h00.fixtureId + ':' + h00.headIndex; }, 'placed').catch(() => false), 'picking head ' + (h00.headIndex + 1) + ' of ' + h00.fixtureId + ' and clicking the empty cell (1,1) places it there');
+    await shot(page, 'grid-editor-2');
+    await clickFn(page, btnText('Reset', '[data-grid-editor]'), 'Reset');
+    await clickFn(page, btnText('Reset'), 'confirm Reset');
+    check(await until(async () => (await ggrp()).heads.length === 0, 'reset').catch(() => false), 'Reset empties the group');
     await closeDialog(page);
 
     /* ---- 8. colour filters + 9. console on the panel rows ---- */

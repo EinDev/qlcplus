@@ -1084,6 +1084,37 @@ void ApiFixturesDomain_Test::updateModeShrinkPrunesSettingsAndKeepsScene()
     QCOMPARE(fixture->channel(3)->name(), QStringLiteral("Strobe"));
 }
 
+void ApiFixturesDomain_Test::updateModeAppliesToSameType()
+{
+    addAcmeMultiParDefinition();
+    helloAndGetClientId();
+    quint32 a = patchMultiPar(0, 0, QStringLiteral("2-channel"));
+    quint32 b = patchMultiPar(0, 10, QStringLiteral("2-channel"));
+    quint32 c = patchMultiPar(0, 20, QStringLiteral("4-channel")); // other mode: untouched
+
+    QJsonObject params = modeUpdate(a, QStringLiteral("4-channel"), m_doc->docRevision());
+    params.insert(QStringLiteral("applyToSameType"), true);
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("fixtures.update"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(reply.value(QStringLiteral("result")).toObject().value(QStringLiteral("fixtureIds")).toArray().count(), 2);
+    QCOMPARE(m_doc->fixture(a)->channels(), quint32(4));
+    QCOMPARE(m_doc->fixture(b)->channels(), quint32(4));
+    QCOMPARE(m_doc->fixtureForAddress(13), b);
+    QCOMPARE(m_doc->fixture(c)->channels(), quint32(4));
+
+    // All or nothing: one blocked fixture of the type stops the whole change.
+    quint32 d = patchMultiPar(0, 30, QStringLiteral("2-channel"));
+    quint32 e = patchMultiPar(0, 40, QStringLiteral("2-channel"));
+    patchGenericFixture(0, 42, 1); // blocks e from growing
+    params = modeUpdate(d, QStringLiteral("4-channel"), m_doc->docRevision());
+    params.insert(QStringLiteral("applyToSameType"), true);
+    reply = sendAndWaitForReply(QStringLiteral("fixtures.update"), params);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(),
+             QStringLiteral("FIXTURES_ADDRESS_OVERLAP"));
+    QCOMPARE(m_doc->fixture(d)->channels(), quint32(2));
+    QCOMPARE(m_doc->fixture(e)->channels(), quint32(2));
+}
+
 void ApiFixturesDomain_Test::updateUnknownModeIsNotFound()
 {
     addAcmeMultiParDefinition();

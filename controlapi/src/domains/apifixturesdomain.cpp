@@ -856,6 +856,38 @@ void ApiFixturesDomain::registerMethods()
             }
         }
 
+        // "Apply changes to fixtures of the same type" for a mode change
+        // (FixtureManager::setFixtureModeIndex() with m_applyToSameType):
+        // every fixture with the same definition AND mode switches too, each
+        // in place. All footprints are pre-checked, so it is all or nothing.
+        QList<Fixture *> sameType;
+        if (modeChanges && params.value(QStringLiteral("applyToSameType")).toBool(false))
+        {
+            if (hasAddress || hasUniverse)
+            {
+                session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams,
+                    QStringLiteral("applyToSameType cannot be combined with universe/address")));
+                return;
+            }
+            for (Fixture *other : doc->fixtures())
+            {
+                if (other == fixture || other->fixtureDef() != fixture->fixtureDef() ||
+                    other->fixtureMode() != fixture->fixtureMode())
+                    continue;
+                if (validAddressRange(int(other->address()), int(newChannels)) == false ||
+                    rangeIsFree(doc, other->universe(), other->address(), newChannels, other->id()) == false)
+                {
+                    QJsonObject details;
+                    details.insert(QStringLiteral("address"), int(other->address()));
+                    details.insert(QStringLiteral("fixtureId"), QString::number(other->id()));
+                    session->send(ApiEnvelope::buildErrorResponse(id, QStringLiteral("FIXTURES_ADDRESS_OVERLAP"),
+                        QStringLiteral("%1 cannot grow to %2 channels at its address").arg(other->name()).arg(newChannels), details));
+                    return;
+                }
+                sameType.append(other);
+            }
+        }
+
         // Fixture::setAddress()/setUniverse() each emit changed(), and
         // Doc::slotFixtureChanged() re-tracks the fixture's footprint on every
         // emit. Applied one after the other, the first emit would track the
@@ -878,58 +910,74 @@ void ApiFixturesDomain::registerMethods()
         // cleared again. Functions are left untouched, exactly like the Qt
         // UI: Scene values on vanished channels stay (Scene::postLoad() drops
         // them on the next load), so switching back restores them.
-        QList<int> forcedHTP = fixture->forcedHTPChannels();
-        QList<int> forcedLTP = fixture->forcedLTPChannels();
-        if (modeChanges)
+        auto apply = [doc, modeChanges, newMode, newChannels](Fixture *f, bool move, bool setAddr, int addr,
+                                                             bool setUni, quint32 uni)
         {
-            for (quint32 i = newChannels; i < fixture->channels(); i++)
+            QList<int> forcedHTP = f->forcedHTPChannels();
+            QList<int> forcedLTP = f->forcedLTPChannels();
+            if (modeChanges)
             {
-                fixture->setChannelModifier(i, nullptr);
-                fixture->setChannelCanFade(int(i), true);
+                for (quint32 i = newChannels; i < f->channels(); i++)
+                {
+                    f->setChannelModifier(i, nullptr);
+                    f->setChannelCanFade(int(i), true);
+                }
+                auto prune = [newChannels](QList<int> &list)
+                {
+                    list.erase(std::remove_if(list.begin(), list.end(),
+                                              [newChannels](int idx) { return idx < 0 || quint32(idx) >= newChannels; }),
+                               list.end());
+                };
+                prune(forcedHTP);
+                prune(forcedLTP);
             }
-            auto prune = [newChannels](QList<int> &list)
-            {
-                list.erase(std::remove_if(list.begin(), list.end(),
-                                          [newChannels](int idx) { return idx < 0 || quint32(idx) >= newChannels; }),
-                           list.end());
-            };
-            prune(forcedHTP);
-            prune(forcedLTP);
-        }
+            if (move == false && modeChanges == false)
+                return;
 
-        if (hasAddress || hasUniverse || modeChanges)
-        {
-            fixture->blockSignals(true);
+            f->blockSignals(true);
             if (modeChanges)
             {
                 // the lists must be set while the old (longer or shorter)
                 // mode is gone: setForced*Channels() checks the count only
-                fixture->setFixtureDefinition(fixture->fixtureDef(), newMode);
-                fixture->setForcedHTPChannels(forcedHTP);
-                fixture->setForcedLTPChannels(forcedLTP);
+                f->setFixtureDefinition(f->fixtureDef(), newMode);
+                f->setForcedHTPChannels(forcedHTP);
+                f->setForcedLTPChannels(forcedLTP);
             }
-            if (hasAddress)
-                fixture->setAddress(quint32(newAddress));
-            if (hasUniverse)
-                fixture->setUniverse(newUniverse);
-            fixture->blockSignals(false);
-            fixture->setID(fixture->id());
+            if (setAddr)
+                f->setAddress(quint32(addr));
+            if (setUni)
+                f->setUniverse(uni);
+            f->blockSignals(false);
+            f->setID(f->id());
 
             // Push the (new) footprint's HTP/LTP, default values and
             // modifiers into its universe, as Doc::addFixture() does.
-            doc->updateFixtureChannelCapabilities(fixture->id(), forcedHTP, forcedLTP);
-        }
+            doc->updateFixtureChannelCapabilities(f->id(), forcedHTP, forcedLTP);
+        };
+        apply(fixture, hasAddress || hasUniverse, hasAddress, newAddress, hasUniverse, newUniverse);
+        for (Fixture *other : std::as_const(sameType))
+            apply(other, false, false, 0, false, 0);
         if (hasName)
             fixture->setName(params.value(QStringLiteral("name")).toString());
 
         QJsonObject result;
         result.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
+        QJsonArray changedIds;
+        changedIds.append(QString::number(fixture->id()));
+        for (Fixture *other : std::as_const(sameType))
+            changedIds.append(QString::number(other->id()));
+        result.insert(QStringLiteral("fixtureIds"), changedIds);
         session->send(ApiEnvelope::buildOkResponse(id, result));
 
-        QJsonObject data;
-        data.insert(QStringLiteral("fixture"), fixtureSummaryToJson(fixture));
-        data.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
-        m_server->broadcast(QStringLiteral("fixtures.updated"), data, session->clientId(), false);
+        QList<Fixture *> changed;
+        changed << fixture << sameType;
+        for (Fixture *f : std::as_const(changed))
+        {
+            QJsonObject data;
+            data.insert(QStringLiteral("fixture"), fixtureSummaryToJson(f));
+            data.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
+            m_server->broadcast(QStringLiteral("fixtures.updated"), data, session->clientId(), false);
+        }
     });
 
     dispatcher->registerMethod(QStringLiteral("fixtures.unpatch"), [doc, this](ApiSession *session, const QString &id, const QJsonObject &params)
