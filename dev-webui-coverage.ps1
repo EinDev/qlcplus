@@ -27,7 +27,7 @@
   generator (monocart-coverage-reports) into webui/tools/coverage/node_modules (git-ignored,
   never installed with the web UI).
 
-.PARAMETER Drivers   Only run these (efx, rgb, media, vclayout, show, vccue, io). Default: all.
+.PARAMETER Drivers   Only run these (efx, rgb, media, vclayout, show, vccue, io, vcinput). Default: all.
 .PARAMETER BuildDir  CMake build directory with qmlui\qlcplus5.exe (default: build).
 .PARAMETER ReportOnly  Skip the drivers; regenerate the report from the last run's raw dumps.
 .PARAMETER Force     Restart a sandbox even if its process is already running.
@@ -60,8 +60,17 @@ $all = @(
     @{ Name = "vclayout"; Api = 9150; Web = 9151; Script = "vc-layout.js";      Args = @() },
     @{ Name = "show";     Api = 9160; Web = 9161; Script = "show.js";           Args = @("9160", "9161", "C:\qlcsandbox\show") },
     @{ Name = "vccue";    Api = 9170; Web = 9171; Script = "vc-cue.js";         Args = @() },
-    @{ Name = "io";       Api = 9190; Web = 9191; Script = "io.js";             Args = @("--api", "9190", "--web", "9191") }
+    @{ Name = "io";       Api = 9190; Web = 9191; Script = "io.js";             Args = @("--api", "9190", "--web", "9191") },
+    @{ Name = "vcinput";  Api = 9220; Web = 9221; Script = "vc-input.js";       Args = @() }
 )
+# New drivers keep landing in webui/tools/e2e; flag any browser driver (one that calls launch())
+# this list does not know yet, so a report never silently leaves one out.
+$known = $all | ForEach-Object { $_.Script }
+Get-ChildItem (Join-Path $repo "webui\tools\e2e") -Filter *.js | Where-Object {
+    $_.Name -notin $known -and (Select-String -Path $_.FullName -SimpleMatch -Pattern "launch(" -Quiet)
+} | ForEach-Object {
+    Write-Host "==> $($_.Name) is a browser e2e driver this script does not run yet - add it to the driver list (sandbox name, ports, args)." -ForegroundColor Yellow
+}
 if ($Drivers.Count) {
     $unknown = $Drivers | Where-Object { $_ -notin $all.Name }
     if ($unknown) { throw "Unknown driver(s): $($unknown -join ', '). Known: $($all.Name -join ', ')" }
@@ -88,7 +97,8 @@ if (-not $ReportOnly) {
         }
         Write-Host "==> $($d.Script) on sandbox '$($d.Name)' ($($d.Api)/$($d.Web))..." -ForegroundColor Cyan
         & (Join-Path $repo "dev-webui-sandbox.ps1") -Name $d.Name -BuildDir (Join-Path $repo $BuildDir) `
-            -WebUiRoot (Join-Path $repo "webui") -ApiPort $d.Api -WebUiPort $d.Web *> (Join-Path $logDir "sandbox-$($d.Name).log")
+            -WebUiRoot (Join-Path $repo "webui") -ApiPort $d.Api -WebUiPort $d.Web *>&1 |
+            ForEach-Object { "$_" } | Out-File -Encoding utf8 (Join-Path $logDir "sandbox-$($d.Name).log")   # *> file = UTF-16 on PS 5
         try {
             $shots = Join-Path $rawDir "shots\$($d.Name)"
             $env:QLC_JSCOV_DIR = $rawDir; $env:QLC_JSCOV_TAG = $d.Name
@@ -99,7 +109,7 @@ if (-not $ReportOnly) {
             if ($d.Name -in "media", "io") { $driverArgs += @("--out", $shots) }
             Push-Location $repo
             $saved = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-            try { node -r $hook (Join-Path "webui\tools\e2e" $d.Script) @driverArgs *> (Join-Path $logDir "e2e-$($d.Name).log"); $code = $LASTEXITCODE }
+            try { node -r $hook (Join-Path "webui\tools\e2e" $d.Script) @driverArgs 2>&1 | ForEach-Object { "$_" } | Out-File -Encoding utf8 (Join-Path $logDir "e2e-$($d.Name).log"); $code = $LASTEXITCODE }
             finally { $ErrorActionPreference = $saved; Pop-Location }
             if ($code -eq 0) { Write-Host "    passed" }
             else { Write-Host "    FAILED (exit $code) - see coverage\webui-raw\logs\e2e-$($d.Name).log" -ForegroundColor Yellow; $failed += $d.Name }
