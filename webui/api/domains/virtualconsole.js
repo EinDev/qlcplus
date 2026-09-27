@@ -151,8 +151,11 @@
         setPlaybackIndex: function (widgetId, playbackIndex) {
           return self.call('vc.cueList.setPlaybackIndex', { widgetId: widgetId, playbackIndex: playbackIndex });
         },
-        /** widgetId: string. level: 0-255. Live (§4b) — meaning depends on the widget's
-            sideFaderMode (Crossfade vs. Steps). -> ack; broadcasts vc.cueList.sideFaderChanged. */
+        /** widgetId: string. level: 0-255 (confined to 0-100 server-side in Crossfade mode). Live
+            (§4b) — meaning depends on the widget's sideFaderMode (Crossfade vs. Steps; INVALID_STATE
+            while it is None). -> ack; broadcasts vc.cueList.sideFaderChanged ({widgetId, level,
+            nextStepIndex, primaryTop}); seeds are vc.widget.get's sideFaderLevel/nextStepIndex/
+            primaryTop. */
         setSideFaderLevel: function (widgetId, level) {
           return self.call('vc.cueList.setSideFaderLevel', { widgetId: widgetId, level: level });
         },
@@ -264,9 +267,11 @@
           /** widgetId: string. presetId: integer (stable id). baseRevision: integer. name?:
               string. valueMs?: integer — omit either optional field to leave it unchanged.
               -> {docRevision}; broadcasts vc.speedDial.presetsChanged (widget's full preset list).
-              NOTE: there is no vc.speedDial.preset.apply / activation method — "applying" a
-              SpeedDial preset is a client-side gesture: look up its valueMs and call
-              speedDial.setCurrentTime() (see vc.widget.preset.apply's doc for why). */
+              Presets are added/removed through widget.preset.add/remove and activated through
+              widget.preset.apply (implemented 2026-09-27: for a Speed widget it sets currentTime to
+              the preset's valueMs, i.e. what the on-screen preset button does, reported as
+              vc.speedDial.valueChanged). The current list also rides along read-only as
+              typeConfig.presets in vc.widget.get. */
           update: function (widgetId, presetId, baseRevision, name, valueMs) {
             var params = { widgetId: widgetId, presetId: presetId, baseRevision: baseRevision };
             if (name !== undefined) params.name = name;
@@ -274,8 +279,9 @@
             return self.call('vc.speedDial.preset.update', params);
           }
         },
-        /** widgetId: string. Clears the tap-tempo interval average. -> ack; broadcasts
-            vc.speedDial.tapChanged. */
+        /** widgetId: string. Clears the tap-tempo interval average (right-click on the TAP button).
+            -> ack; broadcasts vc.speedDial.tapChanged ({widgetId, tapTimeValue: 0, currentTimeMs})
+            when a series was running (nothing if there was none to clear). */
         resetTap: function (widgetId) { return self.call('vc.speedDial.resetTap', { widgetId: widgetId }); },
         /** widgetId: string. valueMs: integer >=0. Dial/absolute-value editing. Live (§4b).
             -> ack; broadcasts vc.speedDial.currentTimeChanged. */
@@ -289,10 +295,12 @@
         setValue: function (widgetId, ms) {
           return self.call('vc.speedDial.setValue', { widgetId: widgetId, ms: ms });
         },
-        /** widgetId: string. factor: one of VcSpeedDialMultiplier ('None'|'Zero'|'OneSixteenth'|
-            'OneEighth'|'OneFourth'|'Half'|'One'|'Two'|'Four'|'Eight'|'Sixteen') — client computes
-            +/- from the widget's last-known factor and sends the resulting value. Live (§4b).
-            -> ack; broadcasts vc.speedDial.factorChanged. */
+        /** widgetId: string. factor: one of 'OneSixteenth'|'OneEighth'|'OneFourth'|'Half'|'One'|
+            'Two'|'Four'|'Eight'|'Sixteen' (the dial's own factor; 'None'/'Zero' exist only as
+            per-function overrides in VcSpeedDialConfig.functions and are rejected here with
+            INVALID_PARAMS) — client computes +/- from the widget's last-known factor and sends the
+            resulting value. Live (§4b). -> ack; broadcasts vc.speedDial.factorChanged ({widgetId,
+            factor}); the seed is vc.widget.get's `factor` field. */
         setFactor: function (widgetId, factor) {
           return self.call('vc.speedDial.setFactor', { widgetId: widgetId, factor: factor });
         },
