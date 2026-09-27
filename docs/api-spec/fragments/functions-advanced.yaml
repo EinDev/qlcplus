@@ -4095,6 +4095,144 @@ messages:
               type: integer
             docRevision:
               type: integer
+  FunctionsShowLegacyTimingGetRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: functions.show.legacyTiming.get }
+        params:
+          type: object
+          description: 'ADR 0001 decision 4 (docs/adr/0001-show-timeline-canonical-time-storage.md): the
+            Shows of the current project that may still hold legacy beat-pseudo-count timeline values
+            (Doc::possiblyAffectedLegacyBeatShows()), i.e. beat-based Shows with items in a project whose
+            Creator/Version is older than 5.3.1 (or missing). The version is re-read from the project
+            file on the engine machine, or taken from the core.project.open upload; a project that was
+            never loaded from a file (source "none") has nothing to check. Shows converted or dismissed
+            since the project was loaded are left out. With showId (and optionally bpm, default the
+            Show''s own time-division BPM) the result also carries the conversion preview the desktop
+            LegacyShowTimingConvertDialog shows: the first and last 3 items by start time.
+
+            '
+          properties:
+            showId: { type: [string, integer] }
+            bpm: { type: integer, minimum: 1, maximum: 1000 }
+  FunctionsShowLegacyTimingGetResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsShowLegacyTimingGetOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsShowLegacyTimingGetOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          type: object
+          required: [creatorVersion, source, shows]
+          properties:
+            creatorVersion: { type: [string, 'null'] }
+            source: { type: string, enum: [file, upload, none] }
+            shows:
+              type: array
+              items:
+                type: object
+                required: [id, name, bpm, beatsDivision, itemCount]
+                properties:
+                  id: { type: string }
+                  name: { type: string }
+                  bpm: { type: integer, description: The Show's time-division BPM (the conversion default). }
+                  beatsDivision: { type: integer }
+                  itemCount: { type: integer }
+            previewBpm: { type: integer }
+            preview:
+              type: array
+              items:
+                type: object
+                required: [name, oldStart, newStart, oldDuration, newDuration]
+                properties:
+                  name: { type: string }
+                  oldStart: { type: integer }
+                  newStart: { type: integer }
+                  oldDuration: { type: integer }
+                  newDuration: { type: integer }
+  FunctionsShowLegacyTimingConvertRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: functions.show.legacyTiming.convert }
+        params:
+          type: object
+          required: [showId, bpm, baseRevision]
+          description: 'Rescales every item of the Show from legacy beat-pseudo-count units to ms:
+            value * (60000 / bpm) / 1000, rounded (ShowManager::convertLegacyBeatShow()). §4a document
+            edit; broadcasts functions.updated {functionId, docRevision}. Not on the desktop undo stack
+            (no API edit is). The Show is no longer listed by legacyTiming.get afterwards.
+
+            '
+          properties:
+            showId: { type: [string, integer] }
+            bpm: { type: integer, minimum: 1, maximum: 1000 }
+            baseRevision: { type: integer }
+  FunctionsShowLegacyTimingConvertResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsShowLegacyTimingConvertOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsShowLegacyTimingConvertOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          type: object
+          required: [docRevision, itemsChanged]
+          properties:
+            docRevision: { type: integer }
+            itemsChanged: { type: integer }
+  FunctionsShowLegacyTimingDismissRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: functions.show.legacyTiming.dismiss }
+        params:
+          type: object
+          required: [showId]
+          description: '"This Show is already correct": stop listing it until the next project load.
+            Runtime state only (§4b); re-saving the project with this build clears the flag for good
+            because the file then carries the current Creator/Version.
+
+            '
+          properties:
+            showId: { type: [string, integer] }
+  FunctionsShowLegacyTimingDismissResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsShowLegacyTimingDismissOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsShowLegacyTimingDismissOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result: { type: object }
 schemas:
   FunctionsRgbMatrixAlgorithmType:
     type: string
@@ -5443,3 +5581,39 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/functionsRgbmatrixSaveToSequenceResponse'
+  sendFunctionsShowLegacyTimingGet:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowLegacyTimingGetRequest'
+  receiveFunctionsShowLegacyTimingGetResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowLegacyTimingGetResponse'
+  sendFunctionsShowLegacyTimingConvert:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowLegacyTimingConvertRequest'
+  receiveFunctionsShowLegacyTimingConvertResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowLegacyTimingConvertResponse'
+  sendFunctionsShowLegacyTimingDismiss:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowLegacyTimingDismissRequest'
+  receiveFunctionsShowLegacyTimingDismissResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowLegacyTimingDismissResponse'

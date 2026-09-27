@@ -1980,6 +1980,15 @@ messages:
                 type: string
               description: QLCChannel::Group names (e.g. Intensity, Pan, Colour) to include. Empty
                 or omitted means every channel, matching SimpleDesk's "all channels" dump mode.
+            fixtureIds:
+              type: array
+              items:
+                type:
+                - string
+                - integer
+              description: Fixture ids to dump (PopupDMXDump.qml's "Dump the selected fixture channels").
+                Empty or omitted means every patched fixture. An unknown id answers NOT_FOUND and
+                creates nothing. Combines with channelGroups and nonZeroOnly.
             nonZeroOnly:
               type: boolean
   IoSimpleDeskDumpResponse:
@@ -2277,6 +2286,62 @@ messages:
               - output
             privateName:
               type: string
+  IoDmxChannelInspectRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: io.dmx.channel.inspect
+        params:
+          type: object
+          required:
+          - universeId
+          - channel
+          description: 'SimpleDesk.qml''s channel value debug (SimpleDesk::debugChannelInfo()) as data:
+            which sources currently drive one DMX channel. Read-only live state (§4b). Out-of-range
+            universeId / channel answer INVALID_PARAMS.
+
+            '
+          properties:
+            universeId:
+              type: integer
+              minimum: 0
+            channel:
+              type: integer
+              minimum: 0
+              maximum: 511
+              description: 0-based channel within the universe.
+  IoDmxChannelInspectResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/IoDmxChannelInspectOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  IoDmxChannelInspectOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          $ref: '#/components/schemas/IoDmxChannelInspection'
 schemas:
   IoAudioDevice:
     type: object
@@ -2680,6 +2745,96 @@ schemas:
       overridden:
         type: boolean
         description: true if Simple Desk currently holds this channel (SimpleDesk::hasChannel).
+  IoDmxChannelInspection:
+    type: object
+    required: [universeId, channel, address, fixture, simpleDeskOverride, faders, lastWrite]
+    properties:
+      universeId: { type: integer }
+      channel: { type: integer }
+      address:
+        type: integer
+        description: (universeId << 9) + channel, the io.simpleDesk.* address encoding.
+      fixture:
+        type: [object, 'null']
+        description: The fixture patched on this address, null when none.
+        properties:
+          id: { type: string }
+          name: { type: string }
+          channelIndex: { type: integer, description: 0-based channel within the fixture. }
+          channelName: { type: [string, 'null'] }
+          group: { type: [string, 'null'], description: QLCChannel::Group name. }
+      preGMValue: { type: integer, description: Universe::preGMValue - absent when the universe is not running. }
+      postGMValue: { type: integer, description: Universe::postGMValue, the value actually sent. }
+      simpleDeskOverride:
+        type: [integer, 'null']
+        description: Value held on this address by the Control API Simple Desk (io.simpleDesk.*),
+          null when not overridden. The desktop Simple Desk's own overrides are not visible here.
+      faders:
+        type: array
+        description: Every GenericFader currently holding a FadeChannel for this channel.
+        items:
+          type: object
+          required: [name, priority, intensity, paused, fadingOut, start, current, target, fadeTimeMs, elapsedMs, ready, flags, source]
+          properties:
+            name: { type: string }
+            priority: { type: integer, description: Universe::FaderPriority. }
+            intensity: { type: number }
+            paused: { type: boolean }
+            fadingOut: { type: boolean }
+            start: { type: integer }
+            current: { type: integer }
+            target: { type: integer }
+            fadeTimeMs: { type: integer }
+            elapsedMs: { type: integer }
+            ready: { type: boolean }
+            flags:
+              type: array
+              items: { type: string, enum: [HTP, LTP, Fine, Intensity, CanFade, Flashing, Relative, Override, SetTarget, AutoRemove, CrossFade, ForceLTP] }
+            source:
+              type: string
+              enum: [function, controlApiSimpleDesk, desktopTool, unidentified]
+              description: 'function = owned by a Function (see function/startedBy); controlApiSimpleDesk =
+                io.simpleDesk.* overrides; desktopTool = a desktop UI tool tagged through
+                GenericDMXSource (see feature); unidentified = an untagged fader (the desktop Simple Desk,
+                a Virtual Console widget in level mode, a CueStack or Script).'
+            function:
+              type: object
+              properties:
+                id: { type: string }
+                name: { type: string }
+                type: { type: string }
+                running: { type: boolean }
+            startedBy:
+              type: array
+              description: Function::sources() of the owning Function.
+              items:
+                type: object
+                required: [type, id]
+                properties:
+                  type: { type: string, enum: [function, autoVCWidget, manualVCWidget, master] }
+                  id: { type: string, description: Function id, VC widget id, or FunctionParent::MasterId. }
+                  name: { type: string, description: Parent function name, or the MasterId name (e.g. controlApi, showManagerPlayback). }
+                  functionType: { type: string }
+            feature:
+              type: string
+              description: GenericDMXSource::Feature in camelCase (colorTool, positionTool, sceneEditorPreview, ...).
+      lastWrite:
+        type: [object, 'null']
+        description: Universe::lastChannelWrite - the last fader write to this channel, kept after the
+          fader is gone (explains a latched LTP value no fader holds any more).
+        properties:
+          value: { type: integer }
+          faderName: { type: string }
+          timestampMs: { type: number }
+          ageMs: { type: number }
+          functionId: { type: [string, 'null'] }
+          function:
+            type: [object, 'null']
+            properties:
+              id: { type: string }
+              name: { type: string }
+              type: { type: string }
+              running: { type: boolean }
 operations:
   sendIoUniverseList:
     action: send
@@ -3235,3 +3390,15 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/ioAudioDeviceChangedEvent'
+  sendIoDmxChannelInspect:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/ioDmxChannelInspectRequest'
+  receiveIoDmxChannelInspectResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/ioDmxChannelInspectResponse'
