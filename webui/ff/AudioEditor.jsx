@@ -81,7 +81,8 @@
     const devModel = devices.map(d => ({ mLabel: d.name, mValue: d.id }));
     if (cfg.audioDevice && !devices.some(d => d.id === cfg.audioDevice)) devModel.push({ mLabel: cfg.audioDevice + ' (not present)', mValue: cfg.audioDevice });
     const filters = [
-      window.ServerFileBrowser.filter('Audio files', (caps && caps.extensions) || ['*.mp3', '*.wav', '*.ogg', '*.flac']),
+      /* the decoder plugins report the patterns; an instance without them (no Plugins dir) reports none */
+      window.ServerFileBrowser.filter('Audio files', (caps && caps.extensions && caps.extensions.length) ? caps.extensions : ['*.mp3', '*.wav', '*.ogg', '*.flac', '*.aiff', '*.m4a']),
       window.ServerFileBrowser.filter('All files', [])
     ];
 

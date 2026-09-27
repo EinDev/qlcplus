@@ -65,8 +65,8 @@
     const isSpout = cfg.outputMode === 'spout';
     const modes = ['windowed', 'fullscreen'].concat(caps && caps.spoutAvailable ? ['spout'] : (isSpout ? ['spout'] : []));
     const filters = [
-      window.ServerFileBrowser.filter('Video files', (caps && caps.videoExtensions) || ['*.mp4', '*.mkv', '*.avi', '*.mov', '*.webm']),
-      window.ServerFileBrowser.filter('Picture files', (caps && caps.pictureExtensions) || ['*.png', '*.jpg', '*.jpeg', '*.bmp', '*.gif']),
+      window.ServerFileBrowser.filter('Video files', (caps && caps.videoExtensions && caps.videoExtensions.length) ? caps.videoExtensions : ['*.mp4', '*.mkv', '*.avi', '*.mov', '*.webm']),
+      window.ServerFileBrowser.filter('Picture files', (caps && caps.pictureExtensions && caps.pictureExtensions.length) ? caps.pictureExtensions : ['*.png', '*.jpg', '*.jpeg', '*.bmp', '*.gif']),
       window.ServerFileBrowser.filter('All files', [])
     ];
     const spin = (value, onChange, opts) => <CustomSpinBox value={value} from={opts.from} to={opts.to} suffix={opts.suffix || ''} width={opts.width || 80} height={24} disabled={opts.disabled} onValueModified={onChange} />;
