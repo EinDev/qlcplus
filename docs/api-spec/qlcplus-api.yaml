@@ -32276,16 +32276,17 @@ components:
       description: 'Direct JSON mirror of QLCPalette::values()''s QVariantList - one array element per
         stored value, in the same order the engine keeps them, with no per-type object wrapper (see palette-notes.md
         for why this shape was chosen over a type-specific object). Meaning per PaletteTypeEnum value:
-        Dimmer, Zoom: [level] - one float, 0.0-100.0 (percent; QLCPalette::setValue(float)). Color: [packed]
-        - one string, "#rrggbb" or "#rrggbbwwaauv" (RGB, optionally followed by White/Amber/UV) exactly
-        as produced/consumed by QLCPalette::colorToString()/stringToColor() - build/parse it with those
-        semantics, don''t hand-roll hex concatenation. Pan, Tilt: [value] - one integer, the raw pan-or-tilt
-        value. PanTilt: [pan, tilt] - two integers, in that order. Position3D: [x, y, z] - three floats.
-        Shutter: [value1, value2] - two integers; QLCPalette itself does not document what these two mean
-        beyond "2 values" (see its loadXML''s Shutter case) - treated generically here, pass-through only.
-        Gobo: treated generically (engine''s own loadXML has no Gobo case today - see qlcpalette.cpp)
-        - whatever values() currently holds, round-tripped as-is. An empty array (or an absent `values`
-        on palette.create) means "use QLCPalette''s post-construction default", i.e. QLCPalette::resetValues().'
+        Dimmer: [level] - DMX 0-255, written as-is by valuesFromFixtures() (the desktop''s IntensityTool
+        stores percent * 2.55). Zoom: [degrees] - one float, the beam angle, mapped over each fixture''s
+        lens range by Fixture::zoomToValues() (BeamTool.qml). Color: [packed] - one string, "#rrggbb"
+        or "#rrggbbwwaauv" (RGB, optionally followed by White/Amber/UV) exactly as produced/consumed by
+        QLCPalette::colorToString()/stringToColor() - build/parse it with those semantics, don''t hand-roll
+        hex concatenation. Pan, Tilt: [degrees] - one integer (Fixture::positionToValues()). PanTilt:
+        [pan, tilt] - two integers (degrees), in that order. Position3D: [x, y, z] - three floats, the
+        target point in metres in stage space (Position3DTool.qml stores metres). Shutter: [preset, percent]
+        - a QLCCapability::Preset ordinal and 0-100 within the matching capability''s range (valuesFromFixtures()).
+        Gobo: [dmx] - the gobo wheel''s DMX value. An empty array (or an absent `values` on palette.create)
+        means "use QLCPalette''s post-construction default", i.e. QLCPalette::resetValues().'
     PaletteSummary:
       type: object
       required:
