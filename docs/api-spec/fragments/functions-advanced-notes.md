@@ -86,3 +86,68 @@ config and sub-resources.
   `originReloaded` signal, so it also fires when a queued background copy
   lands later and when the reload was triggered from the QML editors or
   the Actions menu rather than through the API (originClientId null then).
+
+## RGBMatrix: `functions.rgbmatrix.*` (implemented 2026-09-27)
+
+Server: `controlapi/src/domains/apirgbmatrixdomain.{h,cpp}` (tests in
+`controlapi/test/apirgbmatrixdomain/`, 18 cases), web UI:
+`webui/ff/RgbMatrixEditor.jsx`, e2e driver `webui/tools/e2e/rgbmatrix.js`.
+
+- **The open question above is settled: `getPreview` stays a one-shot
+  request/response.** The Qt editor animates in-process on MasterTimer's
+  tick; a client animates by polling one frame per step and advancing the
+  step itself on the function's own step duration / run order / direction
+  (the web UI does exactly RGBMatrixStep::checkNextStep, capped at 10 fps).
+  To make that cheap the result gained `step` (the index actually rendered,
+  params.step normalised modulo `stepsCount`, negatives wrap) next to the
+  specced `stepsCount`/`width`/`height`/`pixels`. Beats tempo has no beat
+  feed in a browser; the web UI steps every 500 ms then and says so.
+- Rendering goes through a **private `RGBMatrixStep`** (colour delta from
+  Color1/Color2 + `updateStepColor` for the step, then
+  `RGBMatrix::previewMap`), never the function's own step handler, so a
+  running matrix is not disturbed. `stepsCount` is computed fresh from the
+  algorithm at the group's current size, not `RGBMatrix::stepsCount()`
+  (that cache does not refresh when the group grows through
+  `fixtures.group.*`). Pixels are masked to 24 bit (`QColor::rgb()` carries
+  0xFF alpha).
+- `setConfig` accepts a **partial config** - absent keys, and absent
+  algorithm parameters, are left unchanged (documented on the params
+  schema). Strict superset of the specced "whole config" shape. Applied in
+  the order group -> algorithm -> parameters/script properties -> colours
+  -> modes, because `RGBMatrix::setAlgorithm()` and `::setProperty()` both
+  read colours back from a script and would clobber colours applied earlier.
+  Everything is validated before anything is applied (unknown script or
+  group, bad colour string or enum -> `INVALID_PARAMS`/`NOT_FOUND`, nothing
+  changed). Re-selecting the algorithm already loaded is a no-op (the Qt
+  editor does the same), so a client resending the full config does not
+  re-evaluate the script and reset its properties.
+- `FunctionsRgbMatrixAlgorithm` gained two **read-only** fields, `name`
+  (catalog name) and `acceptedColors` (live `acceptColors()` of the loaded
+  algorithm). `acceptedColors` is now `0..5`, not `{0,1,2}`: apiVersion 3
+  scripts declare up to 5 (Plasma), and Plasma even flips it between 0 and
+  5 from its own "Preset" property - which is why a client should re-read
+  the function after `setScriptProperty` (the web UI does).
+- `fixtureGroupId` is **nullable**: a `functions.create`d RGB Matrix has no
+  group (`FixtureGroup::invalidId()`); the Qt editor silently binds the
+  first group when opened, the API deliberately does not.
+- `dimmerControl` (legacy flag) is read and written as specced.
+- Text `font`: only family/pointSize/bold/italic are applied, onto the
+  *existing* `QFont`, so the other attributes a file carried survive a
+  setConfig (the schema's "silently drops" caveat no longer applies).
+- Not mirrored from `qmlui/rgbmatrixeditor.cpp`, on purpose: the editor's
+  cosmetic recolouring when switching to a non-RGB control mode / Mask
+  blend (forces Color1 white, greys picked colours) - the engine's write
+  path already converts through `rgbToGrey()`, so output is identical; and
+  "Save to Sequence" (`RGBMatrixEditor::saveToSequence`), a bulk
+  Sequence-authoring helper with no method in the fragment - a follow-up
+  if wanted.
+- Revision: every RGBMatrix setter's `changed()` is turned into
+  `Doc::setModified()` (one bump each), plus one explicit bump so parameter
+  edits on the plain-C++ Text/Image algorithms also advance it - one
+  `setConfig` may advance `docRevision` by more than one, like
+  `functions.scene.setValues`. Response and event carry the final value.
+- Events (`functions.rgbmatrix.configChanged`, `scriptPropertyChanged`)
+  are broadcast for API-driven edits only, with the config read back from
+  the engine. Edits made in the Qt UI reach clients through the existing
+  `core.history.changed` refetch path, not through these topics.
+- Lockable resource type: `function` (nothing new).
