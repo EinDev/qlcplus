@@ -26,6 +26,9 @@
                        launched process only. Created on first use as a copy of %UserProfile%\QLC+\Fixtures,
                        so the project's custom definitions still resolve while fixturedefs.save / delete /
                        import never touch the real profile. Pass "" (default) to leave it unset.
+.PARAMETER UserModifiersDir  Same for the user channel modifier templates (QLCPLUS_USER_MODIFIERS_DIR): created on
+                       first use as a copy of %UserProfile%\QLC+\ModifiersTemplates, so fixtures.modifiers.save /
+                       rename / delete never touch the real folder. Pass "" (default) to leave it unset.
 
 .EXAMPLE
   .\dev-webui-sandbox.ps1 -Name efx -BuildDir .\build -WebUiRoot .\webui -ApiPort 9120 -WebUiPort 9121
@@ -40,7 +43,8 @@ param(
     [string]$Project = "<shows-dir>\SF3.qxw",
     [switch]$Stop,
     [switch]$NoLaunch,
-    [string]$UserFixtureDir = ""
+    [string]$UserFixtureDir = "",
+    [string]$UserModifiersDir = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -115,6 +119,20 @@ if ($UserFixtureDir) {
     $env:QLCPLUS_USER_FIXTURE_DIR = (Resolve-Path $UserFixtureDir).Path
     Write-Host "User fixture definitions: $env:QLCPLUS_USER_FIXTURE_DIR"
 }
+# Same for channel modifier templates (QLCModifiersCache::userTemplateDirectory() honours this variable).
+$prevModifiersDir = $env:QLCPLUS_USER_MODIFIERS_DIR
+if ($UserModifiersDir) {
+    if (-not (Test-Path $UserModifiersDir)) {
+        New-Item -ItemType Directory -Force $UserModifiersDir | Out-Null
+        $realModifiers = Join-Path $env:USERPROFILE "QLC+\ModifiersTemplates"
+        if (Test-Path $realModifiers) {
+            robocopy $realModifiers $UserModifiersDir /E /NFL /NDL /NJH /NJS /R:1 /W:1 | Out-Null
+            if ($LASTEXITCODE -ge 8) { throw "robocopy of $realModifiers failed with $LASTEXITCODE" }
+        }
+    }
+    $env:QLCPLUS_USER_MODIFIERS_DIR = (Resolve-Path $UserModifiersDir).Path
+    Write-Host "User modifier templates: $env:QLCPLUS_USER_MODIFIERS_DIR"
+}
 try {
     $p = Start-Process -FilePath (Join-Path $dest $exeName) -ArgumentList $args -WorkingDirectory $dest `
         -RedirectStandardOutput $out -RedirectStandardError $err -PassThru
@@ -123,6 +141,8 @@ try {
     else { $env:QLCPLUS_USER_INPUTPROFILE_DIR = $prevProfileDir }
     if ($null -eq $prevFixtureDir) { Remove-Item Env:\QLCPLUS_USER_FIXTURE_DIR -ErrorAction SilentlyContinue }
     else { $env:QLCPLUS_USER_FIXTURE_DIR = $prevFixtureDir }
+    if ($null -eq $prevModifiersDir) { Remove-Item Env:\QLCPLUS_USER_MODIFIERS_DIR -ErrorAction SilentlyContinue }
+    else { $env:QLCPLUS_USER_MODIFIERS_DIR = $prevModifiersDir }
 }
 Write-Host "Started $exeName pid $($p.Id); log: $out / $err"
 
