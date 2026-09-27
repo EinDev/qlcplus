@@ -67,6 +67,7 @@ private slots:
     void deleteSystemIsReadOnly();
     void deleteInUseIsRejected();
     void deleteUserCopyRestoresBundledDefinition();
+    void saveRejectsPatchedFixturesThatWouldNotFit();
     void importCreatesUserSession();
     void fullRoundTrip();
 
