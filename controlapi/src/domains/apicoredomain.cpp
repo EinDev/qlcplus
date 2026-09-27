@@ -18,6 +18,8 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QFileInfo>
+#include <QDir>
+#include <QDateTime>
 #include <QBuffer>
 #include <QSettings>
 #include <QTimer>
@@ -643,6 +645,96 @@ void ApiCoreDomain::registerMethods()
         result.insert(QStringLiteral("masterTimerFrequencyHz"), settings.value(QStringLiteral(MASTERTIMER_FREQUENCY)).toInt());
 
         m_server->broadcast(QStringLiteral("core.settings.changed"), result, session->clientId(), false);
+        session->send(ApiEnvelope::buildOkResponse(id, result));
+    });
+
+    // core.fs.list - read-only listing of one directory on the engine host,
+    // so a remote client can pick files for the server-side-path methods
+    // (core.project.open, functions.audio/video.setSource, ...). Mirrors
+    // qmlui/folderbrowser.cpp: dirs first, case-insensitive name order,
+    // hidden entries and ./.. never listed, glob name filters apply to files
+    // only. Nothing is ever created, renamed or deleted here.
+    d->registerMethod(QStringLiteral("core.fs.list"), [](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        QJsonArray roots;
+        QJsonObject home;
+        home.insert(QStringLiteral("name"), QStringLiteral("Home"));
+        home.insert(QStringLiteral("path"), QDir::homePath());
+        roots.append(home);
+        const QFileInfoList drives = QDir::drives();
+        for (const QFileInfo &drive : drives)
+        {
+            QJsonObject entry;
+            entry.insert(QStringLiteral("name"), drive.absolutePath());
+            entry.insert(QStringLiteral("path"), drive.absolutePath());
+            roots.append(entry);
+        }
+
+        QJsonObject result;
+        result.insert(QStringLiteral("roots"), roots);
+
+        QString path = params.value(QStringLiteral("path")).toString().trimmed();
+        if (path.isEmpty())
+        {
+            result.insert(QStringLiteral("path"), QString());
+            result.insert(QStringLiteral("parent"), QJsonValue());
+            result.insert(QStringLiteral("entries"), QJsonArray());
+            session->send(ApiEnvelope::buildOkResponse(id, result));
+            return;
+        }
+
+        QDir dir(path);
+        if (dir.isRelative())
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams,
+                                                            QStringLiteral("path must be absolute (or empty for the roots)")));
+            return;
+        }
+        if (dir.exists() == false)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrNotFound,
+                                                            QStringLiteral("No such directory: ") + path));
+            return;
+        }
+
+        bool includeFiles = params.value(QStringLiteral("includeFiles")).toBool(true);
+        QStringList filters;
+        const QJsonArray extensions = params.value(QStringLiteral("extensions")).toArray();
+        for (const QJsonValue &v : extensions)
+        {
+            QString pattern = v.toString().trimmed();
+            if (pattern.isEmpty() == false)
+                filters << pattern;
+        }
+
+        QDir::Filters flags = QDir::AllDirs | QDir::NoDotAndDotDot;
+        if (includeFiles)
+            flags |= QDir::Files;
+        dir.setFilter(flags);
+        dir.setSorting(QDir::DirsFirst | QDir::Name | QDir::IgnoreCase);
+        if (filters.isEmpty() == false)
+            dir.setNameFilters(filters); // AllDirs: directories ignore the name filter
+
+        QJsonArray entries;
+        const QFileInfoList infos = dir.entryInfoList();
+        for (const QFileInfo &info : infos)
+        {
+            QJsonObject entry;
+            entry.insert(QStringLiteral("name"), info.fileName());
+            entry.insert(QStringLiteral("path"), info.absoluteFilePath());
+            entry.insert(QStringLiteral("isDir"), info.isDir());
+            entry.insert(QStringLiteral("size"), info.isDir() ? 0.0 : double(info.size()));
+            QDateTime mtime = info.lastModified();
+            entry.insert(QStringLiteral("mtime"), mtime.isValid() ? double(mtime.toMSecsSinceEpoch()) : 0.0);
+            entries.append(entry);
+        }
+
+        QDir parent(dir);
+        bool hasParent = dir.isRoot() == false && parent.cdUp();
+
+        result.insert(QStringLiteral("path"), dir.absolutePath());
+        result.insert(QStringLiteral("parent"), hasParent ? QJsonValue(parent.absolutePath()) : QJsonValue());
+        result.insert(QStringLiteral("entries"), entries);
         session->send(ApiEnvelope::buildOkResponse(id, result));
     });
 }

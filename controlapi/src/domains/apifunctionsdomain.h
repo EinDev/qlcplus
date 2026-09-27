@@ -74,6 +74,17 @@ public:
      *  returns. */
     static QJsonObject typeDetail(Function *function);
 
+    /** Apply a new media source to an Audio or Video the way
+     *  functions.create/update {source} do: a host file is copied into the
+     *  project's media store first (MediaAssets::importOrKeep), a scheme://
+     *  URL is passed through for Video. The full engine setters rename the
+     *  function after the file. Returns false with @error set (the caller
+     *  reports INVALID_PARAMS) when the file does not exist, the type takes
+     *  no source, or an Audio is given a URL. Shared with ApiMediaDomain's
+     *  functions.audio.setSource / functions.video.setSource so every path
+     *  into the store is the same one. */
+    static bool applyMediaSource(Doc *doc, Function *function, const QString &source, QString *error);
+
 private:
     void registerMethods();
 

@@ -22,6 +22,8 @@
 #include <QtTest>
 #include <QSettings>
 #include <QCoreApplication>
+#include <QDir>
+#include <QTemporaryDir>
 
 #include "apicoredomain_test.h"
 #include "apiserver.h"
@@ -341,6 +343,115 @@ void ApiCoreDomain_Test::undoRedoHistoryWithoutHostIsUnsupported()
         QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(),
                  QStringLiteral("UNSUPPORTED"));
     }
+}
+
+void ApiCoreDomain_Test::fsListRootsWhenPathEmpty()
+{
+    helloAndGetClientId();
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("core.fs.list"), QJsonObject());
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QJsonObject result = reply.value(QStringLiteral("result")).toObject();
+    QCOMPARE(result.value(QStringLiteral("path")).toString(), QString());
+    QVERIFY(result.value(QStringLiteral("parent")).isNull());
+    QCOMPARE(result.value(QStringLiteral("entries")).toArray().count(), 0);
+
+    QJsonArray roots = result.value(QStringLiteral("roots")).toArray();
+    QVERIFY(roots.count() >= 2); // Home + at least one drive / "/"
+    QCOMPARE(roots.at(0).toObject().value(QStringLiteral("name")).toString(), QStringLiteral("Home"));
+    QCOMPARE(roots.at(0).toObject().value(QStringLiteral("path")).toString(), QDir::homePath());
+    QVERIFY(QDir(roots.at(1).toObject().value(QStringLiteral("path")).toString()).isRoot());
+}
+
+void ApiCoreDomain_Test::fsListDirectoryFiltersAndSorts()
+{
+    helloAndGetClientId();
+    QTemporaryDir tmp;
+    QVERIFY(tmp.isValid());
+    QDir dir(tmp.path());
+    QVERIFY(dir.mkdir(QStringLiteral("zeta-folder")));
+    QVERIFY(dir.mkdir(QStringLiteral("Alpha-folder")));
+    for (const QString &name : { QStringLiteral("b.mp3"), QStringLiteral("A.MP3"), QStringLiteral("notes.txt") })
+    {
+        QFile f(dir.filePath(name));
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("x");
+        f.close();
+    }
+
+    QJsonObject params;
+    params.insert(QStringLiteral("path"), tmp.path());
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("core.fs.list"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QJsonObject result = reply.value(QStringLiteral("result")).toObject();
+    QCOMPARE(result.value(QStringLiteral("path")).toString(), dir.absolutePath());
+    QCOMPARE(result.value(QStringLiteral("parent")).toString(), QFileInfo(dir.absolutePath()).absolutePath());
+    QVERIFY(result.value(QStringLiteral("roots")).toArray().count() >= 1);
+
+    QStringList names;
+    for (const QJsonValue &v : result.value(QStringLiteral("entries")).toArray())
+        names << v.toObject().value(QStringLiteral("name")).toString();
+    // directories first, then files, both case-insensitively by name
+    QCOMPARE(names, QStringList() << "Alpha-folder" << "zeta-folder" << "A.MP3" << "b.mp3" << "notes.txt");
+
+    QJsonObject first = result.value(QStringLiteral("entries")).toArray().at(0).toObject();
+    QCOMPARE(first.value(QStringLiteral("isDir")).toBool(), true);
+    QCOMPARE(first.value(QStringLiteral("size")).toInt(), 0);
+    QCOMPARE(first.value(QStringLiteral("path")).toString(), dir.absoluteFilePath(QStringLiteral("Alpha-folder")));
+    QJsonObject file = result.value(QStringLiteral("entries")).toArray().at(2).toObject();
+    QCOMPARE(file.value(QStringLiteral("isDir")).toBool(), false);
+    QCOMPARE(file.value(QStringLiteral("size")).toInt(), 1);
+    QVERIFY(file.value(QStringLiteral("mtime")).toDouble() > 0);
+
+    // glob filter applies to files only, directories always pass
+    params.insert(QStringLiteral("extensions"), QJsonArray() << QStringLiteral("*.mp3"));
+    reply = sendAndWaitForReply(QStringLiteral("core.fs.list"), params);
+    names.clear();
+    for (const QJsonValue &v : reply.value(QStringLiteral("result")).toObject().value(QStringLiteral("entries")).toArray())
+        names << v.toObject().value(QStringLiteral("name")).toString();
+    QCOMPARE(names, QStringList() << "Alpha-folder" << "zeta-folder" << "A.MP3" << "b.mp3");
+
+    // folder picker mode
+    params.remove(QStringLiteral("extensions"));
+    params.insert(QStringLiteral("includeFiles"), false);
+    reply = sendAndWaitForReply(QStringLiteral("core.fs.list"), params);
+    names.clear();
+    for (const QJsonValue &v : reply.value(QStringLiteral("result")).toObject().value(QStringLiteral("entries")).toArray())
+        names << v.toObject().value(QStringLiteral("name")).toString();
+    QCOMPARE(names, QStringList() << "Alpha-folder" << "zeta-folder");
+
+    // a drive root has no parent
+    QString root = QDir(tmp.path()).rootPath();
+    params = QJsonObject();
+    params.insert(QStringLiteral("path"), root);
+    reply = sendAndWaitForReply(QStringLiteral("core.fs.list"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QVERIFY(reply.value(QStringLiteral("result")).toObject().value(QStringLiteral("parent")).isNull());
+}
+
+void ApiCoreDomain_Test::fsListRejectsRelativeAndMissingPaths()
+{
+    helloAndGetClientId();
+    QJsonObject params;
+    params.insert(QStringLiteral("path"), QStringLiteral("relative/dir"));
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("core.fs.list"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("INVALID_PARAMS"));
+
+    QTemporaryDir tmp;
+    QVERIFY(tmp.isValid());
+    params.insert(QStringLiteral("path"), tmp.path() + QStringLiteral("/does-not-exist"));
+    reply = sendAndWaitForReply(QStringLiteral("core.fs.list"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("NOT_FOUND"));
+
+    // a file is not a directory either
+    QFile f(tmp.path() + QStringLiteral("/plain.txt"));
+    QVERIFY(f.open(QIODevice::WriteOnly));
+    f.close();
+    params.insert(QStringLiteral("path"), tmp.path() + QStringLiteral("/plain.txt"));
+    reply = sendAndWaitForReply(QStringLiteral("core.fs.list"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("NOT_FOUND"));
 }
 
 QTEST_GUILESS_MAIN(ApiCoreDomain_Test)

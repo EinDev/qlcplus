@@ -49,6 +49,9 @@ private slots:
     void bpmTapDerivesTempoFromTapSpacing();
     void beatEventFollowsInternalGeneratorTicks();
     void undoRedoHistoryWithoutHostIsUnsupported();
+    void fsListRootsWhenPathEmpty();
+    void fsListDirectoryFiltersAndSorts();
+    void fsListRejectsRelativeAndMissingPaths();
 
 private:
     QJsonObject sendAndWaitForReply(const QString &method, const QJsonObject &params);
