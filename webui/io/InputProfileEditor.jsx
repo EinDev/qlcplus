@@ -86,7 +86,7 @@
           </Row>
           <Row label="Name" width={90}><TextField value={ch.name} width="100%" placeholder="e.g. Fader 1" onLive={t => set({ name: t })} onCommit={t => set({ name: t })} data-role="channel-name" /></Row>
           <Row label="Type" width={90}>
-            <CustomComboBox width={200} height={24} currValue={ch.type} model={CHANNEL_TYPES.map(t => ({ mLabel: t.l, mValue: t.v, mIcon: D.icon(t.icon) }))} onValueChanged={v => set({ type: v })} data-role="channel-type" />
+            <CustomComboBox width={200} height={24} currValue={ch.type} model={CHANNEL_TYPES.map(t => ({ mLabel: t.l, mValue: t.v, mIcon: D.icon(t.icon) }))} onValueChanged={v => { if (v !== ch.type) set({ type: v, movementSensitivity: v === 'Encoder' ? 1 : 20 }); }} data-role="channel-type" />
           </Row>
           {isMidi ? (
             <div style={{ border: '1px solid var(--bg-light)', borderRadius: 4, padding: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -123,8 +123,9 @@
               {sliderLike ? <Row label="Movement" width={90}>
                 <CustomComboBox width={140} height={24} currValue={ch.movementType} model={[{ mLabel: 'Absolute', mValue: 'Absolute' }, { mLabel: 'Relative', mValue: 'Relative' }]} onValueChanged={v => set({ movementType: v })} data-role="movement" />
               </Row> : null}
+              {/* InputProfileEditor.qml updateOptions(): Slider / Knob 10..100, Encoder 1..20 */}
               <Row label="Sensitivity" width={90}>
-                <CustomSpinBox value={ch.movementSensitivity} from={1} to={100} width={80} height={24} disabled={sliderLike && ch.movementType !== 'Relative'} onValueModified={v => set({ movementSensitivity: v })} data-role="sensitivity" />
+                <CustomSpinBox value={ch.movementSensitivity} from={sliderLike ? 10 : 1} to={sliderLike ? 100 : 20} width={80} height={24} onValueModified={v => set({ movementSensitivity: v })} data-role="sensitivity" />
               </Row>
             </div>
           ) : null}

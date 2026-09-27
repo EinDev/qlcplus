@@ -279,7 +279,9 @@ function VirtualConsole() {
         .catch(() => { dragGeomRef.current = {}; setDragGeom({}); });
     },
     updateWidget: (id, patch) => structural('vc.widget.update', Object.assign({ widgetId: String(id) }, patch)).then(() => {
-      if (patch.style) setWidgets(ws => ws ? ws.map(w => w.id === id ? Object.assign({}, w, { style: Object.assign({}, w.style, patch.style) }) : w) : ws);
+      setWidgets(ws => ws ? ws.map(w => w.id === id ? Object.assign({}, w, patch, patch.style ? { style: Object.assign({}, w.style, patch.style) } : {}) : w) : ws);
+      /* the server normalizes some style values (a file: URL becomes a path): re-read the list */
+      if (patch.style && patch.style.backgroundImage) refreshRef.current();
     }).catch(() => {}),
     setConfig: (id, config) => structural('vc.widget.setConfig', { widgetId: String(id), config }).then(() => {
       setWidgets(ws => ws ? ws.map(w => w.id === id ? Object.assign({}, w, { typeConfig: Object.assign({}, w.typeConfig, config) }) : w) : ws);
@@ -374,6 +376,7 @@ function VirtualConsole() {
   const setMock = (id, patch) => setMockWidgets(p => p.map(w => w.id === id ? Object.assign({}, w, patch) : w));
   const canEdit = live && mode === 'design';
   const currentPage = pages ? pages.find(p => p.index === page) : null;
+  const currentPageSize = currentPage && currentPage.width > 0 && currentPage.height > 0 ? { width: currentPage.width, height: currentPage.height } : null;
 
   let content = null, bounds = { width: 400, height: 300 };
   if (live && widgets) {
@@ -394,9 +397,12 @@ function VirtualConsole() {
         : <div key={w.id} style={box} data-vc-widget={w.id} data-vc-type={w.widgetType}>{body}</div>;
     });
     content = render('root');
-    let bw = 400, bh = 300;
+    /* the page's own size (VCPageProperties.qml, vc.page.setSize) is the canvas; widgets placed
+       beyond it still show (the desktop lets the page scroll to them too) */
+    const pageW = currentPageSize ? currentPageSize.width : 0, pageH = currentPageSize ? currentPageSize.height : 0;
+    let bw = pageW || 400, bh = pageH || 300;
     (byParent.root || []).forEach(x => { const g = dragGeom[x.id] || x.geometry || {}; bw = Math.max(bw, (g.x || 0) + (g.width || 0)); bh = Math.max(bh, (g.y || 0) + (g.height || 0)); });
-    bounds = { width: bw + 20, height: bh + 20 };
+    bounds = pageW && pageH ? { width: Math.max(bw, pageW), height: Math.max(bh, pageH) } : { width: bw + 20, height: bh + 20 };
   }
   scale.current = live && widgets ? (zoom === 'fit' ? Math.min(1, (areaSize.w - 24) / bounds.width, (areaSize.h - 24) / bounds.height) : Number(zoom)) : 1;
   const canvas = { width: Math.max(bounds.width, (areaSize.w - 24) / scale.current), height: Math.max(bounds.height, (areaSize.h - 24) / scale.current) };
@@ -469,6 +475,10 @@ function VirtualConsole() {
                       background: 'var(--bg-stronger)', border: edit ? '2px dashed var(--bg-light)' : 'var(--border-control)', cursor: placing ? 'crosshair' : 'default',
                       backgroundImage: edit && snap ? 'linear-gradient(to right, var(--bg-strong) 1px, transparent 1px), linear-gradient(to bottom, var(--bg-strong) 1px, transparent 1px)' : 'none',
                       backgroundSize: VC_SNAP * 4 + 'px ' + VC_SNAP * 4 + 'px' }}>
+                    {/* the page's own area (vc.page.setSize); the canvas may extend past it */}
+                    {currentPageSize ? <div data-vc-page-area={currentPageSize.width + 'x' + currentPageSize.height}
+                      style={{ position: 'absolute', left: 0, top: 0, width: currentPageSize.width, height: currentPageSize.height, boxSizing: 'border-box',
+                        border: '1px dashed var(--fg-medium)', pointerEvents: 'none' }} /> : null}
                     {content}
                     {!widgets.length && !placing ? <div style={{ padding: 20, pointerEvents: 'none' }}><RobotoText label={edit ? 'This page has no widgets — pick one from the palette' : 'This page has no widgets'} fontSize={14} labelColor="var(--fg-medium)" /></div> : null}
                   </div>

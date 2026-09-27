@@ -300,13 +300,13 @@
           <FF.Row label="Amount" width={60}><CustomSpinBox value={f.amount} from={0} to={1000} suffix="%" width={100} onValueModified={v => set({ amount: v })} /></FF.Row>
           {type === 'Color'
             ? <FF.Row label="To colour" width={60}><input type="color" value={typeof f.value === 'string' && /^#[0-9a-f]{6}/i.test(f.value) ? f.value.slice(0, 7) : '#000000'} onChange={e => set({ value: e.target.value })} style={{ width: 40, height: 26, padding: 0, border: 'var(--border-control)', background: 'var(--bg-control)' }} /></FF.Row>
-            : <FF.Row label="Value" width={60}><CustomSpinBox value={Number(f.value) || 0} from={-1000} to={1000} width={100} onValueModified={v => set({ value: v })} /></FF.Row>}
+            : <FF.Row label="Value" width={60}><CustomSpinBox value={Number(f.value) || 0} from={-1000} to={1000} width={100} suffix={type === 'Pan' || type === 'Tilt' || type === 'PanTilt' ? '°' : ''} onValueModified={v => set({ value: v })} /></FF.Row>}
         </> : <RobotoText label="Flat: every fixture gets the same value." fontSize={12} labelColor="var(--fg-light)" />}
       </div>
     );
   }
 
-  function PaletteValueEditor({ type, values, onChange }) {
+  function PaletteValueEditor({ type, values, onChange, ranges }) {
     const v = values || [];
     if (type === 'Position3D') return <>
       {['X', 'Y', 'Z'].map((axis, i) => (
@@ -328,11 +328,26 @@
         <input value={v[0] || ''} onChange={e => onChange([e.target.value])} spellCheck={false} style={Object.assign({ width: 120, fontFamily: 'var(--font-mono)' }, inputStyle)} placeholder="#rrggbb[wwaauv]" />
       </FF.Row>;
     }
-    if (type === 'Pan' || type === 'Tilt') return <FF.Row label={type} width={60}><CustomSpinBox value={Math.round(Number(v[0]) || 0)} from={0} to={255} width={90} onValueModified={x => onChange([x])} /></FF.Row>;
-    if (type === 'PanTilt') return <>
-      <FF.Row label="Pan" width={60}><CustomSpinBox value={Math.round(Number(v[0]) || 0)} from={0} to={255} width={90} onValueModified={x => onChange([x, Number(v[1]) || 0])} /></FF.Row>
-      <FF.Row label="Tilt" width={60}><CustomSpinBox value={Math.round(Number(v[1]) || 0)} from={0} to={255} width={90} onValueModified={x => onChange([Number(v[0]) || 0, x])} /></FF.Row>
-    </>;
+    /* Pan / Tilt are degrees (PopupCreatePalette.qml / PositionTool.qml), 0 .. the selected
+       fixtures' focusPanMax / focusTiltMax (never below a stored value, so nothing gets clipped) */
+    const r = ranges || { pan: 360, tilt: 270 };
+    const degSpin = (value, max, set, role) => (
+      <span data-e2e={'palette-deg-' + role} data-max={Math.max(max, value)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+        <CustomSpinBox value={value} from={0} to={Math.max(max, value)} suffix="°" width={100} onValueModified={set} />
+        <RobotoText label={'of ' + max + '°'} fontSize={12} labelColor="var(--fg-light)" />
+      </span>
+    );
+    if (type === 'Pan' || type === 'Tilt') {
+      const d = Math.round(Number(v[0]) || 0);
+      return <FF.Row label={type} width={60}>{degSpin(d, type === 'Pan' ? r.pan : r.tilt, x => onChange([x]), type.toLowerCase())}</FF.Row>;
+    }
+    if (type === 'PanTilt') {
+      const p = Math.round(Number(v[0]) || 0), t = Math.round(Number(v[1]) || 0);
+      return <>
+        <FF.Row label="Pan" width={60}>{degSpin(p, r.pan, x => onChange([x, t]), 'pan')}</FF.Row>
+        <FF.Row label="Tilt" width={60}>{degSpin(t, r.tilt, x => onChange([p, x]), 'tilt')}</FF.Row>
+      </>;
+    }
     return <FF.Note text={'Editing ' + type + ' values is not available (positional values without documented meaning).'} />;
   }
 
@@ -354,10 +369,15 @@
     const apply = (p) => {
       if (!items.length) { setApplied('Select fixtures in the tree first'); return; }
       let n = 0, unsupported = false;
-      items.forEach(it => { const w = FF.paletteValues(p, it.channels); if (w === null) { unsupported = true; return; } if (w.length) { n++; FF.writeLive(qlc, it.detail, w, 'pal:' + it.detail.id); } });
+      items.forEach(it => { const w = FF.paletteValues(p, it.channels, it.detail.physical); if (w === null) { unsupported = true; return; } if (w.length) { n++; FF.writeLive(qlc, it.detail, w, 'pal:' + it.detail.id); } });
       setApplied(unsupported ? 'Applying ' + p.type + ' palettes is not available (no channel mapping)' : 'Applied "' + p.name + '" to ' + n + ' fixture' + (n === 1 ? '' : 's') + ' (live output)');
     };
     const applyCurrent = () => { if (detail) apply(detail); };
+    /* the selected fixtures' widest pan / tilt range (PositionTool.qml's panMaxDegrees / tiltMaxDegrees) */
+    const ranges = {
+      pan: items.reduce((m, it) => Math.max(m, FF.panTiltMax(it.detail.physical, 'pan')), 0) || 360,
+      tilt: items.reduce((m, it) => Math.max(m, FF.panTiltMax(it.detail.physical, 'tilt')), 0) || 270
+    };
     const update = (p) => { setDetail(d => Object.assign({}, d, p)); FF.mutate(qlc, 'palette.update', Object.assign({ paletteId: Number(current) }, p), { key: 'pal:' + current + ':' + Object.keys(p).join(',') }).catch(() => {}); };
     /* PopupCreatePalette.qml: create, then optionally "Also create a Scene" holding it
        (PaletteManager::addPaletteToNewScene: a new Scene with only the palette as member). */
@@ -373,7 +393,8 @@
       }).catch(() => {});
     };
     const remove = () => { setConfirm(false); if (current == null) return; FF.mutate(qlc, 'palette.delete', { paletteId: Number(current) }).then(() => setCurrent(null)).catch(() => {}); };
-    const defaultValues = (t) => t === 'Dimmer' ? [100] : t === 'Color' ? ['#ffffff'] : t === 'PanTilt' ? [127, 127] : t === 'Position3D' ? [0, 0, 0] : t === 'Shutter' ? [7, 100] : t === 'Gobo' ? [0] : t === 'Zoom' ? [50] : [127];
+    const defaultValues = (t) => t === 'Dimmer' ? [100] : t === 'Color' ? ['#ffffff'] : t === 'PanTilt' ? [Math.round(ranges.pan / 2), Math.round(ranges.tilt / 2)] : t === 'Position3D' ? [0, 0, 0] : t === 'Shutter' ? [7, 100] : t === 'Gobo' ? [0] : t === 'Zoom' ? [50]
+      : t === 'Pan' ? [Math.round(ranges.pan / 2)] : t === 'Tilt' ? [Math.round(ranges.tilt / 2)] : [127];
     return (
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 6px', background: 'var(--bg-strong)' }}>
@@ -397,7 +418,7 @@
         <div style={{ padding: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
           {detail ? <>
             <CustomTextInput key={detail.id} text={detail.name} allowDoubleClick width={170} onTextConfirmed={n => n && n !== detail.name && update({ name: n })} />
-            <PaletteValueEditor type={detail.type} values={detail.values} onChange={vals => update({ values: vals })} />
+            <PaletteValueEditor type={detail.type} values={detail.values} ranges={ranges} onChange={vals => update({ values: vals })} />
             <GenericButton label={'Apply to ' + fixtureIds.length + ' selected'} width={170} height={24} disabled={!fixtureIds.length} onClick={applyCurrent} />
             {FANNABLE.indexOf(detail.type) !== -1 && detail.fanning ? <PaletteFanningEditor type={detail.type} fanning={detail.fanning} onChange={fan => update({ fanning: fan })} /> : null}
           </> : <FF.Note text="Click a palette to edit it, double-click to apply it to the selected fixtures (live output). Applying is done by the browser: Color sets RGB/CMY/WAUV channels, Dimmer the intensity, Pan/Tilt the position." />}
@@ -408,7 +429,7 @@
           {draft ? <div data-e2e="palette-create" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <FF.Row label="Type" width={60}><CustomComboBox width={200} currValue={draft.type} model={PALETTE_TYPES.map(t => ({ mLabel: PALETTE_TYPE_LABELS[t] || t, mValue: t }))} onValueChanged={t => setDraft(Object.assign({}, draft, { type: t, values: defaultValues(t), fanning: null }))} /></FF.Row>
             <FF.Row label="Name" width={60}><input value={draft.name} onChange={e => setDraft(Object.assign({}, draft, { name: e.target.value }))} placeholder="Palette name" style={Object.assign({ width: 200 }, inputStyle)} data-e2e="palette-name" /></FF.Row>
-            <PaletteValueEditor type={draft.type} values={draft.values} onChange={vals => setDraft(Object.assign({}, draft, { values: vals }))} />
+            <PaletteValueEditor type={draft.type} values={draft.values} ranges={ranges} onChange={vals => setDraft(Object.assign({}, draft, { values: vals }))} />
             {FANNABLE.indexOf(draft.type) !== -1 ? <PaletteFanningEditor type={draft.type} fanning={draft.fanning} onChange={fan => setDraft(Object.assign({}, draft, { fanning: fan }))} /> : null}
             <FF.Row label="" width={60}>
               <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'var(--font-roboto)', fontSize: 14, color: 'var(--fg-main)' }}>

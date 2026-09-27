@@ -306,15 +306,21 @@ function VCViewOnlyBody({ w }) {
 /** Dispatch on widgetType. `children` are the nested widgets of a frame. In edit mode the body is
     inert (pointer-events none) so the edit wrapper around it gets every gesture; nested widgets
     opt back in with their own pointer-events. */
-function VCWidgetBody({ w, header, children }) {
+function VCWidgetBody({ w: widget, header, children }) {
   const vc = useVC();
+  /* style.backgroundImage (vc/vc-props-style.jsx): every body paints `background: style.backgroundColor
+     || default`, so the image goes in as an extra CSS background layer over the colour - above the
+     fill, below the content, like VCWidgetItem.qml's Image. */
+  const bg = window.useVCBackgroundImage ? window.useVCBackgroundImage(widget) : null;
+  const w = bg && bg.dataUrl ? Object.assign({}, widget, { style: Object.assign({}, widget.style, {
+    backgroundColor: window.vcBackgroundImageCss(bg.dataUrl, widget.style && widget.style.backgroundColor) }) }) : widget;
   let body;
   /* Registry: window.QLCVCBodies[widgetType] (registered from a file loaded after this one) replaces
      the built-in body for that widget type - props { w, header, children }. */
   const reg = window.QLCVCBodies || {};
   if (reg[w.widgetType]) {
     body = React.createElement(reg[w.widgetType], { w, header }, children);
-    return <div style={{ position: 'absolute', inset: 0, pointerEvents: vc.edit ? 'none' : 'auto' }}>{body}</div>;
+    return <div data-vc-bg={bg && bg.dataUrl ? 'image' : undefined} style={{ position: 'absolute', inset: 0, pointerEvents: vc.edit ? 'none' : 'auto' }}>{body}</div>;
   }
   switch (w.widgetType) {
     case 'Frame': case 'SoloFrame': body = <VCFrameBody w={w} header={header}>{children}</VCFrameBody>; break;
@@ -326,7 +332,7 @@ function VCWidgetBody({ w, header, children }) {
     case 'Label': body = <VCLabelBody w={w} />; break;
     default: body = <VCViewOnlyBody w={w} />;
   }
-  return <div style={{ position: 'absolute', inset: 0, pointerEvents: vc.edit ? 'none' : 'auto' }}>{body}</div>;
+  return <div data-vc-bg={bg && bg.dataUrl ? 'image' : undefined} style={{ position: 'absolute', inset: 0, pointerEvents: vc.edit ? 'none' : 'auto' }}>{body}</div>;
 }
 
 Object.assign(window, { VCWidgetBody, vcButtonState });

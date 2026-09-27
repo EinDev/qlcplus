@@ -226,7 +226,12 @@
         },
         /** index: integer. pin: string. Live/session-scoped, same semantics as vc.frame.
             validatePin. -> {valid: boolean}. */
-        validatePin: function (index, pin) { return self.call('vc.page.validatePin', { index: index, pin: pin }); }
+        validatePin: function (index, pin) { return self.call('vc.page.validatePin', { index: index, pin: pin }); },
+        /** index: integer. width/height: integer 1..100000 px (VCPageProperties.qml). baseRevision:
+            integer. -> {docRevision}; broadcasts vc.page.updated ({page, docRevision}). */
+        setSize: function (index, width, height, baseRevision) {
+          return self.call('vc.page.setSize', { index: index, width: width, height: height, baseRevision: baseRevision });
+        }
       },
 
       slider: {
@@ -316,6 +321,10 @@
       },
 
       widget: {
+        /** widgetId: string. Read: the image file the widget's style.backgroundImage references on
+            the QLC+ host, as a data: URL (png/jpeg/gif/bmp/webp/svg, <= 8 MB, local files only).
+            -> {widgetId, path|null, mimeType|null, dataUrl|null, reason?}. */
+        getBackgroundImage: function (widgetId) { return self.call('vc.widget.getBackgroundImage', { widgetId: widgetId }); },
         /** widgetIds: string[] (>=1). referenceWidgetId: string (the widget others align to).
             alignment: 'left'|'hcenter'|'right'|'top'|'vcenter'|'bottom'. baseRevision: integer.
             -> {docRevision}; broadcasts vc.widget.bulkUpdated (every affected widget's full

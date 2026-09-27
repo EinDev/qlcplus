@@ -210,6 +210,26 @@
         rippleCutTime: function (params) { return self.call('functions.show.rippleCutTime', params); },
 
         /**
+         * Runtime (no baseRevision): outputs the Show's state at $time while it is stopped or
+         * paused (the desktop's preview-at-cursor). The first call starts the frozen Show, later
+         * calls seek it; a playing Show is INVALID_STATE. Broadcasts functions.show.previewChanged
+         * on start (not on every seek).
+         * @param {object} params - {showId: string, time: integer}
+         * @returns {Promise<object>} result - {previewing: true, time: integer}
+         * @see docs/api-spec/fragments/functions-advanced.yaml (method: functions.show.preview)
+         */
+        preview: function (params) { return self.call('functions.show.preview', params); },
+
+        /**
+         * Runtime: ends a preview - play=true leaves the frozen state and plays on from the
+         * cursor, play=false (default) stops the Show. A no-op when nothing previews.
+         * @param {object} params - {showId: string, play?: boolean}
+         * @returns {Promise<object>} result - {previewing: false, playing: boolean}
+         * @see docs/api-spec/fragments/functions-advanced.yaml (method: functions.show.endPreview)
+         */
+        endPreview: function (params) { return self.call('functions.show.endPreview', params); },
+
+        /**
          * Inserts $length ms at $cursorTime, pushing/stretching every item covering or after that
          * point on every track. Broadcasts functions.show.itemsChanged (RFC 6902 patch against
          * tracks[].items).
@@ -332,6 +352,16 @@
            * @see docs/api-spec/fragments/functions-advanced.yaml (method: functions.show.track.setMute)
            */
           setMute: function (params) { return self.call('functions.show.track.setMute', params); },
+
+          /**
+           * Fixes (or with 0x0 unsets) the Spout output size every Spout-mode Video on the track
+           * publishes at (Track::spoutSize, saved as the track's SpoutSize). The desktop also
+           * resizes the live sender. Broadcasts functions.show.track.spoutSizeChanged.
+           * @param {object} params - {showId: string, trackId: string, width: integer, height: integer, baseRevision: integer}
+           * @returns {Promise<object>} result - {docRevision: integer}
+           * @see docs/api-spec/fragments/functions-advanced.yaml (method: functions.show.track.setSpoutSize)
+           */
+          setSpoutSize: function (params) { return self.call('functions.show.track.setSpoutSize', params); },
 
           /**
            * Convenience mutation mirroring ShowManager::setTrackSolo: solo=true mutes every

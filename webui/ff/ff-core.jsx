@@ -447,16 +447,30 @@
   /* ---- palettes --------------------------------------------------------------------------- */
   /** Palette detail → [{channel,value}] writes for one fixture's classified channels; null when
       that palette type has no client-side mapping (Shutter, Gobo, Zoom, Position3D). */
-  FF.paletteValues = function (palette, channels) {
+  FF.paletteValues = function (palette, channels, physical) {
     const v = palette.values || [];
+    const panMax = FF.panTiltMax(physical, 'pan'), tiltMax = FF.panTiltMax(physical, 'tilt');
     switch (palette.type) {
       case 'Dimmer': return FF.roleValues(channels, 'dimmer', Math.round(Math.max(0, Math.min(100, Number(v[0]) || 0)) * 2.55));
       case 'Color': { const c = FF.parsePaletteColour(v[0]); return c ? FF.colourValues(channels, c.rgb, c.wauv) : []; }
-      case 'Pan': return FF.positionValues(channels, 'pan', (Number(v[0]) || 0) * 257);
-      case 'Tilt': return FF.positionValues(channels, 'tilt', (Number(v[0]) || 0) * 257);
-      case 'PanTilt': return FF.positionValues(channels, 'pan', (Number(v[0]) || 0) * 257).concat(FF.positionValues(channels, 'tilt', (Number(v[1]) || 0) * 257));
+      /* Pan / Tilt palette values are DEGREES (QLCPalette::valuesFromFixtures -> Fixture::positionToValues) */
+      case 'Pan': return FF.positionValues(channels, 'pan', FF.degreesToDmx16(v[0], panMax));
+      case 'Tilt': return FF.positionValues(channels, 'tilt', FF.degreesToDmx16(v.length === 2 ? v[1] : v[0], tiltMax));
+      case 'PanTilt': return FF.positionValues(channels, 'pan', FF.degreesToDmx16(v[0], panMax)).concat(FF.positionValues(channels, 'tilt', FF.degreesToDmx16(v[1], tiltMax)));
       default: return null;
     }
+  };
+  /** The fixture mode's pan / tilt range in degrees (QLCPhysical focusPanMax / focusTiltMax), with
+      Fixture::positionToValues' fallbacks of 360 / 270 when the definition leaves it at 0. */
+  FF.panTiltMax = function (physical, axis) {
+    const v = Number(physical && (axis === 'pan' ? physical.focusPanMax : physical.focusTiltMax)) || 0;
+    return v > 0 ? v : (axis === 'pan' ? 360 : 270);
+  };
+  /** Degrees -> 16 bit position like Fixture::positionToValues: (deg * 65535 / max), truncated;
+      clamped to the fixture's range (the engine would wrap past it). */
+  FF.degreesToDmx16 = function (degrees, maxDegrees) {
+    const d = Math.max(0, Math.min(maxDegrees, Number(degrees) || 0));
+    return Math.min(65535, Math.floor((d * 65535) / maxDegrees));
   };
   FF.PALETTE_ICON = { Color: 'color', Dimmer: 'dimmer', Pan: 'pan', Tilt: 'tilt', PanTilt: 'position', Position3D: '3dpoint', Shutter: 'shutter', Gobo: 'gobo', Zoom: 'beam' };
 

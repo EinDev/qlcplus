@@ -482,7 +482,9 @@ function VCWidgetProperties({ widgets, functions }) {
   const [open, setOpen] = React.useState({ range: false, input: false });
   const isOpen = (k) => open[k] !== false;
   const toggle = (k) => setOpen(o => Object.assign({}, o, { [k]: !isOpen(k) }));
-  if (!widgets.length) return <RobotoText label="Select a widget first" fontSize="var(--text-size-small)" labelColor="var(--fg-medium)" height="var(--icon-size-default)" textHAlign="center" style={{ width: '100%' }} />;
+  /* nothing selected: the shown page's own properties (VCPageProperties.qml, vc/vc-props-style.jsx) */
+  if (!widgets.length) return window.VCPagePropertiesPanel ? <window.VCPagePropertiesPanel />
+    : <RobotoText label="Select a widget first" fontSize="var(--text-size-small)" labelColor="var(--fg-medium)" height="var(--icon-size-default)" textHAlign="center" style={{ width: '100%' }} />;
   const w = widgets[0];
   const many = widgets.length > 1;
   const style = w.style || {};
@@ -511,6 +513,8 @@ function VCWidgetProperties({ widgets, functions }) {
             </span>
           </PropRow>
           <PropRow label="Background color"><ColorField value={style.backgroundColor} onChange={(c) => setStyle({ backgroundColor: c })} /></PropRow>
+          {window.VCBackgroundImageRow ? <window.VCBackgroundImageRow widgets={widgets} setStyle={setStyle} PropRow={PropRow} /> : null}
+          {!many && window.VCZIndexRow ? <window.VCZIndexRow w={w} PropRow={PropRow} /> : null}
           <PropRow label="Foreground color"><ColorField value={style.foregroundColor} onChange={(c) => setStyle({ foregroundColor: c })} /></PropRow>
           <PropRow label="Font">
             <CustomSpinBox value={font.pointSize || 12} from={6} to={72} width={64} height={24} suffix="pt" onValueModified={(v) => setStyle({ font: Object.assign({}, font, { pointSize: v }) })} />

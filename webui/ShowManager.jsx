@@ -16,9 +16,19 @@
  * occupied spot is shifted to the nearest free one the server suggests, exactly like the QML
  * drag; a group drop that still does not fit is refused as a whole.
  *
- * Not mirrored (desktop-only or no API yet): the preview-at-cursor scrub mode, the stretch
- * toggle (rescales a Chaser's steps on resize), track Spout output size, the legacy timing
- * conversion dialog, audio waveforms / beat markers inside items.
+ * Preview at the cursor (ShowManager::previewAt): with the eye toggle on (default), moving the
+ * cursor while the Show is stopped or paused calls functions.show.preview - the engine runs the
+ * Show frozen at that time (fixtures and video follow, audio stays silent); play leaves the frozen
+ * state and plays on from there (functions.show.endPreview play:true), stop ends it with the
+ * cursor kept (play:false), and leaving the screen ends it like leaving the desktop Show Manager.
+ *
+ * Track Spout output size (TrackDelegate.qml / PopupTrackSpoutSize.qml / PopupSpoutSizeMismatch.qml):
+ * a track with Spout-mode Videos shows "Spout WxH" in its header (from the track's `spout` block);
+ * clicking it sets / unsets the fixed size (functions.show.track.setSpoutSize). Placing a Spout clip
+ * whose size differs from the track's output asks to keep or switch, like the desktop.
+ *
+ * Not mirrored (desktop-only or no API yet): the stretch toggle (rescales a Chaser's steps on
+ * resize), the legacy timing conversion dialog, audio waveforms / beat markers inside items.
  */
 (function () {
   'use strict';
@@ -136,7 +146,7 @@
   const SHOW_TOPICS = ['functions.show.timeDivisionChanged', 'functions.show.tracksChanged', 'functions.show.itemsChanged',
     'functions.show.track.added', 'functions.show.track.removed', 'functions.show.track.renamed', 'functions.show.track.muteChanged',
     'functions.show.item.added', 'functions.show.item.removed', 'functions.show.item.moved', 'functions.show.item.resized',
-    'functions.show.item.colorChanged', 'functions.show.item.lockedChanged', 'functions.renamed', 'functions.updated'];
+    'functions.show.item.colorChanged', 'functions.show.item.lockedChanged', 'functions.show.track.spoutSizeChanged', 'functions.renamed', 'functions.updated'];
 
   /** functions.get of the open Show, re-read on every foreign change of it */
   function useShowDetail(qlc, showId) {
@@ -184,6 +194,11 @@
   );
   /** Font Awesome has no free "stop" in the bundle: a square, as an image the IconButton can show */
   const STOP_ICON = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2" fill="#f0f0f0"/></svg>');
+  /* Font Awesome 7 Solid glyphs missing from the bundle's FA map (FaIcon renders the raw glyph) */
+  const GLYPH_EYE = String.fromCharCode(0xf06e);
+  const GLYPH_WARN = String.fromCharCode(0xf071);
+  const MAX_SPOUT = 16384;
+  const sizeText = (s) => s ? s.width + 'x' + s.height : '';
 
   /* ---- the screen ------------------------------------------------------------------------------ */
   function ShowManager() {
@@ -240,7 +255,50 @@
     React.useEffect(() => { setSelection(s => s.filter(id => itemsById.has(String(id)))); }, [itemsById]);
 
     usePlayhead(qlc, showId, t => setCursorState(t));
-    const setCursor = (ms) => { ms = Math.max(0, Math.round(ms)); if (run.running && run.paused) movedWhilePaused.current = true; setCursorState(ms); };
+
+    /* ---- preview at the cursor (functions.show.preview / endPreview) ---- */
+    const [previewEnabled, setPreviewEnabled] = React.useState(true);
+    const [previewing, setPreviewing] = React.useState(false);
+    const previewingRef = React.useRef(false);
+    previewingRef.current = previewing;
+    React.useEffect(() => { setPreviewing(!!(detail && detail.typeDetail && detail.typeDetail.previewing)); }, [detail]);
+    React.useEffect(() => qlc.subscribeTo('functions.show.previewChanged', d => {
+      if (d && String(d.functionId) === String(showId)) setPreviewing(!!d.previewing);
+    }), [showId, qlc.online]);
+    const playing = run.running && !run.paused && !previewing;
+    const canPreview = live && !!showId && !qlc.isUnsupported('functions.show.preview');
+    /* one request in flight, the latest cursor wins (a drag posts many; the engine coalesces too) */
+    const previewQ = React.useRef({ busy: false, next: null });
+    const sendPreview = (ms) => {
+      const q = previewQ.current;
+      q.next = ms;
+      if (q.busy) return;
+      const id = String(showId);
+      const pump = () => {
+        if (q.next == null) { q.busy = false; return; }
+        const t = q.next; q.next = null; q.busy = true;
+        qlc.call('functions.show.preview', { showId: id, time: Math.round(t) })
+          .then(() => setPreviewing(true))
+          .catch(e => { if (e && e.code === 'INVALID_STATE') setNotice(e.message || 'Cannot preview now'); else if (e && e.code !== 'NOT_CONNECTED') FF.reportError(e, 'functions.show.preview'); })
+          .then(pump);
+      };
+      pump();
+    };
+    const endPreview = (play) => qlc.call('functions.show.endPreview', { showId: String(showId), play: !!play })
+      .then(() => setPreviewing(false)).catch(e => FF.reportError(e, 'functions.show.endPreview'));
+    /* leaving the screen / switching the Show ends the preview (ShowManager::enableContext(false)) */
+    React.useEffect(() => {
+      const id = showId;
+      return () => { if (previewingRef.current && id && qlc.online) qlc.call('functions.show.endPreview', { showId: String(id), play: false }).catch(() => {}); };
+    }, [showId]);
+    const togglePreview = () => { if (previewEnabled && previewing) endPreview(false); setPreviewEnabled(!previewEnabled); };
+
+    const setCursor = (ms) => {
+      ms = Math.max(0, Math.round(ms));
+      if (run.running && run.paused && !(previewEnabled && canPreview)) movedWhilePaused.current = true;
+      setCursorState(ms);
+      if (previewEnabled && canPreview && !playing) sendPreview(ms);
+    };
 
     /* ---- mutations ---- */
     const showMutate = (method, params, opts) => FF.mutate(qlc, method, Object.assign({ showId: String(showId) }, params), opts).then(r => { reload(); return r; }).catch(e => { reload(); throw e; });
@@ -249,6 +307,8 @@
     const play = async () => {
       if (!live || !showId) return;
       try {
+        /* ShowManager::playShow: a previewing Show leaves the frozen state and plays on from the cursor */
+        if (previewing) { movedWhilePaused.current = false; await endPreview(true); return; }
         if (!run.running) { movedWhilePaused.current = false; await qlc.call('functions.start', { functionId: String(showId), startTime: Math.round(cursor) }); return; }
         if (run.paused) {
           if (movedWhilePaused.current) {
@@ -265,6 +325,8 @@
     };
     const stop = () => {
       if (!live || !showId) return;
+      /* the cursor stays where it is; a second stop rewinds it below */
+      if (previewing) { endPreview(false); return; }
       if (run.running) { movedWhilePaused.current = false; qlc.call('functions.stop', { functionId: String(showId) }).catch(e => FF.reportError(e, 'functions.stop')); return; }
       if (cursor !== 0) setCursorState(0);
     };
@@ -285,6 +347,23 @@
     const moveTrack = (t, direction) => showMutate('functions.show.track.move', { trackId: String(t.id), direction }).then(r => { if (r && r.trackId != null) setSelectedTrackId(String(r.trackId)); }).catch(() => {});
     const requestTrackDeletion = (t) => { if (!t) return; if (t.items.length) setDialog({ kind: 'deleteTrack', track: t }); else deleteTrack(t); };
     const deleteTrack = (t) => { setDialog(null); showMutate('functions.show.track.remove', { trackId: String(t.id) }).then(() => { if (String(selectedTrackId) === String(t.id)) setSelectedTrackId(null); }).catch(() => {}); };
+
+    /* ---- track Spout output size (ShowManager::setTrackSpoutSize / checkSpoutSizeMismatch) ---- */
+    const setTrackSpoutSize = (trackId, width, height) => { setDialog(null); return showMutate('functions.show.track.setSpoutSize', { trackId: String(trackId), width, height }).catch(() => {}); };
+    /** after a drop: a Spout clip whose size differs from its track's output asks keep / switch */
+    const checkSpoutMismatch = async (itemIds) => {
+      if (!itemIds.length) return;
+      try {
+        const g = await qlc.call('functions.get', { functionId: String(showId) });
+        for (const t of ((g.typeDetail && g.typeDetail.tracks) || [])) {
+          const sp = t.spout;
+          if (!sp || !sp.outputSize) continue;
+          const clip = (sp.clips || []).find(c => itemIds.indexOf(String(c.itemId)) !== -1 && c.width > 0 && c.height > 0
+            && (c.width !== sp.outputSize.width || c.height !== sp.outputSize.height));
+          if (clip) { setDialog({ kind: 'spoutMismatch', track: t, clip, out: sp.outputSize }); return; }
+        }
+      } catch (e) { /* the check is advisory */ }
+    };
 
     const deleteItems = (ids) => { setDialog(null); if (!ids.length) return; showMutate('functions.show.item.remove', { itemIds: ids.map(String) }).then(() => setSelection([])).catch(() => {}); };
     const setLocked = (locked) => FF.mutateSeq(qlc, selectedItems.map(it => ['functions.show.item.setLocked', { showId: String(showId), itemId: String(it.id), locked }])).then(reload).catch(reload);
@@ -340,6 +419,7 @@
         const ordered = items.slice().sort((a, b) => (trackDelta > 0 ? b.trackIndex - a.trackIndex : a.trackIndex - b.trackIndex) || (timeDelta > 0 ? b.startTime - a.startTime : a.startTime - b.startTime));
         for (const it of ordered)
           await FF.mutate(qlc, 'functions.show.item.move', { showId: String(showId), itemId: String(it.id), trackId: trackIdAt(it.trackIndex + trackDelta), startTime: Math.round(it.startTime + timeDelta) });
+        if (trackDelta !== 0) checkSpoutMismatch(items.map(it => String(it.id)));
       } catch (e) {
         if (e && e.details && e.details.suggestedStartTime != null) setNotice('Cannot move here: ' + e.message);
       }
@@ -372,6 +452,7 @@
       } catch (e) { /* reported by FF.mutate */ }
       await reload();
       setSelection(added);
+      checkSpoutMismatch(added);
     };
 
     /** the picker's "Add at cursor": one item per picked function, back to back from the cursor,
@@ -401,6 +482,7 @@
         await reload();
         setSelection(added);
         setSelectedTrackId(trackId);
+        checkSpoutMismatch(added);
       } catch (e) { reload(); }
     };
 
@@ -520,7 +602,7 @@
 
     /* ---- render ---- */
     const showModel = (shows || []).map(s => ({ mLabel: s.name, mValue: String(s.id) }));
-    const timeLabel = fmtTime(cursor, run.running && !run.paused ? 1 : 2);
+    const timeLabel = fmtTime(cursor, playing ? 1 : 2);
     const ticks = [];
     if (tMs > 0) for (let x = 0, i = 0; x <= contentW && i < 2000; x += tick, i++) ticks.push({ x, ms: i * tMs, bar: i });
     const sub = division === 'time' ? Math.min(5, Math.round(timeScale)) : (BEATS[division] || 4);
@@ -557,11 +639,16 @@
           <span data-show="time" title="Cursor position" style={{ display: 'inline-flex', alignItems: 'center', height: 24, padding: '0 10px', border: '1px solid var(--fg-medium)', borderRadius: 5, color: 'var(--fg-main)', font: '400 14px var(--font-mono)' }}>{timeLabel}</span>
           <RobotoText label={'/ ' + fmtTime(total, 2)} fontSize={13} labelColor="var(--fg-light)" height={30} style={{ fontFamily: 'var(--font-mono)' }} />
           <ShortcutHint keys="Space" placement="corner">
-            <IconButton faSource={run.running && !run.paused ? 'fa_pause' : 'fa_play'} size={26} disabled={!detail} data-show="play"
-              bgColor={run.paused ? 'green' : run.running ? 'darkorange' : undefined}
-              tooltip={run.running && !run.paused ? 'Pause' : run.paused ? 'Resume' : 'Play from the cursor'} onClick={play} />
+            <IconButton faSource={playing ? 'fa_pause' : 'fa_play'} size={26} disabled={!detail} data-show="play" data-previewing={previewing ? 'true' : 'false'}
+              bgColor={previewing ? undefined : run.paused ? 'green' : run.running ? 'darkorange' : undefined}
+              tooltip={previewing ? 'Play from the previewed position' : playing ? 'Pause' : run.paused ? 'Resume' : 'Play from the cursor'} onClick={play} />
           </ShortcutHint>
-          <IconButton imgSource={STOP_ICON} size={26} disabled={!detail} tooltip={run.running ? 'Stop' : 'Rewind'} onClick={stop} bgColor={run.running ? 'red' : undefined} data-show="stop" />
+          <IconButton imgSource={STOP_ICON} size={26} disabled={!detail} tooltip={previewing ? 'Stop the preview (the cursor stays)' : run.running ? 'Stop' : 'Rewind'} onClick={stop}
+            bgColor={run.running && !previewing ? 'red' : undefined} data-show="stop" />
+          <IconButton faSource={GLYPH_EYE} size={26} checked={previewEnabled} disabled={!canPreview} data-show="preview-toggle"
+            tooltip={previewEnabled ? 'Preview at the cursor is on: moving the cursor while stopped or paused outputs the Show at that time' : 'Preview at the cursor is off'}
+            onClick={togglePreview} />
+          {previewing ? <span data-show="previewing" style={{ color: 'var(--selection)', font: '700 11px var(--font-roboto)', letterSpacing: 1 }}>PREVIEW</span> : null}
           <ToolbarSpacer />
           <RobotoText label="Markers" fontSize={14} height={30} />
           <CustomComboBox width={110} height={26} currValue={division} onValueChanged={v => { if (v !== division) setDivision(v); }} model={DIVISIONS.map(([v, l]) => ({ mLabel: l, mValue: v }))} />
@@ -622,6 +709,17 @@
                           style={{ position: 'absolute', right: 3, top: 3, width: 26, height: 18, border: 'none', borderRadius: 3, background: t.mute ? 'red' : '#8191A0', color: '#3C4A55', font: '700 12px var(--font-roboto)', cursor: 'pointer' }}>M</button>
                         <button type="button" data-show="track-delete" title="Delete track" onClick={e => { e.stopPropagation(); setSelectedTrackId(String(t.id)); requestTrackDeletion(t); }}
                           style={{ position: 'absolute', right: 3, top: 24, width: 26, height: 18, border: 'none', borderRadius: 3, background: '#8191A0', cursor: 'pointer', display: 'grid', placeItems: 'center' }}><FaIcon name="fa_trash_can" size={11} color="crimson" /></button>
+                        {/* TrackDelegate.qml's Spout label: the track's shared sender size, "•" = fixed on the track */}
+                        {t.spout ? (
+                          <button type="button" data-show="track-spout" data-track-id={t.id} data-spout-mismatch={t.spout.mismatch ? 'true' : 'false'}
+                            title={(t.spout.fixedSize ? 'Spout output size fixed on this track.' : 'Spout output size, set by the first clip.') + (t.spout.mismatch ? ' Some clips have another size.' : '') + ' Click to change.'}
+                            onClick={e => { e.stopPropagation(); setSelectedTrackId(String(t.id)); const o = t.spout.outputSize || { width: 1920, height: 1080 }; setDialog({ kind: 'trackSpout', trackId: String(t.id), cw: o.width, ch: o.height }); }}
+                            style={{ position: 'absolute', left: 3, top: 25, right: 34, height: 17, display: 'flex', alignItems: 'center', gap: 3, border: 'none', background: 'transparent', padding: '0 3px',
+                              color: t.spout.mismatch ? 'orange' : 'var(--fg-light)', font: '400 11px var(--font-roboto)', cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+                            {t.spout.mismatch ? <FaIcon name={GLYPH_WARN} size={10} color="orange" /> : null}
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.spout.outputSize ? 'Spout ' + sizeText(t.spout.outputSize) + (t.spout.fixedSize ? ' •' : '') : 'Spout: size pending'}</span>
+                          </button>
+                        ) : null}
                         <span style={{ position: 'absolute', left: 6, bottom: 3, color: 'var(--fg-light)', font: '400 11px var(--font-roboto)' }}>{t.items.length} item{t.items.length === 1 ? '' : 's'}{t.sceneId ? ' · scene' : ''}</span>
                       </div>
                     );
@@ -714,7 +812,62 @@
         <CustomPopupDialog open={!!dialog && dialog.kind === 'deleteTrack'} title="Delete track" width={420}
           message={dialog && dialog.kind === 'deleteTrack' ? 'Delete track "' + dialog.track.name + '" and its ' + dialog.track.items.length + ' item(s)?\n(Note that the original functions will not be deleted)' : ''}
           standardButtons={['Cancel', 'OK']} onClose={() => setDialog(null)} onClicked={(b) => { if (b === 'OK') deleteTrack(dialog.track); else setDialog(null); }} />
+        <TrackSpoutDialog dialog={dialog && dialog.kind === 'trackSpout' ? dialog : null} track={dialog && dialog.kind === 'trackSpout' ? tracks.find(t => String(t.id) === dialog.trackId) : null}
+          onChange={d => setDialog(d)} onClose={() => setDialog(null)} onApply={setTrackSpoutSize} />
+        {/* PopupSpoutSizeMismatch.qml */}
+        <CustomPopupDialog open={!!dialog && dialog.kind === 'spoutMismatch'} title="Spout output size differs" width={440} standardButtons={[]} onClose={() => setDialog(null)}>
+          {dialog && dialog.kind === 'spoutMismatch' ? (
+            <div data-show="spout-mismatch" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <RobotoText label={'Track \'' + dialog.track.name + '\' outputs Spout at ' + sizeText(dialog.out) + '. \'' + dialog.clip.name + '\' is ' + dialog.clip.width + 'x' + dialog.clip.height + '.'} fontSize={14} height="auto" wrapText />
+              <FF.Note text="Switching the track output resizes its Spout sender: every receiver (e.g. OBS) re-initializes that source." />
+              <GenericButton label={'Keep ' + sizeText(dialog.out) + ' (scale the clip)'} width="100%" height={28} fontSize={13} onClick={() => setDialog(null)} data-show="spout-keep" />
+              <GenericButton label={'Switch track output to ' + dialog.clip.width + 'x' + dialog.clip.height} width="100%" height={28} fontSize={13}
+                onClick={() => setTrackSpoutSize(dialog.track.id, dialog.clip.width, dialog.clip.height)} data-show="spout-switch" />
+            </div>
+          ) : null}
+        </CustomPopupDialog>
       </div>
+    );
+  }
+
+  /** PopupTrackSpoutSize.qml: the current size, every clip's size, a custom W x H, or unset. */
+  function TrackSpoutDialog({ dialog, track, onChange, onClose, onApply }) {
+    const sp = track && track.spout;
+    const choices = [];
+    if (sp) {
+      const add = (w, h, who) => {
+        if (!(w > 0 && h > 0)) return;
+        const c = choices.find(x => x.width === w && x.height === h);
+        if (c) c.who.push(who); else choices.push({ width: w, height: h, who: [who] });
+      };
+      if (sp.outputSize) add(sp.outputSize.width, sp.outputSize.height, sp.fixedSize ? 'current, fixed' : 'current');
+      (sp.clips || []).forEach(c => add(c.width, c.height, c.name));
+    }
+    const valid = (v) => Number.isInteger(v) && v >= 1 && v <= MAX_SPOUT;
+    return (
+      <CustomPopupDialog open={!!dialog && !!track} title="Set Spout output size" width={440} standardButtons={['Close']} onClose={onClose} onClicked={onClose}>
+        {dialog && track ? (
+          <div data-show="track-spout-dialog" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <RobotoText fontSize={14} height="auto" wrapText label={sp && sp.outputSize
+              ? 'Track \'' + track.name + '\' outputs Spout at ' + sizeText(sp.outputSize) + (sp.fixedSize ? ' (fixed on the track).' : ' (size of its first clip).')
+              : 'Track \'' + track.name + '\' has no Spout output size yet: the first clip whose resolution is known will set it.'} />
+            {choices.map(c => (
+              <GenericButton key={c.width + 'x' + c.height} label={c.width + 'x' + c.height + '  (' + c.who.join(', ') + ')'} width="100%" height={28} fontSize={13}
+                onClick={() => onApply(track.id, c.width, c.height)} data-show="spout-choice" />
+            ))}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <RobotoText label="Custom" fontSize={14} height={26} />
+              <CustomSpinBox value={dialog.cw} from={1} to={MAX_SPOUT} width={90} height={26} onValueModified={v => onChange(Object.assign({}, dialog, { cw: v }))} data-show="spout-w" />
+              <RobotoText label="x" fontSize={14} height={26} />
+              <CustomSpinBox value={dialog.ch} from={1} to={MAX_SPOUT} width={90} height={26} onValueModified={v => onChange(Object.assign({}, dialog, { ch: v }))} data-show="spout-h" />
+              <GenericButton label="Apply" width={70} height={26} fontSize={13} disabled={!valid(dialog.cw) || !valid(dialog.ch)} onClick={() => onApply(track.id, dialog.cw, dialog.ch)} data-show="spout-apply" />
+            </div>
+            <GenericButton label="Unset fixed size (first clip decides at next load)" width="100%" height={28} fontSize={13} disabled={!sp || !sp.fixedSize}
+              onClick={() => onApply(track.id, 0, 0)} data-show="spout-unset" />
+            <FF.Note text="The Spout sender runs on the QLC+ host (Windows desktop app); the size is saved with the track." />
+          </div>
+        ) : null}
+      </CustomPopupDialog>
     );
   }
 
