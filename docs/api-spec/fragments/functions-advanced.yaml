@@ -1516,7 +1516,12 @@ messages:
           description: 'Moves an item to a (possibly different) track and/or start time. Mirrors ShowManager::checkAndMoveItem,
             including its overlap check: rejected with error.code INVALID_PARAMS (not CONFLICT - that
             code is reserved for baseRevision mismatches per 00-conventions.md §7) if the destination
-            position would overlap an existing item on the target track.
+            position would overlap an existing item on the target track (half-open intervals: touching
+            edges are legal). On that rejection error.details carries {blockingItemId, suggestedStartTime}
+            - the first item in the way and the nearest free start time on the target track
+            (ShowMoveHelper::resolveCollision, the same spot the Qt editor would slide the drop to), so a
+            client can offer/perform the snap itself. A locked item is rejected with INVALID_PARAMS too.
+            A negative startTime is clamped to 0.
 
             '
           properties:
@@ -1624,7 +1629,10 @@ messages:
               type: integer
               description: 'New duration in ms; rejected with error.code INVALID_PARAMS (not CONFLICT
                 - that code is reserved for baseRevision mismatches per 00-conventions.md §7) if it would
-                overlap a following item.
+                overlap a following item (error.details then carries {blockingItemId, maxDuration}, the
+                largest duration that still fits), if the item is locked, or if it is below the
+                timeline minimum (1 ms in a Time Show, 125 ms in a Beats Show, like
+                ShowManager::minimumTimelineDuration).
 
                 This only changes the ShowFunction wrapper''s own duration/trim on the timeline (equivalent
                 to the real editor''s "stretch" toggle being off) - it has no counterpart to the real
@@ -3384,6 +3392,14 @@ schemas:
       functionId:
         type: string
         description: The generic function object placed on the timeline
+      functionType:
+        $ref: '#/components/schemas/FunctionsTypeEnum'
+        description: Read-only convenience, the placed function's type (a client draws Audio/Video/Chaser
+          items differently without a functions.get per item). Absent when the function no longer exists.
+      functionName:
+        type: string
+        description: Read-only convenience, the placed function's current name. Absent when the function
+          no longer exists.
       startTime:
         type: integer
         description: Milliseconds from the Show's start
@@ -3538,6 +3554,13 @@ schemas:
         type: array
         items:
           $ref: '#/components/schemas/FunctionsShowTrack'
+        description: In Show::tracks() order (ascending track id - Show::moveTrack swaps the ids of the two
+          tracks it reorders, so a track's id changes when it is moved; re-read the tracks after
+          functions.show.track.move).
+      totalDuration:
+        type: integer
+        description: Read-only, Show::totalDuration() in ms - the end of the last item on any track (an
+          item with duration 0 counts with its function's own totalDuration).
       docRevision:
         type: integer
   FunctionsAudioDetail:
