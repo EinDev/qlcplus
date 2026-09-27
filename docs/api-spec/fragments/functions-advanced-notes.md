@@ -367,6 +367,10 @@ new `ApiShowHost` (`controlapi/src/apishowhost.h`, implemented by qmlui's App in
   is reported with `originClientId: null` from `Function::stopped`. `typeDetail.previewing` =
   `Show::isScrubMode()` - it also reports a preview the desktop Show Manager started. Real DMX
   output, like the desktop preview; Audio stays silent; no document change (no revision bump).
+- A preview ends when the client that last moved it disconnects (closed tab, dropped network):
+  `ApiServer::sessionDisconnected(clientId)` is new, the domain stops the Show and broadcasts
+  `previewChanged` with a null origin - the counterpart of `ShowManager::enableContext(false)`.
+  Another client's disconnect leaves it alone.
 - Interplay with the desktop: an API preview of the Show the desktop Show Manager has open is not
   reflected in its buttons (ShowManager keeps its own `isPreviewing`); its play / stop still work on
   the engine and end the API preview. Both front ends can seek the same frozen Show.
@@ -377,7 +381,9 @@ new `ApiShowHost` (`controlapi/src/apishowhost.h`, implemented by qmlui's App in
   still handed to the host (the live sender may differ after a "keep"); the host
   (`ApiShowHost::showTrackSpoutSizeChanged`) goes through `ShowManager::applyTrackSpoutSize` when the
   desktop shows that Show (header refresh + sender resize), else resizes the sender directly. Not
-  undoable (API edits skip Tardis).
+  undoable (API edits skip Tardis). Verified in a sandbox: stored size, `spout` block, header
+  label, mismatch prompt and the saved `SpoutSize`; the live-sender resize path was not observed
+  (no sender for the test track existed at that moment, so `resizeSpoutSender` had nothing to do).
 - **Every `FunctionsShowTrack` carries `spout`** (`FunctionsShowTrackSpout`: fixedSize, outputSize,
   clips, mismatch) when the track holds Spout-mode Videos or a fixed size - the data behind
   TrackDelegate.qml's label and PopupSpoutSizeMismatch.qml. `outputSize` is the host's live sender
