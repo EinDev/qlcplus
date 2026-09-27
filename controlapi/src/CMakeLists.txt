@@ -18,6 +18,7 @@ set(CONTROLAPI_SOURCES
     domains/apimediadomain.cpp domains/apimediadomain.h
     domains/apivclayoutdomain.cpp domains/apivclayoutdomain.h
     domains/apishowdomain.cpp domains/apishowdomain.h
+    domains/apifixturedefsdomain.cpp domains/apifixturedefsdomain.h
 )
 
 # Static, linked directly into the qlcplus5 executable - same reasoning as

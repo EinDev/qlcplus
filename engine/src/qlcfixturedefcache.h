@@ -129,6 +129,16 @@ public:
     bool reloadOrAddFixtureDef(QLCFixtureDef *fixtureDef);
 
     /**
+     * Remove a definition from the cache and delete it. Does NOT touch the
+     * definition's file on disk - the caller decides about that (the Control
+     * API's fixturedefs.delete removes the user .qxf first, then calls this).
+     *
+     * @param fixtureDef The cached definition to remove (pointer identity)
+     * @return true if $fixtureDef was in the cache and has been deleted
+     */
+    bool removeFixtureDef(QLCFixtureDef *fixtureDef);
+
+    /**
      * Load fixture definitions from the given path. Ignores duplicates.
      * Returns true even if $fixturePath doesn't contain any fixtures,
      * if it is still accessible (and exists).
@@ -180,6 +190,15 @@ public:
      */
     static QDir userDefinitionDirectory();
 
+    /**
+     * Override the directory returned by userDefinitionDirectory(). Takes
+     * precedence over the QLCPLUS_USER_FIXTURE_DIR environment variable
+     * (which in turn takes precedence over the platform default). Meant for
+     * tests and sandboxed instances that must never touch the real user
+     * profile; an empty string restores the default resolution.
+     */
+    static void setUserDefinitionDirectoryOverride(const QString& path);
+
     /** Load a QLC native fixture definition from the file specified in $path */
     bool loadQXF(const QString& path, bool isUser = false);
 
@@ -189,6 +208,7 @@ public:
 private:
     QString m_mapAbsolutePath;
     QList <QLCFixtureDef*> m_defs;
+    static QString s_userDirectoryOverride;
 };
 
 /** @} */
