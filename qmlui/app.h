@@ -27,6 +27,7 @@
 #include "doc.h"
 #include "apiprojecthost.h"
 #include "apivchost.h"
+#include "apiwizardhost.h"
 // Full definition, not a forward declaration: moc registers the VCWidget* parameter of the
 // slotVcWidgetRegistered() slot, which needs a complete type (same trap as apidispatcher.h).
 #include "virtualconsole/vcwidget.h"
@@ -58,7 +59,7 @@ class QMouseEvent;
 
 #define KXMLQLCWorkspace QStringLiteral("Workspace")
 
-class App final : public QQuickView, public ApiProjectHost, public ApiVcHost
+class App final : public QQuickView, public ApiProjectHost, public ApiVcHost, public ApiWizardHost
 {
     Q_OBJECT
     Q_DISABLE_COPY(App)
@@ -695,5 +696,18 @@ private:
 
     /** The control API's receiver for that slice's live events (ApiVcLiveDomain), or nullptr. Not owned. */
     ApiVcLiveListenerExt *m_vcLiveListenerExt = nullptr;
+
+    /*********************************************************************
+     * ApiWizardHost (app_apiwizard.cpp): the Show Wizard over a headless StageWizard
+     *********************************************************************/
+public:
+    QJsonObject wizardProjectOptions() override;
+    QJsonObject wizardPreview(const ApiWizardChoices &choices, QString *error) override;
+    bool wizardGenerate(const ApiWizardChoices &choices, QString *error) override;
+
+private:
+    /** A fresh StageWizard walked through the steps with $choices applied, parked on the summary
+     *  step. Returns nullptr and sets $error when a choice cannot be applied. */
+    StageWizard *wizardFromChoices(const ApiWizardChoices &choices, QString *error);
 };
 #endif // APP_H

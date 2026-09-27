@@ -590,3 +590,8 @@ void ApiFixtureGroupDomain::registerMethods()
         session->send(ApiEnvelope::buildOkResponse(id, result));
     });
 }
+
+QJsonObject ApiFixtureGroupDomain::toJson(FixtureGroup *grp)
+{
+    return groupToJson(grp);
+}

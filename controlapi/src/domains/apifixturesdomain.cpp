@@ -1302,3 +1302,8 @@ void ApiFixturesDomain::registerMethods()
         m_server->broadcast(QStringLiteral("fixtures.group.created"), groupData, session->clientId(), false);
     });
 }
+
+QJsonObject ApiFixturesDomain::summary(Fixture *fixture)
+{
+    return fixtureSummaryToJson(fixture);
+}

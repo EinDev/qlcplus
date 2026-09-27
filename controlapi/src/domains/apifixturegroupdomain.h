@@ -18,11 +18,13 @@
 #ifndef APIFIXTUREGROUPDOMAIN_H
 #define APIFIXTUREGROUPDOMAIN_H
 
+#include <QJsonObject>
 #include <QObject>
 #include <QString>
 
 class ApiServer;
 class Doc;
+class FixtureGroup;
 
 /**
  * Implementation of the "fixtures.group.*" methods (see
@@ -73,6 +75,9 @@ class ApiFixtureGroupDomain : public QObject
 
 public:
     ApiFixtureGroupDomain(Doc *doc, ApiServer *server, QObject *parent = nullptr);
+
+    /** The fixtures.group.created event's group JSON for $grp */
+    static QJsonObject toJson(FixtureGroup *grp);
 
 private:
     void registerMethods();

@@ -18,10 +18,12 @@
 #ifndef APIFIXTURESDOMAIN_H
 #define APIFIXTURESDOMAIN_H
 
+#include <QJsonObject>
 #include <QObject>
 
 class ApiServer;
 class Doc;
+class Fixture;
 
 /**
  * Fixture-patching slice of docs/api-spec/fragments/fixtures.yaml - section
@@ -54,6 +56,9 @@ class ApiFixturesDomain : public QObject
 
 public:
     ApiFixturesDomain(Doc *doc, ApiServer *server, QObject *parent = nullptr);
+
+    /** The fixtures.patched event's entry for $fixture (FixturesPatchedFixture) */
+    static QJsonObject summary(Fixture *fixture);
 
 private:
     void registerMethods();

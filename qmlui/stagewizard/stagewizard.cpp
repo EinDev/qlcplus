@@ -195,6 +195,16 @@ QVariant StageWizard::groupsModel() const
         m["name"]         = e.name;
         m["fixtureCount"] = e.fixtureIDs.count();
         m["selected"]     = e.selected;
+        // Not used by the QML boxes; the control API (App::wizardProjectOptions) maps boxes back
+        // to Doc groups and reports their detected capabilities through these.
+        m["groupId"]      = e.groupId;
+        m["role"]         = static_cast<int>(e.role);
+        m["hasMovement"]  = e.hasMovement;
+        m["hasRGB"]       = e.hasRGB || e.hasCMY;
+        m["hasColorWheel"] = e.hasColorWheel;
+        m["hasGobo"]      = e.hasGobo;
+        m["hasShutter"]   = e.hasShutter;
+        m["hasDimmer"]    = e.hasDimmer;
         list.append(m);
     }
     return QVariant::fromValue(list);
@@ -539,11 +549,13 @@ QVariant StageWizard::fixtureRoleModel() const
 
         QVariantMap m;
         m["index"]        = i;            // real index into m_groups
+        m["groupId"]      = e.groupId;    // invalidId() for a box the wizard will create
         m["name"]         = e.name;
         m["fixtureCount"] = e.fixtureIDs.count();
         m["role"]         = static_cast<int>(e.role);
         m["hasMovement"]  = e.hasMovement;
         m["hasRGB"]       = e.hasRGB || e.hasCMY;
+        m["hasColorWheel"] = e.hasColorWheel;
         m["hasGobo"]      = e.hasGobo;
         m["hasShutter"]   = e.hasShutter;
         m["hasDimmer"]    = e.hasDimmer;

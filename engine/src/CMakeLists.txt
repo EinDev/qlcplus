@@ -41,6 +41,7 @@ add_library(${module_name} SHARED
     monitorproperties.cpp monitorproperties.h
     outputpatch.cpp outputpatch.h
     qlccapability.cpp qlccapability.h
+    projectimporter.cpp projectimporter.h
     qlcchannel.cpp qlcchannel.h
     qlcclipboard.cpp qlcclipboard.h
     qlcfile.cpp qlcfile.h
