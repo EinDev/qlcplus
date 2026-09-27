@@ -565,7 +565,9 @@ bool VCClock::loadXML(QXmlStreamReader &root)
             if (attrs.hasAttribute(KXMLQLCVCClockTime))
             {
                 QTime tTime = QTime::fromString(attrs.value(KXMLQLCVCClockTime).toString(), "HH:mm:ss");
-                msTime = tTime.msecsSinceStartOfDay() / 1000;
+                // setTargetTime() takes milliseconds, like the LEGACY branch below computes.
+                // An empty/invalid Time (written by the old seconds-vs-ms save bug) stays 0.
+                msTime = tTime.isValid() ? tTime.msecsSinceStartOfDay() : 0;
             }
             else // LEGACY
             {
@@ -629,8 +631,11 @@ bool VCClock::saveXML(QXmlStreamWriter *doc) const
     doc->writeAttribute(KXMLQLCVCClockType, typeToString(type));
     if (type == Countdown)
     {
+        // targetTime() is in milliseconds (VCClockProperties.qml sets timeValue * 1000 and the
+        // runtime counts down in ms); the XML attribute is HH:mm:ss, so convert to seconds first -
+        // treating the ms value as seconds overflowed QTime and wrote an empty Time="".
         QTime tTime;
-        int tt = targetTime();
+        int tt = targetTime() / 1000;
         int hh = (tt / 3600);
         tt -= (hh * 3600);
         int mm = (tt / 60);
