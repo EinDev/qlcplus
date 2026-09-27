@@ -238,6 +238,10 @@ async function main() {
     await waitCheck(async () => (await outParams()).transmitMode === 'Partial', 'editing -> transmitMode = "Partial"', 5000, outParams);
 
     /* ---- remove one (null = back to the plugin default) ---- */
+    // The editor disables every control until its own setParameters call has returned, which can
+    // be a moment after the second API client already sees the new value: wait for the trash
+    // button to be enabled, as an operator would, or the click lands on a disabled button.
+    await page.waitFor(`(function(){ const b = ${inDlg('[data-remove-param="transmitMode"]')}; return !!b && !b.disabled && b.getAttribute('aria-disabled') !== 'true'; })()`, 5000);
     await clickFn(page, inDlg('[data-remove-param="transmitMode"]'), 'remove transmitMode');
     await waitCheck(async () => !('transmitMode' in (await outParams())), 'the trash button unsets transmitMode (io.patch.setParameters null)', 5000, outParams);
     await waitCheck(async () => { const r = await page.eval(rowsExpr); return r && !('transmitMode' in r) && Object.keys(r).length === 3; }, 'its row is gone', 5000, () => page.eval(rowsExpr));

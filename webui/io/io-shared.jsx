@@ -26,10 +26,22 @@
 
   /** An always-editing text field in the spin-box frame; commits on Enter / blur through onCommit. */
   function TextField({ value, onCommit, onLive, placeholder, width = '100%', autoFocus, disabled, ...rest }) {
+    /* CustomTextInput confirms on Enter AND again on the blur that follows (e.g. clicking a
+       row's remove button right after Enter). If the server's answer to the Enter commit has not
+       refreshed `value` yet, the blur re-sent the same text after the remove and brought the
+       removed parameter back. Swallow a confirm identical to the previous one until `value`
+       itself changes. */
+    const lastCommitted = React.useRef(null);
+    React.useEffect(() => { lastCommitted.current = null; }, [value]);
+    const confirm = (t) => {
+      if (lastCommitted.current !== null && String(t) === lastCommitted.current) return;
+      lastCommitted.current = String(t);
+      if (onCommit) onCommit(t);
+    };
     return (
       <span style={Object.assign({}, fieldBox, { width, opacity: disabled ? .5 : 1 })}>
         <CustomTextInput text={value == null ? '' : String(value)} editing={!disabled} autoFocus={autoFocus} placeholder={placeholder} width="100%" height={22}
-          onTextConfirmed={(t) => onCommit && onCommit(t)} onInput={(e) => onLive && onLive(e.target.value)} {...rest} />
+          onTextConfirmed={confirm} onInput={(e) => onLive && onLive(e.target.value)} {...rest} />
       </span>
     );
   }
