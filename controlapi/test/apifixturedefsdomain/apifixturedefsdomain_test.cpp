@@ -257,12 +257,76 @@ void ApiFixtureDefsDomain_Test::listIncludesSeededDefinition()
     QCOMPARE(entry.value(QStringLiteral("channelCount")).toInt(), 1);
     QCOMPARE(entry.value(QStringLiteral("modeCount")).toInt(), 1);
     QCOMPARE(entry.value(QStringLiteral("defRevision")).toInt(), 0);
+    QCOMPARE(entry.value(QStringLiteral("loaded")).toBool(), true);
 
     QJsonObject filter;
     filter.insert(QStringLiteral("manufacturer"), QStringLiteral("Nobody"));
     QCOMPARE(callOk(QStringLiteral("fixturedefs.list"), filter).value(QStringLiteral("entries")).toArray().count(), 0);
     filter.insert(QStringLiteral("manufacturer"), SysMan);
     QCOMPARE(callOk(QStringLiteral("fixturedefs.list"), filter).value(QStringLiteral("entries")).toArray().count(), 1);
+}
+
+void ApiFixtureDefsDomain_Test::listUnfilteredDoesNotLoadDefinitions()
+{
+    // A definition known only from the fixtures map: a placeholder that
+    // QLCFixtureDefCache loads on first real access. The unfiltered list must
+    // not parse it (that is what froze the main thread - and with it DMX
+    // output - for seconds on a full library); the filtered one does.
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("Lazy-Co-Spot.qxf"));
+    {
+        QLCFixtureDef *full = makeSystemDef();
+        full->setManufacturer(QStringLiteral("Lazy Co"));
+        full->setModel(QStringLiteral("Spot"));
+        full->setAuthor(QStringLiteral("lazy author"));
+        QCOMPARE(full->saveXML(path), QFile::NoError);
+        delete full;
+    }
+    QLCFixtureDef *lazy = new QLCFixtureDef();
+    lazy->setDefinitionSourceFile(path);
+    lazy->setManufacturer(QStringLiteral("Lazy Co"));
+    lazy->setModel(QStringLiteral("Spot"));
+    QVERIFY(m_doc->fixtureDefCache()->addFixtureDef(lazy));
+    QVERIFY(lazy->isLoaded() == false);
+
+    hello();
+    QJsonArray entries = callOk(QStringLiteral("fixturedefs.list"), QJsonObject()).value(QStringLiteral("entries")).toArray();
+    QCOMPARE(entries.count(), 2);
+    // Sorted by manufacturer, then model.
+    QJsonObject first = entries.at(0).toObject();
+    QCOMPARE(first.value(QStringLiteral("manufacturer")).toString(), QStringLiteral("Lazy Co"));
+    QCOMPARE(first.value(QStringLiteral("model")).toString(), QStringLiteral("Spot"));
+    QCOMPARE(first.value(QStringLiteral("isUser")).toBool(), false);
+    QCOMPARE(first.value(QStringLiteral("loaded")).toBool(), false);
+    QCOMPARE(first.value(QStringLiteral("defRevision")).toInt(), 0);
+    QVERIFY(first.contains(QStringLiteral("type")) == false);
+    QVERIFY(first.contains(QStringLiteral("author")) == false);
+    QVERIFY(first.contains(QStringLiteral("channelCount")) == false);
+    QVERIFY(first.contains(QStringLiteral("modeCount")) == false);
+    // Already-loaded definitions keep their full row.
+    QJsonObject second = entries.at(1).toObject();
+    QCOMPARE(second.value(QStringLiteral("manufacturer")).toString(), SysMan);
+    QCOMPARE(second.value(QStringLiteral("loaded")).toBool(), true);
+    QCOMPARE(second.value(QStringLiteral("channelCount")).toInt(), 1);
+    QVERIFY(lazy->isLoaded() == false);
+
+    QJsonObject filter;
+    filter.insert(QStringLiteral("manufacturer"), QStringLiteral("Lazy Co"));
+    entries = callOk(QStringLiteral("fixturedefs.list"), filter).value(QStringLiteral("entries")).toArray();
+    QCOMPARE(entries.count(), 1);
+    QJsonObject loaded = entries.at(0).toObject();
+    QCOMPARE(loaded.value(QStringLiteral("loaded")).toBool(), true);
+    QCOMPARE(loaded.value(QStringLiteral("type")).toString(), QStringLiteral("Dimmer"));
+    QCOMPARE(loaded.value(QStringLiteral("author")).toString(), QStringLiteral("lazy author"));
+    QCOMPARE(loaded.value(QStringLiteral("channelCount")).toInt(), 1);
+    QCOMPARE(loaded.value(QStringLiteral("modeCount")).toInt(), 1);
+    QVERIFY(lazy->isLoaded());
+
+    // Once loaded, the unfiltered list reports it in full too.
+    entries = callOk(QStringLiteral("fixturedefs.list"), QJsonObject()).value(QStringLiteral("entries")).toArray();
+    QCOMPARE(entries.at(0).toObject().value(QStringLiteral("loaded")).toBool(), true);
+    QCOMPARE(entries.at(0).toObject().value(QStringLiteral("channelCount")).toInt(), 1);
 }
 
 void ApiFixtureDefsDomain_Test::getReturnsDefinitionWithIds()

@@ -31,7 +31,15 @@ messages:
           properties:
             manufacturer:
               type: string
-              description: "Optional filter: only return entries for this manufacturer."
+              description: >
+                Optional filter: only return entries for this manufacturer.
+                With it, every entry is complete (loaded: true): the server
+                parses that manufacturer's not-yet-loaded QXF files, which
+                costs up to about 100-1700 ms for the largest bundled
+                manufacturer on a cold cache (Debug build). Without it the
+                call never parses anything: it lists the whole library from
+                the fixtures map in a few ms, and only entries already
+                loaded (loaded: true) carry type/author/channelCount/modeCount.
 
   FixtureDefsListResponse:
     payload:
@@ -1590,20 +1598,20 @@ schemas:
 
   FixtureDefsLibraryEntry:
     type: object
-    required: [manufacturer, model, type, author, isUser, channelCount, modeCount, defRevision]
+    required: [manufacturer, model, isUser, loaded, defRevision]
     description: >
-      Lightweight summary row for fixturedefs.list — mirrors
-      QLCFixtureDefCache::fixtureCache(). Cost warning: fixtureCache() only
-      holds manufacturer/model/isUser; channelCount/modeCount/defRevision
-      are NOT free, since QLCFixtureDefCache lazy-loads each definition's
-      full QXF only on first real access (QLCFixtureDef::checkLoaded(),
-      engine/src/qlcfixturedef.cpp). Serving a single fixturedefs.list call
-      with these three fields populated for every row means the server must
-      force-load (parse XML for) every not-yet-loaded definition in the
-      cache — potentially thousands of files on a fully-populated install —
-      not just read an in-memory map. Implementers should budget for this
-      (e.g. background-warm the cache at startup, or cache the summary rows
-      themselves) rather than treating fixturedefs.list as a cheap call.
+      Lightweight summary row for fixturedefs.list, sorted by manufacturer
+      then model. QLCFixtureDefCache only knows manufacturer/model/isUser of
+      a bundled definition from FixturesMap.xml; type/author/channelCount/
+      modeCount need the definition's QXF file parsed
+      (QLCFixtureDef::checkLoaded(), engine/src/qlcfixturedef.cpp). Every
+      handler runs on the QLC+ main thread, which also drives DMX output, so
+      parsing the whole library (about 1800 files; measured 2-20 s) froze
+      the rig's output for that long. Since 2026-09-27 the server therefore
+      never parses on an unfiltered call: `loaded` says whether the four
+      parsed fields are present. A manufacturer-filtered call loads that
+      manufacturer's definitions first, so all of its rows are complete.
+      `defRevision` is always present and free.
 
       Generic placeholder definitions (manufacturer="Generic", model=
       "Generic" or "RGBPanel" — the in-memory-only defs Fixture::
@@ -1631,6 +1639,14 @@ schemas:
         description: "See FixtureDefsDefinition.type — same engine typeToString()/stringToType() strings."
       author: { type: string }
       isUser: { type: boolean }
+      loaded:
+        type: boolean
+        description: >
+          true when the definition is parsed and type, author, channelCount
+          and modeCount are present; false for a bundled definition nothing
+          has loaded yet (only in an unfiltered fixturedefs.list - pass
+          `manufacturer` to get complete rows). User definitions and any
+          definition a patched fixture uses are always loaded.
       channelCount: { type: integer }
       modeCount: { type: integer }
       defRevision: { type: integer }

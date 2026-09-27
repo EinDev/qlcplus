@@ -151,6 +151,9 @@ public:
     void checkLoaded(QString mapPath);
     void setLoaded(bool loaded);
 
+    /** Check, without loading anything, whether the full definition is in memory */
+    bool isLoaded() const;
+
     /** Get/Set if the definition is user-made */
     bool isUser() const;
     void setIsUser(bool flag);

@@ -5,7 +5,7 @@
 //
 //   node webui/tools/e2e/fixturedefs-smoke.js [--api 9200]
 //
-// No browser: there is no editor screen yet. It lists the library (timing the full force-load),
+// No browser: there is no editor screen yet. It lists the library (timing the unfiltered list),
 // opens an SF3 definition in a session, edits it in memory, exports it, checks the events, and
 // closes the session again. Nothing is saved. Exit code 0 = every assertion held.
 
@@ -34,7 +34,7 @@ function apiClient() {
   const api = apiClient();
   await api.ready;
 
-  console.log('fixturedefs.list (full library, forces every definition to load)');
+  console.log('fixturedefs.list (full library from the fixtures map, nothing parsed)');
   let t = Date.now();
   const all = await api.call('fixturedefs.list');
   const listMs = Date.now() - t;

@@ -92,6 +92,21 @@ public:
     QMap<QString, QMap<QString, bool> > fixtureCache() const;
 
     /**
+     * Get every cached definition, in cache order, WITHOUT loading any of
+     * them: definitions listed in the fixtures map stay placeholders
+     * (manufacturer/model only, QLCFixtureDef::isLoaded() == false) until
+     * something calls fixtureDef() or ensureLoaded() on them.
+     */
+    QList<QLCFixtureDef*> fixtureDefs() const;
+
+    /**
+     * Load the full definition of $def (one of fixtureDefs()) if it is still
+     * a placeholder. Same effect as the lookup in fixtureDef(), without the
+     * linear search.
+     */
+    void ensureLoaded(QLCFixtureDef *def) const;
+
+    /**
      * Add a fixture definition to the model map.
      *
      * @param fixtureDef The fixture definition to add

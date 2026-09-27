@@ -35,6 +35,7 @@ private slots:
     void add();
     void reload();
     void fixtureDef();
+    void fixtureDefsAndEnsureLoaded();
     void load();
     void defDirectories();
     void storeDef();

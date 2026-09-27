@@ -280,3 +280,34 @@ Client-side decisions a later client may want to copy:
   manufacturer column comes from `fixtures.defs.listManufacturers`, which
   already includes user manufacturers - so no extra cheap listing was needed.
 - An imported session starts modified (it is not in the library yet).
+
+## Implemented 2026-09-27: `fixturedefs.list` is bounded (performance plan P1a)
+
+Every Control API handler runs on the QLC+ main thread, and that thread also
+releases each universe's output cycle, so a slow handler holds the whole
+rig's DMX output. An unfiltered `fixturedefs.list` parsed every bundled QXF
+file (about 1800) and took 2-20 s cold (it tripped the 12 s freeze watchdog
+in a sandbox), and 90-180 ms warm because each row did a linear
+`QLCFixtureDefCache::fixtureDef()` lookup (O(n^2)).
+
+- The handler now walks `QLCFixtureDefCache::fixtureDefs()` once (new, no
+  loading) and sorts by manufacturer, then model - the same order as before.
+- **Unfiltered**: nothing is parsed. Every row has `manufacturer`, `model`,
+  `isUser`, `defRevision` and the new `loaded`; `type`, `author`,
+  `channelCount` and `modeCount` are present only when `loaded` is true
+  (user definitions and anything a patched fixture uses are always loaded).
+- **Filtered by `manufacturer`**: unchanged for callers - that manufacturer's
+  definitions are loaded first (`QLCFixtureDefCache::ensureLoaded()`), so all
+  its rows are complete. This still parses on the main thread; the largest
+  bundled manufacturer (American DJ, 161 definitions) costs about 1.7 s cold
+  on a loaded machine. Moving parsing off the main thread is plan item P1c.
+- Chosen over "reject an unfiltered call": every web UI caller
+  (`FixtureEditor.jsx`, `tools-misc.js`, `fixture-editor.js`) already passes a
+  manufacturer, and `fixturedefs-smoke.js` only counts the unfiltered rows, so
+  both options kept them working; answering cheaply keeps the call useful for
+  "does this model exist" checks without a manufacturer.
+
+Tests: `listIncludesSeededDefinition` (now asserts `loaded`),
+`listUnfilteredDoesNotLoadDefinitions` (a placeholder definition stays
+unloaded through an unfiltered call and is complete after a filtered one), and
+the engine's `QLCFixtureDefCache_Test::fixtureDefsAndEnsureLoaded`.

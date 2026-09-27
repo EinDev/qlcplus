@@ -1053,31 +1053,52 @@ void ApiFixtureDefsDomain::registerMethods()
 
     dispatcher->registerMethod(QStringLiteral("fixturedefs.list"), [this, cache](ApiSession *client, const QString &id, const QJsonObject &params)
     {
+        // Bounded on purpose (see the spec's FixtureDefsLibraryEntry): the
+        // handler runs on the main thread, which also drives DMX output, so
+        // it must never parse the whole library. One pass over the cache's
+        // own list (fixtureDef() is a linear search, so a lookup per entry
+        // made this O(n^2)); only the manufacturer-filtered form loads QXF
+        // files, and only that manufacturer's. The unfiltered form lists
+        // what the fixtures map already knows and adds the parsed fields
+        // only for definitions that something else has loaded already.
         const QString filter = params.value(QStringLiteral("manufacturer")).toString();
-        QJsonArray entries;
-        const QMap<QString, QMap<QString, bool> > map = cache->fixtureCache();
-        for (auto mit = map.constBegin(); mit != map.constEnd(); ++mit)
+        QList<QLCFixtureDef *> defs;
+        for (QLCFixtureDef *def : cache->fixtureDefs())
         {
-            if (filter.isEmpty() == false && mit.key() != filter)
-                continue;
-            for (auto it = mit.value().constBegin(); it != mit.value().constEnd(); ++it)
+            if (def != nullptr && (filter.isEmpty() || def->manufacturer() == filter))
+                defs.append(def);
+        }
+        if (filter.isEmpty() == false)
+        {
+            for (QLCFixtureDef *def : std::as_const(defs))
+                cache->ensureLoaded(def);
+        }
+        // Same order as the manufacturer -> model map this used to walk.
+        std::sort(defs.begin(), defs.end(), [](const QLCFixtureDef *a, const QLCFixtureDef *b)
+        {
+            if (a->manufacturer() != b->manufacturer())
+                return a->manufacturer() < b->manufacturer();
+            return a->model() < b->model();
+        });
+
+        QJsonArray entries;
+        for (QLCFixtureDef *def : std::as_const(defs))
+        {
+            const bool loaded = def->isLoaded();
+            QJsonObject entry;
+            entry.insert(QStringLiteral("manufacturer"), def->manufacturer());
+            entry.insert(QStringLiteral("model"), def->model());
+            entry.insert(QStringLiteral("isUser"), def->isUser());
+            entry.insert(QStringLiteral("loaded"), loaded);
+            if (loaded)
             {
-                // fixtureDef() force-loads the definition (see the spec's
-                // cost warning on FixtureDefsLibraryEntry).
-                QLCFixtureDef *def = cache->fixtureDef(mit.key(), it.key());
-                if (def == nullptr)
-                    continue;
-                QJsonObject entry;
-                entry.insert(QStringLiteral("manufacturer"), def->manufacturer());
-                entry.insert(QStringLiteral("model"), def->model());
                 entry.insert(QStringLiteral("type"), QLCFixtureDef::typeToString(def->type()));
                 entry.insert(QStringLiteral("author"), def->author());
-                entry.insert(QStringLiteral("isUser"), def->isUser());
                 entry.insert(QStringLiteral("channelCount"), def->channels().count());
                 entry.insert(QStringLiteral("modeCount"), def->modes().count());
-                entry.insert(QStringLiteral("defRevision"), defRevision(def->manufacturer(), def->model()));
-                entries.append(entry);
             }
+            entry.insert(QStringLiteral("defRevision"), defRevision(def->manufacturer(), def->model()));
+            entries.append(entry);
         }
         QJsonObject result;
         result.insert(QStringLiteral("entries"), entries);
