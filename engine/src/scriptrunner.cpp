@@ -25,6 +25,10 @@
 #include <QProcess>
 #endif
 #include <QDebug>
+#include <condition_variable>
+#include <chrono>
+#include <mutex>
+#include <thread>
 
 #include "scriptrunner.h"
 #include "genericfader.h"
@@ -133,8 +137,39 @@ QStringList ScriptRunner::collectScriptData()
     }
     else
     {
+        // This is a dry run on the caller's (main) thread - totalDuration(),
+        // the syntax check, the editors and the Control API's functions.get
+        // all get here - so an endless loop in the body (for(;;){}) froze
+        // the whole application. Interrupt the evaluation from a watchdog
+        // thread (QJSEngine::setInterrupted() is thread-safe) after a
+        // generous timeout: a dry run only counts waits, it never sleeps.
+        std::mutex watchdogMutex;
+        std::condition_variable watchdogCondition;
+        bool evaluated = false;
+        std::thread watchdog([&]()
+        {
+            std::unique_lock<std::mutex> lock(watchdogMutex);
+            if (watchdogCondition.wait_for(lock, std::chrono::milliseconds(1000),
+                                           [&]() { return evaluated; }) == false)
+                engine->setInterrupted(true);
+        });
+
         QJSValue ret = script.call(QJSValueList());
-        if (ret.isError())
+
+        {
+            std::lock_guard<std::mutex> lock(watchdogMutex);
+            evaluated = true;
+        }
+        watchdogCondition.notify_all();
+        watchdog.join();
+
+        if (engine->isInterrupted())
+        {
+            QString msg = QString("Script evaluation interrupted after 1 second (endless loop?)");
+            qWarning() << msg;
+            syntaxErrorList << msg;
+        }
+        else if (ret.isError())
         {
             QString msg = QString("Uncaught exception at line %2. %3")
                             .arg(ret.property("lineNumber").toInt())

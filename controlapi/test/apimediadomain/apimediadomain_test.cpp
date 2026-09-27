@@ -312,6 +312,38 @@ void ApiMediaDomain_Test::scriptGetCarriesSourceOnly()
     QVERIFY(typeDetail.contains(QStringLiteral("syntaxErrorLines")) == false);
 }
 
+void ApiMediaDomain_Test::scriptWithEndlessLoopDoesNotHangGet()
+{
+    // Crash audit: functions.get evaluates a scriptv4 body on the main
+    // thread (Script::totalDuration() -> ScriptRunner::collectScriptData());
+    // an endless loop froze the whole application for good. The dry run is
+    // now interrupted by a watchdog after 1 s.
+    helloAndGetClientId();
+    Script *script = addScript(QStringLiteral("for (;;) {}\n"));
+    QVERIFY(script != nullptr);
+
+    QElapsedTimer timer;
+    timer.start();
+    QJsonObject request;
+    request.insert(QStringLiteral("type"), QStringLiteral("request"));
+    request.insert(QStringLiteral("id"), QStringLiteral("t-loop"));
+    request.insert(QStringLiteral("method"), QStringLiteral("functions.get"));
+    request.insert(QStringLiteral("params"), QJsonObject{ { QStringLiteral("functionId"), QString::number(script->id()) } });
+    QSignalSpy spy(m_client, &QWebSocket::textMessageReceived);
+    m_client->sendTextMessage(QString::fromUtf8(QJsonDocument(request).toJson(QJsonDocument::Compact)));
+    QVERIFY(QTest::qWaitFor([&]()
+    {
+        for (const QList<QVariant> &frame : spy)
+            if (frame.at(0).toString().contains(QStringLiteral("\"t-loop\"")))
+                return true;
+        return false;
+    }, 8000));
+    QVERIFY(timer.elapsed() < 8000);
+
+    // the syntax check runs the same dry run and reports the interruption
+    QVERIFY(script->syntaxErrorsLines().isEmpty() == false);
+}
+
 void ApiMediaDomain_Test::scriptSetSourceOnStaleRevisionIsConflict()
 {
     helloAndGetClientId();
