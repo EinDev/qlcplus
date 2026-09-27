@@ -45,6 +45,10 @@ private slots:
     void backslashIs403();
     void headSendsHeadersOnly();
     void configJson();
+    void filesCarryValidators();
+    void ifNoneMatchAnswers304();
+    void editedFileIsServedAgain();
+    void ifModifiedSince();
     void postIs405();
     void malformedRequestIs400();
     void missingRootStillListensAnd404s();
@@ -66,6 +70,9 @@ private:
      *  server (same thread) needs. */
     bool request(const QByteArray &method, const QByteArray &target, HttpReply &reply);
     bool requestRaw(const QByteArray &rawRequest, HttpReply &reply);
+    /** A GET request for $target with one extra header line (or several,
+     *  separated by "\r\n"). */
+    static QByteArray withHeader(const QByteArray &target, const QByteArray &header);
 
     void writeFile(const QString &relativePath, const QByteArray &content);
 

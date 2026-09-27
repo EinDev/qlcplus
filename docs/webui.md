@@ -7,7 +7,10 @@ The UI is plain static content (`index.html`, `api/`, `assets/`, `vendor/`,
 (`controlapi/`, `docs/api-spec/`). The HTTP side is `WebServer`
 (`controlapi/src/webserver.{h,cpp}`): a deliberately minimal HTTP/1.1
 `GET`/`HEAD` static-file server on `QTcpServer` - one request per
-connection, `Connection: close`, `Cache-Control: no-cache` on everything,
+connection, `Connection: close`, `Cache-Control: no-cache` on everything
+plus `ETag`/`Last-Modified` on files (a matching `If-None-Match` or
+`If-Modified-Since` gets `304 Not Modified`, so a reload re-downloads only
+what changed),
 `Content-Type` by extension, `/` -> `index.html`, `403` for anything that
 resolves outside the root, `404` otherwise. It also generates
 `GET /qlcplus-config.json` -> `{"apiPort": <port the API actually listens

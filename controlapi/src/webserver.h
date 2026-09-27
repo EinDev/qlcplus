@@ -24,6 +24,8 @@
 #include <QObject>
 #include <QString>
 
+class QDateTime;
+class QFileInfo;
 class QTcpServer;
 class QTcpSocket;
 
@@ -50,7 +52,12 @@ class QTcpSocket;
  *    of the root are caught by a second, canonical-path check.
  *  - Every response carries Content-Type, Content-Length and
  *    "Cache-Control: no-cache" (the UI is edited live during development and
- *    must never be served stale from the browser cache).
+ *    must never be served stale from the browser cache). Files also carry an
+ *    ETag (size + modification time) and Last-Modified, and a request whose
+ *    If-None-Match (or If-Modified-Since) still matches gets a bodyless
+ *    304 Not Modified: the browser revalidates every file on every load, so
+ *    an edit shows up on the next reload, but an unchanged file is not sent
+ *    again.
  *  - GET /qlcplus-config.json is generated, not read from disk:
  *    {"apiPort": <apiPort()>, "apiHost": null} so the UI can find the
  *    WebSocket API without hard-coding a port.
@@ -147,6 +154,21 @@ private:
                    const QList<QPair<QByteArray, QByteArray>> &extraHeaders = {});
 
     static QByteArray reasonPhrase(int status);
+
+    /** Value of request header $name (case-insensitive), repeated headers
+     *  joined with ", "; a null QByteArray when absent. */
+    static QByteArray headerValue(const QByteArray &requestHead, const QByteArray &name);
+
+    /** Strong validator for a served file: quoted "<size>-<mtime ms>" in hex. */
+    static QByteArray entityTag(const QFileInfo &info);
+
+    /** IMF-fixdate ("Sun, 06 Nov 1994 08:49:37 GMT") for Last-Modified. */
+    static QByteArray httpDate(const QDateTime &time);
+
+    /** True when the request's If-None-Match (or, without one,
+     *  If-Modified-Since) says the client's copy is still current. */
+    static bool isNotModified(const QByteArray &requestHead, const QByteArray &etag,
+                              const QDateTime &lastModified);
 
 private:
     QTcpServer *m_server;

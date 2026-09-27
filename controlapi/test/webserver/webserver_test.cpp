@@ -320,6 +320,132 @@ void WebServer_Test::configJson()
     QCOMPARE(QJsonDocument::fromJson(r.body).object().value(QStringLiteral("apiPort")).toInt(), 9020);
 }
 
+QByteArray WebServer_Test::withHeader(const QByteArray &target, const QByteArray &header)
+{
+    return "GET " + target + " HTTP/1.1\r\nHost: localhost\r\n" + header + "\r\n\r\n";
+}
+
+void WebServer_Test::filesCarryValidators()
+{
+    HttpReply r;
+    QVERIFY(request("GET", "/vendor/x.js", r));
+    QCOMPARE(r.status, 200);
+    const QByteArray etag = r.headers.value("etag");
+    QVERIFY2(etag.size() > 2 && etag.startsWith('"') && etag.endsWith('"'), etag.constData());
+    QVERIFY2(r.headers.value("last-modified").endsWith(" GMT"), r.headers.value("last-modified").constData());
+    // Revalidate on every use: that is what keeps live edits visible.
+    QCOMPARE(r.headers.value("cache-control"), QByteArray("no-cache"));
+
+    // Stable while the file is unchanged, distinct per file
+    HttpReply again;
+    QVERIFY(request("GET", "/vendor/x.js", again));
+    QCOMPARE(again.headers.value("etag"), etag);
+    QVERIFY(request("GET", "/style.css", again));
+    QVERIFY(again.headers.value("etag") != etag);
+
+    // The generated config and error replies have no validators
+    QVERIFY(request("GET", "/qlcplus-config.json", r));
+    QVERIFY(r.headers.contains("etag") == false);
+    QVERIFY(request("GET", "/nope.js", r));
+    QCOMPARE(r.status, 404);
+    QVERIFY(r.headers.contains("etag") == false);
+}
+
+void WebServer_Test::ifNoneMatchAnswers304()
+{
+    HttpReply r;
+    QVERIFY(request("GET", "/index.html", r));
+    const QByteArray etag = r.headers.value("etag");
+    const QByteArray lastModified = r.headers.value("last-modified");
+
+    QVERIFY(requestRaw(withHeader("/index.html", "If-None-Match: " + etag), r));
+    QCOMPARE(r.status, 304);
+    QVERIFY(r.body.isEmpty());
+    QVERIFY(r.headers.contains("content-length") == false);
+    QVERIFY(r.headers.contains("content-type") == false);
+    QCOMPARE(r.headers.value("etag"), etag);
+    QCOMPARE(r.headers.value("last-modified"), lastModified);
+    QCOMPARE(r.headers.value("cache-control"), QByteArray("no-cache"));
+
+    // A list, a weak tag, "*", and a lower-case header name all match
+    QVERIFY(requestRaw(withHeader("/index.html", "If-None-Match: \"other\", " + etag), r));
+    QCOMPARE(r.status, 304);
+    QVERIFY(requestRaw(withHeader("/index.html", "If-None-Match: W/" + etag), r));
+    QCOMPARE(r.status, 304);
+    QVERIFY(requestRaw(withHeader("/index.html", "If-None-Match: *"), r));
+    QCOMPARE(r.status, 304);
+    QVERIFY(requestRaw(withHeader("/index.html", "if-none-match: " + etag), r));
+    QCOMPARE(r.status, 304);
+    // "/" resolves to the same file, so the same tag
+    QVERIFY(requestRaw(withHeader("/", "If-None-Match: " + etag), r));
+    QCOMPARE(r.status, 304);
+
+    // HEAD revalidates the same way
+    QVERIFY(requestRaw("HEAD /index.html HTTP/1.1\r\nHost: localhost\r\nIf-None-Match: " + etag + "\r\n\r\n", r));
+    QCOMPARE(r.status, 304);
+    QVERIFY(r.body.isEmpty());
+
+    // A stale tag gets the full file
+    QVERIFY(requestRaw(withHeader("/index.html", "If-None-Match: \"stale\""), r));
+    QCOMPARE(r.status, 200);
+    QCOMPARE(r.body, kIndexHtml);
+    QCOMPARE(r.headers.value("etag"), etag);
+
+    // Another file's tag does not match this one
+    QVERIFY(requestRaw(withHeader("/style.css", "If-None-Match: " + etag), r));
+    QCOMPARE(r.status, 200);
+}
+
+void WebServer_Test::editedFileIsServedAgain()
+{
+    HttpReply r;
+    QVERIFY(request("GET", "/app.jsx", r));
+    const QByteArray etag = r.headers.value("etag");
+
+    // Different size
+    const QByteArray longer = "export const answer = 4242;\n";
+    writeFile(QStringLiteral("app.jsx"), longer);
+    QVERIFY(requestRaw(withHeader("/app.jsx", "If-None-Match: " + etag), r));
+    QCOMPARE(r.status, 200);
+    QCOMPARE(r.body, longer);
+    const QByteArray etag2 = r.headers.value("etag");
+    QVERIFY(etag2 != etag);
+
+    // Same size, new modification time (an editor saving a one-character fix)
+    const QByteArray sameSize = "export const answer = 4343;\n";
+    QCOMPARE(sameSize.size(), longer.size());
+    writeFile(QStringLiteral("app.jsx"), sameSize);
+    {
+        QFile f(m_dir->filePath(QStringLiteral("app.jsx")));
+        QVERIFY(f.open(QIODevice::ReadWrite));
+        QVERIFY(f.setFileTime(QDateTime::currentDateTimeUtc().addSecs(5), QFileDevice::FileModificationTime));
+    }
+    QVERIFY(requestRaw(withHeader("/app.jsx", "If-None-Match: " + etag2), r));
+    QCOMPARE(r.status, 200);
+    QCOMPARE(r.body, sameSize);
+    QVERIFY(r.headers.value("etag") != etag2);
+}
+
+void WebServer_Test::ifModifiedSince()
+{
+    HttpReply r;
+    QVERIFY(request("GET", "/style.css", r));
+    const QByteArray lastModified = r.headers.value("last-modified");
+    const QByteArray etag = r.headers.value("etag");
+
+    QVERIFY(requestRaw(withHeader("/style.css", "If-Modified-Since: " + lastModified), r));
+    QCOMPARE(r.status, 304);
+    QVERIFY(requestRaw(withHeader("/style.css", "If-Modified-Since: Mon, 01 Jan 2001 00:00:00 GMT"), r));
+    QCOMPARE(r.status, 200);
+    QVERIFY(requestRaw(withHeader("/style.css", "If-Modified-Since: not a date"), r));
+    QCOMPARE(r.status, 200);
+    // If-None-Match wins over If-Modified-Since (RFC 9110 13.2.2)
+    QVERIFY(requestRaw(withHeader("/style.css", "If-None-Match: \"stale\"\r\nIf-Modified-Since: " + lastModified), r));
+    QCOMPARE(r.status, 200);
+    QVERIFY(requestRaw(withHeader("/style.css", "If-None-Match: " + etag + "\r\nIf-Modified-Since: Mon, 01 Jan 2001 00:00:00 GMT"), r));
+    QCOMPARE(r.status, 304);
+}
+
 void WebServer_Test::postIs405()
 {
     HttpReply r;
