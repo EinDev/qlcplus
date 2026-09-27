@@ -38,6 +38,7 @@ class ApiEfxCollectionDomain;
 class ApiMediaDomain;
 class ApiVcLayoutDomain;
 class ApiShowDomain;
+class ApiIoConfigDomain;
 class Doc;
 
 /** Default port for the control API's WebSocket server. Distinct from
@@ -153,6 +154,7 @@ private:
     ApiMediaDomain *m_mediaDomain;
     ApiVcLayoutDomain *m_vcLayoutDomain;
     ApiShowDomain *m_showDomain;
+    ApiIoConfigDomain *m_ioConfigDomain;
 };
 
 #endif

@@ -57,7 +57,8 @@ default until "Use server default" is pressed.
 | `VirtualConsole.jsx` | Pages + widgets at their real geometry, live interaction, Design-mode layout editing, Grand Master. |
 | `vc/vc-shared.jsx`, `vc/vc-widgets.jsx`, `vc/vc-edit.jsx` | VC context + pointer-event fader/knob; one body per widget type (button, slider/knob, cue list, XY pad, speed dial, frame, label); selection/move/resize wrapper, widget palette and properties panel. |
 | `SimpleDesk.jsx` | 512 channel strips per universe, live DMX values + overrides, keypad, dump to scene. |
-| `InputOutput.jsx` | Universe table: rename, passthrough, add / remove (last universe only), input / output / feedback / profile pickers over `io.plugin.list` + `io.patch.*`, blackout. |
+| `InputOutput.jsx` | Universe table: rename, passthrough, monitor, add / remove (last universe only), input / output (several per universe) / feedback / profile pickers over `io.plugin.list` + `io.patch.*`, per-output pause / blackout, blackout; right panel with plugins (rescan / configure), input profiles, Grand Master, audio devices. |
+| `io/io-shared.jsx`, `io/PatchProperties.jsx`, `io/InputProfileEditor.jsx`, `io/GrandMasterPanel.jsx`, `io/AudioDevices.jsx` | The I/O screen's sub-components: shared row / field helpers, the per-patch plugin parameter dialog (`io.patch.setParameters`, `io.plugin.configure/rescan`), the input profile editor with channel detection (`io.inputProfile.*`), Grand Master level + modes, host audio device pickers (`io.audio.*`). |
 | `ShowManager.jsx` | Show Manager (Ctrl+5): show picker / create / rename, tracks (add, rename, mute, solo, move, delete), the timeline with time or BPM markers, zoom and grid, items (drag across time and tracks, resize, lock, colour, copy / paste, delete, function picker adding at the cursor), alignment and timing panel, ripple insert / cut, transport with the playhead cursor. Registers `window.QLCScreens.show`. |
 | `data.js` | Mock workspace used while offline. |
 | `_ds_bundle.js`, `styles.css`, `tokens/` | The compiled QLC+ design-system components and their CSS tokens. |
@@ -148,10 +149,23 @@ and a second tab checked for the pushed event:
   server-side stubs (INVALID_STATE) until their own slice lands.
 - **Simple Desk**: universe tabs, live values + overrides, faders, keypad (`1 THRU 12 AT 128`,
   `+% 20`, `FULL`, `ZERO`, `CLR`, ...), per-channel reset, reset universe, dump to a new Scene,
-  fixture list panel.
+  fixture list panel. Since 2026-09-27 the keypad goes through the engine's own parser
+  (`io.simpleDesk.sendKeypadCommand`; the channel selection is remembered across commands and
+  the commands history is the server's, shared with every client - "server" in the header);
+  the browser parser (`io/keypad-parser.js`) stays as the fallback for servers without it.
 - **Input / Output**: universe rename / passthrough / add / delete (last universe only), patch
   pickers (an instance without IO plugins shows just "None"), input profiles list, blackout.
-  Plugin configuration dialogs and audio devices remain desktop-only.
+  Added 2026-09-27 (verified against an `io` sandbox on ports 9190/9191 by
+  `webui/tools/e2e/io.js`): universe monitor toggle; Grand Master level + channel / value mode
+  in the right panel; the host's audio input / output device pickers (`io.audio.*`); the input
+  profile editor (`io/InputProfileEditor.jsx`: manufacturer, model, type, MIDI note-off, channel
+  table with the MIDI channel / message / parameter mapping, behaviour, sensitivity, custom
+  feedback, colour table, MIDI channel labels, save / reopen / delete - the `.qxi` lands in the
+  QLC+ host's user profile folder, `QLCPLUS_USER_INPUTPROFILE_DIR` in a sandbox) with channel
+  auto-detection over `io.inputProfile.learn.*`. Built but only unit-tested (the sandbox has no
+  IO plugins): the per-patch parameter editor (`io/PatchProperties.jsx`, `io.patch.setParameters`,
+  plus "Configure plugin" which opens the plugin's native dialog on the QLC+ host and "Rescan"),
+  per-output pause / blackout, extra output lines per universe, feedback lines, profile assignment.
 - **Toolbar**: Stop all with the running count, BPM set / tap / off with the beat pulse, Undo /
   Redo (desktop history), Design / Operate mode, New / Open / Save / Save as (server-side paths,
   discard prompt when the project is modified).
@@ -172,7 +186,8 @@ and a second tab checked for the pushed event:
   waveforms / beat markers inside items.
 
 Still not available in the web UI: the 2D / 3D / DMX monitor views, fixture-address
-remap, plugin configuration, the fixture editor, UI settings. Disconnected, every screen keeps
+remap, the fixture editor, UI settings, audio sample rate / channels / buffer size and the input
+level check, the input signal indicator on a patch. Disconnected, every screen keeps
 working on its built-in mock data (`data.js`), clearly labelled as such.
 
 The source design system (component sources, guidelines, templates) lives outside this repo;
