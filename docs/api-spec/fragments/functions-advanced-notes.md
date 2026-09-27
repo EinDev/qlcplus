@@ -105,10 +105,19 @@ shared `ServerFileBrowser.jsx` over `core.fs.list` (see core-notes.md).
   next to `syntaxErrorLines`; `fixtureRefs` carry no `line` (the v4
   `fixtureList()` reports ids only); `appendLine` runs the v4 legacy-syntax
   converter (`Script::appendData` -> `convertLine`), so a legacy
-  `startfunction:3` line is stored as `Engine.startFunction(3);`.
-  `functions.get`'s `FunctionsScriptDetail` also carries
-  `syntaxErrorLines`/`syntaxErrors`, so an editor can mark lines without a
-  second call. Pre-existing bug fixed on the way: `apifunctionsdomain.cpp`
+  `startfunction:3` line is stored as `Engine.startFunction(3);`
+  (`functions.script.appendLine` therefore appends verbatim through
+  `setData` instead of `appendData`). `functions.get`'s
+  `FunctionsScriptDetail` deliberately carries NO syntax errors, although
+  the web UI brief asked for them: on scriptv4 the check evaluates the
+  whole body in a `QJSEngine` with no interrupt, so a `for(;;) {
+  Engine.waitTime(...) }` script (a normal "run until stopped" shape -
+  `waitTime` returns immediately while the runner is not started) would
+  spin the engine's main thread forever, and `functions.get` is a read hit
+  by every tree selection. The same hazard pre-exists in
+  `functions.script.validate` and the QML "Check syntax" button; a
+  watchdog calling `QJSEngine::setInterrupted` from another thread is the
+  follow-up. Pre-existing bug fixed on the way: `apifunctionsdomain.cpp`
   included the legacy `script.h` while the engine DLL compiles `scriptv4` -
   `new Script(doc)` there allocated with the wrong class size; it now
   includes `scriptwrapper.h`. `Script::syntaxErrorsLines()` also leaked a

@@ -2257,6 +2257,10 @@ messages:
               type: integer
               description: Duration the decoder detected in the new file (Audio::totalDuration() right
                 after load)
+            name:
+              type: string
+              description: The function's name after the change - the engine setter renames an Audio
+                after its file, like the QML editor's Replace (added 2026-09-27)
             docRevision:
               type: integer
   FunctionsAudioSetVolumeRequest:
@@ -2749,6 +2753,10 @@ messages:
               type: string
             audioCodec:
               type: string
+            name:
+              type: string
+              description: The function's name after the change - the engine setter renames a Video
+                after its file / URL (added 2026-09-27)
             docRevision:
               type: integer
   FunctionsVideoSetGeometryRequest:
@@ -3664,29 +3672,15 @@ schemas:
     required:
     - functionId
     - source
-    - syntaxErrorLines
-    - syntaxErrors
     - docRevision
     properties:
       functionId:
         type: string
       source:
         type: string
-        description: Full raw script text (Script::data())
-      syntaxErrorLines:
-        type: array
-        items:
-          type: integer
-        description: Same as functions.script.validate's result, evaluated on every functions.get of a Script
-      syntaxErrors:
-        type: array
-        items:
-          type: object
-          properties:
-            line:
-              type: integer
-            message:
-              type: string
+        description: 'Full raw script text (Script::data()). Deliberately no syntax errors here: on a
+          scriptv4 build a syntax check evaluates the body in a QJSEngine without an interrupt, which a
+          read path must never do - call functions.script.validate explicitly.'
       docRevision:
         type: integer
   FunctionsShowDetail:
