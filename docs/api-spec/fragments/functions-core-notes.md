@@ -86,3 +86,13 @@ Server: `controlapi/src/domains/apifunctionsdomain.cpp`.
   list (one or two ticks), exactly like the toolbar action; on a headless
   server without a running MasterTimer it would spin - not a supported
   configuration.
+
+## Implemented 2026-09-27: `functions.start` `startTime` (Show Manager slice)
+
+`FunctionsStartRequest.params.startTime` (optional, ms, default 0) is passed
+straight to `Function::start()`'s `startTime`. A Show played with it starts
+its timeline there (what `ShowManager::playShow` does with the cursor), Audio/
+Video seek into the file, a Chaser starts on the step covering the offset;
+Scene/EFX/RGBMatrix ignore it (they have no notion of an offset). Verified by
+`controlapi/test/apishowdomain`'s playhead case (the first playhead event of
+a Show started at 1000 ms is past 1000 ms).

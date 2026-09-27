@@ -55,6 +55,7 @@ default until "Use server default" is pressed.
 | `vc/vc-shared.jsx`, `vc/vc-widgets.jsx`, `vc/vc-edit.jsx` | VC context + pointer-event fader/knob; one body per widget type (button, slider/knob, cue list, XY pad, speed dial, frame, label); selection/move/resize wrapper, widget palette and properties panel. |
 | `SimpleDesk.jsx` | 512 channel strips per universe, live DMX values + overrides, keypad, dump to scene. |
 | `InputOutput.jsx` | Universe table: rename, passthrough, add / remove (last universe only), input / output / feedback / profile pickers over `io.plugin.list` + `io.patch.*`, blackout. |
+| `ShowManager.jsx` | Show Manager (Ctrl+5): show picker / create / rename, tracks (add, rename, mute, solo, move, delete), the timeline with time or BPM markers, zoom and grid, items (drag across time and tracks, resize, lock, colour, copy / paste, delete, function picker adding at the cursor), alignment and timing panel, ripple insert / cut, transport with the playhead cursor. Registers `window.QLCScreens.show`. |
 | `data.js` | Mock workspace used while offline. |
 | `_ds_bundle.js`, `styles.css`, `tokens/` | The compiled QLC+ design-system components and their CSS tokens. |
 | `assets/icons/`, `assets/fonts/` | SVG icons (the qmlui icon set) and Roboto Condensed / Roboto Mono / Font Awesome. |
@@ -87,7 +88,8 @@ and a second tab checked for the pushed event:
   script, colour slots per `acceptedColors`, script properties, Text and Image parameters, blend /
   control mode, animated preview polled from `functions.rgbmatrix.getPreview` - all verified by
   `functions.get` read-backs and the saved `.qxw`, driver `tools/e2e/rgbmatrix.js`). Editors for
-  Collection, EFX, Script, Audio, Video and Show are still placeholders (no server methods yet).
+  Collection, EFX, Script, Audio and Video are still placeholders (no server methods yet); a Show
+  is edited on the Show Manager screen (below).
 - **Virtual Console**: page switch; Toggle and Flash buttons with state colouring from
   `vc.button.stateChanged`; slider and knob with the value pushed to every tab; cue list
   play / next / previous / stop / jump with the current step highlighted; XY pad; speed dial
@@ -106,7 +108,22 @@ and a second tab checked for the pushed event:
   Redo (desktop history), Design / Operate mode, New / Open / Save / Save as (server-side paths,
   discard prompt when the project is modified).
 
-Still not available in the web UI: Show Manager, the 2D / 3D / DMX monitor views, fixture-address
+- **Show Manager** (2026-09-27, driver `tools/e2e/show.js` on the SF3 Show "Midnight City"): show
+  picker and creation, rename; add / rename / mute / solo / move / delete tracks; two Scenes added
+  back to back at the cursor from the function picker; drag move (same track, across tracks, an
+  occupied spot slides to the nearest free one exactly like the desktop drop, and the server's
+  own `INVALID_PARAMS` overlap refusal with `suggestedStartTime` was checked directly); resize by
+  the right edge; lock (a locked item ignores the drag) / unlock; colour; ripple insert at the
+  cursor (covering item grows, later items shift); Markers BPM 4/4 -> Time -> BPM 4/4; play from
+  the cursor with the cursor following `functions.show.<id>.playhead`, pause / resume with Space,
+  stop; copy / paste at the cursor; delete with the confirmation; all read back through
+  `functions.get` and the saved `.qxw`. Ripple cut, align start / end to cursor and the typed
+  start / end / duration fields use the same `item.resize` / `item.move` / `rippleCutTime` calls
+  but were not driven by the script. Not in the web UI: the preview-at-cursor scrub mode, the
+  stretch-function resize mode, track Spout output size, the legacy timing conversion dialog,
+  waveforms / beat markers inside items.
+
+Still not available in the web UI: the 2D / 3D / DMX monitor views, fixture-address
 remap, plugin configuration, the fixture editor, UI settings. Disconnected, every screen keeps
 working on its built-in mock data (`data.js`), clearly labelled as such.
 
