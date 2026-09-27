@@ -76,7 +76,9 @@
        * setters do NOT themselves reject address overlaps (per fixtures-notes.md); the server
        * runs the same overlap check patch does. Broadcasts fixtures.updated with the fixture's
        * full new state.
-       * @param {object} params - {fixtureId: string, universe?: integer, address?: integer, name?: string, baseRevision: integer}
+       * `mode` switches to another mode of the fixture's definition (fixtures.get availableModes);
+       * the new footprint must fit and be free (FIXTURES_ADDRESS_OVERLAP), applied atomically.
+       * @param {object} params - {fixtureId: string, universe?: integer, address?: integer, name?: string, mode?: string, baseRevision: integer}
        * @returns {Promise<object>} result - {docRevision: integer}
        * @see docs/api-spec/fragments/fixtures.yaml (method: fixtures.update)
        */
@@ -309,6 +311,45 @@
          * @see docs/api-spec/fragments/fixtures.yaml (method: fixtures.monitor.aimAt)
          */
         aimAt: function (params) { return self.call('fixtures.monitor.aimAt', params); }
+      },
+
+      /**
+       * Generic RGB panel (FixtureManager::addRGBPanel): one row fixture per row plus a group
+       * laid out like the panel. Never creates universes; every row is overlap-checked first.
+       * @param {object} params - {name?, universe, address, columns, rows, components?: 'RGB'|'BGR'|'BRG'|'GBR'|'GRB'|'RGBW'|'RBG', direction?: 'horizontal'|'vertical', startCorner?: 'topLeft'|'topRight'|'bottomLeft'|'bottomRight', displacement?: 'snake'|'zigzag', physicalWidth?, physicalHeight?, x?, y?, baseRevision}
+       * @returns {Promise<object>} result - {docRevision, fixtureIds, groupId}
+       * @see docs/api-spec/fragments/fixtures.yaml (method: fixtures.createRgbPanel)
+       */
+      createRgbPanel: function (params) { return self.call('fixtures.createRgbPanel', params); },
+
+      channel: {
+        /**
+         * Per-channel behaviour: forced HTP/LTP (intensity channels can only be forced LTP,
+         * others only HTP), can-fade, modifier template (null/'' = none), optionally applied to
+         * every fixture with the same definition and mode.
+         * @param {object} params - {fixtureId, channel?|channels?, canFade?, precedence?: 'auto'|'htp'|'ltp', modifier?: string|null, applyToSameType?, baseRevision}
+         * @returns {Promise<object>} result - {docRevision, fixtureIds}
+         * @see docs/api-spec/fragments/fixtures.yaml (method: fixtures.channel.setBehaviour)
+         */
+        setBehaviour: function (params) { return self.call('fixtures.channel.setBehaviour', params); }
+      },
+
+      modifiers: {
+        /** @returns {Promise<object>} result - {templates: [{name, isUser}], modifiersRevision} */
+        list: function (params) { return self.call('fixtures.modifiers.list', params || {}); },
+        /** @param {object} params - {name} @returns {Promise<object>} result - {name, isUser, points: [{original, modified}], modifiersRevision} */
+        get: function (params) { return self.call('fixtures.modifiers.get', params); },
+        /** Upsert a user template (file in the user modifiers folder). @param {object} params - {name, points: [{original, modified}], baseRevision?} @returns {Promise<object>} result - {modifiersRevision, name, created} */
+        save: function (params) { return self.call('fixtures.modifiers.save', params); },
+        /** User templates only. @param {object} params - {name, newName, baseRevision?} @returns {Promise<object>} result - {modifiersRevision, docRevision} */
+        rename: function (params) { return self.call('fixtures.modifiers.rename', params); },
+        /** User templates only; detaches it from every channel. @param {object} params - {name, baseRevision?} @returns {Promise<object>} result - {modifiersRevision, docRevision, detachedFixtureIds} */
+        delete: function (params) { return self.call('fixtures.modifiers.delete', params); }
+      },
+
+      colorFilters: {
+        /** Colour filter files (system + user ColorFilters folders), read-only. @returns {Promise<object>} result - {files: [{name, fileName, isUser, filters: [{name, rgb?, white?, amber?, uv?}]}]} */
+        list: function (params) { return self.call('fixtures.colorFilters.list', params || {}); }
       }
     };
   }
@@ -334,6 +375,8 @@
     'fixtures.group.deleted',  // {groupId, docRevision} — after fixtures.group.delete, or a group emptied by fixtures.unpatch
     'fixtures.group.updated',  // {group, docRevision} — shared broadcast for setSize/assignFixture/assignHead/unassignHead/unassignFixture/swapHeads/reset
     'fixtures.remap.applied',  // {fixtures, replacedFixtureIds, deletedFixtureIds, docRevision} — after fixtures.remap.apply
-    'fixtures.monitor.changed' // {stage?, items?, removed?, docRevision} — after fixtures.monitor.setStage / setPlacement / arrange
+    'fixtures.monitor.changed', // {stage?, items?, removed?, docRevision} — after fixtures.monitor.setStage / setPlacement / arrange
+    'fixtures.channel.behaviourChanged', // {docRevision, fixtureIds, channels, canFade?, precedence?, modifier?} — after fixtures.channel.setBehaviour
+    'fixtures.modifiers.changed' // {modifiersRevision, action: saved|renamed|deleted, name, newName?, docRevision} — modifier template library
   ];
 })();

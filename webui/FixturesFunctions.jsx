@@ -219,6 +219,9 @@ function FixtureDetail({ node, qlc, universes, fixtures }) {
   const Placement = ff('FixturePlacementProps'); /* webui/ff/View2D.jsx: position / rotation / gel / flags */
   const detail = FF.useFixtureDetail(qlc, node.fixtureId);
   const f = detail || node.summary;
+  /* webui/ff/FixtureMisc.jsx: mode switch, per-channel behaviour, fixture summary */
+  const ModeRow = ff('FixtureModeRow'), ChannelList = ff('FixtureChannelList'), SummaryDialog = ff('FixtureSummaryDialog');
+  const [summary, setSummary] = React.useState(false);
   const uni = (universes || []).find(u => u.id === f.universe);
   const [univ, setUniv] = React.useState(f.universe);
   const [addr, setAddr] = React.useState(f.address + 1);
@@ -229,7 +232,7 @@ function FixtureDetail({ node, qlc, universes, fixtures }) {
   (detail && detail.channelList || []).forEach(ch => { groups[ch.group] = (groups[ch.group] || 0) + 1; });
   const universeModel = (universes || []).map(u => ({ mLabel: u.name, mValue: u.id }));
   return (
-    <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, alignContent: 'start' }}>
+    <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: 12, display: 'grid', gridTemplateColumns: 'minmax(380px, 1fr) minmax(470px, 1.3fr)', gap: 12, alignContent: 'start' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         <RobotoText label="Addressing" fontBold fontSize={14} />
         <Row label="Universe">
@@ -249,9 +252,10 @@ function FixtureDetail({ node, qlc, universes, fixtures }) {
         <RobotoText label="Definition" fontBold fontSize={14} style={{ marginTop: 8 }} />
         <Row label="Manufacturer">{f.manufacturer || '—'}</Row>
         <Row label="Model">{f.model || '—'}</Row>
-        <Row label="Mode">{f.mode || '—'}</Row>
+        {ModeRow ? <ModeRow qlc={qlc} detail={detail} f={f} /> : <Row label="Mode">{f.mode || '—'}</Row>}
         <Row label="Type">{f.fixtureType || (f.isGeneric ? 'Generic' : '—')}</Row>
-        <Note text="Changing the mode of a patched fixture is not available: fixtures.update only takes universe, address and name. Unpatch and add the fixture again in the wanted mode, or use Remap." style={{ marginTop: 8 }} />
+        {SummaryDialog ? <div style={{ marginTop: 4 }}><GenericButton label="Fixture summary…" width={150} height={24} onClick={() => setSummary(true)} data-fx-summary-open="1" /></div> : null}
+        {SummaryDialog && summary ? <SummaryDialog open qlc={qlc} fixtureId={f.id} onClose={() => setSummary(false)} /> : null}
         {Placement ? <Placement qlc={qlc} fixtureId={f.id} fixtures={fixtures} /> : null}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -267,7 +271,8 @@ function FixtureDetail({ node, qlc, universes, fixtures }) {
             ))}
           </div>
         ) : null}
-        {detail ? detail.channelList.map(ch => (
+        {detail && ChannelList ? <ChannelList qlc={qlc} detail={detail} f={f} channelIcon={channelIcon} /> : null}
+        {detail && !ChannelList ? detail.channelList.map(ch => (
           <div key={ch.index} style={{ display: 'flex', alignItems: 'center', gap: 6, height: 24 }}>
             <RobotoText label={String(ch.index + 1)} fontSize={12} labelColor="var(--fg-medium)" textHAlign="right" style={{ width: 24 }} height={24} />
             <IconTextEntry iSrc={channelIcon(ch)} tLabel={ch.name} tFontSize={14} height={24} style={{ flex: 1 }} />
@@ -572,6 +577,7 @@ function FixturesFunctions() {
     .map((it, i) => it === '-' ? <div key={'xm' + i} style={{ height: 1, background: 'var(--border-color-dark)', margin: '2px 0' }} /> : <MenuItem key={'xm' + i} {...it} />);
   const FixtureTools = ff('FixtureTools'), PalettePanel = ff('PalettePanel'), GroupsPanel = ff('FixtureGroupsPanel'), AddFixtureDialog = ff('AddFixtureDialog');
   const RemapDialog = ff('FixtureRemapDialog');
+  const RgbPanelDialog = ff('RgbPanelDialog'), UniverseSummaryDialog = ff('UniverseSummaryDialog');
   const canDelete = live && (selectedFunctionIds.length + selectedFixtureIds.length > 0 || isFunction || isFixture);
   const folderModel = functionTree ? [{ mLabel: '/ (top level)', mValue: '' }].concat(functionTree.paths.map(p => ({ mLabel: p, mValue: p }))) : [];
 
@@ -582,6 +588,8 @@ function FixturesFunctions() {
           <IconButton imgSource={D.icon('fixture')} size={26} onClick={() => setDlg('addFixture')} disabled={!live}
             tooltip={live ? 'Add fixtures' : 'Add fixtures — connect first'} />
         </ShortcutHint>
+        {RgbPanelDialog ? <IconButton imgSource={D.icon('ledbar_pixels')} size={26} onClick={() => setDlg('rgbPanel')} disabled={!live} tooltip="Add an RGB panel (a grid of generic RGB pixel rows plus its fixture group)" data-ff-rgbpanel="1" /> : null}
+        {UniverseSummaryDialog ? <IconButton imgSource={D.icon('uniview')} size={26} onClick={() => setDlg('uniSummary')} disabled={!live} tooltip="Universe summary: channels used, weight, power, DIP switches (printable)" data-ff-unisummary="1" /> : null}
         <IconButton imgSource={D.icon('group')} size={26} disabled={!live} checked={panel === 'groups'} onClick={() => setPanel(panel === 'groups' ? null : 'groups')} tooltip="Fixture Groups" />
         <IconButton imgSource={D.icon('remap')} size={26} disabled={!live || !RemapDialog} tooltip={RemapDialog ? 'Remap fixtures: replace fixtures by new definitions / addresses and carry every function over' : 'Remap addresses — not loaded'}
           onClick={() => setDlg('remap')} data-ff-remap="1" />
@@ -753,6 +761,9 @@ function FixturesFunctions() {
       ) : null}
 
       {AddFixtureDialog ? <AddFixtureDialog open={dlg === 'addFixture'} qlc={qlc} universes={fixtureTree ? fixtureTree.universes : []} fixtures={fixtureTree ? fixtureTree.fixtures : []} onClose={() => setDlg(null)} /> : null}
+      {RgbPanelDialog && dlg === 'rgbPanel' ? <RgbPanelDialog open qlc={qlc} universes={fixtureTree ? fixtureTree.universes : []} onClose={() => setDlg(null)} /> : null}
+      {UniverseSummaryDialog && dlg === 'uniSummary' ? <UniverseSummaryDialog open qlc={qlc} universes={fixtureTree ? fixtureTree.universes : []} fixtures={fixtureTree ? fixtureTree.fixtures : []}
+        initialUniverse={isFixture && detail && detail.summary ? detail.summary.universe : 0} onClose={() => setDlg(null)} /> : null}
       {RemapDialog ? <RemapDialog open={dlg === 'remap'} qlc={qlc} universes={fixtureTree ? fixtureTree.universes : []} fixtures={fixtureTree ? fixtureTree.fixtures : []}
         selectedFixtureIds={selectedFixtureIds.map(String)} onClose={() => setDlg(null)} /> : null}
 

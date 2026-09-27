@@ -29,6 +29,9 @@
 #include "qlccapability.h"
 #include "qlcchannel.h"
 #include "fixture.h"
+#include "fixturegroup.h"
+#include "inputoutputmap.h"
+#include "scene.h"
 #include "doc.h"
 
 static QString buildRequest(const QString &method, const QJsonObject &params, const QString &id = QStringLiteral("t-1"))
@@ -906,6 +909,345 @@ void ApiFixturesDomain_Test::patchAcceptsFlatManufacturerModelMode()
     QCOMPARE(patched.at(0)->fixtureMode()->name(), QStringLiteral("2-channel"));
     QCOMPARE(patched.at(0)->address(), quint32(100));
     QCOMPARE(patched.at(1)->address(), quint32(103)); // 2 channels + gap 1
+}
+
+/* ------------------------------------------------------------------ */
+/* fixtures.update {mode}                                              */
+/* ------------------------------------------------------------------ */
+
+void ApiFixturesDomain_Test::addAcmeMultiParDefinition()
+{
+    QLCFixtureDef *def = new QLCFixtureDef();
+    def->setManufacturer(QStringLiteral("Acme"));
+    def->setModel(QStringLiteral("MultiPar"));
+    def->setType(QLCFixtureDef::MovingHead);
+
+    auto channel = [def](const QString &name, QLCChannel::Group group)
+    {
+        QLCChannel *ch = new QLCChannel();
+        ch->setName(name);
+        ch->setGroup(group);
+        def->addChannel(ch);
+        return ch;
+    };
+    QLCChannel *dim = channel(QStringLiteral("Intensity"), QLCChannel::Intensity);
+    QLCChannel *col = channel(QStringLiteral("Colour"), QLCChannel::Colour);
+    QLCChannel *pan = channel(QStringLiteral("Pan"), QLCChannel::Pan);
+    QLCChannel *strobe = channel(QStringLiteral("Strobe"), QLCChannel::Shutter);
+
+    QLCFixtureMode *small = new QLCFixtureMode(def);
+    small->setName(QStringLiteral("2-channel"));
+    small->insertChannel(dim, 0);
+    small->insertChannel(col, 1);
+    def->addMode(small);
+
+    QLCFixtureMode *big = new QLCFixtureMode(def);
+    big->setName(QStringLiteral("4-channel"));
+    big->insertChannel(dim, 0);
+    big->insertChannel(col, 1);
+    big->insertChannel(pan, 2);
+    big->insertChannel(strobe, 3);
+    def->addMode(big);
+
+    QVERIFY(m_doc->fixtureDefCache()->addFixtureDef(def));
+}
+
+quint32 ApiFixturesDomain_Test::patchMultiPar(int universeId, int address, const QString &mode)
+{
+    QJsonObject params;
+    params.insert(QStringLiteral("universe"), universeId);
+    params.insert(QStringLiteral("address"), address);
+    params.insert(QStringLiteral("manufacturer"), QStringLiteral("Acme"));
+    params.insert(QStringLiteral("model"), QStringLiteral("MultiPar"));
+    params.insert(QStringLiteral("mode"), mode);
+    params.insert(QStringLiteral("baseRevision"), int(m_doc->docRevision()));
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("fixtures.patch"), params);
+    QJsonArray ids = reply.value(QStringLiteral("result")).toObject().value(QStringLiteral("fixtureIds")).toArray();
+    return ids.isEmpty() ? Fixture::invalidId() : ids.at(0).toString().toUInt();
+}
+
+static QJsonObject modeUpdate(quint32 fixtureId, const QString &mode, quint32 revision)
+{
+    QJsonObject params;
+    params.insert(QStringLiteral("fixtureId"), QString::number(fixtureId));
+    params.insert(QStringLiteral("mode"), mode);
+    params.insert(QStringLiteral("baseRevision"), int(revision));
+    return params;
+}
+
+void ApiFixturesDomain_Test::updateModeChangesChannelCount()
+{
+    addAcmeMultiParDefinition();
+    helloAndGetClientId();
+    quint32 fxId = patchMultiPar(0, 0, QStringLiteral("2-channel"));
+    QVERIFY(fxId != Fixture::invalidId());
+    QCOMPARE(m_doc->fixture(fxId)->channels(), quint32(2));
+    quint32 before = m_doc->docRevision();
+
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("fixtures.update"), modeUpdate(fxId, QStringLiteral("4-channel"), before));
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QVERIFY(quint32(reply.value(QStringLiteral("result")).toObject().value(QStringLiteral("docRevision")).toInt()) > before);
+
+    Fixture *fixture = m_doc->fixture(fxId);
+    QCOMPARE(fixture->channels(), quint32(4));
+    QCOMPARE(fixture->fixtureMode()->name(), QStringLiteral("4-channel"));
+    // The Doc's address map follows the new footprint.
+    for (quint32 a = 0; a < 4; a++)
+        QCOMPARE(m_doc->fixtureForAddress(a), fxId);
+    QCOMPARE(m_doc->fixtureForAddress(4), Fixture::invalidId());
+
+    QJsonObject params;
+    params.insert(QStringLiteral("fixtureId"), QString::number(fxId));
+    QJsonObject get = sendAndWaitForReply(QStringLiteral("fixtures.get"), params).value(QStringLiteral("result")).toObject();
+    QCOMPARE(get.value(QStringLiteral("mode")).toString(), QStringLiteral("4-channel"));
+    QCOMPARE(get.value(QStringLiteral("channels")).toInt(), 4);
+    QCOMPARE(get.value(QStringLiteral("channelList")).toArray().count(), 4);
+}
+
+void ApiFixturesDomain_Test::updateModeRejectsOverlap()
+{
+    addAcmeMultiParDefinition();
+    helloAndGetClientId();
+    quint32 a = patchMultiPar(0, 0, QStringLiteral("2-channel"));
+    quint32 b = patchGenericFixture(0, 2, 1);
+    QVERIFY(a != Fixture::invalidId() && b != Fixture::invalidId());
+    quint32 before = m_doc->docRevision();
+
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("fixtures.update"), modeUpdate(a, QStringLiteral("4-channel"), before));
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(),
+             QStringLiteral("FIXTURES_ADDRESS_OVERLAP"));
+
+    // Nothing changed.
+    QCOMPARE(m_doc->docRevision(), before);
+    QCOMPARE(m_doc->fixture(a)->channels(), quint32(2));
+    QCOMPARE(m_doc->fixtureForAddress(2), b);
+    QCOMPARE(m_doc->fixtureForAddress(1), a);
+}
+
+void ApiFixturesDomain_Test::updateModeWithMoveIgnoresTransientOverlap()
+{
+    // A (2 ch at 0) grows to 4 channels AND moves to 10 in one call. The
+    // intermediate state "4 channels still at 0" would collide with B at 2;
+    // applied non-atomically that trips Doc::slotFixtureChanged()'s
+    // Q_ASSERT in this Debug test binary (or corrupts the map in Release).
+    addAcmeMultiParDefinition();
+    helloAndGetClientId();
+    quint32 a = patchMultiPar(0, 0, QStringLiteral("2-channel"));
+    quint32 b = patchGenericFixture(0, 2, 1);
+
+    QJsonObject params = modeUpdate(a, QStringLiteral("4-channel"), m_doc->docRevision());
+    params.insert(QStringLiteral("address"), 10);
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("fixtures.update"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+
+    QCOMPARE(m_doc->fixture(a)->channels(), quint32(4));
+    QCOMPARE(m_doc->fixture(a)->address(), quint32(10));
+    QCOMPARE(m_doc->fixtureForAddress(0), Fixture::invalidId());
+    QCOMPARE(m_doc->fixtureForAddress(1), Fixture::invalidId());
+    QCOMPARE(m_doc->fixtureForAddress(2), b);
+    for (quint32 addr = 10; addr < 14; addr++)
+        QCOMPARE(m_doc->fixtureForAddress(addr), a);
+}
+
+void ApiFixturesDomain_Test::updateModeShrinkPrunesSettingsAndKeepsScene()
+{
+    addAcmeMultiParDefinition();
+    helloAndGetClientId();
+    quint32 a = patchMultiPar(0, 0, QStringLiteral("4-channel"));
+    Fixture *fixture = m_doc->fixture(a);
+    fixture->setForcedHTPChannels(QList<int>() << 2);
+    fixture->setChannelCanFade(3, false);
+
+    // A Scene with a value on channel 3 (Strobe), which the small mode lacks.
+    Scene *scene = new Scene(m_doc);
+    QVERIFY(m_doc->addFunction(scene));
+    scene->setValue(a, 0, 100);
+    scene->setValue(a, 3, 200);
+
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("fixtures.update"),
+                                            modeUpdate(a, QStringLiteral("2-channel"), m_doc->docRevision()));
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(fixture->channels(), quint32(2));
+    QVERIFY(fixture->forcedHTPChannels().isEmpty());
+    QVERIFY(fixture->channelCanFade(3)); // exclusion on the vanished channel dropped
+    QCOMPARE(m_doc->fixtureForAddress(2), Fixture::invalidId());
+
+    // Functions are left alone, as the Qt UI does: switching back restores.
+    QCOMPARE(scene->value(a, 3), uchar(200));
+    QCOMPARE(scene->value(a, 0), uchar(100));
+
+    reply = sendAndWaitForReply(QStringLiteral("fixtures.update"),
+                                modeUpdate(a, QStringLiteral("4-channel"), m_doc->docRevision()));
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(fixture->channels(), quint32(4));
+    QCOMPARE(fixture->channel(3)->name(), QStringLiteral("Strobe"));
+}
+
+void ApiFixturesDomain_Test::updateModeAppliesToSameType()
+{
+    addAcmeMultiParDefinition();
+    helloAndGetClientId();
+    quint32 a = patchMultiPar(0, 0, QStringLiteral("2-channel"));
+    quint32 b = patchMultiPar(0, 10, QStringLiteral("2-channel"));
+    quint32 c = patchMultiPar(0, 20, QStringLiteral("4-channel")); // other mode: untouched
+
+    QJsonObject params = modeUpdate(a, QStringLiteral("4-channel"), m_doc->docRevision());
+    params.insert(QStringLiteral("applyToSameType"), true);
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("fixtures.update"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(reply.value(QStringLiteral("result")).toObject().value(QStringLiteral("fixtureIds")).toArray().count(), 2);
+    QCOMPARE(m_doc->fixture(a)->channels(), quint32(4));
+    QCOMPARE(m_doc->fixture(b)->channels(), quint32(4));
+    QCOMPARE(m_doc->fixtureForAddress(13), b);
+    QCOMPARE(m_doc->fixture(c)->channels(), quint32(4));
+
+    // All or nothing: one blocked fixture of the type stops the whole change.
+    quint32 d = patchMultiPar(0, 30, QStringLiteral("2-channel"));
+    quint32 e = patchMultiPar(0, 40, QStringLiteral("2-channel"));
+    patchGenericFixture(0, 42, 1); // blocks e from growing
+    params = modeUpdate(d, QStringLiteral("4-channel"), m_doc->docRevision());
+    params.insert(QStringLiteral("applyToSameType"), true);
+    reply = sendAndWaitForReply(QStringLiteral("fixtures.update"), params);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(),
+             QStringLiteral("FIXTURES_ADDRESS_OVERLAP"));
+    QCOMPARE(m_doc->fixture(d)->channels(), quint32(2));
+    QCOMPARE(m_doc->fixture(e)->channels(), quint32(2));
+}
+
+void ApiFixturesDomain_Test::updateUnknownModeIsNotFound()
+{
+    addAcmeMultiParDefinition();
+    helloAndGetClientId();
+    quint32 a = patchMultiPar(0, 0, QStringLiteral("2-channel"));
+    quint32 before = m_doc->docRevision();
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("fixtures.update"), modeUpdate(a, QStringLiteral("99-channel"), before));
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("NOT_FOUND"));
+    QCOMPARE(m_doc->docRevision(), before);
+}
+
+void ApiFixturesDomain_Test::getReportsChannelBehaviourAndModes()
+{
+    addAcmeMultiParDefinition();
+    helloAndGetClientId();
+    quint32 a = patchMultiPar(0, 0, QStringLiteral("4-channel"));
+    Fixture *fixture = m_doc->fixture(a);
+    fixture->setForcedHTPChannels(QList<int>() << 2);
+    fixture->setForcedLTPChannels(QList<int>() << 0);
+    fixture->setChannelCanFade(1, false);
+
+    QJsonObject params;
+    params.insert(QStringLiteral("fixtureId"), QString::number(a));
+    QJsonObject get = sendAndWaitForReply(QStringLiteral("fixtures.get"), params).value(QStringLiteral("result")).toObject();
+    QJsonArray list = get.value(QStringLiteral("channelList")).toArray();
+    QCOMPARE(list.at(0).toObject().value(QStringLiteral("precedence")).toString(), QStringLiteral("ltp"));
+    QCOMPARE(list.at(2).toObject().value(QStringLiteral("precedence")).toString(), QStringLiteral("htp"));
+    QCOMPARE(list.at(3).toObject().value(QStringLiteral("precedence")).toString(), QStringLiteral("auto"));
+    QCOMPARE(list.at(1).toObject().value(QStringLiteral("canFade")).toBool(), false);
+    QCOMPARE(list.at(0).toObject().value(QStringLiteral("canFade")).toBool(), true);
+    QVERIFY(list.at(0).toObject().value(QStringLiteral("modifier")).isNull());
+
+    QJsonArray modes = get.value(QStringLiteral("availableModes")).toArray();
+    QCOMPARE(modes.count(), 2);
+    QCOMPARE(modes.at(1).toObject().value(QStringLiteral("channelCount")).toInt(), 4);
+    QVERIFY(get.value(QStringLiteral("physical")).isObject());
+    QCOMPARE(get.value(QStringLiteral("heads")).toInt(), 1);
+}
+
+/* ------------------------------------------------------------------ */
+/* fixtures.createRgbPanel                                             */
+/* ------------------------------------------------------------------ */
+
+static QJsonObject rgbPanelParams(int universe, int address, int columns, int rows, quint32 revision)
+{
+    QJsonObject params;
+    params.insert(QStringLiteral("name"), QStringLiteral("Wall"));
+    params.insert(QStringLiteral("universe"), universe);
+    params.insert(QStringLiteral("address"), address);
+    params.insert(QStringLiteral("columns"), columns);
+    params.insert(QStringLiteral("rows"), rows);
+    params.insert(QStringLiteral("components"), QStringLiteral("RGB"));
+    params.insert(QStringLiteral("displacement"), QStringLiteral("snake"));
+    params.insert(QStringLiteral("startCorner"), QStringLiteral("topLeft"));
+    params.insert(QStringLiteral("direction"), QStringLiteral("horizontal"));
+    params.insert(QStringLiteral("baseRevision"), int(revision));
+    return params;
+}
+
+void ApiFixturesDomain_Test::createRgbPanelBuildsRowsAndGroup()
+{
+    helloAndGetClientId();
+    quint32 before = m_doc->docRevision();
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("fixtures.createRgbPanel"), rgbPanelParams(0, 0, 4, 4, before));
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QJsonObject result = reply.value(QStringLiteral("result")).toObject();
+    QJsonArray ids = result.value(QStringLiteral("fixtureIds")).toArray();
+    QCOMPARE(ids.count(), 4);
+    QVERIFY(quint32(result.value(QStringLiteral("docRevision")).toInt()) > before);
+
+    for (int i = 0; i < 4; i++)
+    {
+        Fixture *row = m_doc->fixture(ids.at(i).toString().toUInt());
+        QVERIFY(row != nullptr);
+        QCOMPARE(row->channels(), quint32(12));
+        QCOMPARE(row->address(), quint32(i * 12));
+        QCOMPARE(row->heads(), 4);
+        QCOMPARE(row->name(), QStringLiteral("Wall - Row %1").arg(i + 1));
+    }
+
+    FixtureGroup *grp = m_doc->fixtureGroup(result.value(QStringLiteral("groupId")).toString().toUInt());
+    QVERIFY(grp != nullptr);
+    QCOMPARE(grp->size(), QSize(4, 4));
+    QCOMPARE(grp->headList().count(), 16);
+    quint32 row0 = ids.at(0).toString().toUInt();
+    quint32 row1 = ids.at(1).toString().toUInt();
+    // Snake from the top-left corner: row 0 left to right, row 1 back.
+    QCOMPARE(grp->head(QLCPoint(0, 0)).fxi, row0);
+    QCOMPARE(grp->head(QLCPoint(0, 0)).head, 0);
+    QCOMPARE(grp->head(QLCPoint(3, 0)).head, 3);
+    QCOMPARE(grp->head(QLCPoint(3, 1)).fxi, row1);
+    QCOMPARE(grp->head(QLCPoint(3, 1)).head, 0);
+    QCOMPARE(grp->head(QLCPoint(0, 1)).head, 3);
+}
+
+void ApiFixturesDomain_Test::createRgbPanelRejectsOverlap()
+{
+    helloAndGetClientId();
+    patchGenericFixture(0, 30, 1);
+    int fixturesBefore = m_doc->fixtures().count();
+    int groupsBefore = m_doc->fixtureGroups().count();
+    quint32 before = m_doc->docRevision();
+
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("fixtures.createRgbPanel"), rgbPanelParams(0, 0, 4, 4, before));
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(),
+             QStringLiteral("FIXTURES_ADDRESS_OVERLAP"));
+    QCOMPARE(m_doc->fixtures().count(), fixturesBefore);
+    QCOMPARE(m_doc->fixtureGroups().count(), groupsBefore);
+    QCOMPARE(m_doc->docRevision(), before);
+}
+
+void ApiFixturesDomain_Test::createRgbPanelNeverCreatesUniverses()
+{
+    helloAndGetClientId();
+    int universes = int(m_doc->inputOutputMap()->universesCount());
+    // Last universe, address 505: the 12-channel rows do not fit there, and
+    // the Qt UI would create a new universe for them - the API refuses.
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("fixtures.createRgbPanel"),
+                                            rgbPanelParams(universes - 1, 505, 4, 2, m_doc->docRevision()));
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("INVALID_PARAMS"));
+    QCOMPARE(int(m_doc->inputOutputMap()->universesCount()), universes);
+    QCOMPARE(m_doc->fixtures().count(), 0);
+
+    // A row that does not fit the rest of universe 0 rolls into universe 1.
+    reply = sendAndWaitForReply(QStringLiteral("fixtures.createRgbPanel"), rgbPanelParams(0, 505, 4, 2, m_doc->docRevision()));
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QJsonArray ids = reply.value(QStringLiteral("result")).toObject().value(QStringLiteral("fixtureIds")).toArray();
+    Fixture *first = m_doc->fixture(ids.at(0).toString().toUInt());
+    QCOMPARE(first->universe(), quint32(1));
+    QCOMPARE(first->address(), quint32(0));
 }
 
 QTEST_MAIN(ApiFixturesDomain_Test)

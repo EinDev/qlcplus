@@ -319,3 +319,85 @@ Server: `controlapi/src/domains/apimonitordomain.cpp` and
   `Q_ASSERT(!m_addresses.contains(i))` (a Debug-build abort, found through the
   web UI's universe-grid paste) or corrupt the address map in Release. Both
   are now applied with signals blocked and one `changed()` is emitted.
+
+## Implemented 2026-09-27: mode change, RGB panel, channel behaviour, modifier templates, colour filters
+
+Server: `controlapi/src/domains/apifixturesdomain.cpp` (mode, RGB panel,
+`fixtures.get` additions) and the new
+`controlapi/src/domains/apifixturechannelsdomain.cpp`; tests in
+`controlapi/test/apifixturesdomain/` (9 new cases) and
+`controlapi/test/apifixturechannelsdomain/` (16 cases). Web UI driver:
+`webui/tools/e2e/fixtures-misc.js`.
+
+- **`fixtures.update {mode}`** closes the "change mode after patching" gap
+  (the earlier notes' workaround was unpatch + patch). The final footprint is
+  validated (range + overlap, excluding the fixture itself) before anything
+  changes, then mode, address and universe are applied with signals blocked
+  and ONE `changed()` (the 03dd410cf idiom), so `Doc::slotFixtureChanged()`
+  never sees a transient footprint - covered by
+  `updateModeWithMoveIgnoresTransientOverlap` (a Debug test binary aborts on
+  the `Q_ASSERT` otherwise). The Qt UI's `FixtureManager::setFixtureModeIndex()`
+  does not re-track the Doc's address map at all after a mode change; the API
+  does, and also pushes the new footprint's HTP/LTP, default values and
+  modifiers into the universe (`Doc::updateFixtureChannelCapabilities()`,
+  also after a plain move now). Per-channel settings on indices the new mode
+  lacks are dropped first (`Fixture::setChannelModifier()` refuses indices
+  `>= channels()` afterwards). **Functions are not touched**, exactly like the
+  Qt UI: Scene values on channels the new mode lacks stay in the Scene
+  (`Scene::postLoad()` drops them on the next project load; while running,
+  `FadeChannel` treats such a channel as a plain HTP intensity at
+  `universeAddress + channel`, which is the Qt UI's behaviour too), so
+  switching back restores them.
+- **`fixtures.get`** additionally reports per channel `canFade`,
+  `precedence` (`auto|htp|ltp`) and `modifier` (name or null), plus
+  fixture-level `availableModes` and the current mode's `physical` block -
+  generic dimmer / RGB panel definitions are not in the definition cache, so
+  `fixtures.defs.getModel` cannot answer for them. The fixture and universe
+  summaries in the web UI are built from this (no separate summary method).
+- **`fixtures.createRgbPanel`** ports `FixtureManager::addRGBPanel()`: same
+  row definition, head grid (snake / zig-zag, start corner, vertical =
+  transposed), 2D/3D placement maths and names. Differences: every row is
+  overlap-checked before anything is created, and a row that does not fit the
+  rest of a universe only rolls into the next EXISTING universe (the Qt UI
+  creates universes; this domain never does, consistent with fixtures.patch).
+  It broadcasts `fixtures.patched` and `fixtures.group.created` (with heads).
+- **`fixtures.channel.setBehaviour`** (new domain file): forced HTP/LTP,
+  can-fade and modifier for one or several channels, optionally
+  `applyToSameType` (same definition AND mode pointer, the Qt UI's rule). The
+  engine setters neither call `Doc::setModified()` nor touch the universe, so
+  the handler does both. The Qt UI's precedence rule (intensity channels can
+  only be forced LTP, others only forced HTP) is an INVALID_PARAMS here
+  instead of a silent no-op. Event `fixtures.channel.behaviourChanged`.
+- **`fixtures.modifiers.list/get/save/rename/delete`**: the channel modifier
+  template library, a §4c library resource with the domain-local
+  `modifiersRevision` (optional `baseRevision`, like `profilesRevision`).
+  Templates are files in `QLCModifiersCache::userTemplateDirectory()`, which
+  now honours `QLCPLUS_USER_MODIFIERS_DIR` (tests, and
+  `dev-webui-sandbox.ps1 -UserModifiersDir <sandbox>\UserModifiers` - NOT `<sandbox>\ModifiersTemplates`, which is the sandboxed app's system folder: templates saved there come back as read-only system templates on the next start; the script now refuses it). System templates are read-only.
+  `rename`/`delete` are new (the Qt editor only saves); they needed
+  `QLCModifiersCache::renameModifier()`/`takeModifier()`. A rename keeps the
+  instance (every channel follows) and bumps `docRevision` when a fixture
+  uses it (the `.qxw` stores the name); a delete detaches it from every
+  fixture channel and universe first, then retires the instance (freed with
+  the domain, since the output thread may just have read the pointer).
+  Event `fixtures.modifiers.changed`.
+- **`fixtures.colorFilters.list`**: the `.qxcf` files of the system and user
+  ColorFilters folders, parsed in controlapi with the same rules as
+  `qmlui/colorfilters.cpp` (which controlapi cannot link). Read-only: adding /
+  editing / deleting filter files (the Qt tab's edit mode) is not covered.
+- None of the new events is subscribe-gated.
+- **`fixtures.list` / `fixtures.get`** also report `heads` (Fixture::heads()), which the group grid
+  editor needs to offer per-head placement.
+- **Fixed on the way**: `fixtures.group.assignHead` onto an explicit cell for a head not yet in the
+  group changed the group silently - `FixtureGroup::assignHead()` emits `changed()` only on its
+  auto-place path, so there was no `docRevision` bump and no `fixtures.group.updated`. The handler
+  now emits it (test `assignHeadToExplicitCellBumpsRevision`). The grid editor's rotate / flip are
+  computed in the browser (FixtureGroupEditor::transformSelection()'s maths) and applied as a chain of
+  `fixtures.group.swapHeads`, which never loses a head (the Qt code overwrites cells instead).
+- **Web UI** (`webui/ff/FixtureMisc.jsx`): the modifier template calls go out WITHOUT
+  `baseRevision` (the web UI's mutation queue stamps every call with `docRevision`, which the
+  modifiers library does not use). External-controller mapping of the console is not offered: the
+  Qt feature (BottomPanel's "external control", pan/tilt pages, fader pickup, VC input inhibit)
+  lives entirely in qmlui's `SceneEditor` on `InputOutputMap::inputValueChanged`; there is no engine
+  hook or API to route an input line to a browser console. Pan/tilt mode and the fader window shift
+  are offered as on-screen console navigation instead.

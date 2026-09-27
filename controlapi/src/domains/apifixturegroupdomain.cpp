@@ -471,7 +471,12 @@ void ApiFixtureGroupDomain::registerMethods()
             }
             else
             {
-                grp->assignHead(targetPt, newHead);
+                // FixtureGroup::assignHead() only emits changed() on its
+                // auto-place path; an explicit cell is stored silently, so
+                // neither Doc::setModified() (docRevision) nor the
+                // fixtures.group.updated broadcast would happen. Emit it here.
+                if (grp->assignHead(targetPt, newHead) && targetPt.isNull() == false)
+                    emit grp->changed(grp->id());
             }
         }
         else

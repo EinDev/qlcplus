@@ -41,6 +41,7 @@
 #include "domains/apivcinputdomain.h"
 #include "domains/apifunctionsmiscdomain.h"
 #include "domains/apivclivedomain.h"
+#include "domains/apifixturechannelsdomain.h"
 #include "qlcconfig.h"
 #include "doc.h"
 
@@ -77,6 +78,7 @@ ApiServer::ApiServer(QObject *parent, Doc *doc)
     m_vcInputDomain = new ApiVcInputDomain(m_doc, this, this);
     m_functionsMiscDomain = new ApiFunctionsMiscDomain(m_doc, this, this);
     m_vcLiveDomain = new ApiVcLiveDomain(m_doc, this, this);
+    m_fixtureChannelsDomain = new ApiFixtureChannelsDomain(m_doc, this, this);
 }
 
 ApiServer::~ApiServer()

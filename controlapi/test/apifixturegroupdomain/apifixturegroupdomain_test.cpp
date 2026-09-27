@@ -424,6 +424,31 @@ void ApiFixtureGroupDomain_Test::assignHeadAutoPlacesNewHead()
     QVERIFY(grp->headsMap().value(QLCPoint(0, 0)) == GroupHead(fxId, 0));
 }
 
+void ApiFixtureGroupDomain_Test::assignHeadToExplicitCellBumpsRevision()
+{
+    // FixtureGroup::assignHead() on an explicit cell emits no changed() by
+    // itself; the domain must still mark the document modified.
+    quint32 fxId = addGenericFixture(1);
+    FixtureGroup *grp = new FixtureGroup(m_doc);
+    grp->setSize(QSize(3, 3));
+    QVERIFY(m_doc->addFixtureGroup(grp));
+
+    helloAndGetClientId();
+    int before = currentDocRevision();
+    QJsonObject params;
+    params.insert(QStringLiteral("groupId"), QString::number(grp->id()));
+    params.insert(QStringLiteral("fixtureId"), QString::number(fxId));
+    params.insert(QStringLiteral("headIndex"), 0);
+    params.insert(QStringLiteral("x"), 2);
+    params.insert(QStringLiteral("y"), 1);
+    params.insert(QStringLiteral("baseRevision"), before);
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("fixtures.group.assignHead"), params);
+
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QVERIFY(grp->headsMap().value(QLCPoint(2, 1)) == GroupHead(fxId, 0));
+    QVERIFY(reply.value(QStringLiteral("result")).toObject().value(QStringLiteral("docRevision")).toInt() > before);
+}
+
 void ApiFixtureGroupDomain_Test::assignHeadToOccupiedCellSwapsPositions()
 {
     // Two single-head fixtures, placed at (0,0) and (1,0) respectively.

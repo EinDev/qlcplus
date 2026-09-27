@@ -121,6 +121,24 @@ and a second tab checked for the pushed event:
   2D positions and VC widgets follow. Fixture Tools gained a Highlight (locate) toggle. Not in the
   browser: the Qt3D view itself (position / rotation editing is the parity), uploading a background
   picture (the file must already be on the server), DMX-driven position / rotation per axis.
+- **Fixture-side leftovers** (added 2026-09-27, `webui/ff/FixtureMisc.jsx`, verified against an
+  `fxmisc` sandbox on ports 9250/9251 started with `-UserModifiersDir C:\qlcsandbox\fxmisc\UserModifiers`
+  by `webui/tools/e2e/fixtures-misc.js`): fixture detail - mode combo (`fixtures.update {mode}`,
+  atomic, overlap-checked), per-channel Fade / Behaviour (auto, forced HTP or LTP) / Modifier with
+  "Apply changes to fixtures of the same type" (`fixtures.channel.setBehaviour`), a Channel Modifiers
+  Editor (template list, SVG curve with draggable handlers, add / remove handler, save as user
+  template, rename, delete; `fixtures.modifiers.*`), a printable Fixture summary (definition,
+  addressing, physical block, channels). Toolbar: Add an RGB panel (`fixtures.createRgbPanel`:
+  columns, rows, components, size, start corner, snake / zig-zag, direction) and a printable
+  Universe summary (channels used, weight, power, DIP switches). Fixture Groups: "Edit layout..."
+  opens the grid editor (size, drag a head to move / swap, select + Swap / Remove, rotate 90 / 180 /
+  270, flip, regenerate in DMX order, reset, place any head by picking it and clicking a cell).
+  Fixture Tools: a Color filters section (`fixtures.colorFilters.list`, read-only), a single-axis
+  position tool for pan-only / tilt-only fixtures, and a Channels console (fader window with page
+  shift, pan / tilt mode, multiple channel selection, copy to all fixtures of the same type) on the
+  live / Scene target. Printing uses the browser's print dialog on a print-only copy of the
+  summary. Not in the browser: editing colour filter files, and mapping an external controller onto
+  the console (the Qt feature lives in qmlui's SceneEditor, there is no engine / API hook).
 - **Script / Audio / Video editors** (added 2026-09-27, verified against a `media` sandbox on ports
   9140/9141 by `webui/tools/e2e/media.js`): Script - line-numbered editor, insert-method menu from
   `functions.script.listCommands`, function / fixture ID pickers, server-side syntax check with the

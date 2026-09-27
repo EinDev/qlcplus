@@ -342,6 +342,56 @@ channels:
         $ref: '#/components/messages/FixturesMonitorAimAtOkResponse'
       fixturesMonitorChangedEvent:
         $ref: '#/components/messages/FixturesMonitorChangedEvent'
+      fixturesCreateRgbPanelRequest:
+        $ref: '#/components/messages/FixturesCreateRgbPanelRequest'
+      fixturesCreateRgbPanelResponse:
+        $ref: '#/components/messages/FixturesCreateRgbPanelResponse'
+      fixturesCreateRgbPanelOkResponse:
+        $ref: '#/components/messages/FixturesCreateRgbPanelOkResponse'
+      fixturesChannelSetBehaviourRequest:
+        $ref: '#/components/messages/FixturesChannelSetBehaviourRequest'
+      fixturesChannelSetBehaviourResponse:
+        $ref: '#/components/messages/FixturesChannelSetBehaviourResponse'
+      fixturesChannelSetBehaviourOkResponse:
+        $ref: '#/components/messages/FixturesChannelSetBehaviourOkResponse'
+      fixturesChannelBehaviourChangedEvent:
+        $ref: '#/components/messages/FixturesChannelBehaviourChangedEvent'
+      fixturesModifiersListRequest:
+        $ref: '#/components/messages/FixturesModifiersListRequest'
+      fixturesModifiersListResponse:
+        $ref: '#/components/messages/FixturesModifiersListResponse'
+      fixturesModifiersListOkResponse:
+        $ref: '#/components/messages/FixturesModifiersListOkResponse'
+      fixturesModifiersGetRequest:
+        $ref: '#/components/messages/FixturesModifiersGetRequest'
+      fixturesModifiersGetResponse:
+        $ref: '#/components/messages/FixturesModifiersGetResponse'
+      fixturesModifiersGetOkResponse:
+        $ref: '#/components/messages/FixturesModifiersGetOkResponse'
+      fixturesModifiersSaveRequest:
+        $ref: '#/components/messages/FixturesModifiersSaveRequest'
+      fixturesModifiersSaveResponse:
+        $ref: '#/components/messages/FixturesModifiersSaveResponse'
+      fixturesModifiersSaveOkResponse:
+        $ref: '#/components/messages/FixturesModifiersSaveOkResponse'
+      fixturesModifiersRenameRequest:
+        $ref: '#/components/messages/FixturesModifiersRenameRequest'
+      fixturesModifiersRenameResponse:
+        $ref: '#/components/messages/FixturesModifiersRenameResponse'
+      fixturesModifiersRevisionsOkResponse:
+        $ref: '#/components/messages/FixturesModifiersRevisionsOkResponse'
+      fixturesModifiersDeleteRequest:
+        $ref: '#/components/messages/FixturesModifiersDeleteRequest'
+      fixturesModifiersDeleteResponse:
+        $ref: '#/components/messages/FixturesModifiersDeleteResponse'
+      fixturesModifiersChangedEvent:
+        $ref: '#/components/messages/FixturesModifiersChangedEvent'
+      fixturesColorFiltersListRequest:
+        $ref: '#/components/messages/FixturesColorFiltersListRequest'
+      fixturesColorFiltersListResponse:
+        $ref: '#/components/messages/FixturesColorFiltersListResponse'
+      fixturesColorFiltersListOkResponse:
+        $ref: '#/components/messages/FixturesColorFiltersListOkResponse'
       fixturesDocRevisionOkResponse:
         $ref: '#/components/messages/FixturesDocRevisionOkResponse'
       fixtureDefsListRequest:
@@ -2449,6 +2499,114 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/fixturesMonitorChangedEvent'
+  sendFixturesCreateRgbPanel:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/fixturesCreateRgbPanelRequest'
+  receiveFixturesCreateRgbPanelResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/fixturesCreateRgbPanelResponse'
+  sendFixturesChannelSetBehaviour:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/fixturesChannelSetBehaviourRequest'
+  receiveFixturesChannelSetBehaviourResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/fixturesChannelSetBehaviourResponse'
+  sendFixturesModifiersList:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/fixturesModifiersListRequest'
+  receiveFixturesModifiersListResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/fixturesModifiersListResponse'
+  sendFixturesModifiersGet:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/fixturesModifiersGetRequest'
+  receiveFixturesModifiersGetResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/fixturesModifiersGetResponse'
+  sendFixturesModifiersSave:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/fixturesModifiersSaveRequest'
+  receiveFixturesModifiersSaveResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/fixturesModifiersSaveResponse'
+  sendFixturesModifiersRename:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/fixturesModifiersRenameRequest'
+  receiveFixturesModifiersRenameResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/fixturesModifiersRenameResponse'
+  sendFixturesModifiersDelete:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/fixturesModifiersDeleteRequest'
+  receiveFixturesModifiersDeleteResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/fixturesModifiersDeleteResponse'
+  sendFixturesColorFiltersList:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/fixturesColorFiltersListRequest'
+  receiveFixturesColorFiltersListResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/fixturesColorFiltersListResponse'
+  receiveFixturesChannelBehaviourChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/fixturesChannelBehaviourChangedEvent'
+  receiveFixturesModifiersChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/fixturesModifiersChangedEvent'
   sendFixtureDefsList:
     action: send
     channel:
@@ -8224,11 +8382,16 @@ components:
             required:
             - fixtureId
             - baseRevision
-            description: At least one of universe/address/name must be present. Moving universe/address
+            description: 'At least one of universe/address/name/mode must be present. Moving universe/address
               is FixtureManager::moveFixture() (address only) extended to also cover universe, plus renameFixture().
               The underlying engine setters (Fixture::setAddress/setUniverse) do NOT themselves reject
               overlaps — see fixtures-notes.md; the API server must run the same overlap check fixtures.patch
-              does.
+              does. `mode` is FixtureManager::setFixtureModeIndex(): the new footprint (at the final universe/address
+              when those are given too) must fit and be free (FIXTURES_ADDRESS_OVERLAP otherwise, nothing
+              changes); mode, address and universe are applied atomically with one re-tracking of the
+              address map. Forced HTP/LTP, fade exclusion and modifiers on channel indices the new mode
+              lacks are dropped; functions are left untouched like the Qt UI does (Scene values on vanished
+              channels stay and come back when switching back).'
             properties:
               fixtureId:
                 type: string
@@ -8238,6 +8401,16 @@ components:
                 type: integer
               name:
                 type: string
+              mode:
+                type: string
+                description: Name of a mode of the fixture's own definition (see fixtures.get availableModes).
+              applyToSameType:
+                type: boolean
+                default: false
+                description: 'With mode: also switch every fixture with the same definition AND mode,
+                  each at its own address ("Apply changes to fixtures of the same type"). All footprints
+                  are pre-checked (all or nothing); cannot be combined with universe/address. The response
+                  then carries fixtureIds, and one fixtures.updated is sent per fixture.'
               baseRevision:
                 type: integer
     FixturesUpdateResponse:
@@ -9526,6 +9699,671 @@ components:
                   $ref: '#/components/schemas/FixturesMonitorItemKey'
               docRevision:
                 type: integer
+    FixturesCreateRgbPanelRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: fixtures.createRgbPanel
+          params:
+            type: object
+            required:
+            - universe
+            - address
+            - columns
+            - rows
+            - baseRevision
+            description: 'FixtureManager::addRGBPanel() (RGBPanelProperties.qml): one generic "RGB Panel"
+              row fixture per row (per column when direction is vertical) plus a fixture group laid out
+              like the panel, and 2D placement like the Qt UI. Every row footprint is validated before
+              anything is created (FIXTURES_ADDRESS_OVERLAP). A row that does not fit the rest of a universe
+              continues at address 0 of the next EXISTING universe; unlike the Qt UI no universe is ever
+              created (INVALID_PARAMS instead). Broadcasts fixtures.patched and fixtures.group.created.'
+            properties:
+              name:
+                type: string
+                description: Group name; rows are named "<name> - Row <n>". Default "RGB Panel".
+              universe:
+                type: integer
+              address:
+                type: integer
+                description: 0-based start address of the first row.
+              columns:
+                type: integer
+                minimum: 1
+                maximum: 170
+              rows:
+                type: integer
+                minimum: 1
+                maximum: 999
+              components:
+                type: string
+                enum:
+                - RGB
+                - BGR
+                - BRG
+                - GBR
+                - GRB
+                - RGBW
+                - RBG
+                default: RGB
+              direction:
+                type: string
+                enum:
+                - horizontal
+                - vertical
+                default: horizontal
+              startCorner:
+                type: string
+                enum:
+                - topLeft
+                - topRight
+                - bottomLeft
+                - bottomRight
+                default: topLeft
+              displacement:
+                type: string
+                enum:
+                - snake
+                - zigzag
+                default: snake
+              physicalWidth:
+                type: integer
+                default: 1000
+                description: Panel width in mm.
+              physicalHeight:
+                type: integer
+                default: 1000
+                description: Panel height in mm.
+              x:
+                type: number
+                default: 0
+                description: 2D placement origin (mm)
+                as the Qt UI's drop point.: null
+              y:
+                type: number
+                default: 0
+              baseRevision:
+                type: integer
+    FixturesCreateRgbPanelResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/FixturesCreateRgbPanelOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    FixturesCreateRgbPanelOkResponse:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - ok
+        - result
+        properties:
+          type:
+            const: response
+          id:
+            type: string
+          ok:
+            const: true
+          result:
+            type: object
+            required:
+            - docRevision
+            - fixtureIds
+            - groupId
+            properties:
+              docRevision:
+                type: integer
+              fixtureIds:
+                type: array
+                items:
+                  type: string
+              groupId:
+                type: string
+    FixturesChannelSetBehaviourRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: fixtures.channel.setBehaviour
+          params:
+            type: object
+            required:
+            - fixtureId
+            - baseRevision
+            description: FixtureChannelDelegate.qml's per-channel controls (FixtureManager::setItemRoleData
+              canFade/precedence, setChannelModifier). One of channel/channels and at least one of canFade/precedence/modifier.
+              Intensity channels are HTP by nature and can only be forced LTP; every other channel can
+              only be forced HTP (INVALID_PARAMS otherwise, like the Qt UI's rule). The change is pushed
+              to the universe at once (Doc::updateFixtureChannelCapabilities). applyToSameType repeats
+              it on every fixture with the same definition AND mode ("Apply changes to fixtures of the
+              same type").
+            properties:
+              fixtureId:
+                type: string
+              channel:
+                type: integer
+              channels:
+                type: array
+                items:
+                  type: integer
+              canFade:
+                type: boolean
+              precedence:
+                type: string
+                enum:
+                - auto
+                - htp
+                - ltp
+              modifier:
+                type:
+                - string
+                - 'null'
+                description: Template name; null, "" or "None" detaches the modifier. Unknown -> NOT_FOUND.
+              applyToSameType:
+                type: boolean
+                default: false
+              baseRevision:
+                type: integer
+    FixturesChannelSetBehaviourResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/FixturesChannelSetBehaviourOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    FixturesChannelSetBehaviourOkResponse:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - ok
+        - result
+        properties:
+          type:
+            const: response
+          id:
+            type: string
+          ok:
+            const: true
+          result:
+            type: object
+            required:
+            - docRevision
+            - fixtureIds
+            properties:
+              docRevision:
+                type: integer
+              fixtureIds:
+                type: array
+                items:
+                  type: string
+                description: Every fixture changed.
+    FixturesChannelBehaviourChangedEvent:
+      payload:
+        type: object
+        required:
+        - type
+        - topic
+        - data
+        properties:
+          type:
+            const: event
+          topic:
+            const: fixtures.channel.behaviourChanged
+          originClientId:
+            type:
+            - string
+            - 'null'
+          data:
+            type: object
+            required:
+            - docRevision
+            - fixtureIds
+            - channels
+            description: The applied change; only the fields that were set are present.
+            properties:
+              docRevision:
+                type: integer
+              fixtureIds:
+                type: array
+                items:
+                  type: string
+              channels:
+                type: array
+                items:
+                  type: integer
+              canFade:
+                type: boolean
+              precedence:
+                type: string
+                enum:
+                - auto
+                - htp
+                - ltp
+              modifier:
+                type:
+                - string
+                - 'null'
+    FixturesModifiersListRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: fixtures.modifiers.list
+          params:
+            type: object
+    FixturesModifiersListResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/FixturesModifiersListOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    FixturesModifiersListOkResponse:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - ok
+        - result
+        properties:
+          type:
+            const: response
+          id:
+            type: string
+          ok:
+            const: true
+          result:
+            type: object
+            required:
+            - templates
+            - modifiersRevision
+            properties:
+              templates:
+                type: array
+                description: Doc::modifiersCache(), sorted by name.
+                items:
+                  type: object
+                  required:
+                  - name
+                  - isUser
+                  properties:
+                    name:
+                      type: string
+                    isUser:
+                      type: boolean
+                      description: false for the read-only system templates.
+              modifiersRevision:
+                type: integer
+    FixturesModifiersGetRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: fixtures.modifiers.get
+          params:
+            type: object
+            required:
+            - name
+            properties:
+              name:
+                type: string
+    FixturesModifiersGetResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/FixturesModifiersGetOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    FixturesModifiersGetOkResponse:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - ok
+        - result
+        properties:
+          type:
+            const: response
+          id:
+            type: string
+          ok:
+            const: true
+          result:
+            type: object
+            required:
+            - name
+            - isUser
+            - points
+            - modifiersRevision
+            properties:
+              name:
+                type: string
+              isUser:
+                type: boolean
+              points:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FixturesModifierPoint'
+              modifiersRevision:
+                type: integer
+    FixturesModifiersSaveRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: fixtures.modifiers.save
+          params:
+            type: object
+            required:
+            - name
+            - points
+            description: 'FixtureManager::saveChannelModifier(): upsert of a USER template, written as
+              "<name>.qxmt" into the user modifiers folder (QLCModifiersCache::userTemplateDirectory(),
+              overridable with the QLCPLUS_USER_MODIFIERS_DIR environment variable). An existing user
+              template is updated in place, so channels already using it follow at once. System template
+              names, "None", names with file system characters, and point lists not running from original
+              0 to 255 with non-decreasing originals are INVALID_PARAMS. baseRevision (optional) is checked
+              against modifiersRevision (§4c).'
+            properties:
+              name:
+                type: string
+              points:
+                type: array
+                minItems: 2
+                maxItems: 256
+                items:
+                  $ref: '#/components/schemas/FixturesModifierPoint'
+              baseRevision:
+                type: integer
+    FixturesModifiersSaveResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/FixturesModifiersSaveOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    FixturesModifiersSaveOkResponse:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - ok
+        - result
+        properties:
+          type:
+            const: response
+          id:
+            type: string
+          ok:
+            const: true
+          result:
+            type: object
+            required:
+            - modifiersRevision
+            - name
+            - created
+            properties:
+              modifiersRevision:
+                type: integer
+              name:
+                type: string
+              created:
+                type: boolean
+                description: false when an existing user template was overwritten.
+    FixturesModifiersRenameRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: fixtures.modifiers.rename
+          params:
+            type: object
+            required:
+            - name
+            - newName
+            description: User templates only (the Qt UI has no rename; a new file is written and the old
+              one removed). The project stores a channel's modifier by name, so when a patched fixture
+              uses the template the rename also bumps docRevision.
+            properties:
+              name:
+                type: string
+              newName:
+                type: string
+              baseRevision:
+                type: integer
+    FixturesModifiersRenameResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/FixturesModifiersRevisionsOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    FixturesModifiersRevisionsOkResponse:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - ok
+        - result
+        properties:
+          type:
+            const: response
+          id:
+            type: string
+          ok:
+            const: true
+          result:
+            type: object
+            required:
+            - modifiersRevision
+            - docRevision
+            properties:
+              modifiersRevision:
+                type: integer
+              docRevision:
+                type: integer
+              detachedFixtureIds:
+                type: array
+                items:
+                  type: string
+                description: fixtures.modifiers.delete only - fixtures whose channels lost the template.
+    FixturesModifiersDeleteRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: fixtures.modifiers.delete
+          params:
+            type: object
+            required:
+            - name
+            description: User templates only. Deletes the file; every channel using the template loses
+              its modifier first (fixture and universe), which bumps docRevision when there was any.
+            properties:
+              name:
+                type: string
+              baseRevision:
+                type: integer
+    FixturesModifiersDeleteResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/FixturesModifiersRevisionsOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    FixturesModifiersChangedEvent:
+      payload:
+        type: object
+        required:
+        - type
+        - topic
+        - data
+        properties:
+          type:
+            const: event
+          topic:
+            const: fixtures.modifiers.changed
+          originClientId:
+            type:
+            - string
+            - 'null'
+          data:
+            type: object
+            required:
+            - modifiersRevision
+            - action
+            - name
+            - docRevision
+            properties:
+              modifiersRevision:
+                type: integer
+              action:
+                type: string
+                enum:
+                - saved
+                - renamed
+                - deleted
+              name:
+                type: string
+              newName:
+                type: string
+                description: renamed only.
+              docRevision:
+                type: integer
+    FixturesColorFiltersListRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: fixtures.colorFilters.list
+          params:
+            type: object
+    FixturesColorFiltersListResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/FixturesColorFiltersListOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    FixturesColorFiltersListOkResponse:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - ok
+        - result
+        properties:
+          type:
+            const: response
+          id:
+            type: string
+          ok:
+            const: true
+          result:
+            type: object
+            required:
+            - files
+            description: 'The colour filter files (.qxcf) of the system and the user ColorFilters folders,
+              as ColorToolFilters.qml lists them. Read-only: editing filter files is not part of the API.'
+            properties:
+              files:
+                type: array
+                items:
+                  type: object
+                  required:
+                  - name
+                  - fileName
+                  - isUser
+                  - filters
+                  properties:
+                    name:
+                      type: string
+                    fileName:
+                      type: string
+                    isUser:
+                      type: boolean
+                    filters:
+                      type: array
+                      items:
+                        type: object
+                        required:
+                        - name
+                        properties:
+                          name:
+                            type: string
+                          rgb:
+                            type: string
+                            description: '#rrggbb, absent when the filter only has W/A/UV.'
+                          white:
+                            type: integer
+                          amber:
+                            type: integer
+                          uv:
+                            type: integer
     FixturesDocRevisionOkResponse:
       payload:
         type: object
@@ -25622,6 +26460,9 @@ components:
         channels:
           type: integer
           description: Fixture::channels() — the instance's channel footprint.
+        heads:
+          type: integer
+          description: Fixture::heads() — number of heads (fixture group grid cells it needs).
         fixtureType:
           type: string
           description: 'Fixture::typeString() — QLCFixtureDef::typeToString(fixtureDef()->type()) when
@@ -25677,6 +26518,53 @@ components:
                 absoluteAddress:
                   type: integer
                   description: universe*512 + address + index (Fixture::channelAddress()).
+                canFade:
+                  type: boolean
+                  description: false when the channel is excluded from fades (Fixture::channelCanFade()).
+                precedence:
+                  type: string
+                  enum:
+                  - auto
+                  - htp
+                  - ltp
+                  description: Forced HTP / forced LTP, or auto (the channel group decides).
+                modifier:
+                  type:
+                  - string
+                  - 'null'
+                  description: Name of the attached channel modifier template, null for none.
+          availableModes:
+            type: array
+            description: Every mode of the fixture's definition, for fixtures.update {mode} (generic dimmer
+              / RGB panel definitions are not in the library, so fixtures.defs.getModel cannot list them).
+            items:
+              type: object
+              required:
+              - name
+              - channelCount
+              properties:
+                name:
+                  type: string
+                channelCount:
+                  type: integer
+          physical:
+            $ref: '#/components/schemas/FixturesPhysical'
+            description: The current mode's physical block (QLCFixtureMode::physical()).
+    FixturesModifierPoint:
+      type: object
+      description: One handler of a ChannelModifier curve (original DMX value -> modified value).
+      required:
+      - original
+      - modified
+      properties:
+        original:
+          type: integer
+          minimum: 0
+          maximum: 255
+        modified:
+          type: integer
+          minimum: 0
+          maximum: 255
     FixturesGroupHeadEntry:
       type: object
       required:

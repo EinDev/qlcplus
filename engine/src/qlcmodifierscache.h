@@ -57,6 +57,23 @@ public:
     ChannelModifier* modifier(const QString& name) const;
 
     /**
+     * Remove a modifier from the cache WITHOUT deleting it: the caller owns
+     * the returned instance (universes and fixtures may still hold its
+     * pointer until the caller has detached them).
+     *
+     * @return the removed modifier, or NULL if $name is not cached
+     */
+    ChannelModifier* takeModifier(const QString& name);
+
+    /**
+     * Rename a cached modifier (the instance keeps its address, so every
+     * fixture/universe referencing it follows the new name).
+     *
+     * @return false if $oldName is unknown or $newName is already taken
+     */
+    bool renameModifier(const QString& oldName, const QString& newName);
+
+    /**
      * Get the default system channels modifiers directory that contains
      * installed modifiers templates. The location varies greatly between
      * platforms.
@@ -68,7 +85,8 @@ public:
     /**
      * Get the user's own default channels modifiers directory that is used to
      * save custom modifiers templates. The location varies greatly between
-     * platforms.
+     * platforms. The environment variable QLCPLUS_USER_MODIFIERS_DIR, when
+     * set, overrides it (tests and sandboxes, like QLCPLUS_USER_FIXTURE_DIR).
      *
      * @return User channels modifiers templates directory
      */
