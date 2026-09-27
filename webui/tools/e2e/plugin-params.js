@@ -187,7 +187,12 @@ async function main() {
     /* the add row empties once the server answered: what an operator waits for before the next one */
     await page.waitFor(`(${inDlg('input[data-role="param-key"]')} || {}).value === ''`, 5000).catch(() => { throw new Error('the add row did not clear after Set ' + key); });
   };
-  const editParam = (key, value) => typeInto(page, inDlg(`input[data-param="${key}"]`), value, 'edit ' + key);
+  /* the rows are read-only while a Set is in flight: wait for the field to unlock, as an operator does */
+  const editParam = async (key, value) => {
+    const field = inDlg(`input[data-param="${key}"]`);
+    await page.waitFor(`(function(){ const e = ${field}; return !!e && !e.readOnly; })()`, 5000).catch(() => { throw new Error(key + ' stayed read-only'); });
+    await typeInto(page, field, value, 'edit ' + key);
+  };
 
   try {
     await page.waitFor(`!!${uni('[data-role="input-picker"]')}`, 30000);
