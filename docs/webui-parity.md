@@ -121,9 +121,9 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | Bottom-panel external controller mapping of the fixture faders | fixturesfunctions/BottomPanel.qml | n/a | - ; the desktop's mapping lives entirely in the qmlui SceneEditor on inputValueChanged with no engine hook; external controllers drive the rig through VC input sources, which the web UI configures |
 | Palettes: list and search | fixturesfunctions/PaletteManager.qml | live | - ; search box not checked |
 | Palettes: create Dimmer / Colour palette | popup/PopupCreatePalette.qml, PaletteFanningBox.qml | live | - |
-| Palettes: create Position / Pan / Tilt / Shutter / Gobo / Position 3D palette | popup/PopupCreatePalette.qml | partial | U; Pan, Position 3D, Shutter, Gobo, Zoom live (sandbox 2026-09-27, Pan in degrees); Tilt and Pan+Tilt forms not driven yet |
+| Palettes: create Position / Pan / Tilt / Shutter / Gobo / Position 3D palette | popup/PopupCreatePalette.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-ff.js (Pan / Tilt / Pan+Tilt in degrees with the fixtures' range, Position 3D, Shutter, Gobo, Zoom) |
 | Palettes: "Also create a Scene" on create | popup/PopupCreatePalette.qml | live | - ; sandbox 2026-09-27 |
-| Palettes: apply to the selected fixtures | fixturesfunctions/PaletteManager.qml | live | - ; double-click |
+| Palettes: apply to the selected fixtures | fixturesfunctions/PaletteManager.qml | partial | S; the desktop applies every palette type (with fanning) through QLCPalette::valuesFromFixtures; the web UI computes Color / Dimmer / Pan / Tilt in the browser only and cannot apply Shutter / Gobo / Zoom / Position 3D palettes (no server apply method yet) |
 | Palettes: edit (rename, change value) | fixturesfunctions/PaletteManager.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-ff.js |
 | Palettes: delete | fixturesfunctions/PaletteManager.qml | live | - |
 | Palette fanning (type, layout, amount, per-axis ordering) | PaletteFanningBox.qml | live | - ; sandbox 2026-09-27 (colour palette fanned Linear 60%, saved in the .qxw) |
@@ -372,7 +372,7 @@ duplicate a feature row above say so.
 | Audio configuration | popup/PopupAudioConfiguration.qml | n/a | - ; host audio devices |
 | Channel modifiers editor | popup/PopupChannelModifiers.qml | live | - ; sandbox 2026-09-27 |
 | Channel wizard | popup/PopupChannelWizard.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/fixture-editor.js |
-| Create palette | popup/PopupCreatePalette.qml | partial | U; see the palette create row (Tilt / Pan+Tilt not driven) |
+| Create palette | popup/PopupCreatePalette.qml | live | - ; see the palette create row |
 | Custom feedback | popup/PopupCustomFeedback.qml | partial | U; lower / upper / monitor values live (sandbox 2026-09-27); colour table and MIDI routing need a patched input profile |
 | DMX channel dump | popup/PopupDMXDump.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/tools-misc.js |
 | Disclaimer | popup/PopupDisclaimer.qml | n/a | - ; desktop first-run notice |
@@ -425,8 +425,8 @@ the total is larger than the number of distinct actions). Recompute after editin
 
 | Status | Rows |
 | --- | --- |
-| live | 260 |
-| partial | 33 |
+| live | 261 |
+| partial | 32 |
 | missing | 0 |
 | n/a | 21 |
 | total | 314 |
