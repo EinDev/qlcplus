@@ -174,6 +174,12 @@ function VCXYPadBodyEx({ w }) {
   React.useEffect(() => { if (w.floorPosition) setFloorPos(w.floorPosition); }, [w.floorPosition && w.floorPosition.x, w.floorPosition && w.floorPosition.y, w.floorPosition && w.floorPosition.z]);
   React.useEffect(() => { if (w.activePresetId != null) setActivePreset(Number(w.activePresetId)); }, [w.activePresetId]);
   useWidgetEvent(vc, 'vc.xyPad.floorPositionChanged', w.id, (d) => setFloorPos({ x: Number(d.x), y: Number(d.y), z: Number(d.z) }));
+  /* VCXYPadItem.qml's yellow dots: where each head really points, read back from the output (the
+     engine applies the pan / tilt range, reverse flags and the pad's inverted Y). Gated topic. */
+  const [heads, setHeads] = React.useState(Array.isArray(w.fixturePositions) ? w.fixturePositions : []);
+  React.useEffect(() => { if (Array.isArray(w.fixturePositions)) setHeads(w.fixturePositions); }, [JSON.stringify(w.fixturePositions || [])]);
+  useGatedTopic(vc, 'vc.xyPad.fixturePositionsChanged', true);
+  useWidgetEvent(vc, 'vc.xyPad.fixturePositionsChanged', w.id, (d) => setHeads(Array.isArray(d.positions) ? d.positions : []));
   useWidgetEvent(vc, 'vc.xyPad.activePresetChanged', w.id, (d) => setActivePreset(Number(d.activePresetId)));
   useRefreshOnPresets(vc, 'vc.xyPad.presetsChanged', w.id);
   const throttled = useThrottledSender(33);
@@ -215,6 +221,11 @@ function VCXYPadBodyEx({ w }) {
           {!floor ? <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: 1, background: 'var(--bg-control)' }} /> : null}
           {!floor ? <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: 1, background: 'var(--bg-control)' }} /> : null}
           {limited ? <div style={Object.assign({ position: 'absolute', border: '1px solid turquoise', pointerEvents: 'none' }, win)} /> : null}
+          {!floor ? heads.map((h, i) => (
+            <div key={'h' + i} data-e2e-head={i} data-x={Number(h.x).toFixed(3)} data-y={Number(h.y).toFixed(3)}
+              style={{ position: 'absolute', left: Number(h.x) * 100 + '%', top: Number(h.y) * 100 + '%', width: 10, height: 10, marginLeft: -5, marginTop: -5, borderRadius: 5,
+                background: '#FFD95A', border: '1px solid #5E4A00', opacity: .9, pointerEvents: 'none' }} />
+          )) : null}
           <div style={{ position: 'absolute', left: cx, top: 0, bottom: 0, width: 1, background: press ? 'var(--selection)' : 'var(--fader-track)' }} />
           <div style={{ position: 'absolute', top: cy, left: 0, right: 0, height: 1, background: press ? 'var(--selection)' : 'var(--fader-track)' }} />
           <div style={{ position: 'absolute', left: cx, top: cy, width: 14, height: 14, marginLeft: -7, marginTop: -7, borderRadius: 7, background: press ? 'var(--selection)' : (floor ? 'var(--check-lime)' : 'var(--fader-track)'), border: '2px solid var(--fg-main)' }} />
