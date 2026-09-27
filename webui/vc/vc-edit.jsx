@@ -187,6 +187,11 @@ function VCWidgetProperties({ widgets, functions }) {
   const section = (key, label, body) => (
     <SectionBox key={key} sectionLabel={label} isExpanded={!!open[key]} onToggle={() => toggle(key)}>{open[key] ? body : null}</SectionBox>
   );
+  /* Registry: window.QLCVCProperties[widgetType] (registered from a file loaded after this one) adds
+     the type-specific property sections below the shared Basic/Geometry ones. Props: { w, widgets,
+     functions, cfg, setConfig, setStyle, section, PropRow, CheckRow, ColorField, FunctionPicker }.
+     Use `section(key, label, body)` for each collapsible block so it matches the built-in look. */
+  const Extra = !many ? (window.QLCVCProperties || {})[w.widgetType] : null;
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
       <RobotoText label={many ? widgets.length + ' widgets selected' : w.widgetType + ' #' + w.id} fontSize="var(--text-size-small)" labelColor="var(--fg-light)" height="var(--list-item-height)" leftMargin={6} />
@@ -242,7 +247,9 @@ function VCWidgetProperties({ widgets, functions }) {
           <PropRow label="Lower limit"><CustomSpinBox value={Number.isFinite(cfg.rangeLowLimit) ? cfg.rangeLowLimit : 0} from={0} to={255} width={70} height={24} onValueModified={(v) => setConfig({ rangeLowLimit: v })} /></PropRow>
         </div>
       )) : null}
-      {!many && w.widgetType !== 'Button' && w.widgetType !== 'Slider' && w.widgetType !== 'Frame' && w.widgetType !== 'SoloFrame' && w.widgetType !== 'Label'
+      {Extra ? <Extra w={w} widgets={widgets} functions={functions} cfg={cfg} setConfig={setConfig} setStyle={setStyle} section={section}
+        PropRow={PropRow} CheckRow={CheckRow} ColorField={ColorField} FunctionPicker={FunctionPicker} /> : null}
+      {!many && !Extra && w.widgetType !== 'Button' && w.widgetType !== 'Slider' && w.widgetType !== 'Frame' && w.widgetType !== 'SoloFrame' && w.widgetType !== 'Label'
         ? <RobotoText label={w.widgetType + ' settings cannot be edited through the Control API yet'} fontSize="var(--text-size-menubar)" labelColor="var(--fg-medium)" wrapText height="auto" style={{ padding: 6 }} /> : null}
     </div>
   );

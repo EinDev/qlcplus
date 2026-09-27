@@ -28,10 +28,26 @@ function isTyping() {
 }
 
 const CONTEXTS = ['fx', 'vc', 'sd', 'io'];
+
+/* Extension registries, so a new screen / toolbar item / actions-menu entry lives in its own file
+   (loaded after this one in index.html) instead of editing App.jsx:
+   - window.QLCScreens[id] = { id, icon, label, keys, hotkey, component, order }
+       A top-level context like the built-in four. `icon` is a D.icon() name, `keys` the shortcut
+       hint text (e.g. 'Ctrl 5'), `hotkey` the digit for Ctrl+<digit>, `component` the screen.
+       id 'show' replaces the disabled Show Manager placeholder in the toolbar.
+   - window.QLCToolbarItems = [Component, ...]  rendered right of the mode button; props: { qlc }.
+   - window.QLCMenuItems = [fn, ...]  each fn({ qlc, project, online, setDialog, setCtx }) returns an
+       array of ActionsMenu items (or '-'), appended before "About".
+   - window.QLCUISettingsDialog = Component  props { open, onClose, qlc }; enables the gear button. */
+function registeredScreens() {
+  const r = window.QLCScreens || {};
+  return Object.keys(r).map(k => r[k]).filter(s => s && s.component).sort((a, b) => (a.order || 0) - (b.order || 0));
+}
 function initialContext() {
   try {
     const q = new URLSearchParams(location.search).get('ctx');
     if (CONTEXTS.indexOf(q) !== -1) return q;
+    if (window.QLCScreens && window.QLCScreens[q]) return q;
   } catch (e) {}
   return 'fx';
 }
@@ -328,6 +344,7 @@ function App() {
   const [about, setAbout] = React.useState(false);
   const [menu, setMenu] = React.useState(false);
   const [dialog, setDialog] = React.useState(null); // {kind:'open'|'saveAs'|'confirm'|'message', ...}
+  const [uiSettings, setUiSettings] = React.useState(false);
   const [blackout, toggleBlackout] = useBlackout(qlc);
   const [mode, toggleMode] = useMode(qlc);
   const project = useProject(qlc);
@@ -367,6 +384,7 @@ function App() {
       if (e.key === ' ' && !e.ctrlKey && !isTyping() && !onButton && qlc.online && bpm.supported && !bpm.owned) { e.preventDefault(); bpm.tap(); return; }
       if (!e.ctrlKey) return;
       const map = { '1': 'fx', '2': 'vc', '3': 'sd', '4': 'io' };
+      registeredScreens().forEach(s => { if (s.hotkey) map[String(s.hotkey)] = s.id; });
       if (map[e.key]) { e.preventDefault(); setCtx(map[e.key]); }
       const key = e.key.toLowerCase();
       if (key === 'b') { e.preventDefault(); toggleBlackout(); }
@@ -380,7 +398,12 @@ function App() {
     return () => window.removeEventListener('keydown', k);
   }, [toggleBlackout, save, stopAll, history.undo, history.redo, bpm.tap, bpm.supported, qlc.online]);
 
-  const Screen = ctx === 'fx' ? FixturesFunctions : ctx === 'vc' ? VirtualConsole : ctx === 'sd' ? SimpleDesk : InputOutput;
+  const screens = registeredScreens();
+  const registered = screens.find(s => s.id === ctx);
+  const Screen = registered ? registered.component
+    : ctx === 'fx' ? FixturesFunctions : ctx === 'vc' ? VirtualConsole : ctx === 'sd' ? SimpleDesk : InputOutput;
+  const showScreen = screens.find(s => s.id === 'show');
+  const UISettingsDialog = window.QLCUISettingsDialog || null;
   const entry = (id, icon, label, keys) => (
     <ShortcutHint keys={keys} placement="bottom">
       <MenuBarEntry imgSource={D.icon(icon)} entryText={label} checked={ctx === id} onClick={() => setCtx(id)} />
@@ -403,6 +426,7 @@ function App() {
     '-',
     { label: 'Undo', icon: 'undo', detail: history.undoText, disabled: !online || history.supported === false || !history.canUndo, onClick: history.undo, tooltip: undoTip },
     { label: 'Redo', icon: 'redo', detail: history.redoText, disabled: !online || history.supported === false || !history.canRedo, onClick: history.redo, tooltip: redoTip },
+    ...(window.QLCMenuItems || []).map(f => { try { return f({ qlc, project, online, setDialog, setCtx }) || []; } catch (e) { console.error(e); return []; } }).flat(),
     '-',
     { label: 'About', fa: 'fa_circle_info', onClick: () => setAbout(true) }
   ];
@@ -419,8 +443,10 @@ function App() {
           {entry('fx', 'fixture', 'Fixtures & Functions', 'Ctrl 1')}
           {entry('vc', 'virtualconsole', 'Virtual Console', 'Ctrl 2')}
           {entry('sd', 'simpledesk', 'Simple Desk', 'Ctrl 3')}
-          <MenuBarEntry imgSource={D.icon('showmanager')} entryText="Show Manager" disabled title="Show Manager — not available in the web UI yet" style={{ opacity: .5, cursor: 'default' }} />
+          {showScreen ? entry('show', showScreen.icon || 'showmanager', showScreen.label || 'Show Manager', showScreen.keys)
+            : <MenuBarEntry imgSource={D.icon('showmanager')} entryText="Show Manager" disabled title="Show Manager — not available in the web UI yet" style={{ opacity: .5, cursor: 'default' }} />}
           {entry('io', 'inputoutput', 'Input / Output', 'Ctrl 4')}
+          {screens.filter(s => s.id !== 'show').map(s => <React.Fragment key={s.id}>{entry(s.id, s.icon, s.label, s.keys)}</React.Fragment>)}
           <ToolbarSpacer />
           <ConnectionBar />
           <span style={{ width: 1, alignSelf: 'stretch', margin: '6px 2px', background: 'var(--border-color-dark)' }} />
@@ -450,8 +476,10 @@ function App() {
             fontSize="var(--text-size-menubar)" disabled={!mode} onClick={toggleMode}
             bgColor={mode === 'operate' ? 'var(--override-red)' : 'var(--bg-control)'}
             style={{ marginLeft: 4 }} title={mode ? 'Engine mode: ' + mode + ' — click to switch' : 'Engine mode — connect first'} />
-          <IconButton faSource="fa_gear" tooltip="UI Settings — not available in the web UI" disabled />
+          {(window.QLCToolbarItems || []).map((C, i) => <C key={i} qlc={qlc} />)}
+          <IconButton faSource="fa_gear" tooltip={UISettingsDialog ? 'UI Settings' : 'UI Settings — not available in the web UI'} disabled={!UISettingsDialog} onClick={() => setUiSettings(true)} />
         </ViewToolbar>
+        {UISettingsDialog ? <UISettingsDialog open={uiSettings} onClose={() => setUiSettings(false)} qlc={qlc} /> : null}
 
         <div style={{ position: 'relative', flex: 1, minHeight: 0 }}>
           <Screen />

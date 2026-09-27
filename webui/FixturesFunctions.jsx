@@ -27,6 +27,21 @@ window.QLCIcons = { FUNCTION_ICONS, FIXTURE_TYPE_ICONS, CHANNEL_GROUP_ICONS, COL
    at render time, never at file scope. */
 function ff(name) { return (window.FF && window.FF[name]) || null; }
 
+/* Function editor registry. `window.QLCEditors[<Function type as the server spells it>]` wins over
+   the built-in editors below (Scene / Chaser / Sequence / Collection live in ff/FunctionEditors.jsx).
+   A new editor registers itself from its own file, loaded after this one in index.html:
+     window.QLCEditors = Object.assign(window.QLCEditors || {}, { EFX: EfxEditor });
+   Props received: qlc, detail (functions.get result), reload, setDetail, functions, fixtures,
+   selectedFixtureIds, palettes, onSelectFixtures. */
+function editorFor(type) {
+  const reg = window.QLCEditors || {};
+  if (reg[type]) return reg[type];
+  if (type === 'Scene') return ff('SceneEditor');
+  if (type === 'Chaser' || type === 'Sequence') return ff('ChaserEditor');
+  if (type === 'Collection') return ff('CollectionEditor');
+  return null;
+}
+
 function TreeBranch({ node, selected, onSelect, expanded, onToggle, depth = 0, decorate, checkable, onContextMenu }) {
   const isOpen = expanded.indexOf(node.id) !== -1;
   const isSel = selected.indexOf(node.id) !== -1;
@@ -274,9 +289,7 @@ function FunctionDetail({ node, qlc, functions, fixtures, selectedFixtureIds, pa
   const [detail, reload, setDetail] = useFunctionDetail(qlc, node.functionId);
   const f = detail || node.summary;
   const type = f.type;
-  const Editor = type === 'Scene' ? ff('SceneEditor')
-    : (type === 'Chaser' || type === 'Sequence') ? ff('ChaserEditor')
-    : type === 'Collection' ? ff('CollectionEditor') : null;
+  const Editor = editorFor(type);
   const Timing = ff('TimingEditor');
   if (!detail) return <div style={{ padding: 20 }}><RobotoText label="Loading…" fontSize={14} labelColor="var(--fg-medium)" /></div>;
   return (

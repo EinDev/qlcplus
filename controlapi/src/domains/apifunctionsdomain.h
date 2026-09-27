@@ -19,6 +19,8 @@
 #define APIFUNCTIONSDOMAIN_H
 
 #include <QObject>
+#include <QJsonObject>
+#include <functional>
 
 class ApiServer;
 class Doc;
@@ -57,6 +59,20 @@ class ApiFunctionsDomain : public QObject
 
 public:
     ApiFunctionsDomain(Doc *doc, ApiServer *server, QObject *parent = nullptr);
+
+    /** functions.get's typeDetail builder for one Function::Type. The
+     *  type-specific domains (EFX, Collection, RGBMatrix, Script, Show, ...)
+     *  register theirs from their own constructor instead of editing this
+     *  file's typeDetailToJson(); Scene/Chaser/Sequence/Audio/Video are
+     *  built in and cannot be overridden. */
+    typedef std::function<QJsonObject(Function *)> TypeDetailProvider;
+    static void setTypeDetailProvider(int functionType, TypeDetailProvider provider);
+
+    /** typeDetail for any function: the built-in builders, else the
+     *  registered provider for its type, else the {functionId} placeholder.
+     *  Exposed so other domains broadcast exactly the shape functions.get
+     *  returns. */
+    static QJsonObject typeDetail(Function *function);
 
 private:
     void registerMethods();

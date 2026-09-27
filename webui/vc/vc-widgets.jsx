@@ -309,6 +309,13 @@ function VCViewOnlyBody({ w }) {
 function VCWidgetBody({ w, header, children }) {
   const vc = useVC();
   let body;
+  /* Registry: window.QLCVCBodies[widgetType] (registered from a file loaded after this one) replaces
+     the built-in body for that widget type - props { w, header, children }. */
+  const reg = window.QLCVCBodies || {};
+  if (reg[w.widgetType]) {
+    body = React.createElement(reg[w.widgetType], { w, header }, children);
+    return <div style={{ position: 'absolute', inset: 0, pointerEvents: vc.edit ? 'none' : 'auto' }}>{body}</div>;
+  }
   switch (w.widgetType) {
     case 'Frame': case 'SoloFrame': body = <VCFrameBody w={w} header={header}>{children}</VCFrameBody>; break;
     case 'Button': body = <VCButtonBody w={w} />; break;

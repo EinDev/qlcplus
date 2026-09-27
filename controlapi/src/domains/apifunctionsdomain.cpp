@@ -20,6 +20,7 @@
 #include <QJsonValue>
 #include <QFileInfo>
 #include <QSet>
+#include <QHash>
 
 #include "apifunctionsdomain.h"
 #include "apiserver.h"
@@ -379,6 +380,12 @@ bool applyMediaSource(Doc *doc, Function *function, const QString &source, QStri
     return true;
 }
 
+QHash<int, ApiFunctionsDomain::TypeDetailProvider> &typeDetailProviders()
+{
+    static QHash<int, ApiFunctionsDomain::TypeDetailProvider> providers;
+    return providers;
+}
+
 QJsonObject typeDetailToJson(Function *function)
 {
     switch (function->type())
@@ -395,6 +402,9 @@ QJsonObject typeDetailToJson(Function *function)
         return videoDetailToJson(function->doc(), static_cast<Video *>(function));
     default:
     {
+        ApiFunctionsDomain::TypeDetailProvider provider = typeDetailProviders().value(function->type());
+        if (provider)
+            return provider(function);
         QJsonObject obj;
         obj.insert(QStringLiteral("functionId"), QString::number(function->id()));
         return obj;
@@ -602,6 +612,16 @@ void ApiFunctionsDomain::slotMediaOriginReloaded(quint32 functionId, QString old
     QJsonObject data = typeDetailToJson(function);
     data.insert(QStringLiteral("status"), reloadStatusToString(MediaAssets::Reloaded));
     m_server->broadcast(QStringLiteral("functions.media.reloaded"), data, QString(), false);
+}
+
+void ApiFunctionsDomain::setTypeDetailProvider(int functionType, TypeDetailProvider provider)
+{
+    typeDetailProviders().insert(functionType, provider);
+}
+
+QJsonObject ApiFunctionsDomain::typeDetail(Function *function)
+{
+    return typeDetailToJson(function);
 }
 
 void ApiFunctionsDomain::registerMethods()

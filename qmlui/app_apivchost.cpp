@@ -52,6 +52,7 @@
 #include <QSet>
 
 #include "app.h"
+#include "app_apivcconfig.h"
 #include "chaser.h"
 #include "chaserstep.h"
 #include "function.h"
@@ -380,11 +381,22 @@ QJsonObject sliderConfigToJson(VCSlider *s)
 
 QJsonObject widgetTypeConfigToJson(VCWidget *w)
 {
-    if (w->type() == VCWidget::ButtonWidget)
-        return buttonConfigToJson(qobject_cast<VCButton *>(w));
-    if (w->type() == VCWidget::SliderWidget)
-        return sliderConfigToJson(qobject_cast<VCSlider *>(w));
-    return QJsonObject();
+    // Button/Slider live in this file; every other type in app_apivcconfig_{layout,live}.cpp
+    switch (w->type())
+    {
+        case VCWidget::ButtonWidget:        return buttonConfigToJson(qobject_cast<VCButton *>(w));
+        case VCWidget::SliderWidget:        return sliderConfigToJson(qobject_cast<VCSlider *>(w));
+        case VCWidget::FrameWidget:
+        case VCWidget::SoloFrameWidget:     return ApiVcConfig::frameConfigToJson(w);
+        case VCWidget::LabelWidget:         return ApiVcConfig::labelConfigToJson(w);
+        case VCWidget::CueListWidget:       return ApiVcConfig::cueListConfigToJson(w);
+        case VCWidget::SpeedWidget:         return ApiVcConfig::speedDialConfigToJson(w);
+        case VCWidget::XYPadWidget:         return ApiVcConfig::xyPadConfigToJson(w);
+        case VCWidget::ClockWidget:         return ApiVcConfig::clockConfigToJson(w);
+        case VCWidget::AnimationWidget:     return ApiVcConfig::animationConfigToJson(w);
+        case VCWidget::AudioTriggersWidget: return ApiVcConfig::audioTriggersConfigToJson(w);
+        default:                            return QJsonObject();
+    }
 }
 
 // --- Live state (vc.widget.get/list's additive per-type fields, and the vc.*Changed events) ---
@@ -858,10 +870,22 @@ bool App::vcSetWidgetConfig(quint32 id, const QJsonObject &configPatch, QString 
         return false;
     }
 
-    if (w->type() == VCWidget::ButtonWidget)
-        return applyButtonConfig(qobject_cast<VCButton *>(w), configPatch, error);
-    if (w->type() == VCWidget::SliderWidget)
-        return applySliderConfig(qobject_cast<VCSlider *>(w), configPatch, error);
+    // Button/Slider live in this file; every other type in app_apivcconfig_{layout,live}.cpp
+    switch (w->type())
+    {
+        case VCWidget::ButtonWidget:        return applyButtonConfig(qobject_cast<VCButton *>(w), configPatch, error);
+        case VCWidget::SliderWidget:        return applySliderConfig(qobject_cast<VCSlider *>(w), configPatch, error);
+        case VCWidget::FrameWidget:
+        case VCWidget::SoloFrameWidget:     return ApiVcConfig::applyFrameConfig(w, configPatch, error);
+        case VCWidget::LabelWidget:         return ApiVcConfig::applyLabelConfig(w, configPatch, error);
+        case VCWidget::CueListWidget:       return ApiVcConfig::applyCueListConfig(w, configPatch, error);
+        case VCWidget::SpeedWidget:         return ApiVcConfig::applySpeedDialConfig(w, configPatch, error);
+        case VCWidget::XYPadWidget:         return ApiVcConfig::applyXyPadConfig(w, configPatch, error);
+        case VCWidget::ClockWidget:         return ApiVcConfig::applyClockConfig(w, configPatch, error);
+        case VCWidget::AnimationWidget:     return ApiVcConfig::applyAnimationConfig(w, configPatch, error);
+        case VCWidget::AudioTriggersWidget: return ApiVcConfig::applyAudioTriggersConfig(w, configPatch, error);
+        default: break;
+    }
 
     if (error)
         *error = QStringLiteral("vc.widget.setConfig is not yet supported for widget type '%1'").arg(wireWidgetType(w->type()));
