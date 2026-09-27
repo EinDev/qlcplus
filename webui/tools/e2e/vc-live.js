@@ -503,11 +503,13 @@ async function dragEl(page, selector, fromFrac, toFrac, horizontal) {
     /* A show saved by an earlier QLC+ 5 build: the countdown was written as Time="HH:mm:ss" holding the
        milliseconds as if they were seconds (5000 ms -> "01:23:20"). It must still load as 5000 ms. */
     const oldPath = path.join(path.dirname(SAVE_PATH), 'oldtime.qxw');
-    fs.writeFileSync(oldPath, xml.replace(/(<Clock\b[^>]*Type="Countdown") Hours="\d+" Minutes="\d+" Seconds="\d+"/, '$1 Time="01:23:20"'));
+    /* Rewrite THIS run's clock: repeated runs against one sandbox save out.qxw with every earlier run's
+       scratch page in it, and an unscoped match rewrote the first (oldest) Countdown instead. */
+    const clockTag = new RegExp('(<Clock\\b[^>]*Type="Countdown") Hours="\\d+" Minutes="\\d+" Seconds="\\d+"( Caption="' + CAP.clock + '")');
+    check(clockTag.test(xml), 'out.qxw has this run\'s Countdown clock to rewrite');
+    fs.writeFileSync(oldPath, xml.replace(clockTag, '$1 Time="01:23:20"$2'));
     await srv.call('core.project.open', { source: 'path', path: oldPath });
-    /* Until the new file has loaded the widget still belongs to out.qxw (a Countdown too, 90000 ms):
-       wait for that one to be replaced, or this reads the previous project. */
-    g = await poll(async () => { const c = await cfgOf(clockId); return c.clockType === 'Countdown' && c.targetTime !== 90000 ? c : null; }, 10000);
+    g = await poll(async () => { const c = await cfgOf(clockId); return c.clockType === 'Countdown' ? c : null; }, 10000);
     eq(g && g.targetTime, 5000, 'an old-format Time="01:23:20" countdown still loads as 5000 ms');
   } catch (e) {
     failures++;
