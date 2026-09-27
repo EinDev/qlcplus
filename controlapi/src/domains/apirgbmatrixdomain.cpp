@@ -646,7 +646,9 @@ void ApiRgbMatrixDomain::registerMethods()
         }
 
         QJsonArray pixels;
-        if (stepsCount > 0)
+        if (stepsCount <= 0)
+            step = 0; // nothing to render: result.step is always a normalised index
+        else
         {
             step = ((step % stepsCount) + stepsCount) % stepsCount;
 

@@ -148,6 +148,8 @@ Server: `controlapi/src/domains/apirgbmatrixdomain.{h,cpp}` (tests in
   `functions.scene.setValues`. Response and event carry the final value.
 - Events (`functions.rgbmatrix.configChanged`, `scriptPropertyChanged`)
   are broadcast for API-driven edits only, with the config read back from
-  the engine. Edits made in the Qt UI reach clients through the existing
-  `core.history.changed` refetch path, not through these topics.
+  the engine. Edits made in the Qt UI are expected to reach clients through
+  the existing `core.history.changed` refetch path (the web UI's
+  `useFunctionDetail` refetches on it), not through these topics - not
+  verified in this slice.
 - Lockable resource type: `function` (nothing new).

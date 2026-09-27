@@ -597,6 +597,7 @@ void ApiRgbMatrixDomain_Test::getPreviewWithoutGroupIsEmpty()
     QVERIFY(reply.value(QStringLiteral("ok")).toBool());
     QJsonObject result = reply.value(QStringLiteral("result")).toObject();
     QCOMPARE(result.value(QStringLiteral("stepsCount")).toInt(), 0);
+    QCOMPARE(result.value(QStringLiteral("step")).toInt(), 0); // normalised even when there is nothing to render
     QCOMPARE(result.value(QStringLiteral("width")).toInt(), 0);
     QCOMPARE(result.value(QStringLiteral("height")).toInt(), 0);
     QCOMPARE(result.value(QStringLiteral("pixels")).toArray().count(), 0);
