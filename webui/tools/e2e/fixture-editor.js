@@ -384,6 +384,7 @@ async function dialogButton(page, text) { await clickEl(page, new Function('cons
     await dialogButton(page, 'Delete');
     check(await waitUntil(async () => !(await api.call('fixturedefs.list', { manufacturer: FORK_MAN })).entries.some(e => e.model === FORK_MODEL && e.isUser)), 'Delete removed the user copy from the library');
     check(await waitUntil(() => !fs.existsSync(forkFile)), 'user copy file removed');
+    check(await waitUntil(async () => (await api.call('fixturedefs.list', { manufacturer: FORK_MAN })).entries.some(e => e.model === FORK_MODEL && !e.isUser)), 'the bundled ' + FORK_MODEL + ' is back in the library (system)');
     await api.call('fixturedefs.session.close', { sessionId: forkSid });
 
     /* ================= 13. delete the E2E definition ================= */

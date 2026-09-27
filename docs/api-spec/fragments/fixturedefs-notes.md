@@ -259,3 +259,25 @@ Decisions made while implementing, all of them visible to a client:
   the next restart (found in the browser: Generic / Generic Smoke vanished).
   The domain now looks the pair up in the system `FixturesMap.xml` and
   reloads the bundled `.qxf`. Test: `deleteUserCopyRestoresBundledDefinition`.
+
+## Implemented 2026-09-27: the web UI (Fixture Editor screen)
+
+`webui/FixtureEditor.jsx` + `webui/fixtureeditor/{fe-core,fe-channels,fe-modes}.jsx`
+(Ctrl+6), verified end to end by `webui/tools/e2e/fixture-editor.js` against a
+sandbox with `dev-webui-sandbox.ps1 -UserFixtureDir` (see `webui/README.md`).
+Client-side decisions a later client may want to copy:
+
+- **One serial queue per session**: `baseRevision` is read when a request is
+  sent (after the previous answer landed), a `CONFLICT` rebases from
+  `error.details` and retries once, and pending requests sharing a key are
+  coalesced. Edits whose payload depends on the current snapshot
+  (`mode.setChannels`, a per-mode physical override) are computed at send
+  time, so two quick edits never undo each other.
+- **Save**: `baseRevision` is the session's library revision; a `CONFLICT`
+  with `details.defRevision: null` (the manufacturer/model was renamed to a
+  pair the library does not have) is retried against null silently, any other
+  value means someone else saved it and the operator is asked first.
+- **`fixturedefs.list` is only ever called with a manufacturer**; the
+  manufacturer column comes from `fixtures.defs.listManufacturers`, which
+  already includes user manufacturers - so no extra cheap listing was needed.
+- An imported session starts modified (it is not in the library yet).
