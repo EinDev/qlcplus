@@ -28,6 +28,7 @@
 #include "qlcchannel.h"
 #include "scenevalue.h"
 #include "genericdmxsource.h"
+#include "monitorlayout.h"
 
 class Doc;
 class Fixture;
@@ -578,12 +579,20 @@ private:
      *  duplicate this loop. Order follows m_selectedFixtures. */
     QList<quint32> qualifyingDmxTransformFixtures() const;
 
-    /** Returns the world axis indices (0=X, 1=Y, 2=Z) that represent the
-     *  horizontal ($hAxis) and vertical ($vAxis) directions on screen for
-     *  $pointOfView, plus the remaining depth axis ($dAxis). Used by the
-     *  arrangeFixturesIn*() methods to lay fixtures out in the plane the
-     *  user is currently looking at. */
-    void fixturePlaneAxes(int pointOfView, int &hAxis, int &vAxis, int &dAxis) const;
+    /** Builds the MonitorLayout items for $itemIDs (in that order) from the
+     *  current monitor state: effectiveFixturePosition() as position, the
+     *  stored rotation, the LockedFlag and the 2D footprint. The packed
+     *  itemID travels in Item::hostKey so applyLayoutResult() can map the
+     *  results back. The geometry itself (arrange / align / distribute /
+     *  detect) lives in engine/src/monitorlayout.h, shared with the Control
+     *  API's fixtures.monitor.* methods. */
+    QList<MonitorLayout::Item> layoutItems(const QList<quint32> &itemIDs) const;
+
+    /** Commits a MonitorLayout result: every item flagged positionChanged
+     *  goes through applyArrangedFixturePosition(), every rotationChanged
+     *  one through applyArrangedFixtureRotation(). Returns true if any
+     *  rotation changed (so the caller can emit fixturesRotationChanged). */
+    bool applyLayoutResult(const QList<MonitorLayout::Item> &items);
 
     /** Returns the average position (mm) of the currently selected fixtures */
     QVector3D selectedFixturesCentroid() const;
@@ -623,18 +632,11 @@ private:
      *  at 0 if fewer than 2 fixtures are selected, or if they coincide. */
     void detectedLineFit(qreal &angleRadians, qreal &length) const;
 
-    /** Rotates the yaw of the Fixture with the given $itemID (the rotation
-     *  axis perpendicular to the $hAxis/$vAxis plane, i.e. $dAxis) so it
-     *  faces $centroid from $newPos - both in world space. Used by
-     *  arrangeFixturesInCircle()/arrangeFixturesInLine() when their
-     *  $lookAtCenter argument is true. Assumes 0 degrees of yaw faces along
-     *  +$hAxis, same as the placement math's own angle convention - this is
-     *  an assumption about the fixture model's un-rotated facing direction
-     *  that hasn't been visually confirmed against the 3D mesh, so a 180 or
-     *  90 degree offset may need correcting here if fixtures turn out to
-     *  face the wrong way in practice. */
-    void faceFixtureTowards(quint32 itemID, const QVector3D &newPos, const QVector3D &centroid,
-                             int hAxis, int vAxis, int dAxis);
+    /** Writes $newRot (degrees) as $itemID's rotation with Tardis undo and
+     *  refreshes the enabled views - the rotation counterpart of
+     *  applyArrangedFixturePosition(), used for the "face center" option of
+     *  the circle / line arrangements. */
+    void applyArrangedFixtureRotation(quint32 itemID, const QVector3D &newRot);
 
     /** Returns the currently selected Fixture item IDs sorted by DMX order
      *  (universe/address, then head/linked index), rather than the order

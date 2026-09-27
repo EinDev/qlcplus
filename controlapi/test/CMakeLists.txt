@@ -13,6 +13,8 @@ add_subdirectory(apiefxcollectiondomain)
 add_subdirectory(apimediadomain)
 add_subdirectory(apivclayoutdomain)
 add_subdirectory(apishowdomain)
+add_subdirectory(apimonitordomain)
+add_subdirectory(apifixtureremapdomain)
 add_subdirectory(apifixturedefsdomain)
 add_subdirectory(apiioconfigdomain)
 add_subdirectory(apivcinputdomain)
@@ -36,6 +38,8 @@ set(QLCPLUS_CONTROLAPI_TESTS
     apimediadomain_test
     apivclayoutdomain_test
     apishowdomain_test
+    apimonitordomain_test
+    apifixtureremapdomain_test
     apifixturedefsdomain_test
     apiioconfigdomain_test
     apivcinputdomain_test

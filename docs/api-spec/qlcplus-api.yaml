@@ -296,8 +296,44 @@ channels:
         $ref: '#/components/messages/FixturesRemapApplyRequest'
       fixturesRemapApplyResponse:
         $ref: '#/components/messages/FixturesRemapApplyResponse'
+      fixturesRemapApplyOkResponse:
+        $ref: '#/components/messages/FixturesRemapApplyOkResponse'
       fixturesRemapAppliedEvent:
         $ref: '#/components/messages/FixturesRemapAppliedEvent'
+      fixturesMonitorGetRequest:
+        $ref: '#/components/messages/FixturesMonitorGetRequest'
+      fixturesMonitorGetResponse:
+        $ref: '#/components/messages/FixturesMonitorGetResponse'
+      fixturesMonitorGetOkResponse:
+        $ref: '#/components/messages/FixturesMonitorGetOkResponse'
+      fixturesMonitorSetStageRequest:
+        $ref: '#/components/messages/FixturesMonitorSetStageRequest'
+      fixturesMonitorSetStageResponse:
+        $ref: '#/components/messages/FixturesMonitorSetStageResponse'
+      fixturesMonitorSetPlacementRequest:
+        $ref: '#/components/messages/FixturesMonitorSetPlacementRequest'
+      fixturesMonitorSetPlacementResponse:
+        $ref: '#/components/messages/FixturesMonitorSetPlacementResponse'
+      fixturesMonitorPlacementsOkResponse:
+        $ref: '#/components/messages/FixturesMonitorPlacementsOkResponse'
+      fixturesMonitorArrangeRequest:
+        $ref: '#/components/messages/FixturesMonitorArrangeRequest'
+      fixturesMonitorArrangeResponse:
+        $ref: '#/components/messages/FixturesMonitorArrangeResponse'
+      fixturesMonitorDetectArrangementRequest:
+        $ref: '#/components/messages/FixturesMonitorDetectArrangementRequest'
+      fixturesMonitorDetectArrangementResponse:
+        $ref: '#/components/messages/FixturesMonitorDetectArrangementResponse'
+      fixturesMonitorDetectArrangementOkResponse:
+        $ref: '#/components/messages/FixturesMonitorDetectArrangementOkResponse'
+      fixturesMonitorAimAtRequest:
+        $ref: '#/components/messages/FixturesMonitorAimAtRequest'
+      fixturesMonitorAimAtResponse:
+        $ref: '#/components/messages/FixturesMonitorAimAtResponse'
+      fixturesMonitorAimAtOkResponse:
+        $ref: '#/components/messages/FixturesMonitorAimAtOkResponse'
+      fixturesMonitorChangedEvent:
+        $ref: '#/components/messages/FixturesMonitorChangedEvent'
       fixturesDocRevisionOkResponse:
         $ref: '#/components/messages/FixturesDocRevisionOkResponse'
       fixtureDefsListRequest:
@@ -2227,6 +2263,84 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/fixturesRemapAppliedEvent'
+  sendFixturesMonitorGet:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/fixturesMonitorGetRequest'
+  receiveFixturesMonitorGetResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/fixturesMonitorGetResponse'
+  sendFixturesMonitorSetStage:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/fixturesMonitorSetStageRequest'
+  receiveFixturesMonitorSetStageResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/fixturesMonitorSetStageResponse'
+  sendFixturesMonitorSetPlacement:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/fixturesMonitorSetPlacementRequest'
+  receiveFixturesMonitorSetPlacementResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/fixturesMonitorSetPlacementResponse'
+  sendFixturesMonitorArrange:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/fixturesMonitorArrangeRequest'
+  receiveFixturesMonitorArrangeResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/fixturesMonitorArrangeResponse'
+  sendFixturesMonitorDetectArrangement:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/fixturesMonitorDetectArrangementRequest'
+  receiveFixturesMonitorDetectArrangementResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/fixturesMonitorDetectArrangementResponse'
+  sendFixturesMonitorAimAt:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/fixturesMonitorAimAtRequest'
+  receiveFixturesMonitorAimAtResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/fixturesMonitorAimAtResponse'
+  receiveFixturesMonitorChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/fixturesMonitorChangedEvent'
   sendFixtureDefsList:
     action: send
     channel:
@@ -8526,8 +8640,36 @@ components:
     FixturesRemapApplyResponse:
       payload:
         oneOf:
-        - $ref: '#/components/messages/FixturesDocRevisionOkResponse/payload'
+        - $ref: '#/components/messages/FixturesRemapApplyOkResponse/payload'
         - $ref: '#/components/messages/ErrorResponse/payload'
+    FixturesRemapApplyOkResponse:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - ok
+        - result
+        properties:
+          type:
+            const: response
+          id:
+            type: string
+          ok:
+            const: true
+          result:
+            type: object
+            required:
+            - docRevision
+            - fixtureIds
+            properties:
+              docRevision:
+                type: integer
+              fixtureIds:
+                type: array
+                items:
+                  type: string
+                description: The created target fixtures, in the order of params.mappings.
     FixturesRemapAppliedEvent:
       payload:
         type: object
@@ -8567,6 +8709,448 @@ components:
                 items:
                   type: string
                 description: Source fixture IDs removed via unmappedSourceFixtureIds with no replacement.
+              docRevision:
+                type: integer
+    FixturesMonitorGetRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: fixtures.monitor.get
+          params:
+            type: object
+            properties: {}
+    FixturesMonitorGetResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/FixturesMonitorGetOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    FixturesMonitorGetOkResponse:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - ok
+        - result
+        properties:
+          type:
+            const: response
+          id:
+            type: string
+          ok:
+            const: true
+          result:
+            type: object
+            required:
+            - stage
+            - items
+            - docRevision
+            properties:
+              stage:
+                $ref: '#/components/schemas/FixturesMonitorStage'
+              items:
+                type: array
+                description: Every fixture preview item in the monitor map, plus one synthetic entry (placed=false,
+                  position at the stage centre) for each patched fixture that has no monitor entry yet,
+                  so a client can draw the whole patch without a second lookup.
+                items:
+                  $ref: '#/components/schemas/FixturesMonitorItem'
+              docRevision:
+                type: integer
+    FixturesMonitorSetStageRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: fixtures.monitor.setStage
+          params:
+            type: object
+            required:
+            - baseRevision
+            description: Partial update of the stage settings (any subset of the FixturesMonitorStage
+              fields except its read-only ones). Setting pointOfView while it is still Undefined re-derives
+              the grid depth like MonitorProperties::setPointOfView() does, so the response / event carry
+              the whole re-read stage.
+            properties:
+              gridSize:
+                $ref: '#/components/schemas/FixturesVector3'
+              gridUnits:
+                type: string
+                enum:
+                - Meters
+                - Feet
+              pointOfView:
+                type: string
+                enum:
+                - Undefined
+                - TopView
+                - FrontView
+                - RightSideView
+                - LeftSideView
+              stageType:
+                type: string
+                enum:
+                - Simple
+                - Box
+                - Rock
+                - Theatre
+              showLabels:
+                type: boolean
+              backgroundImage:
+                type: string
+                description: Server-side file path of the common 2D background picture; empty string resets
+                  it.
+              baseRevision:
+                type: integer
+    FixturesMonitorSetStageResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/FixturesDocRevisionOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    FixturesMonitorSetPlacementRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: fixtures.monitor.setPlacement
+          params:
+            type: object
+            required:
+            - items
+            - baseRevision
+            description: Bulk partial update of fixture preview items - what dragging in the 2D view,
+              the position / rotation fields, the gel colour picker and the invert / lock / hide toggles
+              of the Qt UI write. Every entry names an item by fixtureId (+ headIndex, linkedIndex, both
+              default 0) and any subset of the writable fields. An entry whose (fixtureId, headIndex,
+              linkedIndex) does not exist yet is created - with linkedIndex >= 1 that is how a "linked
+              fixture" copy is added (its unspecified fields are copied from the base item, like ContextManager::setLinkedFixture).
+              remove=true deletes a linked copy (linkedIndex >= 1 only; a base item cannot be removed).
+              A position / rotation change on a locked item is refused silently and reported in result.skippedLocked
+              unless the same entry also clears locked. All-or-nothing validation; the docRevision bump
+              happens once.
+            properties:
+              items:
+                type: array
+                minItems: 1
+                items:
+                  $ref: '#/components/schemas/FixturesMonitorPlacementUpdate'
+              baseRevision:
+                type: integer
+    FixturesMonitorSetPlacementResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/FixturesMonitorPlacementsOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    FixturesMonitorPlacementsOkResponse:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - ok
+        - result
+        properties:
+          type:
+            const: response
+          id:
+            type: string
+          ok:
+            const: true
+          result:
+            type: object
+            required:
+            - items
+            - docRevision
+            properties:
+              items:
+                type: array
+                description: The full new state of every item the call touched.
+                items:
+                  $ref: '#/components/schemas/FixturesMonitorItem'
+              skippedLocked:
+                type: array
+                description: Item keys whose position / rotation change was ignored because the item is
+                  locked.
+                items:
+                  $ref: '#/components/schemas/FixturesMonitorItemKey'
+              docRevision:
+                type: integer
+    FixturesMonitorArrangeRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: fixtures.monitor.arrange
+          params:
+            type: object
+            required:
+            - items
+            - op
+            - baseRevision
+            description: 'Runs one of ContextManager''s placement tools server-side (engine/src/monitorlayout.h,
+              the very same code the Qt UI runs) on the given items, in the stage''s current point of
+              view: circle {diameter (mm), lookAtCenter?}, grid {width, height (mm), columns? (0/absent
+              = near-square), angle? (deg)}, line {length (mm), angle? (deg), lookAtCenter?}, rotate {angle
+              (deg), around the centroid}, center {} (move the centroid onto the stage centre), align
+              {edge: left|top} (to the FIRST item given), distribute {direction: horizontal|vertical}
+              (>= 3 items). circle / line / rotate / center order the items by DMX address (Fixture::operator<,
+              then head, then linked); grid uses the common Fixture Group''s grid order when every item
+              belongs to one group. Locked items keep their place (their slot stays empty), except for
+              align / distribute which ignore the lock like the Qt UI does. Items whose fixture no longer
+              exists -> NOT_FOUND.'
+            properties:
+              items:
+                type: array
+                minItems: 1
+                items:
+                  $ref: '#/components/schemas/FixturesMonitorItemKey'
+              op:
+                type: string
+                enum:
+                - circle
+                - grid
+                - line
+                - rotate
+                - center
+                - align
+                - distribute
+              args:
+                type: object
+                additionalProperties: true
+              baseRevision:
+                type: integer
+    FixturesMonitorArrangeResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/FixturesMonitorPlacementsOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    FixturesMonitorDetectArrangementRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: fixtures.monitor.detectArrangement
+          params:
+            type: object
+            required:
+            - items
+            description: 'Read-only "detect from placement" helper of the Arrange dialog: the circle diameter
+              (mean distance from the centroid, doubled) and the best-fit line (principal axis angle +
+              extent) of the items'' current positions in the stage''s point of view, plus the centroid.
+              Needs >= 2 items (otherwise zeros).'
+            properties:
+              items:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FixturesMonitorItemKey'
+    FixturesMonitorDetectArrangementResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/FixturesMonitorDetectArrangementOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    FixturesMonitorDetectArrangementOkResponse:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - ok
+        - result
+        properties:
+          type:
+            const: response
+          id:
+            type: string
+          ok:
+            const: true
+          result:
+            type: object
+            required:
+            - circleDiameter
+            - lineLength
+            - lineAngle
+            - centroid
+            properties:
+              circleDiameter:
+                type: number
+                description: mm
+              lineLength:
+                type: number
+                description: mm
+              lineAngle:
+                type: number
+                description: degrees
+              centroid:
+                $ref: '#/components/schemas/FixturesVector3'
+    FixturesMonitorAimAtRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: fixtures.monitor.aimAt
+          params:
+            type: object
+            required:
+            - items
+            - point
+            description: '"Pick a 3D point" (Position3DTool.qml / ContextManager:: setPositionPickPoint):
+              points every given fixture''s beam at point (mm, document space like positions) using its
+              monitor position, rotation and - for a Moving Head with persisted LightEmitter data - the
+              beam origin offset, then writes the resulting Pan / Tilt channel values as live Simple Desk
+              overrides (io.simpleDesk.*; release them the usual way). Items without Pan or Tilt channels
+              are skipped. Live (§4b): no baseRevision, nothing saved. The headless server has no 3D mesh
+              fallback for the beam origin: fixtures without LightEmitter data aim from their root position.'
+            properties:
+              items:
+                type: array
+                minItems: 1
+                items:
+                  $ref: '#/components/schemas/FixturesMonitorItemKey'
+              point:
+                $ref: '#/components/schemas/FixturesVector3'
+    FixturesMonitorAimAtResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/FixturesMonitorAimAtOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    FixturesMonitorAimAtOkResponse:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - ok
+        - result
+        properties:
+          type:
+            const: response
+          id:
+            type: string
+          ok:
+            const: true
+          result:
+            type: object
+            required:
+            - fixtures
+            - channels
+            properties:
+              fixtures:
+                type: array
+                description: Per aimed fixture, the computed angles.
+                items:
+                  type: object
+                  required:
+                  - fixtureId
+                  properties:
+                    fixtureId:
+                      type: string
+                    headIndex:
+                      type: integer
+                    panDegrees:
+                      type: number
+                    tiltDegrees:
+                      type: number
+              channels:
+                type: array
+                description: The absolute DMX addresses (universe*512+channel) and values written.
+                items:
+                  type: object
+                  required:
+                  - address
+                  - value
+                  properties:
+                    address:
+                      type: integer
+                    value:
+                      type: integer
+    FixturesMonitorChangedEvent:
+      payload:
+        type: object
+        required:
+        - type
+        - topic
+        - data
+        properties:
+          type:
+            const: event
+          topic:
+            const: fixtures.monitor.changed
+          originClientId:
+            type:
+            - string
+            - 'null'
+          data:
+            type: object
+            required:
+            - docRevision
+            description: Broadcast after setStage / setPlacement / arrange (and after fixtures.remap.apply
+              moved monitor entries). stage is present when the stage settings changed; items lists the
+              full new state of every touched item; removed lists deleted linked copies.
+            properties:
+              stage:
+                $ref: '#/components/schemas/FixturesMonitorStage'
+              items:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FixturesMonitorItem'
+              removed:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FixturesMonitorItemKey'
               docRevision:
                 type: integer
     FixturesDocRevisionOkResponse:
@@ -23740,6 +24324,241 @@ components:
           type: integer
         targetChannel:
           type: integer
+    FixturesVector3:
+      type: object
+      required:
+      - x
+      - y
+      - z
+      properties:
+        x:
+          type: number
+        y:
+          type: number
+        z:
+          type: number
+    FixturesMonitorStage:
+      type: object
+      description: MonitorProperties' environment settings (the .qxw <Monitor> element's Grid / StageItem
+        / Background).
+      required:
+      - gridSize
+      - gridUnits
+      - pointOfView
+      - stageType
+      - showLabels
+      properties:
+        gridSize:
+          allOf:
+          - $ref: '#/components/schemas/FixturesVector3'
+          description: Stage size in gridUnits (x = width, y = height, z = depth).
+        gridUnits:
+          type: string
+          enum:
+          - Meters
+          - Feet
+        pointOfView:
+          type: string
+          enum:
+          - Undefined
+          - TopView
+          - FrontView
+          - RightSideView
+          - LeftSideView
+          description: Undefined until the user picked one (PopupMonitor.qml asks on first 2D view open).
+        stageType:
+          type: string
+          enum:
+          - Simple
+          - Box
+          - Rock
+          - Theatre
+        showLabels:
+          type: boolean
+        backgroundImage:
+          type: string
+        gridCenter:
+          allOf:
+          - $ref: '#/components/schemas/FixturesVector3'
+          description: Read-only convenience - the stage centre in mm (MonitorLayout::gridCenterPosition).
+    FixturesMonitorItemKey:
+      type: object
+      required:
+      - fixtureId
+      properties:
+        fixtureId:
+          type: string
+        headIndex:
+          type: integer
+          default: 0
+        linkedIndex:
+          type: integer
+          default: 0
+    FixturesMonitorItem:
+      type: object
+      description: One fixture preview item (PreviewItem in monitorproperties.h) plus the read-only fixture
+        facts a 2D view needs to draw it.
+      required:
+      - fixtureId
+      - headIndex
+      - linkedIndex
+      - placed
+      - position
+      - rotation
+      - flags
+      properties:
+        fixtureId:
+          type: string
+        headIndex:
+          type: integer
+        linkedIndex:
+          type: integer
+        placed:
+          type: boolean
+          description: false for the synthetic entry of a fixture with no monitor entry yet (position
+            = stage centre).
+        name:
+          type: string
+          description: The fixture's name (Fixture::name()); linked copies may carry their own item name
+            in itemName.
+        itemName:
+          type: string
+        position:
+          $ref: '#/components/schemas/FixturesVector3'
+        rotation:
+          $ref: '#/components/schemas/FixturesVector3'
+        gelColor:
+          type:
+          - string
+          - 'null'
+          description: '#rrggbb, null when none.'
+        fixedZoom:
+          type: integer
+          description: Degrees
+          Dimmer-type fixtures only.: null
+        rotationScale:
+          type: number
+        positionRange:
+          type: number
+        flags:
+          type: object
+          required:
+          - hidden
+          - invertPan
+          - invertTilt
+          - locked
+          properties:
+            hidden:
+              type: boolean
+            invertPan:
+              type: boolean
+            invertTilt:
+              type: boolean
+            locked:
+              type: boolean
+            invertPositionX:
+              type: boolean
+            invertPositionY:
+              type: boolean
+            invertPositionZ:
+              type: boolean
+            invertRotationX:
+              type: boolean
+            invertRotationY:
+              type: boolean
+            invertRotationZ:
+              type: boolean
+        fixtureType:
+          type: string
+          description: Fixture::typeString().
+        universe:
+          type: integer
+        address:
+          type: integer
+        channels:
+          type: integer
+        heads:
+          type: integer
+          description: Number of heads of the fixture's mode.
+        headChannels:
+          type: array
+          description: Per head, the channel indices it owns (QLCFixtureHead::channels()), so a client
+            can colour heads from the live DMX.
+          items:
+            type: array
+            items:
+              type: integer
+        physical:
+          type: object
+          description: Physical width / height / depth in mm with the 300 mm defaults the 2D view applies.
+          properties:
+            width:
+              type: number
+            height:
+              type: number
+            depth:
+              type: number
+            focusPanMax:
+              type: integer
+            focusTiltMax:
+              type: integer
+        hasPan:
+          type: boolean
+        hasTilt:
+          type: boolean
+    FixturesMonitorPlacementUpdate:
+      type: object
+      required:
+      - fixtureId
+      properties:
+        fixtureId:
+          type: string
+        headIndex:
+          type: integer
+          default: 0
+        linkedIndex:
+          type: integer
+          default: 0
+        position:
+          $ref: '#/components/schemas/FixturesVector3'
+        rotation:
+          $ref: '#/components/schemas/FixturesVector3'
+        gelColor:
+          type:
+          - string
+          - 'null'
+          description: '#rrggbb sets, null clears.'
+        fixedZoom:
+          type: integer
+        rotationScale:
+          type: number
+        positionRange:
+          type: number
+        itemName:
+          type: string
+        hidden:
+          type: boolean
+        invertPan:
+          type: boolean
+        invertTilt:
+          type: boolean
+        locked:
+          type: boolean
+        invertPositionX:
+          type: boolean
+        invertPositionY:
+          type: boolean
+        invertPositionZ:
+          type: boolean
+        invertRotationX:
+          type: boolean
+        invertRotationY:
+          type: boolean
+        invertRotationZ:
+          type: boolean
+        remove:
+          type: boolean
+          description: Delete this linked copy (linkedIndex >= 1 only).
     FixtureDefsSessionMutationResult:
       type: object
       description: 'Shared base for every session-mutation ok-response that allocates (or counts) a new

@@ -160,6 +160,26 @@
       if (!client) return;
       items.forEach(it => { for (let i = 0; i < it.detail.channels; i++) client.resetChannel(FF.flatAddress(it.detail, i)); });
     };
+    /* Highlight (LeftPanel.qml's "locate"): full intensity + white on the selected fixtures as a
+       desk override; toggling off releases exactly those channels again. */
+    const [highlight, setHighlight] = React.useState(false);
+    const toggleHighlight = () => {
+      const client = qlc.client();
+      if (!client) return;
+      if (!highlight) {
+        items.forEach(it => {
+          const writes = FF.roleValues(it.channels, 'dimmer', 255).concat(FF.colourValues(it.channels, { r: 255, g: 255, b: 255 }, { w: 255, a: 0, uv: 0 }));
+          if (writes.length) client.setChannels(writes.map(w => ({ address: FF.flatAddress(it.detail, w.channel), value: w.value })));
+        });
+      } else {
+        items.forEach(it => {
+          const writes = FF.roleValues(it.channels, 'dimmer', 0).concat(FF.colourValues(it.channels, { r: 0, g: 0, b: 0 }, { w: 0, a: 0, uv: 0 }));
+          writes.forEach(w => client.resetChannel(FF.flatAddress(it.detail, w.channel)));
+        });
+      }
+      setHighlight(!highlight);
+    };
+    React.useEffect(() => { setHighlight(false); }, [fixtureIds.join(',')]);
 
     if (!fixtureIds.length) return (
       <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -187,7 +207,12 @@
               labels={{ live: 'Live output', scene: 'Scene' + (sceneName ? ': ' + sceneName : '') }} />
           </div>
           <FF.Note text={toScene ? 'Values are written into the scene (functions.scene.setValue). Fixtures not yet in the scene are added by the first value.' : 'Values override the DMX output like Simple Desk channels. Release removes the overrides again.'} />
-          {!toScene ? <GenericButton label="Release fixtures" width={130} height={24} onClick={release} /> : null}
+          {!toScene ? <div style={{ display: 'flex', gap: 6 }}>
+            <GenericButton label="Release fixtures" width={130} height={24} onClick={release} />
+            <span title="Highlight: full white on the selected fixtures (locate them on the rig); click again to release" data-ff-highlight={highlight ? 'on' : 'off'}>
+              <GenericButton label={highlight ? 'Highlight off' : 'Highlight'} width={100} height={24} bgColor={highlight ? 'var(--highlight)' : undefined} onClick={toggleHighlight} />
+            </span>
+          </div> : null}
         </div>
         {items.length < fixtureIds.length ? <div style={{ padding: '0 10px' }}><RobotoText label="Loading…" fontSize={13} labelColor="var(--fg-medium)" /></div> : null}
 

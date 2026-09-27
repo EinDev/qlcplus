@@ -22,6 +22,7 @@
 #include <Qt3DCore/QTransform>
 
 #include "monitorproperties.h"
+#include "monitorlayout.h"
 #include "qlcfixturemode.h"
 #include "qlccapability.h"
 #include "fixtureutils.h"
@@ -114,155 +115,29 @@ quint16 FixtureUtils::itemLinkedIndex(quint32 itemID)
 QPointF FixtureUtils::item2DPosition(const MonitorProperties *monProps, int pointOfView,
                                      QVector3D pos)
 {
-    QPointF point(0, 0);
-    float gridUnits = monProps->gridUnits() == MonitorProperties::Meters ? 1000.0 : 304.8;
-
-    switch(pointOfView)
-    {
-        case MonitorProperties::TopView:
-            point.setX(pos.x());
-            point.setY(pos.z());
-        break;
-        case MonitorProperties::Undefined:
-        case MonitorProperties::FrontView:
-            point.setX(pos.x());
-            point.setY((monProps->gridSize().y() * gridUnits) - pos.y());
-        break;
-        case MonitorProperties::RightSideView:
-            point.setX((monProps->gridSize().x() * gridUnits) - pos.z());
-            point.setY((monProps->gridSize().y() * gridUnits) - pos.y());
-        break;
-        case MonitorProperties::LeftSideView:
-            point.setX(pos.z());
-            point.setY((monProps->gridSize().y() * gridUnits) - pos.y());
-        break;
-    }
-
-    return point;
+    // Geometry lives in the engine (MonitorLayout) so the Control API's
+    // fixtures.monitor.* methods share it - these are thin delegates.
+    return MonitorLayout::item2DPosition(monProps, pointOfView, pos);
 }
-
 
 float FixtureUtils::item2DRotation(int pointOfView, QVector3D rot)
 {
-    switch(pointOfView)
-    {
-        case MonitorProperties::TopView:
-            return rot.y();
-        break;
-        case MonitorProperties::RightSideView:
-        case MonitorProperties::LeftSideView:
-            return rot.x();
-        break;
-        default:
-            return rot.z();
-        break;
-    }
-
-    return 0;
+    return MonitorLayout::item2DRotation(pointOfView, rot);
 }
 
 QSizeF FixtureUtils::item2DDimension(const QLCFixtureMode *fxMode, int pointOfView)
 {
-    QSizeF size(300, 300);
-
-    if (fxMode == nullptr)
-        return size;
-
-    QLCPhysical phy = fxMode->physical();
-    if (phy.width() == 0)
-        phy.setWidth(300);
-    if (phy.height() == 0)
-        phy.setHeight(300);
-    if (phy.depth() == 0)
-        phy.setDepth(300);
-
-    switch(pointOfView)
-    {
-        case MonitorProperties::TopView:
-            size.setWidth(phy.width());
-            size.setHeight(phy.depth());
-        break;
-        case MonitorProperties::Undefined:
-        case MonitorProperties::FrontView:
-            size.setWidth(phy.width());
-            size.setHeight(phy.height());
-        break;
-        case MonitorProperties::RightSideView:
-        case MonitorProperties::LeftSideView:
-            size.setWidth(phy.depth());
-            size.setHeight(phy.height());
-        break;
-    }
-
-    return size;
+    return MonitorLayout::item2DDimension(fxMode, pointOfView);
 }
 
 void FixtureUtils::alignItem(QVector3D refPos, QVector3D &origPos, int pointOfView, int alignment)
 {
-    switch(pointOfView)
-    {
-        case MonitorProperties::TopView:
-        {
-            switch(alignment)
-            {
-                case Qt::AlignTop: origPos.setZ(refPos.z()); break;
-                case Qt::AlignLeft: origPos.setX(refPos.x()); break;
-            }
-        }
-        break;
-        case MonitorProperties::Undefined:
-        case MonitorProperties::FrontView:
-        {
-            switch(alignment)
-            {
-                case Qt::AlignTop: origPos.setY(refPos.y()); break;
-                case Qt::AlignLeft: origPos.setX(refPos.x()); break;
-            }
-        }
-        break;
-        case MonitorProperties::RightSideView:
-        case MonitorProperties::LeftSideView:
-        {
-            switch(alignment)
-            {
-                case Qt::AlignTop: origPos.setY(refPos.y()); break;
-                case Qt::AlignLeft: origPos.setZ(refPos.z()); break;
-            }
-        }
-        break;
-    }
+    MonitorLayout::alignItem(refPos, origPos, pointOfView, alignment);
 }
 
 QVector3D FixtureUtils::item3DPosition(const MonitorProperties *monProps, QPointF point, float thirdVal)
 {
-    QVector3D pos(point.x(), point.y(), thirdVal);
-    float gridUnits = monProps->gridUnits() == MonitorProperties::Meters ? 1000.0 : 304.8;
-
-    // Must stay the exact inverse of item2DPosition() above for each point of
-    // view - every non-TopView branch there flips Y via
-    // (gridSize().y() * gridUnits) - pos.y(), so recovering pos.y() here needs
-    // the same subtraction applied to point.y() (not a plain pass-through).
-    switch(monProps->pointOfView())
-    {
-        case MonitorProperties::TopView:
-            pos = QVector3D(point.x(), thirdVal, point.y());
-        break;
-        case MonitorProperties::Undefined:
-        case MonitorProperties::FrontView:
-            pos = QVector3D(point.x(), (monProps->gridSize().y() * gridUnits) - point.y(), thirdVal);
-        break;
-        case MonitorProperties::RightSideView:
-            pos = QVector3D(thirdVal, (monProps->gridSize().y() * gridUnits) - point.y(),
-                             (monProps->gridSize().x() * gridUnits) - point.x());
-        break;
-        case MonitorProperties::LeftSideView:
-            pos = QVector3D(thirdVal, (monProps->gridSize().y() * gridUnits) - point.y(), point.x());
-        break;
-        default:
-        break;
-    }
-
-    return pos;
+    return MonitorLayout::item3DPosition(monProps, point, thirdVal);
 }
 
 bool FixtureUtils::isGroupFullySelected(const FixtureGroup *group, const MonitorProperties *monProps,
@@ -822,13 +697,7 @@ QVector3D FixtureUtils::fixtureScaleFactor(Fixture *fixture)
 
 QVector3D FixtureUtils::gridCenterPosition(const MonitorProperties *monProps)
 {
-    if (monProps == nullptr)
-        return QVector3D(0, 0, 0);
-
-    float unitScale = monProps->gridUnits() == MonitorProperties::Meters ? 1.0f : 0.3048f;
-    QVector3D gridMeters = monProps->gridSize() * unitScale;
-
-    return gridMeters * 500.0f;
+    return MonitorLayout::gridCenterPosition(monProps);
 }
 
 bool FixtureUtils::goboTiming(const QLCCapability *cap, uchar value, int &speed)

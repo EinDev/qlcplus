@@ -255,3 +255,67 @@ Server: `controlapi/src/domains/apifixturesdomain.cpp`.
   `manufacturer`/`model`/`mode` (or `generic`) when no `definition` object
   is given. Its response still carries `fixtureIds` (+ `docRevision`); the
   full `fixtures` list is on the `fixtures.patched` event, as before.
+
+## Implemented 2026-09-27: monitor placement (fixtures.monitor.*) and remap (fixtures.remap.*)
+
+Server: `controlapi/src/domains/apimonitordomain.cpp` and
+`controlapi/src/domains/apifixtureremapdomain.cpp`; tests in
+`controlapi/test/apimonitordomain/` (14 cases) and
+`controlapi/test/apifixtureremapdomain/` (7 cases). Web UI driver:
+`webui/tools/e2e/fixtures-views.js`.
+
+- **New section 5 in the fragment**: `fixtures.monitor.get`, `setStage`,
+  `setPlacement`, `arrange`, `detectArrangement`, `aimAt` and the
+  `fixtures.monitor.changed` event, over `MonitorProperties` (the `.qxw`
+  `<Monitor>` element). `detectArrangement` was not in the task brief; it is
+  the Arrange dialog's "detect from placement" and needs server data.
+- **One geometry implementation for both hosts.** The arrange / align /
+  distribute / rotate / centre / detect maths and the "Pick a 3D point"
+  pan/tilt solver moved from qmlui's `ContextManager` into
+  `engine/src/monitorlayout.{h,cpp}` (pure functions over a plain item list).
+  `ContextManager` keeps its selection / Tardis undo / DMX-position /
+  view-refresh shell around the same calls, and `FixtureUtils`' point-of-view
+  projections delegate to it, so a browser and the desktop app lay fixtures
+  out identically. Ordering rules are preserved: circle / line / rotate /
+  centre sort by `Fixture::operator<` (DMX address only), grid follows the
+  common Fixture Group's grid order; locked items keep their place except for
+  align / distribute, which ignore the lock like the Qt UI does.
+- **Revision bumping.** `MonitorProperties` setters never call
+  `setModified()`; every mutating monitor handler calls it once after its
+  whole batch, so `baseRevision` checking and event revisions stay exact.
+  `MonitorProperties` has no change signals, so a placement edited in the Qt
+  UI reaches API clients only through `core.history.changed` /
+  `docRevision` (the web UI refetches on it).
+- **Units.** Positions are millimetres in document space (X width, Y up,
+  Z depth), rotations degrees, `aimAt.point` in the same mm space. Items are
+  keyed by `(fixtureId, headIndex, linkedIndex)`; `linkedIndex >= 1` in
+  `setPlacement` creates a linked copy (copied from the base item), `remove`
+  deletes one. `fixtures.monitor.get` also returns a synthetic
+  `placed: false` entry at the stage centre for every fixture without a
+  monitor entry, plus the physical footprint, head channel lists and
+  `hasPan`/`hasTilt`, so a client can draw 236 fixtures in one call.
+- **aimAt is live (§4b)**: the pan/tilt values go through
+  `ApiIoDomain::overrideChannels()` (new public hook, same store as
+  `io.simpleDesk.setChannels`), so the usual Release clears them. Unlike the
+  desktop tool there is no Qt3D mesh fallback for the beam origin: fixtures
+  without persisted LightEmitter data aim from their root position.
+- **Remap.** `suggestChannelMap` re-implements
+  `FixtureRemapper::autoConnectFixtures()`'s matching rule against a target
+  *mode* (no staging Doc). `apply` drives `FixtureRemapper::applyRemap()` and
+  compensates for two engine behaviours: `Doc::replaceFixtures()` replaces
+  *every* fixture and `remapSceneValues()` drops unmapped values, so every
+  untouched fixture is cloned into the replacement list under its own id with
+  an identity channel map (otherwise every Scene would silently lose them);
+  targets get fresh ids above the current maximum; the final address map is
+  overlap-checked before anything changes (no rollback exists). Virtual
+  Console widgets are remapped through the new `ApiVcHost::vcRemapChannels()`
+  hook (qmlui's App runs the same loop as `FixtureRemapManager::applyRemap()`);
+  the call also broadcasts `fixtures.monitor.changed` for the moved
+  placements. The response additionally carries `fixtureIds` (the created
+  targets, in mapping order).
+- **Fixed on the way**: `fixtures.update` changed address and universe with
+  two separately-signalling setters; the transient (new address, old
+  universe) footprint could hit `Doc::slotFixtureChanged()`'s
+  `Q_ASSERT(!m_addresses.contains(i))` (a Debug-build abort, found through the
+  web UI's universe-grid paste) or corrupt the address map in Release. Both
+  are now applied with signals blocked and one `changed()` is emitted.

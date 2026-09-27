@@ -34,6 +34,8 @@
 #include "domains/apimediadomain.h"
 #include "domains/apivclayoutdomain.h"
 #include "domains/apishowdomain.h"
+#include "domains/apimonitordomain.h"
+#include "domains/apifixtureremapdomain.h"
 #include "domains/apifixturedefsdomain.h"
 #include "domains/apiioconfigdomain.h"
 #include "domains/apivcinputdomain.h"
@@ -67,6 +69,8 @@ ApiServer::ApiServer(QObject *parent, Doc *doc)
     m_mediaDomain = new ApiMediaDomain(m_doc, this, this);
     m_vcLayoutDomain = new ApiVcLayoutDomain(m_doc, this, this);
     m_showDomain = new ApiShowDomain(m_doc, this, this);
+    m_monitorDomain = new ApiMonitorDomain(m_doc, this, m_ioDomain, this);
+    m_fixtureRemapDomain = new ApiFixtureRemapDomain(m_doc, this, this);
     m_fixtureDefsDomain = new ApiFixtureDefsDomain(m_doc, this, this);
     m_ioConfigDomain = new ApiIoConfigDomain(m_doc, this, m_ioDomain, this);
     m_vcInputDomain = new ApiVcInputDomain(m_doc, this, this);

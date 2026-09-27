@@ -37,6 +37,7 @@ add_library(${module_name} SHARED
     ioplugincache.cpp ioplugincache.h
     keypadparser.cpp keypadparser.h
     mastertimer.cpp mastertimer.h
+    monitorlayout.cpp monitorlayout.h
     monitorproperties.cpp monitorproperties.h
     outputpatch.cpp outputpatch.h
     qlccapability.cpp qlccapability.h

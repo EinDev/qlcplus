@@ -875,6 +875,17 @@ bool App::vcIsContainerWidget(quint32 id) const
     return w->type() == VCWidget::FrameWidget || w->type() == VCWidget::SoloFrameWidget;
 }
 
+void App::vcRemapChannels(const QMap<SceneValue, SceneValue> &remapMap)
+{
+    // Same loop as FixtureRemapManager::applyRemap() (fixtureremapmanager.cpp)
+    for (const QVariant &v : m_virtualConsole->widgetsList())
+    {
+        VCWidget *w = v.toMap().value(QStringLiteral("classRef")).value<VCWidget *>();
+        if (w != nullptr)
+            w->remapChannels(remapMap);
+    }
+}
+
 QList<quint32> App::vcWidgetIds() const
 {
     QList<quint32> ids;
