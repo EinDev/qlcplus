@@ -1,6 +1,6 @@
 /*
   Q Light Controller Plus
-  app_apivcconfig_layout.cpp
+  app_apivcconfig_cue.cpp
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 */
 
 /*
- * vc.widget.setConfig / typeConfig for Frame, SoloFrame and Label - see app_apivcconfig.h for the contract. Not implemented yet:
+ * vc.widget.setConfig / typeConfig for CueList and SpeedDial - see app_apivcconfig.h for the contract. Not implemented yet:
  * every function below reports "not yet supported" so vc.widget.setConfig
  * keeps failing loudly for these types until their slice lands.
  */
@@ -38,10 +38,10 @@ bool notSupported(VCWidget *w, QString *error)
 namespace ApiVcConfig
 {
 
-QJsonObject frameConfigToJson(VCWidget *) { return QJsonObject(); }
-bool applyFrameConfig(VCWidget *w, const QJsonObject &, QString *error) { return notSupported(w, error); }
+QJsonObject cueListConfigToJson(VCWidget *) { return QJsonObject(); }
+bool applyCueListConfig(VCWidget *w, const QJsonObject &, QString *error) { return notSupported(w, error); }
 
-QJsonObject labelConfigToJson(VCWidget *) { return QJsonObject(); }
-bool applyLabelConfig(VCWidget *w, const QJsonObject &, QString *error) { return notSupported(w, error); }
+QJsonObject speedDialConfigToJson(VCWidget *) { return QJsonObject(); }
+bool applySpeedDialConfig(VCWidget *w, const QJsonObject &, QString *error) { return notSupported(w, error); }
 
 }

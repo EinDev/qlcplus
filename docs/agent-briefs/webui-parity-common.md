@@ -63,10 +63,11 @@ your own task prompt names the slice. Everything here is mandatory.
    screen may simply render "connect first" offline.
    Run `node webui/tools/check-jsx.js` after every edit: it must print `ok` for every file.
 6. **Verify end to end in a sandbox, not against mocks** (see below), then update docs:
-   `webui/README.md` ("What is live and what is not"), the row(s) for your slice in
-   `docs/webui-parity.md` (status vocabulary is defined there; `live` only for things you actually
-   exercised in the browser against your sandbox server, write "sandbox" in the notes column), and
-   the fragment's `-notes.md` with an "Implemented <date>" section like the existing ones.
+   `webui/README.md` ("What is live and what is not") and the fragment's `-notes.md` with an
+   "Implemented <date>" section like the existing ones. Do NOT edit `docs/webui-parity.md` (every
+   agent would conflict on it): instead list, in your final report, each parity row your slice
+   affects with its new status (`live` only for what you actually exercised in the browser against
+   your sandbox server; `partial` with what is missing otherwise). The coordinator applies them.
 
 ## Environment and build (Windows, MSYS2 MinGW64, Qt 6)
 
@@ -140,7 +141,7 @@ it so the integration pass can re-run it.
   `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`.
 - Do not edit `CLAUDE.md`, memory files, or the other agents' slices. If you must touch a shared
   file (`index.html`, `apiserver.cpp/.h`, the two `CMakeLists.txt` lists, `webui/README.md`,
-  `docs/webui-parity.md`), keep the edit to the minimal added lines at the natural place; the
+  `apivchost.h`/`app.h`/`fakevchost.{h,cpp}`), keep the edit to the minimal added lines at the natural place; the
   coordinator resolves merge conflicts.
 - Push back in your report if a requested feature cannot map onto a browser (say why) rather than
   faking it; deliver everything else in full.

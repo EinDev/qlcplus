@@ -32,7 +32,8 @@ class Doc;
  *
  * Split into two translation units by ownership so the widget types can be
  * implemented independently without touching one another's file:
- *   app_apivcconfig_layout.cpp - Frame/SoloFrame, Label, CueList, SpeedDial
+ *   app_apivcconfig_layout.cpp - Frame/SoloFrame, Label
+ *   app_apivcconfig_cue.cpp    - CueList, SpeedDial
  *   app_apivcconfig_live.cpp   - XYPad, Clock, Animation, AudioTriggers
  *
  * Contract (same as applyButtonConfig/applySliderConfig in app_apivchost.cpp):
@@ -56,6 +57,7 @@ namespace ApiVcConfig
     QJsonObject labelConfigToJson(VCWidget *w);
     bool applyLabelConfig(VCWidget *w, const QJsonObject &patch, QString *error);
 
+    // ---- app_apivcconfig_cue.cpp ----
     QJsonObject cueListConfigToJson(VCWidget *w);
     bool applyCueListConfig(VCWidget *w, const QJsonObject &patch, QString *error);
 

@@ -20,7 +20,7 @@ set(SRC_FILES
     ../plugins/interfaces/utils.h
     app.cpp app.h
     app_apivchost.cpp
-    app_apivcconfig.h app_apivcconfig_layout.cpp app_apivcconfig_live.cpp
+    app_apivcconfig.h app_apivcconfig_layout.cpp app_apivcconfig_cue.cpp app_apivcconfig_live.cpp
     asynclogwriter.cpp asynclogwriter.h
     audioeditor.cpp audioeditor.h
     chasereditor.cpp chasereditor.h
