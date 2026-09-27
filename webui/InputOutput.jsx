@@ -402,8 +402,11 @@ function InputOutput() {
           </SectionBox>
           <SectionBox sectionLabel="Input profiles" isExpanded>
             <div style={{ padding: 6, display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {profiles ? (profiles.length ? profiles.slice().sort((a, b) => a.name.localeCompare(b.name)).map(profileRow) : <RobotoText label="No input profiles" fontSize={12} labelColor={noteText} height={22} />)
-                : <RobotoText label={profileState.unsupported ? 'Not available: no io.inputProfile.list on this server' : (live ? 'Loading…' : '')} fontSize={12} labelColor={noteText} wrapText height="auto" />}
+              {/* bundled profiles alone are ~50 rows: keep the list in its own scroll box so the sections below stay reachable */}
+              <div data-role="profile-list" style={{ maxHeight: 240, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {profiles ? (profiles.length ? profiles.slice().sort((a, b) => a.name.localeCompare(b.name)).map(profileRow) : <RobotoText label="No input profiles" fontSize={12} labelColor={noteText} height={22} />)
+                  : <RobotoText label={profileState.unsupported ? 'Not available: no io.inputProfile.list on this server' : (live ? 'Loading…' : '')} fontSize={12} labelColor={noteText} wrapText height="auto" />}
+              </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4 }}>
                 <GenericButton label="New" width={60} height={24} disabled={!live || !InputProfileEditorDialog || unsupported('io.inputProfile.save')} onClick={() => setProfileEditor({ name: null })} data-role="profile-new" />
                 <GenericButton label="Edit" width={60} height={24} disabled={!live || !InputProfileEditorDialog || !selProfile || unsupported('io.inputProfile.get')} onClick={() => selProfile && setProfileEditor({ name: selProfile })} data-role="profile-edit" />
