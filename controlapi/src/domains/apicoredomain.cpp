@@ -629,6 +629,24 @@ void ApiCoreDomain::registerMethods()
         ApiProjectHost *a = projectHost();
         QSettings settings;
 
+        // MasterTimer derives its tick as 1000 / frequency (integer ms) on
+        // the next start: 0, negative, non-numeric (toInt() -> 0) or > 1000
+        // gave a 0 ms tick - integer division by zero in Script/ScriptRunner
+        // waits, a one-shot Windows timer queue timer (output stops) - and
+        // the value persists across restarts. Validate before applying
+        // anything, so a rejected request changes nothing.
+        if (params.contains(QStringLiteral("masterTimerFrequencyHz")))
+        {
+            const QJsonValue hz = params.value(QStringLiteral("masterTimerFrequencyHz"));
+            const double value = hz.toDouble(-1);
+            if (hz.isDouble() == false || value != double(int(value)) || value < 1 || value > 1000)
+            {
+                session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams,
+                                                                QStringLiteral("masterTimerFrequencyHz must be an integer between 1 and 1000")));
+                return;
+            }
+        }
+
         if (params.contains(QStringLiteral("locale")))
             settings.setValue(QStringLiteral(SETTINGS_LANGUAGE), params.value(QStringLiteral("locale")).toString());
 
