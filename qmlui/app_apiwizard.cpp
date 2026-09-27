@@ -29,7 +29,7 @@
 
 #include <QJsonArray>
 #include <QJsonObject>
-#include <QScopedPointer>
+#include <memory>
 #include <QVariantMap>
 
 #include "app.h"
@@ -66,7 +66,7 @@ void copyCapabilities(const QVariantMap &from, QJsonObject &to)
 
 StageWizard *App::wizardFromChoices(const ApiWizardChoices &choices, QString *error)
 {
-    QScopedPointer<StageWizard> wiz(new StageWizard(m_doc, m_fixtureManager, m_functionManager,
+    std::unique_ptr<StageWizard> wiz(new StageWizard(m_doc, m_fixtureManager, m_functionManager,
                                                     m_virtualConsole, m_contextManager, this));
 
     // Step 1 -> 2: the project's own fixture groups become unticked boxes
@@ -92,7 +92,7 @@ StageWizard *App::wizardFromChoices(const ApiWizardChoices &choices, QString *er
             }
             if (g.hasFixtureIds)
             {
-                for (const QJsonValue &v : groupFixtureIds(wiz.data(), index))
+                for (const QJsonValue &v : groupFixtureIds(wiz.get(), index))
                     if (g.fixtureIds.contains(quint32(v.toDouble())) == false)
                         wiz->removeFixtureFromGroup(index, quint32(v.toDouble()));
             }
@@ -106,7 +106,7 @@ StageWizard *App::wizardFromChoices(const ApiWizardChoices &choices, QString *er
         // assignFixtureToGroup() moves a fixture out of any other box: last one wins
         if (g.hasFixtureIds)
         {
-            const QJsonArray current = groupFixtureIds(wiz.data(), index);
+            const QJsonArray current = groupFixtureIds(wiz.get(), index);
             for (quint32 fid : g.fixtureIds)
                 if (current.contains(double(fid)) == false)
                     wiz->assignFixtureToGroup(index, fid);
@@ -174,12 +174,12 @@ StageWizard *App::wizardFromChoices(const ApiWizardChoices &choices, QString *er
     }
 
     wiz->setCurrentStep(5);
-    return wiz.take();
+    return wiz.release();
 }
 
 QJsonObject App::wizardProjectOptions()
 {
-    QScopedPointer<StageWizard> wiz(new StageWizard(m_doc, m_fixtureManager, m_functionManager,
+    std::unique_ptr<StageWizard> wiz(new StageWizard(m_doc, m_fixtureManager, m_functionManager,
                                                     m_virtualConsole, m_contextManager, this));
     wiz->setCurrentStep(1);
 
@@ -190,7 +190,7 @@ QJsonObject App::wizardProjectOptions()
         QJsonObject g;
         g.insert(QStringLiteral("groupId"), double(box.value(QStringLiteral("groupId")).toUInt()));
         g.insert(QStringLiteral("name"), box.value(QStringLiteral("name")).toString());
-        g.insert(QStringLiteral("fixtureIds"), groupFixtureIds(wiz.data(), box.value(QStringLiteral("index")).toInt()));
+        g.insert(QStringLiteral("fixtureIds"), groupFixtureIds(wiz.get(), box.value(QStringLiteral("index")).toInt()));
         g.insert(QStringLiteral("suggestedRole"), box.value(QStringLiteral("role")).toInt());
         copyCapabilities(box, g);
         groups.append(g);
@@ -201,14 +201,14 @@ QJsonObject App::wizardProjectOptions()
     QJsonObject result;
     result.insert(QStringLiteral("groups"), groups);
     result.insert(QStringLiteral("controllers"), QJsonArray::fromVariantList(wiz->controllersModel().toList()));
-    result.insert(QStringLiteral("envSize"), envSizeJson(wiz.data()));
+    result.insert(QStringLiteral("envSize"), envSizeJson(wiz.get()));
     return result;
 }
 
 QJsonObject App::wizardPreview(const ApiWizardChoices &choices, QString *error)
 {
-    QScopedPointer<StageWizard> wiz(wizardFromChoices(choices, error));
-    if (wiz.isNull())
+    std::unique_ptr<StageWizard> wiz(wizardFromChoices(choices, error));
+    if (!wiz)
         return QJsonObject();
 
     QJsonArray groups;
@@ -219,7 +219,7 @@ QJsonObject App::wizardPreview(const ApiWizardChoices &choices, QString *error)
         quint32 gid = m.value(QStringLiteral("groupId")).toUInt();
         g.insert(QStringLiteral("groupId"), gid == FixtureGroup::invalidId() ? QJsonValue() : QJsonValue(double(gid)));
         g.insert(QStringLiteral("name"), m.value(QStringLiteral("name")).toString());
-        g.insert(QStringLiteral("fixtureIds"), groupFixtureIds(wiz.data(), m.value(QStringLiteral("index")).toInt()));
+        g.insert(QStringLiteral("fixtureIds"), groupFixtureIds(wiz.get(), m.value(QStringLiteral("index")).toInt()));
         g.insert(QStringLiteral("role"), m.value(QStringLiteral("role")).toInt());
         copyCapabilities(m, g);
         groups.append(g);
@@ -238,7 +238,7 @@ QJsonObject App::wizardPreview(const ApiWizardChoices &choices, QString *error)
     result.insert(QStringLiteral("groups"), groups);
     result.insert(QStringLiteral("placesFixtures"), wiz->hasNewGroups());
     result.insert(QStringLiteral("stageType"), wiz->stageType());
-    result.insert(QStringLiteral("envSize"), envSizeJson(wiz.data()));
+    result.insert(QStringLiteral("envSize"), envSizeJson(wiz.get()));
     result.insert(QStringLiteral("effects"), QJsonArray::fromVariantList(wiz->effectsModel().toList()));
     result.insert(QStringLiteral("controller"), controller);
     result.insert(QStringLiteral("summary"), QJsonArray::fromVariantList(wiz->summaryModel().toList()));
@@ -247,8 +247,8 @@ QJsonObject App::wizardPreview(const ApiWizardChoices &choices, QString *error)
 
 bool App::wizardGenerate(const ApiWizardChoices &choices, QString *error)
 {
-    QScopedPointer<StageWizard> wiz(wizardFromChoices(choices, error));
-    if (wiz.isNull())
+    std::unique_ptr<StageWizard> wiz(wizardFromChoices(choices, error));
+    if (!wiz)
         return false;
 
     wiz->generate();
