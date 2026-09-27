@@ -53,6 +53,13 @@ function useGatedTopic(vc, topic, active) {
   }, [vc.qlc, topic, active, vc.qlc.online]);
 }
 
+/** vc.widget.preset.add/remove (ApiVcDomain) broadcast only the type's presetsChanged, not
+    vc.widget.configChanged, and the screen refreshes its widget list on the latter only: re-read the
+    list on those so typeConfig.presets (which the bodies and panels render from) stays current. */
+function useRefreshOnPresets(vc, topic, widgetId) {
+  useWidgetEvent(vc, topic, widgetId, () => { if (vc.refresh) vc.refresh(); });
+}
+
 /** Collapsible sections with this file's own expanded-by-default state (same SectionBox look). */
 function useLiveSections(collapsedKeys) {
   const [open, setOpen] = React.useState(() => { const o = {}; (collapsedKeys || []).forEach(k => { o[k] = false; }); return o; });
@@ -168,6 +175,7 @@ function VCXYPadBodyEx({ w }) {
   React.useEffect(() => { if (w.activePresetId != null) setActivePreset(Number(w.activePresetId)); }, [w.activePresetId]);
   useWidgetEvent(vc, 'vc.xyPad.floorPositionChanged', w.id, (d) => setFloorPos({ x: Number(d.x), y: Number(d.y), z: Number(d.z) }));
   useWidgetEvent(vc, 'vc.xyPad.activePresetChanged', w.id, (d) => setActivePreset(Number(d.activePresetId)));
+  useRefreshOnPresets(vc, 'vc.xyPad.presetsChanged', w.id);
   const throttled = useThrottledSender(33);
   const ref = React.useRef(null);
   const [press, setPress] = React.useState(false);
@@ -373,8 +381,16 @@ function VCXYPadProps({ w, cfg, setConfig, functions, CheckRow, PropRow }) {
   const [pName, setPName] = React.useState('');
   const selected = fixtures.filter(f => sel[entryKey(f)]);
   React.useEffect(() => { setSel({}); }, [cfg.displayMode]);
+  useRefreshOnPresets(vc, 'vc.xyPad.presetsChanged', w.id);
   const selectedPreset = presets.find(p => Number(p.presetId) === presetSel) || null;
-  React.useEffect(() => { if (presetSel >= 0 && !selectedPreset) setPresetSel(-1); if (selectedPreset) setPName(selectedPreset.name || ''); }, [presets, presetSel]);
+  /* Drop a selection whose preset disappeared (removed elsewhere) - but only once the list has shown it:
+     right after an add the selection names an id the refreshed list has not delivered yet. */
+  const presetSeen = React.useRef(false);
+  React.useEffect(() => { presetSeen.current = false; }, [presetSel]);
+  React.useEffect(() => { if (selectedPreset) presetSeen.current = true; else if (presetSel >= 0 && presetSeen.current) setPresetSel(-1); }, [presets, presetSel]);
+  /* The name field follows the selection only, not every list refresh - a refresh landing mid-typing
+     would otherwise wipe the draft (the list may still be catching up right after an add). */
+  React.useEffect(() => { const p = presets.find(x => Number(x.presetId) === presetSel); setPName(p ? p.name || '' : ''); }, [presetSel]);
   React.useEffect(() => { if (presetTool === 'group' && groups == null) vc.qlc.call('fixtures.group.list').then(r => setGroups(r.groups || [])).catch(() => setGroups([])); }, [presetTool]);
   const hr = cfg.horizontalRange || { min: 0, max: 255 }, vr = cfg.verticalRange || { min: 0, max: 255 };
   const cycleUnits = () => setConfig({ displayMode: cfg.displayMode === 'Degrees' ? 'Percentage' : cfg.displayMode === 'Percentage' ? 'DMX' : 'Degrees' });
@@ -383,7 +399,7 @@ function VCXYPadProps({ w, cfg, setConfig, functions, CheckRow, PropRow }) {
   const addPreset = (preset) => structural(LIVE_METHODS.PRESET_ADD, { preset }).then(r => { if (r && r.presetId != null) setPresetSel(Number(r.presetId)); }).catch(() => {});
   const removePreset = () => { if (presetSel >= 0) structural(LIVE_METHODS.PRESET_REMOVE, { presetId: presetSel }).then(() => setPresetSel(-1)).catch(() => {}); };
   const movePreset = (dir) => { if (presetSel >= 0) structural('vc.xyPad.preset.move', { presetId: presetSel, direction: dir }).then(r => { if (r && r.presetId != null) setPresetSel(Number(r.presetId)); }).catch(() => {}); };
-  const renamePreset = (t) => { if (selectedPreset && t.trim() && t.trim() !== selectedPreset.name) structural('vc.xyPad.preset.rename', { presetId: presetSel, name: t.trim() }).catch(() => {}); };
+  const renamePreset = (t) => { if (presetSel >= 0 && t.trim() && (!selectedPreset || t.trim() !== selectedPreset.name)) structural('vc.xyPad.preset.rename', { presetId: presetSel, name: t.trim() }).catch(() => {}); };
   const presetLabel = (p) => p.presetType === 'function' ? (p.functionType || 'Function') : p.presetType === 'position' ? 'Position' : ((p.headsCount != null ? p.headsCount : 0) + ' heads');
   return (
     <>
@@ -601,6 +617,7 @@ function useAnimationLive(vc, w) {
   useWidgetEvent(vc, 'vc.animation.faderLevelChanged', w.id, (d) => setLevel(Number(d.level) || 0));
   useWidgetEvent(vc, 'vc.animation.activePresetChanged', w.id, (d) => { setActive(Number(d.activePresetId)); if (d.knobPresetId != null) setKnobs(k => Object.assign({}, k, { [d.knobPresetId]: Number(d.knobValue) })); });
   useWidgetEvent(vc, 'vc.animation.styleChanged', w.id, (d) => { if (Array.isArray(d.colors)) setColors(d.colors); if (d.algorithmIndex != null) setAlgo(Number(d.algorithmIndex)); });
+  useRefreshOnPresets(vc, 'vc.animation.presetsChanged', w.id);
   return { level, setLevel, active, colors, algo, knobs, setKnobs };
 }
 
@@ -690,13 +707,14 @@ function AnimationAlgorithmDialog({ open, onClose, onAdd }) {
   }, [open]);
   React.useEffect(() => {
     if (!open || !name) return;
-    vc.qlc.call('functions.rgbmatrix.getScriptProperties', { scriptName: name }).then(r => { const p = r.properties || []; setProps(p); const v = {}; p.forEach(x => { if (x.type === 'List' && x.listValues && x.listValues.length) v[x.name] = x.listValues[0]; else if (x.type === 'Range') v[x.name] = String(x.rangeMin != null ? x.rangeMin : 0); }); setValues(v); }).catch(() => { setProps([]); setValues({}); });
+    /* functions.rgbmatrix.getScriptProperties spells the type lower-case ("list" / "range" / "float" / "string"). */
+    vc.qlc.call('functions.rgbmatrix.getScriptProperties', { scriptName: name }).then(r => { const p = (r.properties || []).map(x => Object.assign({}, x, { type: String(x.type || '').toLowerCase() })); setProps(p); const v = {}; p.forEach(x => { if (x.type === 'list' && x.listValues && x.listValues.length) v[x.name] = x.listValues[0]; else if (x.type === 'range') v[x.name] = String(x.rangeMin != null ? x.rangeMin : 0); }); setValues(v); }).catch(() => { setProps([]); setValues({}); });
   }, [open, name]);
   const editor = (p) => {
     const v = values[p.name] != null ? values[p.name] : '';
     const set = (x) => setValues(s => Object.assign({}, s, { [p.name]: String(x) }));
-    if (p.type === 'List') return <CustomComboBox width="100%" height={24} currValue={v} onValueChanged={set} model={(p.listValues || []).map(x => ({ mLabel: x, mValue: x }))} data-e2e={'anim-prop-' + p.name} />;
-    if (p.type === 'Range') return <CustomSpinBox value={Number(v) || 0} from={Number(p.rangeMin) || 0} to={Number(p.rangeMax) || 255} width={90} height={24} onValueModified={set} data-e2e={'anim-prop-' + p.name} />;
+    if (p.type === 'list') return <CustomComboBox width="100%" height={24} currValue={v} onValueChanged={set} model={(p.listValues || []).map(x => ({ mLabel: x, mValue: x }))} data-e2e={'anim-prop-' + p.name} />;
+    if (p.type === 'range') return <CustomSpinBox value={Number(v) || 0} from={Number(p.rangeMin) || 0} to={Number(p.rangeMax) || 255} width={90} height={24} onValueModified={set} data-e2e={'anim-prop-' + p.name} />;
     return <LiveTextField value={v} onChange={set} tag={'anim-prop-' + p.name} />;
   };
   return (
@@ -734,7 +752,11 @@ function VCAnimationProps({ w, cfg, setConfig, functions, CheckRow, PropRow }) {
   const [text, setText] = React.useState('');
   const [sel, setSel] = React.useState(-1);
   const [algoDialog, setAlgoDialog] = React.useState(false);
-  React.useEffect(() => { if (sel >= 0 && !presets.some(p => Number(p.presetId) === sel)) setSel(-1); }, [presets]);
+  useRefreshOnPresets(vc, 'vc.animation.presetsChanged', w.id);
+  /* Same "only once seen" rule as the XY pad panel: an add selects an id the list delivers a moment later. */
+  const selSeen = React.useRef(false);
+  React.useEffect(() => { selSeen.current = false; }, [sel]);
+  React.useEffect(() => { const has = presets.some(p => Number(p.presetId) === sel); if (has) selSeen.current = true; else if (sel >= 0 && selSeen.current) setSel(-1); }, [presets, sel]);
   const toggleMask = (flag, on) => setConfig({ visibilityMask: on ? mask.concat([flag]) : mask.filter(x => x !== flag) });
   const addPreset = (preset) => structural(LIVE_METHODS.PRESET_ADD, { preset }).then(r => { if (r && r.presetId != null) setSel(Number(r.presetId)); return r; });
   const removePreset = () => { if (sel >= 0) structural(LIVE_METHODS.PRESET_REMOVE, { presetId: sel }).then(() => setSel(-1)).catch(() => {}); };
