@@ -74,11 +74,27 @@ private slots:
     void defsGetModeReturnsChannelDetail();
     void patchAcceptsFlatManufacturerModelMode();
 
+    void updateModeChangesChannelCount();
+    void updateModeRejectsOverlap();
+    void updateModeWithMoveIgnoresTransientOverlap();
+    void updateModeShrinkPrunesSettingsAndKeepsScene();
+    void updateUnknownModeIsNotFound();
+    void getReportsChannelBehaviourAndModes();
+
+    void createRgbPanelBuildsRowsAndGroup();
+    void createRgbPanelRejectsOverlap();
+    void createRgbPanelNeverCreatesUniverses();
+
 private:
     /** Register a synthetic "Acme" / "TestPar" definition (Dimmer, one
      *  "2-channel" mode: Intensity MSB + Colour) in m_doc's definition
      *  cache, the way patchNamedDefinitionUsesRealFixtureDef() does inline. */
     void addAcmeTestParDefinition();
+
+    /** "Acme" / "MultiPar": mode "2-channel" (Intensity, Colour) and mode
+     *  "4-channel" (Intensity, Colour, Pan, Strobe). */
+    void addAcmeMultiParDefinition();
+    quint32 patchMultiPar(int universeId, int address, const QString &mode);
 
     /** Send a request and scan every frame received so far for the matching
      *  "response" (a mutation's response/event can arrive in either order -
