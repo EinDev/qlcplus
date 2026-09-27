@@ -66,6 +66,9 @@ private slots:
     void simpleDeskDumpBroadcastsFunctionsCreatedEvent();
     void simpleDeskDumpMergeIntoExistingSceneBroadcastsFunctionsUpdated();
     void simpleDeskDumpOnMissingTargetSceneIsNotFound();
+    void simpleDeskDumpFixtureIdsLimitsToThoseFixtures();
+    void simpleDeskDumpUnknownFixtureIdIsNotFound();
+    void simpleDeskOverrideOnUniverse1FixtureHitsItsChannel();
 
     void pluginListDescribesStubPluginLines();
     void patchSetOutputBumpsRevisionAndBroadcastsUniverseUpdated();

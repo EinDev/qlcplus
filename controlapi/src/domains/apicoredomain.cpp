@@ -23,6 +23,7 @@
 #include <QBuffer>
 #include <QSettings>
 #include <QTimer>
+#include <QXmlStreamReader>
 
 #include "apicoredomain.h"
 #include "apiserver.h"
@@ -33,6 +34,7 @@
 #include "inputoutputmap.h"
 #include "mastertimer.h"
 #include "function.h"
+#include "qlcfile.h"
 
 #define MASTERTIMER_FREQUENCY "mastertimer/frequency"
 
@@ -89,12 +91,16 @@ QJsonObject bpmStateToJson(InputOutputMap *ioMap)
 
 // Shared by core.project.get and the core.project.loaded broadcast - see
 // CoreProjectMetadata in docs/api-spec/fragments/core.yaml.
-QJsonObject projectMetadataToJson(Doc *doc, ApiProjectHost *host)
+QJsonObject projectMetadataToJson(Doc *doc, ApiProjectHost *host, const QString &uploadedFileName)
 {
     QJsonObject obj;
     QString path = host != nullptr ? host->fileName() : QString();
     obj.insert(QStringLiteral("filePath"), path.isEmpty() ? QJsonValue() : QJsonValue(path));
-    obj.insert(QStringLiteral("fileName"), path.isEmpty() ? QJsonValue() : QJsonValue(QFileInfo(path).fileName()));
+    // A project opened with source=upload has no path on this machine until
+    // it is saved: filePath stays null (so a client routes Save to Save As),
+    // fileName is the name the client uploaded it under.
+    QString name = path.isEmpty() ? uploadedFileName : QFileInfo(path).fileName();
+    obj.insert(QStringLiteral("fileName"), name.isEmpty() ? QJsonValue() : QJsonValue(name));
     obj.insert(QStringLiteral("isModified"), doc->isModified());
     obj.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
     // docRevisionAtLastSave not tracked by Doc today, could be added or ignored
@@ -130,6 +136,9 @@ ApiCoreDomain::ApiCoreDomain(Doc *doc, ApiServer *server, QObject *parent)
             this, SLOT(slotModeChanged(Doc::Mode)));
     connect(m_doc, SIGNAL(docRevisionChanged(quint32)),
             this, SLOT(slotDocRevisionChanged(quint32)));
+    // Every new/open/close (from any client or the desktop UI) empties the
+    // Doc first: forget the name/version of a previously uploaded project.
+    connect(m_doc, SIGNAL(cleared()), this, SLOT(slotDocCleared()));
 
     // Beat generator feed (engine DLL: string-based connects, see
     // apiiodomain.cpp). beat() arrives from InputOutputMap on this thread
@@ -218,6 +227,48 @@ ApiProjectHost *ApiCoreDomain::projectHost() const
     return dynamic_cast<ApiProjectHost *>(m_server->parent());
 }
 
+void ApiCoreDomain::slotDocCleared()
+{
+    m_uploadedFileName.clear();
+    m_uploadedCreatorVersion.clear();
+    m_projectUploaded = false;
+}
+
+QString ApiCoreDomain::validateWorkspaceXml(const QByteArray &content, QString *creatorVersion)
+{
+    if (content.isEmpty())
+        return QStringLiteral("contentBase64 is empty or not valid base64");
+
+    QXmlStreamReader reader(content);
+    while (reader.atEnd() == false && reader.readNext() != QXmlStreamReader::DTD)
+        ;
+    if (reader.hasError() || reader.dtdName() != QLatin1String("Workspace"))
+        return QStringLiteral("Not a QLC+ workspace (.qxw) file");
+
+    // <Workspace><Creator><Version>: only needed for the legacy Show timing
+    // check (Doc::possiblyAffectedLegacyBeatShows), best effort.
+    if (reader.readNextStartElement() && reader.name() == QLatin1String("Workspace"))
+    {
+        while (reader.readNextStartElement())
+        {
+            if (reader.name() != KXMLQLCCreator)
+            {
+                reader.skipCurrentElement();
+                continue;
+            }
+            while (reader.readNextStartElement())
+            {
+                if (reader.name() == KXMLQLCCreatorVersion && creatorVersion != nullptr)
+                    *creatorVersion = reader.readElementText();
+                else
+                    reader.skipCurrentElement();
+            }
+            break;
+        }
+    }
+    return QString();
+}
+
 void ApiCoreDomain::registerMethods()
 {
     ApiDispatcher *d = m_server->dispatcher();
@@ -262,11 +313,29 @@ void ApiCoreDomain::registerMethods()
         }
         else if (source == QStringLiteral("upload"))
         {
-            // fileName is ignored by loadXML(QByteArray) but used by core spec.
-            // Actually, we should set the fileName in App so Save works.
-            QByteArray content = QByteArray::fromBase64(params.value(QStringLiteral("contentBase64")).toString().toUtf8());
+            // Validate before handing the bytes to the host: its in-memory
+            // loader clears the current project first and then silently
+            // gives up on anything that is not a QLC+ workspace, which would
+            // leave the operator with an empty project and an "ok" answer.
+            QByteArray content = QByteArray::fromBase64(params.value(QStringLiteral("contentBase64")).toString().toUtf8(),
+                                                         QByteArray::AbortOnBase64DecodingErrors);
+            QString creatorVersion;
+            QString problem = validateWorkspaceXml(content, &creatorVersion);
+            if (problem.isEmpty() == false)
+            {
+                session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams, problem));
+                return;
+            }
             a->slotLoadDocFromMemory(content);
-            a->setFileName(params.value(QStringLiteral("fileName")).toString());
+            // No path on this machine until the project is saved: the host
+            // keeps an empty file name, so core.project.save answers
+            // INVALID_STATE (a client routes it to Save As) instead of
+            // writing "<fileName>" relative to the engine's working
+            // directory. The client's name is only reported as fileName.
+            a->setFileName(QString());
+            m_uploadedFileName = QFileInfo(params.value(QStringLiteral("fileName")).toString()).fileName();
+            m_uploadedCreatorVersion = creatorVersion;
+            m_projectUploaded = true;
             ok = true;
         }
         else
@@ -400,7 +469,7 @@ void ApiCoreDomain::registerMethods()
     d->registerMethod(QStringLiteral("core.project.get"), [this](ApiSession *session, const QString &id, const QJsonObject &params)
     {
         Q_UNUSED(params)
-        session->send(ApiEnvelope::buildOkResponse(id, projectMetadataToJson(m_doc, projectHost())));
+        session->send(ApiEnvelope::buildOkResponse(id, projectMetadataToJson(m_doc, projectHost(), m_uploadedFileName)));
     });
 
     // core.project.recentFiles
@@ -817,7 +886,7 @@ void ApiCoreDomain::broadcastProjectLoaded(const QString &reason, const QString 
 {
     QJsonObject data;
     data.insert(QStringLiteral("reason"), reason);
-    data.insert(QStringLiteral("project"), projectMetadataToJson(m_doc, projectHost()));
+    data.insert(QStringLiteral("project"), projectMetadataToJson(m_doc, projectHost(), m_uploadedFileName));
     m_server->broadcast(QStringLiteral("core.project.loaded"), data, originClientId, false);
 }
 

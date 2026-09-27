@@ -86,6 +86,21 @@ public:
     quint32 profilesRevision() const { return m_profilesRevision; }
     void bumpProfilesRevision() { m_profilesRevision++; }
 
+    /** Name given to this domain's per-universe Simple Desk faders */
+    static QString simpleDeskFaderName() { return QStringLiteral("Control API Simple Desk"); }
+
+    /** The live override held for an absolute address ((universeId<<9)+channel),
+     *  false when the address is not overridden. For io.dmx.channel.inspect. */
+    bool simpleDeskOverride(quint32 address, uchar *value) const
+    {
+        QMutexLocker locker(&m_simpleDeskMutex);
+        if (m_simpleDeskValues.contains(address) == false)
+            return false;
+        if (value != nullptr)
+            *value = m_simpleDeskValues.value(address);
+        return true;
+    }
+
 private:
     void registerMethods();
     void watchUniverse(Universe *universe);

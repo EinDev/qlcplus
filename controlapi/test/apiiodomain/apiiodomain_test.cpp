@@ -716,6 +716,107 @@ void ApiIoDomain_Test::simpleDeskDumpOnMissingTargetSceneIsNotFound()
               QStringLiteral("NOT_FOUND"));
 }
 
+static Fixture *addDimmerFixture(Doc *doc, const QString &name, quint32 universe, quint32 address, quint32 channels)
+{
+    Fixture *fixture = new Fixture(doc);
+    fixture->setName(name);
+    fixture->setUniverse(universe);
+    fixture->setAddress(address);
+    fixture->setChannels(channels); // generic dimmer
+    if (doc->addFixture(fixture) == false)
+    {
+        delete fixture;
+        return nullptr;
+    }
+    return fixture;
+}
+
+void ApiIoDomain_Test::simpleDeskDumpFixtureIdsLimitsToThoseFixtures()
+{
+    Fixture *a = addDimmerFixture(m_doc, QStringLiteral("A"), 0, 0, 2);
+    Fixture *b = addDimmerFixture(m_doc, QStringLiteral("B"), 0, 10, 2);
+    QVERIFY(a != nullptr && b != nullptr);
+    helloAndGetClientId();
+
+    QJsonArray channels;
+    channels.append(channelEntry(0, 11));   // A ch 0
+    channels.append(channelEntry(1, 12));   // A ch 1
+    channels.append(channelEntry(10, 21));  // B ch 0
+    QJsonObject setParams;
+    setParams.insert(QStringLiteral("channels"), channels);
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("io.simpleDesk.setChannels"), setParams).value(QStringLiteral("ok")).toBool(), true);
+
+    QJsonObject params;
+    params.insert(QStringLiteral("baseRevision"), int(m_doc->docRevision()));
+    params.insert(QStringLiteral("name"), QStringLiteral("Only B"));
+    params.insert(QStringLiteral("nonZeroOnly"), true);
+    params.insert(QStringLiteral("fixtureIds"), QJsonArray({ QString::number(b->id()) }));
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("io.simpleDesk.dump"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+
+    Scene *scene = qobject_cast<Scene *>(m_doc->function(reply.value(QStringLiteral("result")).toObject()
+                                                           .value(QStringLiteral("sceneId")).toString().toUInt()));
+    QVERIFY(scene != nullptr);
+    // nonZeroOnly drops B's ch 1 (0), fixtureIds drops both of A's
+    QCOMPARE(scene->values().count(), 1);
+    QCOMPARE(scene->values().first().fxi, b->id());
+    QCOMPARE(int(scene->values().first().channel), 0);
+    QCOMPARE(int(scene->values().first().value), 21);
+
+    // A numeric id works as well, and both fixtures together give all three
+    params.insert(QStringLiteral("baseRevision"), int(m_doc->docRevision()));
+    params.insert(QStringLiteral("name"), QStringLiteral("A and B"));
+    params.insert(QStringLiteral("fixtureIds"), QJsonArray({ int(a->id()), QString::number(b->id()) }));
+    reply = sendAndWaitForReply(QStringLiteral("io.simpleDesk.dump"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    scene = qobject_cast<Scene *>(m_doc->function(reply.value(QStringLiteral("result")).toObject()
+                                                    .value(QStringLiteral("sceneId")).toString().toUInt()));
+    QVERIFY(scene != nullptr);
+    QCOMPARE(scene->values().count(), 3);
+}
+
+void ApiIoDomain_Test::simpleDeskDumpUnknownFixtureIdIsNotFound()
+{
+    helloAndGetClientId();
+    const int functionsBefore = m_doc->functions().count();
+
+    QJsonObject params;
+    params.insert(QStringLiteral("baseRevision"), int(m_doc->docRevision()));
+    params.insert(QStringLiteral("fixtureIds"), QJsonArray({ QStringLiteral("4242") }));
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("io.simpleDesk.dump"), params);
+
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(),
+              QStringLiteral("NOT_FOUND"));
+    QCOMPARE(m_doc->functions().count(), functionsBefore); // no Scene created
+}
+
+void ApiIoDomain_Test::simpleDeskOverrideOnUniverse1FixtureHitsItsChannel()
+{
+    // Fixture channel resolution used Fixture::address() (the low 9 bits)
+    // against the universe-qualified address, so on any universe > 0 the
+    // override landed on a bogus relative channel (512 + ...) and never
+    // reached the output.
+    Fixture *fx = addDimmerFixture(m_doc, QStringLiteral("U1"), 1, 10, 4);
+    QVERIFY(fx != nullptr);
+    helloAndGetClientId();
+
+    QJsonArray channels;
+    channels.append(channelEntry((1 << 9) + 12, 200)); // fixture channel 2
+    QJsonObject setParams;
+    setParams.insert(QStringLiteral("channels"), channels);
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("io.simpleDesk.setChannels"), setParams).value(QStringLiteral("ok")).toBool(), true);
+
+    QJsonObject getParams;
+    getParams.insert(QStringLiteral("universeId"), 1);
+    QVERIFY(QTest::qWaitFor([&]()
+    {
+        QJsonObject dmxReply = sendAndWaitForReply(QStringLiteral("io.dmx.universe.get"), getParams);
+        QJsonArray values = dmxReply.value(QStringLiteral("result")).toObject().value(QStringLiteral("values")).toArray();
+        return values.size() > 12 && values.at(12).toInt() == 200;
+    }, 2000));
+}
+
 /*********************************************************************
  * Plugins, patches, universe update/delete, input profiles
  *********************************************************************/

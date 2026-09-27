@@ -1067,7 +1067,7 @@ void ApiIoDomain::registerMethods()
         int restoredValue = 0;
         if (fixture != nullptr)
         {
-            const QLCChannel *ch = fixture->channel(address - fixture->address());
+            const QLCChannel *ch = fixture->channel(address - fixture->universeAddress());
             if (ch != nullptr)
                 restoredValue = ch->defaultValue();
         }
@@ -1157,6 +1157,32 @@ void ApiIoDomain::registerMethods()
         }
         bool nonZeroOnly = params.value(QStringLiteral("nonZeroOnly")).toBool();
 
+        // fixtureIds empty/omitted -> every patched fixture; otherwise only
+        // these (PopupDMXDump.qml's "Dump the selected fixture channels").
+        QSet<quint32> allowedFixtures;
+        for (const QJsonValue &v : params.value(QStringLiteral("fixtureIds")).toArray())
+        {
+            quint32 fxId = Fixture::invalidId();
+            if (v.isString())
+            {
+                bool idOk = false;
+                quint32 parsed = v.toString().toUInt(&idOk);
+                if (idOk)
+                    fxId = parsed;
+            }
+            else if (v.isDouble() && v.toDouble() >= 0)
+            {
+                fxId = quint32(v.toDouble());
+            }
+            if (m_doc->fixture(fxId) == nullptr)
+            {
+                session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrNotFound,
+                                                                QStringLiteral("No such fixture: %1").arg(v.toVariant().toString())));
+                return;
+            }
+            allowedFixtures.insert(fxId);
+        }
+
         // 1 - snapshot live pre-GM universe output, same source
         // qmlui/functionmanager.cpp's dumpDmxValues() reads: this captures
         // the full composed effect at this instant, not just this domain's
@@ -1218,13 +1244,13 @@ void ApiIoDomain::registerMethods()
             }
         }
 
-        // 3 - collect + write values, across every patched fixture (this API
-        // has no "selected fixtures" concept - qmlui SimpleDesk's own
-        // fixture-tree selection is a UI ergonomics restriction that doesn't
-        // map onto a client composing arbitrary channels programmatically;
-        // channelGroups is the only filter axis here).
+        // 3 - collect + write values, across every patched fixture or the
+        // fixtureIds subset (the client's own fixture selection), filtered
+        // by channelGroups and nonZeroOnly.
         for (Fixture *fixture : m_doc->fixtures())
         {
+            if (allowedFixtures.isEmpty() == false && allowedFixtures.contains(fixture->id()) == false)
+                continue;
             quint32 baseAddress = fixture->universeAddress();
             for (quint32 chIndex = 0; chIndex < fixture->channels(); chIndex++)
             {
@@ -1428,6 +1454,8 @@ FadeChannel *ApiIoDomain::simpleDeskFader(const QList<Universe *> &universes, qu
     if (fader.isNull())
     {
         fader = universes[universeId]->requestFader(Universe::SimpleDesk);
+        // Named so io.dmx.channel.inspect (ApiToolsDomain) can attribute it
+        fader->setName(simpleDeskFaderName());
         m_simpleDeskFaders[universeId] = fader;
     }
     return fader->getChannelFader(m_doc, universes[universeId], fixtureId, channel);
@@ -1509,7 +1537,7 @@ void ApiIoDomain::writeDMX(MasterTimer *timer, QList<Universe *> universes)
 
             quint32 fxID = m_doc->fixtureForAddress(address);
             Fixture *fixture = m_doc->fixture(fxID);
-            quint32 chIndex = fixture != nullptr ? address - fixture->address() : (address & 0x01FF);
+            quint32 chIndex = fixture != nullptr ? address - fixture->universeAddress() : (address & 0x01FF);
 
             FadeChannel fc(m_doc, fxID, chIndex);
             fader->remove(&fc);
@@ -1543,7 +1571,7 @@ void ApiIoDomain::writeDMX(MasterTimer *timer, QList<Universe *> universes)
             // the within-universe channel explicitly here: this domain's
             // "address" encoding ((universeId<<9)+channel, per io.yaml) means
             // that shortcut would silently misresolve for any universe > 0.
-            quint32 channel = fixture != nullptr ? address - fixture->address() : (address & 0x01FF);
+            quint32 channel = fixture != nullptr ? address - fixture->universeAddress() : (address & 0x01FF);
 
             FadeChannel *fc = simpleDeskFader(universes, universeId, fxID, channel);
             fc->setCurrent(it.value());

@@ -49,6 +49,18 @@ class ApiCoreDomain : public QObject
 public:
     ApiCoreDomain(Doc *doc, ApiServer *server, QObject *parent = nullptr);
 
+    /** Creator/Version of the project last opened with source=upload, empty
+     *  when the current project came from anywhere else (it is cleared
+     *  whenever the Doc is cleared). ApiToolsDomain's legacy Show timing
+     *  check reads it, since an uploaded project has no file to re-read. */
+    QString uploadedCreatorVersion() const { return m_uploadedCreatorVersion; }
+    bool hasUploadedProject() const { return m_projectUploaded; }
+
+    /** Empty string when $content is a QLC+ workspace (DTD "Workspace"),
+     *  otherwise a human readable reason. Fills $creatorVersion with the
+     *  <Creator><Version> text when present. */
+    static QString validateWorkspaceXml(const QByteArray &content, QString *creatorVersion);
+
 private:
     void registerMethods();
     ApiProjectHost *projectHost() const;
@@ -97,6 +109,9 @@ private slots:
     void slotHistoryChanged();
     void slotBroadcastHistoryChanged();
 
+    /** Doc::cleared relay: forgets the uploaded project's name/version */
+    void slotDocCleared();
+
 private:
     Doc *m_doc;
     ApiServer *m_server;
@@ -123,6 +138,12 @@ private:
 
     /** Coalescing single-shot for core.history.changed, see slotHistoryChanged() */
     QTimer *m_historyTimer;
+
+    /** core.project.open {source: upload}: the client's file name (reported
+     *  as fileName while filePath is null) and its <Creator><Version> */
+    QString m_uploadedFileName;
+    QString m_uploadedCreatorVersion;
+    bool m_projectUploaded = false;
 };
 
 #endif

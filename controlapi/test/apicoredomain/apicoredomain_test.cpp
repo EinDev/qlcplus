@@ -30,6 +30,7 @@
 #include "inputoutputmap.h"
 #include "mastertimer.h"
 #include "doc.h"
+#include "apiprojecthost.h"
 #include "qlcconfig.h"
 
 static QString buildRequest(const QString &method, const QJsonObject &params, const QString &id = QStringLiteral("t-1"))
@@ -77,6 +78,8 @@ void ApiCoreDomain_Test::cleanup()
     m_client = nullptr;
     delete m_apiServer;
     m_apiServer = nullptr;
+    delete m_host;
+    m_host = nullptr;
     delete m_doc;
     m_doc = nullptr;
 }
@@ -486,6 +489,132 @@ void ApiCoreDomain_Test::fsListRejectsRelativeAndMissingPaths()
     reply = sendAndWaitForReply(QStringLiteral("core.fs.list"), params);
     QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
     QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("NOT_FOUND"));
+}
+
+/*********************************************************************
+ * core.project.open {source: upload}
+ *********************************************************************/
+
+namespace
+{
+
+/** Minimal ApiProjectHost: records what the domain hands it. Loading from
+ *  memory only clears the Doc (like App::slotLoadDocFromMemory() does
+ *  before parsing), which is all these cases need. */
+class FakeProjectHost : public QObject, public ApiProjectHost
+{
+public:
+    explicit FakeProjectHost(Doc *doc) : m_doc(doc) {}
+
+    QString fileName() const override { return m_fileName; }
+    void setFileName(const QString &fileName) override { m_fileName = fileName; }
+    bool newWorkspace() override { m_doc->clearContents(); m_fileName.clear(); return true; }
+    bool loadWorkspace(const QString &fileName) override { m_doc->clearContents(); m_fileName = fileName; return true; }
+    bool saveWorkspace(const QString &fileName) override { m_savedTo = fileName; return true; }
+    void slotLoadDocFromMemory(QByteArray &xmlData) override { m_doc->clearContents(); m_loaded = xmlData; m_loads++; }
+    QStringList recentFiles() const override { return QStringList(); }
+    QString workingPath() const override { return QString(); }
+    void setWorkingPath(QString) override {}
+
+    Doc *m_doc;
+    QString m_fileName;
+    QString m_savedTo;
+    QByteArray m_loaded;
+    int m_loads = 0;
+};
+
+const char *kWorkspaceXml =
+    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+    "<!DOCTYPE Workspace>\n"
+    "<Workspace xmlns=\"http://www.qlcplus.org/Workspace\" CurrentWindow=\"FixtureManager\">\n"
+    " <Creator>\n  <Name>Q Light Controller Plus</Name>\n  <Version>4.12.0</Version>\n  <Author>test</Author>\n </Creator>\n"
+    " <Engine/>\n"
+    "</Workspace>\n";
+
+QJsonObject uploadParams(const QByteArray &content, const QString &fileName)
+{
+    QJsonObject params;
+    params.insert(QStringLiteral("source"), QStringLiteral("upload"));
+    params.insert(QStringLiteral("fileName"), fileName);
+    params.insert(QStringLiteral("contentBase64"), QString::fromLatin1(content.toBase64()));
+    return params;
+}
+
+} // namespace
+
+void ApiCoreDomain_Test::useFakeHost()
+{
+    delete m_client;
+    delete m_apiServer;
+    m_host = new FakeProjectHost(m_doc);
+    m_apiServer = new ApiServer(m_host, m_doc);
+    QVERIFY(m_apiServer->listen(0, QHostAddress::LocalHost));
+    m_client = new QWebSocket();
+    m_client->open(QUrl(QStringLiteral("ws://127.0.0.1:%1/qlcplusapi").arg(m_apiServer->serverPort())));
+    QVERIFY(QTest::qWaitFor([this]() { return m_client->state() == QAbstractSocket::ConnectedState; }, 2000));
+}
+
+void ApiCoreDomain_Test::projectOpenUploadRejectsNonWorkspace()
+{
+    useFakeHost();
+    FakeProjectHost *host = static_cast<FakeProjectHost *>(m_host);
+    helloAndGetClientId();
+
+    // not base64 at all, valid base64 of non-XML, and a fixture definition
+    QJsonObject params = uploadParams(QByteArray(), QStringLiteral("x.qxw"));
+    params.insert(QStringLiteral("contentBase64"), QStringLiteral("***not base64***"));
+    const QList<QJsonObject> bad = {
+        params,
+        uploadParams(QByteArray("hello world"), QStringLiteral("x.qxw")),
+        uploadParams(QByteArray("<?xml version=\"1.0\"?>\n<!DOCTYPE FixtureDefinition>\n<FixtureDefinition/>\n"), QStringLiteral("x.qxf")) };
+    for (const QJsonObject &p : bad)
+    {
+        QJsonObject reply = sendAndWaitForReply(QStringLiteral("core.project.open"), p);
+        QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+        QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(),
+                  QStringLiteral("INVALID_PARAMS"));
+    }
+    // the current project was never thrown away
+    QCOMPARE(host->m_loads, 0);
+}
+
+void ApiCoreDomain_Test::projectOpenUploadHasNoPathButReportsName()
+{
+    useFakeHost();
+    FakeProjectHost *host = static_cast<FakeProjectHost *>(m_host);
+    host->m_fileName = QStringLiteral("C:/shows/previous.qxw");
+    helloAndGetClientId();
+
+    QSignalSpy spy(m_client, &QWebSocket::textMessageReceived);
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("core.project.open"),
+                                            uploadParams(QByteArray(kWorkspaceXml), QStringLiteral("folder/My Show.qxw")));
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(host->m_loads, 1);
+    QCOMPARE(host->m_loaded, QByteArray(kWorkspaceXml));
+    // no path on the engine machine: Save must not write a relative file
+    QCOMPARE(host->m_fileName, QString());
+
+    QVERIFY(QTest::qWaitFor([&]() { return eventsWithTopic(spy, QStringLiteral("core.project.loaded")).isEmpty() == false; }, 2000));
+    QJsonObject loaded = eventsWithTopic(spy, QStringLiteral("core.project.loaded")).first()
+                             .value(QStringLiteral("data")).toObject().value(QStringLiteral("project")).toObject();
+    QVERIFY(loaded.value(QStringLiteral("filePath")).isNull());
+    QCOMPARE(loaded.value(QStringLiteral("fileName")).toString(), QStringLiteral("My Show.qxw"));
+
+    QJsonObject project = sendAndWaitForReply(QStringLiteral("core.project.get"), QJsonObject())
+                              .value(QStringLiteral("result")).toObject();
+    QVERIFY(project.value(QStringLiteral("filePath")).isNull());
+    QCOMPARE(project.value(QStringLiteral("fileName")).toString(), QStringLiteral("My Show.qxw"));
+
+    reply = sendAndWaitForReply(QStringLiteral("core.project.save"), QJsonObject());
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(),
+              QStringLiteral("INVALID_STATE"));
+    QVERIFY(host->m_savedTo.isEmpty());
+
+    // a new project forgets the uploaded name
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("core.project.new"), QJsonObject()).value(QStringLiteral("ok")).toBool(), true);
+    project = sendAndWaitForReply(QStringLiteral("core.project.get"), QJsonObject()).value(QStringLiteral("result")).toObject();
+    QVERIFY(project.value(QStringLiteral("fileName")).isNull());
 }
 
 QTEST_GUILESS_MAIN(ApiCoreDomain_Test)

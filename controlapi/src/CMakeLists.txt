@@ -30,6 +30,7 @@ set(CONTROLAPI_SOURCES
     domains/apidocchanges.cpp domains/apidocchanges.h
     domains/apiwizarddomain.cpp domains/apiwizarddomain.h
     domains/apiimportdomain.cpp domains/apiimportdomain.h
+    domains/apitoolsdomain.cpp domains/apitoolsdomain.h
 )
 
 # Static, linked directly into the qlcplus5 executable - same reasoning as

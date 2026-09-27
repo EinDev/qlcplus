@@ -54,9 +54,14 @@ private slots:
     void fsListDirectoryFiltersAndSorts();
     void fsListRejectsRelativeAndMissingPaths();
 
+    void projectOpenUploadRejectsNonWorkspace();
+    void projectOpenUploadHasNoPathButReportsName();
+
 private:
     QJsonObject sendAndWaitForReply(const QString &method, const QJsonObject &params);
     QString helloAndGetClientId();
+    /** Replace m_apiServer/m_client with a server parented to a fake host */
+    void useFakeHost();
 
     /** Every event frame with the given topic received by spy so far */
     QList<QJsonObject> eventsWithTopic(QSignalSpy &spy, const QString &topic);
@@ -66,6 +71,7 @@ private:
     ApiServer *m_apiServer;
     QWebSocket *m_client;
     QTemporaryDir m_settingsDir;
+    QObject *m_host = nullptr; // fake ApiProjectHost, parent of m_apiServer when set
 };
 
 #endif
