@@ -65,15 +65,16 @@ messages:
                     description: Script author (type=script only)
                   acceptedColors:
                     type: integer
-                    enum:
-                    - 0
-                    - 1
-                    - 2
+                    minimum: 0
+                    maximum: 5
                     description: RGBAlgorithm::acceptColors() - how many of FunctionsRgbMatrixConfig.colors'
                       5 slots this algorithm actually uses. 0 = none (it generates its own colors), 1
-                      = only Color1/slot 0, 2 = Color1 and Color2/slots 0-1. Drives the real editor's
-                      dynamic color-slot count - a client showing all 5 slots regardless of this value
-                      will offer slots the algorithm silently ignores.
+                      = only Color1/slot 0, 2 = Color1 and Color2/slots 0-1, up to 5 (apiVersion >= 3
+                      scripts such as Plasma declare acceptColors = 5, and may even change it at run
+                      time from one of their own properties). Drives the real editor's dynamic
+                      color-slot count - a client showing all 5 slots regardless of this value will
+                      offer slots the algorithm silently ignores. The same value is repeated live on
+                      FunctionsRgbMatrixAlgorithm.acceptedColors for the loaded algorithm.
   FunctionsRgbMatrixGetScriptPropertiesRequest:
     payload:
       type: object
@@ -184,7 +185,13 @@ messages:
           properties:
             stepsCount:
               type: integer
-              description: Total steps the current algorithm produces at the bound Fixture Group's size
+              description: Total steps the current algorithm produces at the bound Fixture Group's size.
+                0 when the function has no (valid) Fixture Group - pixels is then empty.
+            step:
+              type: integer
+              description: The step actually rendered - params.step normalised into 0..stepsCount-1
+                (negative values wrap too), so a client animating by polling can keep its own counter
+                free-running.
             width:
               type: integer
               description: Fixture Group matrix width
@@ -224,6 +231,13 @@ messages:
               type: string
             config:
               $ref: '#/components/schemas/FunctionsRgbMatrixConfig'
+              description: May be partial - every key absent from config (and, inside algorithm, every
+                parameter absent) is left unchanged, so a client can send one field per control.
+                A full config is of course valid too. Applied in the order fixture group -> algorithm
+                -> algorithm parameters/script properties -> colors -> modes, so a script's own colour
+                read-back (RGBMatrix::setAlgorithm/setProperty) never clobbers the requested colors.
+                Nothing is applied if any part fails validation (unknown script/group, bad color
+                string or enum value).
             baseRevision:
               type: integer
   FunctionsRgbMatrixSetConfigResponse:
@@ -3194,6 +3208,19 @@ schemas:
     properties:
       type:
         $ref: '#/components/schemas/FunctionsRgbMatrixAlgorithmType'
+      name:
+        type: string
+        readOnly: true
+        description: Read side only (functions.get / configChanged) - the loaded algorithm's catalog
+          name as functions.rgbmatrix.listAlgorithms lists it ('Plain Color', 'Text', 'Image',
+          'Audio Spectrum', or the script name). Ignored in setConfig, where type (+ scriptName)
+          selects the algorithm.
+      acceptedColors:
+        type: integer
+        readOnly: true
+        description: Read side only - RGBAlgorithm::acceptColors() of the loaded algorithm right now
+          (see listAlgorithms; scripts may change it from their own properties, e.g. Plasma), so a
+          client sizes its colour-slot row from the function itself instead of the catalog.
       scriptName:
         type: string
         description: type=script only. One of functions.rgbmatrix.listAlgorithms' script entries
@@ -3302,8 +3329,13 @@ schemas:
     - controlMode
     properties:
       fixtureGroupId:
-        type: string
-        description: Opaque Fixture Group ID (owned by the fixtures domain fragment)
+        type:
+        - string
+        - 'null'
+        description: Opaque Fixture Group ID (owned by the fixtures domain fragment). null when the
+          matrix is not bound to any group yet (a functions.create'd RGB Matrix - the engine's
+          FixtureGroup::invalidId(); the Qt editor silently binds the first group on open, the API
+          does not), in which case getPreview reports 0 x 0 and the function outputs nothing.
       algorithm:
         $ref: '#/components/schemas/FunctionsRgbMatrixAlgorithm'
       colors:

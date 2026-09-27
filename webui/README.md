@@ -83,8 +83,11 @@ and a second tab checked for the pushed event:
   resume / stop with server-reported running state; Scene editor (add fixtures, inline values,
   console faders, remove channel, add palette, fade times); Chaser editor (add / move / remove steps,
   run order, common duration - per-step times are governed by the speed modes exactly like the
-  desktop app). Editors for Collection, EFX, RGB Matrix, Script, Audio, Video and Show are still
-  placeholders (no server methods yet).
+  desktop app); RGB Matrix editor (2026-09-27: fixture group, algorithm incl. every installed RGB
+  script, colour slots per `acceptedColors`, script properties, Text and Image parameters, blend /
+  control mode, animated preview polled from `functions.rgbmatrix.getPreview` - all verified by
+  `functions.get` read-backs and the saved `.qxw`, driver `tools/e2e/rgbmatrix.js`). Editors for
+  Collection, EFX, Script, Audio, Video and Show are still placeholders (no server methods yet).
 - **Virtual Console**: page switch; Toggle and Flash buttons with state colouring from
   `vc.button.stateChanged`; slider and knob with the value pushed to every tab; cue list
   play / next / previous / stop / jump with the current step highlighted; XY pad; speed dial
