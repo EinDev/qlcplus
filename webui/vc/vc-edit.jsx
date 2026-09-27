@@ -233,9 +233,34 @@ function UsageButton({ functionId, functions }) {
   );
 }
 
+/** CustomSpinBox that commits on Enter / blur / arrow buttons instead of every keystroke: a
+    structural (§4a) call per typed digit is a CONFLICT storm ("1500" = four edits in flight). */
+function SpinField({ value, onCommit, ...rest }) {
+  const [draft, setDraft] = React.useState(value);
+  const pending = React.useRef(null);   // { value, timer } while an edit waits to be committed
+  const committed = React.useRef(value);
+  React.useEffect(() => { committed.current = value; if (!pending.current) setDraft(value); }, [value]);
+  React.useEffect(() => () => { if (pending.current) clearTimeout(pending.current.timer); }, []);
+  const flush = () => {
+    const p = pending.current;
+    if (!p) return;
+    clearTimeout(p.timer);
+    pending.current = null;
+    if (p.value !== committed.current) { committed.current = p.value; onCommit(p.value); }
+  };
+  /* Arrow buttons and typed digits both land here; the commit waits for a pause, Enter/blur force it. */
+  const modified = (v) => {
+    setDraft(v);
+    if (pending.current) clearTimeout(pending.current.timer);
+    pending.current = { value: v, timer: setTimeout(flush, 500) };
+  };
+  return <CustomSpinBox {...rest} value={draft} onValueModified={modified}
+    onKeyDown={(e) => { if (e.key === 'Enter') flush(); }} onBlur={flush} />;
+}
+
 /** Percent spin box for a 0..1 fraction (VCButtonProperties.qml's startup intensity). */
 function PercentField({ value, onCommit, disabled }) {
-  return <CustomSpinBox value={Math.round((Number.isFinite(value) ? value : 1) * 100)} from={0} to={100} width={70} height={24} suffix="%" disabled={disabled} onValueModified={(v) => onCommit(v / 100)} />;
+  return <SpinField value={Math.round((Number.isFinite(value) ? value : 1) * 100)} from={0} to={100} width={70} height={24} suffix="%" disabled={disabled} onCommit={(v) => onCommit(v / 100)} />;
 }
 
 /**
@@ -266,7 +291,7 @@ function VCButtonConfigSections({ w, cfg, functions, setConfig, section }) {
         </div>
       )) : null}
       {action === 'StopAll' ? section('stopall', 'Stop all Functions', (
-        <PropRow label="Fade out"><CustomSpinBox value={Number(cfg.stopAllFadeOutTime) || 0} from={0} to={3600000} stepSize={100} width={90} height={24} suffix=" ms" onValueModified={(v) => setConfig({ stopAllFadeOutTime: v })} /></PropRow>
+        <PropRow label="Fade out"><SpinField value={Number(cfg.stopAllFadeOutTime) || 0} from={0} to={3600000} stepSize={100} width={90} height={24} suffix=" ms" onCommit={(v) => setConfig({ stopAllFadeOutTime: v })} /></PropRow>
       )) : null}
       {action === 'Flash' ? section('flash', 'Flash properties', (
         <div>
@@ -299,14 +324,25 @@ function LevelChannelsPicker({ channels, onCommit }) {
     setOpenFx(o => Object.assign({}, o, { [id]: next }));
     if (next && !details[id]) vc.qlc.call('fixtures.get', { fixtureId: String(id) }).then(d => setDetails(x => Object.assign({}, x, { [id]: d }))).catch(() => {});
   };
+  /* Two quick ticks must not both start from the same stale prop (the committed list only comes
+     back after the server round trip): every change builds on the last list this picker sent. */
+  const latest = React.useRef(channels);
+  React.useEffect(() => { latest.current = channels; }, [channels]);
+  const commit = (next) => { latest.current = next; onCommit(next); };
   const has = (fid, ch) => channels.some(c => String(c.fixtureId) === String(fid) && Number(c.channel) === ch);
-  const flip = (fid, ch) => onCommit(has(fid, ch) ? channels.filter(c => !(String(c.fixtureId) === String(fid) && Number(c.channel) === ch)) : channels.concat([{ fixtureId: String(fid), channel: ch }]));
+  const flip = (fid, ch) => {
+    const cur = latest.current;
+    const on = cur.some(c => String(c.fixtureId) === String(fid) && Number(c.channel) === ch);
+    commit(on ? cur.filter(c => !(String(c.fixtureId) === String(fid) && Number(c.channel) === ch)) : cur.concat([{ fixtureId: String(fid), channel: ch }]));
+  };
   const flipAll = (fx, on) => {
     const d = details[fx.id];
     const count = d && d.channelList ? d.channelList.length : Number(fx.channels) || 0;
-    const rest = channels.filter(c => String(c.fixtureId) !== String(fx.id));
-    onCommit(on ? rest.concat(Array.from({ length: count }, (_, i) => ({ fixtureId: String(fx.id), channel: i }))) : rest);
+    const rest = latest.current.filter(c => String(c.fixtureId) !== String(fx.id));
+    commit(on ? rest.concat(Array.from({ length: count }, (_, i) => ({ fixtureId: String(fx.id), channel: i }))) : rest);
   };
+  /* The row and the checkbox inside it both toggle: ignore the row click that bubbled up from the button. */
+  const rowClick = (fn) => (e) => { if (e.target.closest && e.target.closest('button')) return; fn(); };
   const n = needle.trim().toLowerCase();
   const list = (fixtures || []).filter(f => !n || f.name.toLowerCase().indexOf(n) !== -1);
   const D = window.QLCData;
@@ -337,7 +373,7 @@ function LevelChannelsPicker({ channels, onCommit }) {
                     <RobotoText label={'U' + (Number(fx.universe) + 1) + ' · ' + (Number(fx.address) + 1) + (mine ? ' · ' + mine + ' ch' : '')} fontSize="var(--text-size-menubar)" labelColor="var(--fg-light)" height="100%" />
                   </div>
                   {openFx[fx.id] ? (d && d.channelList ? d.channelList.map(ch => (
-                    <div key={ch.index} role="button" data-vc-levelch={fx.id + ':' + ch.index} onClick={() => flip(fx.id, ch.index)}
+                    <div key={ch.index} role="button" data-vc-levelch={fx.id + ':' + ch.index} onClick={rowClick(() => flip(fx.id, ch.index))}
                       style={{ display: 'flex', alignItems: 'center', gap: 4, height: 'var(--list-item-height)', padding: '0 4px 0 28px', cursor: 'pointer', background: has(fx.id, ch.index) ? 'var(--highlight)' : 'transparent' }}>
                       <CustomCheckBox checked={has(fx.id, ch.index)} size={18} onToggled={() => flip(fx.id, ch.index)} />
                       <RobotoText label={(ch.index + 1) + ': ' + ch.name} fontSize="var(--text-size-small)" height="100%" style={{ flex: 1 }} />
@@ -420,8 +456,8 @@ function VCSliderConfigSections({ w, cfg, functions, setConfig, setLevelChannels
       )) : null}
       {mode === 'Level' || mode === 'Adjust' ? section('range', 'Values range', (
         <div>
-          <PropRow label="Upper limit"><CustomSpinBox value={Number.isFinite(cfg.rangeHighLimit) ? Math.round(cfg.rangeHighLimit) : rangeHi} from={rangeLo} to={rangeHi} width={70} height={24} onValueModified={(v) => setConfig({ rangeHighLimit: v })} /></PropRow>
-          <PropRow label="Lower limit"><CustomSpinBox value={Number.isFinite(cfg.rangeLowLimit) ? Math.round(cfg.rangeLowLimit) : rangeLo} from={rangeLo} to={rangeHi} width={70} height={24} onValueModified={(v) => setConfig({ rangeLowLimit: v })} /></PropRow>
+          <PropRow label="Upper limit"><SpinField value={Number.isFinite(cfg.rangeHighLimit) ? Math.round(cfg.rangeHighLimit) : rangeHi} from={rangeLo} to={rangeHi} width={70} height={24} onCommit={(v) => setConfig({ rangeHighLimit: v })} /></PropRow>
+          <PropRow label="Lower limit"><SpinField value={Number.isFinite(cfg.rangeLowLimit) ? Math.round(cfg.rangeLowLimit) : rangeLo} from={rangeLo} to={rangeHi} width={70} height={24} onCommit={(v) => setConfig({ rangeLowLimit: v })} /></PropRow>
         </div>
       )) : null}
       {section('input', 'External input', (
@@ -494,4 +530,4 @@ function VCWidgetProperties({ widgets, functions }) {
   );
 }
 
-Object.assign(window, { VCEditable, VCWidgetPalette, VCWidgetProperties, VCUsageDialog, VCPropRow: PropRow, VCCheckRow: CheckRow, VCTextField: TextField, VCFunctionPicker: FunctionPicker });
+Object.assign(window, { VCEditable, VCWidgetPalette, VCWidgetProperties, VCUsageDialog, VCPropRow: PropRow, VCCheckRow: CheckRow, VCTextField: TextField, VCSpinField: SpinField, VCFunctionPicker: FunctionPicker });

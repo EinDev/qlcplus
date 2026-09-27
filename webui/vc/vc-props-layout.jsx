@@ -150,7 +150,7 @@ function VCFrameBodyEx({ w, header = true, children }) {
 /* ---------------------------------------------------------------- Frame / Label properties */
 function VCFrameProps({ w, cfg, setConfig, section }) {
   const vc = useVC();
-  const PropRow = window.VCPropRow, CheckRow = window.VCCheckRow, TextField = window.VCTextField;
+  const PropRow = window.VCPropRow, CheckRow = window.VCCheckRow, TextField = window.VCTextField, SpinField = window.VCSpinField;
   const solo = w.widgetType === 'SoloFrame';
   const pages = Number(cfg.totalPagesNumber) || 1;
   const labels = cfg.pageLabels || [];
@@ -176,7 +176,7 @@ function VCFrameProps({ w, cfg, setConfig, section }) {
           <CheckRow label="Enable pages" checked={!!cfg.multiPageMode} onToggle={(b) => setConfig({ multiPageMode: b })} />
           <CheckRow label="Circular pages scrolling" checked={!!cfg.pagesLoop} onToggle={(b) => setConfig({ pagesLoop: b })} disabled={!cfg.multiPageMode} />
           <PropRow label="Pages number">
-            <CustomSpinBox value={pages} from={1} to={100} width={70} height={24} disabled={!cfg.multiPageMode} onValueModified={(v) => { if (v !== pages) setConfig({ totalPagesNumber: v }); }} data-vc-frame-pages="" />
+            <SpinField value={pages} from={1} to={100} width={70} height={24} disabled={!cfg.multiPageMode} onCommit={(v) => setConfig({ totalPagesNumber: v })} data-vc-frame-pages="" />
           </PropRow>
           <div style={{ padding: '2px 6px' }}>
             <GenericButton label="Clone first page widgets" width="100%" height={24} fontSize="var(--text-size-menubar)" disabled={pages < 2} data-vc-frame-clone=""
@@ -260,7 +260,7 @@ function VCFunctionsDialog({ open, onClose }) {
         </span>
         <div style={{ maxHeight: 280, overflow: 'auto', border: 'var(--border-dark)' }} data-vc-fn-list="">
           {list.length ? list.map(f => (
-            <div key={f.id} role="button" data-vc-fn-row={f.id} onClick={() => setPicked(p => Object.assign({}, p, { [f.id]: !p[f.id] }))}
+            <div key={f.id} role="button" data-vc-fn-row={f.id} onClick={(e) => { if (e.target.closest && e.target.closest('button')) return; setPicked(p => Object.assign({}, p, { [f.id]: !p[f.id] })); }}
               style={{ display: 'flex', alignItems: 'center', gap: 6, height: 'var(--list-item-height)', padding: '0 6px', cursor: 'pointer', background: picked[f.id] ? 'var(--highlight)' : 'transparent' }}>
               <CustomCheckBox checked={!!picked[f.id]} size={18} onToggled={() => setPicked(p => Object.assign({}, p, { [f.id]: !p[f.id] }))} />
               <RobotoText label={f.name} fontSize="var(--text-size-small)" height="100%" style={{ flex: 1 }} />

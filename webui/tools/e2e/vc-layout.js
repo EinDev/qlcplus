@@ -89,7 +89,13 @@ async function clickFn(page, fnBody, what) {
 const clickText = (page, tag, text) => clickFn(page, byText(tag, text), tag + ' "' + text + '"');
 /** CheckRow: the aria-pressed button whose row text is the label (minus the Font Awesome check glyph
     the button itself renders while checked - a private-use codepoint). */
-const clickCheck = (page, label) => clickFn(page, `[...document.querySelectorAll('button[aria-pressed]')].find(b => b.parentElement && b.parentElement.textContent.replace(/[\\uE000-\\uF8FF]/g, '').trim() === ${JSON.stringify(label)})`, 'check "' + label + '"');
+const checkRow = (label) => `[...document.querySelectorAll('button[aria-pressed]')].find(b => b.parentElement && b.parentElement.textContent.replace(/[\\uE000-\\uF8FF]/g, '').trim() === ${JSON.stringify(label)})`;
+/** $currently (optional): wait until the box renders that state first - the API read-back runs
+    ahead of the browser's own copy, so a second click right after the first would toggle a stale box. */
+async function clickCheck(page, label, currently) {
+  if (currently !== undefined) await page.waitFor(`(function(){ const b = ${checkRow(label)}; return !!b && b.getAttribute('aria-pressed') === ${JSON.stringify(String(currently))}; })()`);
+  await clickFn(page, checkRow(label), 'check "' + label + '"');
+}
 async function typeInto(page, fnBody, text, what) {
   await clickFn(page, fnBody, what);
   /* The click puts the caret wherever it landed; select everything so the typed text replaces the value. */
@@ -98,13 +104,46 @@ async function typeInto(page, fnBody, text, what) {
   await page.key('Enter');
 }
 const toolbarTool = (name) => `document.querySelector('[data-vc-tool="${name}"]')`;
+/** FunctionPicker: type the name into "Search functions" and click the matching row (retrying the
+    typing once, a property-panel re-render right after a mode switch can swallow the first keystrokes). */
+async function pickFunction(page, fn, verify) {
+  const row = `[...document.querySelectorAll('div[role="button"]')].find(e => e.textContent.trim().startsWith(${JSON.stringify(fn.name)}) && e.textContent.includes(${JSON.stringify(fn.type)}))`;
+  for (let attempt = 0; ; attempt++) {
+    await clickFn(page, q('input[placeholder="Search functions"]'), 'function search');
+    await page.eval(`(function(){ const el = document.activeElement; if (el && el.select) el.select(); })()`);
+    await page.type(fn.name);
+    const found = await page.waitFor(`!!(${row})`, 2500).catch(() => false);
+    if (found) {
+      await sleep(150); // let the match list settle before aiming at the row
+      await clickFn(page, row, 'function row ' + fn.name);
+      const done = await until(verify, 'function pick to land', 2500).catch(() => false);
+      if (done) return;
+    }
+    if (attempt >= 2) throw new Error('picking function ' + fn.name + ' did not take');
+  }
+}
+/** Click the page canvas at PAGE coordinates (the canvas is CSS-scaled to fit the viewport). */
 async function canvasClick(page, x, y) {
   const r = await page.rectOf(() => document.querySelector('div[style*="crosshair"]'));
-  await page.mouse('mouseMoved', r.x + x, r.y + y);
-  await page.mouse('mousePressed', r.x + x, r.y + y); await page.mouse('mouseReleased', r.x + x, r.y + y);
+  const scale = await page.eval(`(function(){ const c = document.querySelector('div[style*="crosshair"]'); return c.getBoundingClientRect().width / (c.offsetWidth || 1); })()`);
+  const sx = r.x + x * scale, sy = r.y + y * scale;
+  await page.mouse('mouseMoved', sx, sy);
+  await page.mouse('mousePressed', sx, sy); await page.mouse('mouseReleased', sx, sy);
+}
+/** A free page-root spot below every widget currently on $pageIndex (so the click lands on the canvas, not on a widget). */
+async function freeSpot(api, pageIndex, x = 40) {
+  const ws = (await api.call('vc.widget.list', { page: pageIndex })).widgets.filter(w => !w.parentId);
+  const bottom = ws.reduce((m, w) => Math.max(m, (w.geometry.y || 0) + (w.geometry.height || 0)), 0);
+  return { x, y: bottom + 40 };
 }
 async function placeWidget(page, api, paletteName, x, y, type) {
   const before = new Set((await api.call('vc.widget.list')).widgets.map(w => w.id));
+  /* The side panel shows either the palette or the properties: open the palette when it is not showing. */
+  if (!(await page.eval(`document.body.textContent.includes('Pick a widget')`))) {
+    await clickFn(page, `document.querySelector('button[title="Add a new widget to the console"]')`, 'palette rail button');
+    await page.waitFor(`document.body.textContent.includes('Pick a widget')`);
+    await sleep(400);
+  }
   /* The side panel slides open with a CSS transition: a click computed while a row is still moving
      misses it, so retry until the page reports the "placing" state (crosshair cursor). */
   for (let attempt = 0; ; attempt++) {
@@ -171,18 +210,18 @@ async function main() {
     await until(async () => (await api.widget(frame.id)).typeConfig.pagesLoop === true, 'pagesLoop');
     check(true, 'Circular pages scrolling -> pagesLoop true');
     // VCFrame defaults showEnable to true: off -> the header's Enable button disappears, on -> back
-    await clickCheck(page, 'Show enable button');
+    await clickCheck(page, 'Show enable button', true);
     await until(async () => (await api.widget(frame.id)).typeConfig.showEnable === false, 'showEnable false');
     await page.waitFor(`!document.querySelector('[data-vc-widget="${frame.id}"] [data-vc-frame-enable]')`);
-    await clickCheck(page, 'Show enable button');
+    await clickCheck(page, 'Show enable button', false);
     await until(async () => (await api.widget(frame.id)).typeConfig.showEnable === true, 'showEnable true');
     await page.waitFor(`!!document.querySelector('[data-vc-widget="${frame.id}"] [data-vc-frame-enable]')`);
     check(true, 'Show enable button -> showEnable follows and the Enable button is drawn in the header only when on');
-    await clickCheck(page, 'Show header');
+    await clickCheck(page, 'Show header', true);
     await until(async () => (await api.widget(frame.id)).typeConfig.showHeader === false, 'showHeader false');
     await page.waitFor(`!document.querySelector('[data-vc-widget="${frame.id}"] img[src$="/frame.svg"]')`);
     check(true, 'Show header off -> header gone');
-    await clickCheck(page, 'Show header');
+    await clickCheck(page, 'Show header', false);
     await until(async () => (await api.widget(frame.id)).typeConfig.showHeader === true, 'showHeader true');
     // Frame page flip shows the page label in the pager
     await api.call('vc.frame.gotoPage', { widgetId: String(frame.id), page: 1 });
@@ -236,7 +275,20 @@ async function main() {
     console.log('\n[Slider]');
     const slider = await placeWidget(page, api, 'Slider', 520, 40, 'Slider');
     cfg = (await api.widget(slider.id)).typeConfig;
-    check(cfg.sliderMode === 'Level' && Array.isArray(cfg.levelChannels) && 'monitorEnabled' in cfg && 'clickAndGoType' in cfg && 'grandMasterValueMode' in cfg && 'controlledFunction' in cfg, 'slider typeConfig exposes the full VcSliderConfig', cfg);
+    check(Array.isArray(cfg.levelChannels) && 'monitorEnabled' in cfg && 'clickAndGoType' in cfg && 'grandMasterValueMode' in cfg && 'controlledFunction' in cfg && 'adjustFlashEnabled' in cfg, 'slider typeConfig exposes the full VcSliderConfig', cfg);
+    // A new VCSlider starts in Adjust mode: exercise Function Control there first
+    const adjustScene = scenes[1];
+    await clickCheck(page, 'Adjust');
+    await until(async () => (await api.widget(slider.id)).typeConfig.sliderMode === 'Adjust', 'Adjust');
+    await pickFunction(page, adjustScene, async () => String((await api.widget(slider.id)).typeConfig.controlledFunction) === String(adjustScene.id));
+    await clickCheck(page, 'Show flash button');
+    await until(async () => (await api.widget(slider.id)).typeConfig.adjustFlashEnabled === true, 'adjustFlashEnabled');
+    check(true, 'Adjust mode: controlled function "' + adjustScene.name + '" + flash button');
+    check((await api.call('vc.slider.flash', { widgetId: String(slider.id), on: true })) !== null, 'vc.slider.flash accepted on an Adjust slider with the flash button');
+    await api.call('vc.slider.flash', { widgetId: String(slider.id), on: false });
+    await clickCheck(page, 'Level');
+    await until(async () => (await api.widget(slider.id)).typeConfig.sliderMode === 'Level', 'Level');
+    check(true, 'switched to Level mode');
     await clickFn(page, q('[data-vc-levelpick]'), 'Pick channels');
     await page.waitFor(`document.querySelectorAll('[data-vc-levelfx]').length > 0`);
     const fx = fixtures.find(f => Number(f.channels) >= 2) || fixtures[0];
@@ -250,18 +302,23 @@ async function main() {
     await until(async () => (await api.widget(slider.id)).typeConfig.levelChannels.length === 2, 'two level channels');
     cfg = (await api.widget(slider.id)).typeConfig;
     check(cfg.levelChannels.every(c => String(c.fixtureId) === String(fx.id)) && cfg.levelChannels.map(c => c.channel).sort().join() === '0,1', 'two channels of ' + fx.name + ' picked', cfg.levelChannels);
-    await clickCheck(page, 'Monitor channel levels');
-    await until(async () => (await api.widget(slider.id)).typeConfig.monitorEnabled === false, 'monitorEnabled false');
-    check(true, 'Monitor channel levels toggled off');
-    await clickCheck(page, 'Monitor channel levels');
+    // Switching modes leaves monitoring off (VCSlider::setSliderMode): on -> off round trip
+    await clickCheck(page, 'Monitor channel levels', false);
     await until(async () => (await api.widget(slider.id)).typeConfig.monitorEnabled === true, 'monitorEnabled true');
+    check(true, 'Monitor channel levels toggled on');
+    await clickCheck(page, 'Monitor channel levels', true);
+    await until(async () => (await api.widget(slider.id)).typeConfig.monitorEnabled === false, 'monitorEnabled false');
+    await clickCheck(page, 'Monitor channel levels', false);
+    await until(async () => (await api.widget(slider.id)).typeConfig.monitorEnabled === true, 'monitorEnabled true again');
+    // "External input" starts collapsed (like "Values range"): open the section first
+    await clickFn(page, `[...document.querySelectorAll('div, span')].find(e => e.children.length <= 3 && e.textContent.trim() === 'External input')`, 'External input section header');
     await clickCheck(page, 'Catch up with the external controller input value');
     await until(async () => (await api.widget(slider.id)).typeConfig.catchValues === true, 'catchValues');
     check(true, 'Catch up with the external controller input value -> catchValues true');
     // leave edit mode, move the fader, read DMX
     await clickFn(page, `document.querySelector('button img[src$="/edit.svg"]').closest('button')`, 'edit button');
     await page.waitFor(`!document.querySelector('[data-vc-selected]') && !document.body.textContent.includes('Pick a widget')`);
-    const fr = await page.rectOf(() => document.querySelector(`[data-vc-widget="${slider.id}"] [data-vc-fader]`));
+    const fr = await page.rectOf('[data-vc-widget="' + slider.id + '"] [data-vc-fader]');
     await page.drag(fr.x + fr.w / 2, fr.y + fr.h - 4, fr.x + fr.w / 2, fr.y + 4, 12);
     const fxDetail = await api.call('fixtures.get', { fixtureId: String(fx.id) });
     const dmx = await until(async () => {
@@ -278,9 +335,7 @@ async function main() {
     console.log('\n[Button]');
     const button = await placeWidget(page, api, 'Button', 640, 40, 'Button');
     const scene = scenes[0];
-    await clickFn(page, q('input[placeholder="Search functions"]'), 'function search'); await page.type(scene.name);
-    await clickFn(page, `[...document.querySelectorAll('div[role="button"]')].find(e => e.textContent.trim().startsWith(${JSON.stringify(scene.name)}) && e.textContent.includes('Scene'))`, 'function row');
-    await until(async () => String((await api.widget(button.id)).typeConfig.functionID) === String(scene.id), 'functionID');
+    await pickFunction(page, scene, async () => String((await api.widget(button.id)).typeConfig.functionID) === String(scene.id));
     check(true, 'attached function "' + scene.name + '"');
     await clickCheck(page, 'Flash Function (only for Scenes)');
     await until(async () => (await api.widget(button.id)).typeConfig.actionType === 'Flash', 'Flash');
@@ -372,7 +427,8 @@ async function main() {
 
     /* ---- Label ---- */
     console.log('\n[Label]');
-    const label = await placeWidget(page, api, 'Label', 40, 320, 'Label');
+    const labelSpot = await freeSpot(api, scratch);
+    const label = await placeWidget(page, api, 'Label', labelSpot.x, labelSpot.y, 'Label');
     await page.waitFor(`document.body.textContent.includes('A label has no settings beyond')`);
     check(JSON.stringify((await api.widget(label.id)).typeConfig) === '{}', 'Label has an empty typeConfig and its own explanatory panel');
     await typeInto(page, `[...document.querySelectorAll('input')].find(i => i.value === 'Label')`, 'Hello', 'label caption');
@@ -381,7 +437,8 @@ async function main() {
 
     /* ---- SoloFrame ---- */
     console.log('\n[SoloFrame]');
-    const solo = await placeWidget(page, api, 'Solo Frame', 300, 320, 'SoloFrame');
+    const soloSpot = await freeSpot(api, scratch, 300);
+    const solo = await placeWidget(page, api, 'Solo Frame', soloSpot.x, soloSpot.y, 'SoloFrame');
     await clickCheck(page, 'Exclude monitored functions');
     await until(async () => (await api.widget(solo.id)).typeConfig.excludeMonitoredFunctions === true, 'excludeMonitoredFunctions');
     await clickCheck(page, 'Mix (fade) between functions');
@@ -395,17 +452,20 @@ async function main() {
     await api.call('core.project.saveAs', { target: 'serverPath', path: OUT });
     const xml = fs.readFileSync(OUT, 'utf8');
     const has = (re, what) => check(re.test(xml), 'out.qxw contains ' + what);
-    has(/PagesNum="3"/, 'PagesNum="3"');
-    has(/PIN="1234"/, 'the frame PIN');
-    has(/Name="Intro"/, 'the page label "Intro"');
-    has(/ShowEnableButton="True"/, 'ShowEnableButton');
-    has(new RegExp(`<Level [^>]*Fixture="${fx.id}"[^>]*Channel="1"`), 'the second level channel');
-    has(/<Slider [^>]*Mode="Level"/, 'the Level slider');
-    has(/Action="Toggle"/, 'the Toggle action');
-    has(/<Intensity [^>]*Adjust="True"[^>]*>50<\/Intensity>|<Intensity Adjust="True">50/, 'startup intensity 50');
-    has(/<Caption>Bulk<\/Caption>/, 'the bulk caption');
-    has(/<Caption>Hello<\/Caption>/, 'the label caption');
-    has(/ExcludeMonitored="True"/, 'ExcludeMonitored');
+    /* Spellings as VCFrame/VCSlider/VCButton/VCSoloFrame::saveXML() write them (the PIN is stored obfuscated). */
+    has(/<Multipage PagesNum="3"[^>]*PagesLoop="True"/, 'a 3-page frame with PagesLoop');
+    has(/<PIN>[A-Za-z0-9+\/=]{4,}<\/PIN>/, 'the (obfuscated) frame PIN');
+    has(/<Shortcut Page="1" Name="Intro"\/>/, 'the page label "Intro"');
+    has(/<ShowEnableButton>True<\/ShowEnableButton>/, 'ShowEnableButton');
+    has(new RegExp(`<Channel Fixture="${fx.id}">1</Channel>`), 'the second level channel of fixture ' + fx.id);
+    has(/<SliderMode [^>]*Monitor="true">Level<\/SliderMode>/, 'the Level slider with monitoring');
+    has(/CatchValues="true"/, 'CatchValues');
+    has(/<Action>Toggle<\/Action>/, 'the Toggle action');
+    has(/<Intensity>50<\/Intensity>/, 'startup intensity 50');
+    has(/Caption="Bulk"/, 'the bulk caption');
+    has(/Caption="Hello"/, 'the label caption');
+    has(/<ExcludeMonitored>True<\/ExcludeMonitored>/, 'ExcludeMonitored');
+    has(/<Mixing>True<\/Mixing>/, 'solo frame Mixing');
     console.log('  frames in file: ' + (xml.match(/<Frame /g) || []).length + ', buttons: ' + (xml.match(/<Button /g) || []).length);
 
     /* ---- console ---- */
