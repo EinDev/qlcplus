@@ -1074,8 +1074,26 @@ messages:
   FixturesRemapApplyResponse:
     payload:
       oneOf:
-        - $ref: '#/components/messages/FixturesDocRevisionOkResponse/payload'
+        - $ref: '#/components/messages/FixturesRemapApplyOkResponse/payload'
         - $ref: '#/components/messages/ErrorResponse/payload'
+
+  FixturesRemapApplyOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          type: object
+          required: [docRevision, fixtureIds]
+          properties:
+            docRevision: { type: integer }
+            fixtureIds:
+              type: array
+              items: { type: string }
+              description: The created target fixtures, in the order of params.mappings.
 
   FixturesRemapAppliedEvent:
     payload:
