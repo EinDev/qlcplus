@@ -10,6 +10,7 @@ add_subdirectory(capabilitycounteraccumulator)
 add_subdirectory(showgroupmove)
 add_subdirectory(spoutframegate)
 add_subdirectory(shortcutmanager)
+add_subdirectory(vcselectionprune)
 
 # Convenience aggregate target, mirroring engine/test's `engine_tests`:
 # `cmake --build build --target qmlui_tests` builds every suite above without
@@ -27,4 +28,5 @@ add_custom_target(qmlui_tests DEPENDS
     spoutframegate_test
     treeflatmodel_test
     treemodel_test
+    vcselectionprune_test
 )

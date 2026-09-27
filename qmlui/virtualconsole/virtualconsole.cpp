@@ -45,6 +45,7 @@
 #include "doc.h"
 #include "app.h"
 #include "shortcutmanager.h"
+#include "vcselectionprune.h"
 
 #define KXMLQLCVCProperties             QStringLiteral("Properties")
 #define KXMLQLCVCPropertiesSize         QStringLiteral("Size")
@@ -947,6 +948,23 @@ void VirtualConsole::setWidgetsFont(QFont font)
 
 void VirtualConsole::deleteVCWidgets(QVariantList IDList)
 {
+    /* Every widget this call deletes, frame children included, collected before anything is
+     * deleted: only those leave the selection (see vcPruneDeletedFromSelection()) */
+    QSet<quint32> deletedIds;
+    foreach (QVariant id, IDList)
+    {
+        VCWidget *w = widget(id.toUInt());
+        if (w == nullptr)
+            continue;
+        deletedIds.insert(w->id());
+        VCFrame *frame = qobject_cast<VCFrame *>(w);
+        if (frame != nullptr)
+        {
+            for (VCWidget *child : frame->children(true))
+                deletedIds.insert(child->id());
+        }
+    }
+
     foreach (QVariant id, IDList)
     {
         quint32 wID = id.toUInt();
@@ -996,7 +1014,15 @@ void VirtualConsole::deleteVCWidgets(QVariantList IDList)
         /* 4- perform the actual widget deletion */
         delete w;
     }
-    m_itemsMap.clear();
+
+    /* The desktop deletes the selection itself, so this empties it; a Control API delete of
+     * other widgets keeps the operator's surviving selection (and its isEditing state, which
+     * leaving edit mode resets through resetWidgetSelection()) intact */
+    if (vcPruneDeletedFromSelection(m_itemsMap, deletedIds).isEmpty() == false)
+    {
+        emit selectedWidgetChanged();
+        emit selectedWidgetsCountChanged();
+    }
 }
 
 VCWidget *VirtualConsole::selectedWidget() const
