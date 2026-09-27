@@ -393,7 +393,7 @@
           <FF.Note text="The API has no palette-apply / live fixture-control method; Shutter, Gobo, Zoom and Position3D palettes cannot be applied from here (put them in a Scene instead). Fanning is used by the engine when the palette runs in a Scene." />
         </div>
         <CustomPopupDialog open={!!draft} title="New palette" width={380} standardButtons={['Cancel', 'Create']} onClicked={(b) => { if (b === 'Create') create(); else setDraft(null); }} onClose={() => setDraft(null)}>
-          {draft ? <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {draft ? <div data-e2e="palette-create" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <FF.Row label="Type" width={60}><CustomComboBox width={200} currValue={draft.type} model={PALETTE_TYPES.map(t => ({ mLabel: PALETTE_TYPE_LABELS[t] || t, mValue: t }))} onValueChanged={t => setDraft(Object.assign({}, draft, { type: t, values: defaultValues(t), fanning: null }))} /></FF.Row>
             <FF.Row label="Name" width={60}><input value={draft.name} onChange={e => setDraft(Object.assign({}, draft, { name: e.target.value }))} placeholder="Palette name" style={Object.assign({ width: 200 }, inputStyle)} data-e2e="palette-name" /></FF.Row>
             <PaletteValueEditor type={draft.type} values={draft.values} onChange={vals => setDraft(Object.assign({}, draft, { values: vals }))} />

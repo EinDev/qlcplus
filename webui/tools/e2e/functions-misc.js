@@ -336,14 +336,14 @@ async function waitApi(fn, what, timeout = 8000) {
     await clickTitle(page, 'Create a palette');
     await page.waitFor(`document.body.textContent.indexOf('New palette') !== -1`, 5000);
     // type combo: open it and pick Pan
-    await page.click(await rowEl(page, 'Type', null, '[role=dialog]'));
-    await page.eval(`(function(){ const row = Array.from(document.querySelectorAll('[role=dialog] div')).filter(d => d.children.length >= 2 && (d.children[0].textContent||'').trim() === 'Type').pop(); window.__e2e = row.children[1]; return true; })()`);
+    
+    await page.eval(`(function(){ const row = Array.from(document.querySelectorAll('[data-e2e=palette-create] div')).filter(d => d.children.length >= 2 && (d.children[0].textContent||'').trim() === 'Type').pop(); window.__e2e = row.children[1]; return true; })()`);
     await page.click(() => window.__e2e); await sleep(150);
     await clickText(page, 'Pan');
     await sleep(150);
     await page.eval(`(function(){ const i = document.querySelector('[data-e2e=palette-name]'); i.focus(); return true; })()`);
     await insertText(page, 'E2E Pan');
-    await setSpin(page, 'Pan', 90, '[role=dialog]');
+    await setSpin(page, 'Pan', 90, '[data-e2e=palette-create]');
     await page.click('[data-e2e=palette-also-scene]');
     await sleep(100);
     await page.eval(`(function(){ const i = document.querySelector('[data-e2e=palette-scene-name]'); i.focus(); return true; })()`);
@@ -361,7 +361,9 @@ async function waitApi(fn, what, timeout = 8000) {
     // fan a colour palette
     const colour = pals.find(p => p.type === 'Color');
     await clickText(page, colour.name);
-    await page.waitFor('!!document.querySelector("[data-e2e=palette-fanning]")', 5000);
+    await sleep(300);
+    // wait for the colour palette's own detail (the Pan palette just created was selected before)
+    await page.waitFor(`!!document.querySelector("[data-e2e=palette-fanning]") && Array.from(document.querySelectorAll('input[type=color]')).length > 0`, 5000);
     await clickTitle(page, 'Linear', '[data-e2e=palette-fanning]');
     await sleep(400);
     await setSpin(page, 'Amount', 60, '[data-e2e=palette-fanning]');
@@ -394,6 +396,23 @@ async function waitApi(fn, what, timeout = 8000) {
     await page.waitFor(`!!document.querySelector('[data-e2e=media-dialog-reload]') && document.querySelector('[data-e2e=media-dialog-reload]').textContent.indexOf('Loading') === -1`, 8000);
     check(await page.eval(`document.querySelector('[data-e2e=media-dialog-reload]').textContent.indexOf('No media changed on disk') !== -1`), 'reload changed media: dialog reports nothing changed');
     await clickText(page, 'Close');
+    // change the origin on disk (it lives in the sandbox), then reload it through the dialog
+    const originPath = ad.typeDetail.origin;
+    if (originPath && originPath.toLowerCase().indexOf('c:/qlcsandbox/fnmisc/') === 0) {
+      fs.appendFileSync(originPath, Buffer.alloc(2048));
+      await clickTitle(page, 'Actions menu'); await sleep(200);
+      await clickText(page, 'Reload changed media');
+      await page.waitFor(`!!document.querySelector('[data-e2e=media-dialog-reload]') && document.querySelector('[data-e2e=media-dialog-reload]').textContent.indexOf(${JSON.stringify(AUDIO.name)}) !== -1`, 8000);
+      await clickText(page, 'Reload all');
+      await page.waitFor(`document.querySelector('[data-e2e=media-dialog-reload]').textContent.indexOf('Reloaded ') !== -1`, 15000);
+      const reloadText = await page.eval(`document.querySelector('[data-e2e=media-dialog-reload]').textContent`);
+      await shot(page, '09b-media-reload');
+      const ad2 = await api.call('functions.get', { functionId: AUDIO.id });
+      check(reloadText.indexOf('reloaded') !== -1 && ad2.typeDetail.config.sourceFileName !== ad.typeDetail.config.sourceFileName && !ad2.typeDetail.originChanged,
+        'reload changed media: the changed origin was re-imported (' + ad2.typeDetail.config.sourceFileName + ')');
+      await clickText(page, 'Close');
+      ad.typeDetail = ad2.typeDetail;
+    } else check(false, 'collect recorded the sandbox origin (' + originPath + ')');
     // remove unused: an orphan in the store's <sha12>/ layout
     const store = (await api.call('functions.media.status')).storeDir;
     const orphan = path.join(store, '0123456789ab', 'orphan.mp3');
@@ -412,26 +431,30 @@ async function waitApi(fn, what, timeout = 8000) {
     console.log('Audio / Video editors');
     await openInTree(AUDIO.name);
     await page.waitFor('!!document.querySelector(".qlc-audio-editor")', 10000);
+    const bpmEv = api.events.length;
     await clickTitle(page, 'Detect BPM', '.qlc-audio-editor');
-    const bpmDone = await waitApi(async () => { const s = (await api.call('functions.get', { functionId: AUDIO.id })).typeDetail.config.bpm.state; return s === 'done' || s === 'failed'; }, 'bpm analysis', 60000);
+    // the analysis restarts (analyzing), then ends (done / failed) - a 4-minute mp3 takes ~15 s
+    await waitApi(async () => api.events.slice(bpmEv).some(e => e.topic === 'functions.audio.bpmChanged' && e.data.bpm.state === 'analyzing'), 'analysis start', 10000);
+    const bpmDone = await waitApi(async () => api.events.slice(bpmEv).some(e => e.topic === 'functions.audio.bpmChanged' && (e.data.bpm.state === 'done' || e.data.bpm.state === 'failed')), 'bpm analysis', 90000);
     const bpm = (await api.call('functions.get', { functionId: AUDIO.id })).typeDetail.config.bpm;
     check(bpmDone && bpm.state === 'done' && bpm.value > 0, 'detect BPM: ' + bpm.state + ' ' + bpm.value + ' (confidence ' + bpm.confidence + ')');
-    await page.waitFor(`document.querySelector('.qlc-audio-editor').textContent.indexOf(${JSON.stringify(Number(bpm.value || 0).toFixed(1))}) !== -1`, 5000).catch(() => {});
+    await page.waitFor(`document.querySelector('.qlc-audio-editor').textContent.indexOf(${JSON.stringify(Number(bpm.value || 0).toFixed(1))}) !== -1`, 15000).catch(() => {});
     check(await page.eval(`document.querySelector('.qlc-audio-editor').textContent.indexOf(${JSON.stringify(Number(bpm.value || 0).toFixed(1))}) !== -1`), 'detect BPM: the editor shows the result');
-    await page.click(await rowEl(page, 'Volume', '[role=checkbox], input[type=checkbox], button', '.qlc-audio-editor')).catch(() => {});
+    await clickTitle(page, 'Mute this audio function', '.qlc-audio-editor');
     await sleep(400);
     check((await api.call('functions.get', { functionId: AUDIO.id })).typeDetail.config.muted === true, 'audio mute set');
     await shot(page, '11-audio-editor');
     await openInTree(VIDEO.name);
     await page.waitFor('!!document.querySelector(".qlc-video-editor")', 10000);
     await setSpin(page, 'Volume', 55, '.qlc-video-editor');
-    await page.click(await rowEl(page, 'Volume', '[role=checkbox], input[type=checkbox], button', '.qlc-video-editor')).catch(() => {});
+    await clickTitle(page, "Mute this video's audio", '.qlc-video-editor');
     await sleep(300);
     const vd = (await api.call('functions.get', { functionId: VIDEO.id })).typeDetail.config;
     check(vd.volume === 55 && vd.muted === true, 'video volume 55 and mute (' + vd.volume + ', ' + vd.muted + ')');
     if (vd.outputMode === 'spout') {
-      await clickText(page, 'Custom', '.qlc-video-editor');
-      await sleep(300);
+      await page.eval(`(function(){ const row = Array.from(document.querySelectorAll('.qlc-video-editor div')).filter(d => d.children.length >= 2 && (d.children[0].textContent||'').trim() === 'Sender size').pop(); window.__e2e = Array.from(row.querySelectorAll('button')).find(b => b.textContent === 'Custom'); return true; })()`);
+      await page.click(() => window.__e2e);
+      await sleep(400);
       await page.eval(`(function(){ const row = Array.from(document.querySelectorAll('.qlc-video-editor div')).filter(d => d.children.length >= 2 && (d.children[0].textContent||'').trim() === 'Sender size').pop(); window.__e2e = row.querySelectorAll('input')[0]; return true; })()`);
       await page.click(() => window.__e2e); await selectAll(page); await insertText(page, '1280'); await page.key('Enter');
       await sleep(400);

@@ -26,9 +26,10 @@
     const [outcomes, setOutcomes] = React.useState({});   /* reload: functionId -> status text */
     const [checked, setChecked] = React.useState([]);     /* remove: selected paths */
     const [busy, setBusy] = React.useState(false);
+    const [ran, setRan] = React.useState(null);           /* reload: the rows that were processed */
     const load = () => qlc.call('functions.media.status').then(s => { setStatus(s); setChecked((s.unused || []).map(f => f.path)); }).catch(e => setError((e && e.message) || 'functions.media.status failed'));
     React.useEffect(() => {
-      const on = (e) => { setKind(e.detail); setStatus(null); setError(''); setResult(null); setOutcomes({}); setBusy(false); };
+      const on = (e) => { setKind(e.detail); setStatus(null); setError(''); setResult(null); setOutcomes({}); setBusy(false); setRan(null); };
       window.addEventListener('qlc-media-dialog', on);
       return () => window.removeEventListener('qlc-media-dialog', on);
     }, []);
@@ -43,6 +44,7 @@
           const r = await FF.mutate(qlc, 'functions.media.collect', {});
           setResult('Copied ' + r.copied + (r.queued ? ', ' + r.queued + ' copying in the background' : '') + (r.failed ? ', ' + r.failed + ' failed' + (r.error ? ' (' + r.error + ')' : '') : '') + ' — into ' + r.storeDir);
         } else if (kind === 'reload') {
+          setRan(status.changed);   /* keep the rows (with their outcome) after the status refresh */
           const out = {};
           for (const f of status.changed) {
             try {
@@ -61,8 +63,8 @@
       setBusy(false);
     };
 
-    const list = !status ? [] : kind === 'collect' ? status.external : kind === 'remove' ? status.unused : status.changed;
-    const empty = status && !list.length;
+    const list = !status ? [] : kind === 'collect' ? status.external : kind === 'remove' ? status.unused : (ran || status.changed);
+    const empty = status && !list.length && !result;
     const verb = kind === 'collect' ? 'Collect' : kind === 'reload' ? 'Reload all' : 'Remove';
     const note = kind === 'collect' ? (status && status.staging ? 'The project is not saved yet: the copies go to a staging folder and move next to the project on its first save.' : 'Every Audio / Video file outside the project\'s media folder is copied into it and the functions are relinked to the copies.')
       : kind === 'reload' ? 'Audio / Video whose original file changed on disk since it was copied into the project. Running functions are skipped.'
