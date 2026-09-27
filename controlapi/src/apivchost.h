@@ -110,7 +110,7 @@ public:
 
     virtual int vcPageCount() const = 0;
 
-    /** JSON per the VcPage schema: {index, name, hasPin}. Caller guarantees
+    /** JSON per the VcPage schema: {index, name, hasPin, width, height}. Caller guarantees
      *  0 <= $index < vcPageCount(). */
     virtual QJsonObject vcPageSnapshot(int index) const = 0;
 
@@ -139,6 +139,11 @@ public:
     virtual bool vcSetPagePin(int index, const QString &currentPin, const QString &newPin) = 0;
 
     virtual bool vcValidatePagePin(int index, const QString &pin) const = 0;
+
+    /** vc.page.setSize (added 2026-09-27): sets the page's geometry to QRect(0, 0, $width, $height),
+     *  what VCPageProperties.qml's Width / Height spin boxes write. The caller validated $index and
+     *  1 <= width/height <= 100000. vcPageSnapshot() must report the size as "width" / "height". */
+    virtual void vcSetPageSize(int index, int width, int height) = 0;
 
     /*********************************************************************
      * Widgets - queries

@@ -20,9 +20,13 @@
 #include <QJsonArray>
 #include <QJsonValue>
 #include <QWebSocket>
+#include <QTemporaryDir>
+#include <QFile>
+#include <QUrl>
 #include <QtTest>
 
 #include "apivcdomain_test.h"
+#include "apivcpagestyledomain.h"
 #include "apiserver.h"
 #include "doc.h"
 #include "fakevchost.h"
@@ -1715,4 +1719,259 @@ void ApiVcDomain_Test::widgetPresetRejectsWidgetsWithoutPresets()
     QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.widget.preset.add"), nf, QStringLiteral("t-np6"))), QStringLiteral("NOT_FOUND"));
 
     QCOMPARE(currentDocRevision(), rev);
+}
+
+/*****************************************************************************
+ * Page size and widget background images (ApiVcPageStyleDomain)
+ *****************************************************************************/
+
+void ApiVcDomain_Test::pageSetSizePersistsAndBroadcasts()
+{
+    QString clientId = helloAndGetClientId();
+
+    QJsonObject list = sendAndWaitForReply(QStringLiteral("vc.page.list"), QJsonObject(), QStringLiteral("t-ps0"));
+    QJsonObject page0 = list.value(QStringLiteral("result")).toObject().value(QStringLiteral("pages")).toArray().at(0).toObject();
+    QCOMPARE(page0.value(QStringLiteral("width")).toInt(), 1920);
+    QCOMPARE(page0.value(QStringLiteral("height")).toInt(), 1080);
+
+    int rev = currentDocRevision();
+    QSignalSpy spy(m_client, &QWebSocket::textMessageReceived);
+    QJsonObject params;
+    params.insert(QStringLiteral("index"), 0);
+    params.insert(QStringLiteral("width"), 800);
+    params.insert(QStringLiteral("height"), 600);
+    params.insert(QStringLiteral("baseRevision"), rev);
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("vc.page.setSize"), params, QStringLiteral("t-ps1"));
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    int newRev = reply.value(QStringLiteral("result")).toObject().value(QStringLiteral("docRevision")).toInt();
+    QVERIFY(newRev > rev);
+
+    QVERIFY(QTest::qWaitFor([&]() { return eventsWithTopic(spy, QStringLiteral("vc.page.updated")).size() == 1; }, 2000));
+    QJsonObject ev = eventsWithTopic(spy, QStringLiteral("vc.page.updated")).first();
+    QCOMPARE(ev.value(QStringLiteral("_origin")).toString(), clientId);
+    QCOMPARE(ev.value(QStringLiteral("docRevision")).toInt(), newRev);
+    QCOMPARE(ev.value(QStringLiteral("page")).toObject().value(QStringLiteral("width")).toInt(), 800);
+    QCOMPARE(ev.value(QStringLiteral("page")).toObject().value(QStringLiteral("height")).toInt(), 600);
+
+    list = sendAndWaitForReply(QStringLiteral("vc.page.list"), QJsonObject(), QStringLiteral("t-ps2"));
+    page0 = list.value(QStringLiteral("result")).toObject().value(QStringLiteral("pages")).toArray().at(0).toObject();
+    QCOMPARE(page0.value(QStringLiteral("width")).toInt(), 800);
+    QCOMPARE(page0.value(QStringLiteral("height")).toInt(), 600);
+
+    // the same size again: acknowledged, no revision bump, no event
+    params.insert(QStringLiteral("baseRevision"), newRev);
+    reply = sendAndWaitForReply(QStringLiteral("vc.page.setSize"), params, QStringLiteral("t-ps3"));
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(currentDocRevision(), newRev);
+    QCOMPARE(eventsWithTopic(spy, QStringLiteral("vc.page.updated")).size(), 1);
+}
+
+void ApiVcDomain_Test::pageSetSizeValidates()
+{
+    helloAndGetClientId();
+    int rev = currentDocRevision();
+
+    auto call = [&](const QJsonValue &index, const QJsonValue &w, const QJsonValue &h, int baseRevision, const QString &rid)
+    {
+        QJsonObject params;
+        params.insert(QStringLiteral("index"), index);
+        params.insert(QStringLiteral("width"), w);
+        params.insert(QStringLiteral("height"), h);
+        params.insert(QStringLiteral("baseRevision"), baseRevision);
+        return errorCode(sendAndWaitForReply(QStringLiteral("vc.page.setSize"), params, rid));
+    };
+
+    QCOMPARE(call(0, 0, 600, rev, QStringLiteral("t-pv1")), QStringLiteral("INVALID_PARAMS"));
+    QCOMPARE(call(0, 800, 100001, rev, QStringLiteral("t-pv2")), QStringLiteral("INVALID_PARAMS"));
+    QCOMPARE(call(0, QStringLiteral("800"), 600, rev, QStringLiteral("t-pv3")), QStringLiteral("INVALID_PARAMS"));
+    QCOMPARE(call(0, 800.5, 600, rev, QStringLiteral("t-pv4")), QStringLiteral("INVALID_PARAMS"));
+    QCOMPARE(call(3, 800, 600, rev, QStringLiteral("t-pv5")), QStringLiteral("NOT_FOUND"));
+    QCOMPARE(call(-1, 800, 600, rev, QStringLiteral("t-pv6")), QStringLiteral("NOT_FOUND"));
+    QCOMPARE(call(0, 800, 600, rev - 1, QStringLiteral("t-pv7")), QStringLiteral("CONFLICT"));
+    QCOMPARE(currentDocRevision(), rev);
+}
+
+void ApiVcDomain_Test::widgetBackgroundImageRefusesNetworkPaths()
+{
+    helloAndGetClientId();
+    QString wid = createWidget(QStringLiteral("Button"));
+    QVERIFY(wid.isEmpty() == false);
+    int rev = currentDocRevision();
+
+    const QStringList refused = {
+        QStringLiteral("\\\\server\\share\\logo.png"),
+        QStringLiteral("//server/share/logo.png"),
+        QStringLiteral("\\\\?\\UNC\\server\\share\\logo.png"),
+        QStringLiteral("\\\\.\\C:\\logo.png"),
+        QStringLiteral("file://server/share/logo.png"),
+        QStringLiteral("http://example.com/logo.png"),
+        QStringLiteral("smb://server/share/logo.png"),
+        QStringLiteral("relative/logo.png"),
+    };
+    int n = 0;
+    for (const QString &path : refused)
+    {
+        QJsonObject style;
+        style.insert(QStringLiteral("backgroundImage"), path);
+        QJsonObject params = widgetParams(wid);
+        params.insert(QStringLiteral("style"), style);
+        params.insert(QStringLiteral("baseRevision"), rev);
+        QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.widget.update"), params, QStringLiteral("t-bi%1").arg(n++))),
+                 QStringLiteral("INVALID_PARAMS"));
+    }
+
+    // vc.widget.create and vc.widget.bulkStyle run the same check
+    QJsonObject style;
+    style.insert(QStringLiteral("backgroundImage"), QStringLiteral("\\\\server\\share\\logo.png"));
+    QJsonObject create;
+    create.insert(QStringLiteral("widgetType"), QStringLiteral("Label"));
+    create.insert(QStringLiteral("page"), 0);
+    QJsonObject geom;
+    geom.insert(QStringLiteral("x"), 0); geom.insert(QStringLiteral("y"), 0);
+    geom.insert(QStringLiteral("width"), 10); geom.insert(QStringLiteral("height"), 10);
+    create.insert(QStringLiteral("geometry"), geom);
+    create.insert(QStringLiteral("style"), style);
+    create.insert(QStringLiteral("baseRevision"), rev);
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.widget.create"), create, QStringLiteral("t-bic"))), QStringLiteral("INVALID_PARAMS"));
+
+    QJsonObject bulk;
+    bulk.insert(QStringLiteral("widgetIds"), QJsonArray({ wid }));
+    bulk.insert(QStringLiteral("backgroundImage"), QStringLiteral("//server/share/logo.png"));
+    bulk.insert(QStringLiteral("baseRevision"), rev);
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.widget.bulkStyle"), bulk, QStringLiteral("t-bib"))), QStringLiteral("INVALID_PARAMS"));
+
+    // nothing was applied
+    QCOMPARE(currentDocRevision(), rev);
+    QJsonObject get = sendAndWaitForReply(QStringLiteral("vc.widget.get"), widgetParams(wid), QStringLiteral("t-big"));
+    QVERIFY(get.value(QStringLiteral("result")).toObject().value(QStringLiteral("style")).toObject()
+            .value(QStringLiteral("backgroundImage")).isNull());
+}
+
+void ApiVcDomain_Test::widgetBackgroundImageNormalizesFileUrl()
+{
+    helloAndGetClientId();
+    QString wid = createWidget(QStringLiteral("Button"));
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    QString path = dir.filePath(QStringLiteral("logo.png"));
+
+    QJsonObject style;
+    style.insert(QStringLiteral("backgroundImage"), QUrl::fromLocalFile(path).toString());
+    QJsonObject params = widgetParams(wid);
+    params.insert(QStringLiteral("style"), style);
+    params.insert(QStringLiteral("baseRevision"), currentDocRevision());
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("vc.widget.update"), params, QStringLiteral("t-bn1")).value(QStringLiteral("ok")).toBool(), true);
+
+    QJsonObject get = sendAndWaitForReply(QStringLiteral("vc.widget.get"), widgetParams(wid), QStringLiteral("t-bn2"));
+    QCOMPARE(get.value(QStringLiteral("result")).toObject().value(QStringLiteral("style")).toObject()
+             .value(QStringLiteral("backgroundImage")).toString(), path);
+
+    // null clears it
+    style.insert(QStringLiteral("backgroundImage"), QJsonValue());
+    params.insert(QStringLiteral("style"), style);
+    params.insert(QStringLiteral("baseRevision"), currentDocRevision());
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("vc.widget.update"), params, QStringLiteral("t-bn3")).value(QStringLiteral("ok")).toBool(), true);
+    get = sendAndWaitForReply(QStringLiteral("vc.widget.get"), widgetParams(wid), QStringLiteral("t-bn4"));
+    QVERIFY(get.value(QStringLiteral("result")).toObject().value(QStringLiteral("style")).toObject()
+            .value(QStringLiteral("backgroundImage")).isNull());
+}
+
+void ApiVcDomain_Test::widgetGetBackgroundImageReturnsDataUrl()
+{
+    helloAndGetClientId();
+    QString wid = createWidget(QStringLiteral("Button"));
+    int revBefore = currentDocRevision();
+
+    // no image set
+    QJsonObject r = sendAndWaitForReply(QStringLiteral("vc.widget.getBackgroundImage"), widgetParams(wid), QStringLiteral("t-gi0"));
+    QCOMPARE(r.value(QStringLiteral("ok")).toBool(), true);
+    QVERIFY(r.value(QStringLiteral("result")).toObject().value(QStringLiteral("path")).isNull());
+    QVERIFY(r.value(QStringLiteral("result")).toObject().value(QStringLiteral("dataUrl")).isNull());
+
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    QByteArray png = QByteArray::fromHex("89504e470d0a1a0a0000000d49484452") + QByteArray("-rest-of-a-tiny-png");
+    QString pngPath = dir.filePath(QStringLiteral("logo.png"));
+    {
+        QFile f(pngPath);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write(png);
+    }
+    QString txtPath = dir.filePath(QStringLiteral("notes.png"));
+    {
+        QFile f(txtPath);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("just some text, not an image");
+    }
+
+    auto setImage = [&](const QString &path, const QString &rid)
+    {
+        QJsonObject style;
+        style.insert(QStringLiteral("backgroundImage"), path);
+        QJsonObject params = widgetParams(wid);
+        params.insert(QStringLiteral("style"), style);
+        params.insert(QStringLiteral("baseRevision"), currentDocRevision());
+        return sendAndWaitForReply(QStringLiteral("vc.widget.update"), params, rid).value(QStringLiteral("ok")).toBool();
+    };
+
+    QVERIFY(setImage(pngPath, QStringLiteral("t-gi1")));
+    r = sendAndWaitForReply(QStringLiteral("vc.widget.getBackgroundImage"), widgetParams(wid), QStringLiteral("t-gi2"));
+    QJsonObject res = r.value(QStringLiteral("result")).toObject();
+    QCOMPARE(res.value(QStringLiteral("path")).toString(), pngPath);
+    QCOMPARE(res.value(QStringLiteral("mimeType")).toString(), QStringLiteral("image/png"));
+    QString dataUrl = res.value(QStringLiteral("dataUrl")).toString();
+    QVERIFY(dataUrl.startsWith(QStringLiteral("data:image/png;base64,")));
+    QCOMPARE(QByteArray::fromBase64(dataUrl.mid(22).toLatin1()), png);
+
+    // a file that is no image is not returned
+    QVERIFY(setImage(txtPath, QStringLiteral("t-gi3")));
+    res = sendAndWaitForReply(QStringLiteral("vc.widget.getBackgroundImage"), widgetParams(wid), QStringLiteral("t-gi4")).value(QStringLiteral("result")).toObject();
+    QVERIFY(res.value(QStringLiteral("dataUrl")).isNull());
+    QVERIFY(res.value(QStringLiteral("reason")).toString().isEmpty() == false);
+
+    // a missing file neither
+    QVERIFY(setImage(dir.filePath(QStringLiteral("gone.png")), QStringLiteral("t-gi5")));
+    res = sendAndWaitForReply(QStringLiteral("vc.widget.getBackgroundImage"), widgetParams(wid), QStringLiteral("t-gi6")).value(QStringLiteral("result")).toObject();
+    QVERIFY(res.value(QStringLiteral("dataUrl")).isNull());
+    QCOMPARE(res.value(QStringLiteral("reason")).toString(), QStringLiteral("file not found"));
+
+    // unknown widget
+    QCOMPARE(errorCode(sendAndWaitForReply(QStringLiteral("vc.widget.getBackgroundImage"), widgetParams(QStringLiteral("99999")), QStringLiteral("t-gi7"))),
+             QStringLiteral("NOT_FOUND"));
+
+    // reading never touches the document
+    QVERIFY(currentDocRevision() > revBefore);
+    int rev = currentDocRevision();
+    sendAndWaitForReply(QStringLiteral("vc.widget.getBackgroundImage"), widgetParams(wid), QStringLiteral("t-gi8"));
+    QCOMPARE(currentDocRevision(), rev);
+
+    // sniffing
+    QCOMPARE(ApiVcPageStyleDomain::sniffImageMimeType(QByteArray("\xff\xd8\xff\xe0", 4)), QStringLiteral("image/jpeg"));
+    QCOMPARE(ApiVcPageStyleDomain::sniffImageMimeType(QByteArray("GIF89a...")), QStringLiteral("image/gif"));
+    QCOMPARE(ApiVcPageStyleDomain::sniffImageMimeType(QByteArray("RIFF\x10\x00\x00\x00WEBPVP8 ", 16)), QStringLiteral("image/webp"));
+    QCOMPARE(ApiVcPageStyleDomain::sniffImageMimeType(QByteArray("<?xml version=\"1.0\"?>\n<svg xmlns=\"http://www.w3.org/2000/svg\"/>")), QStringLiteral("image/svg+xml"));
+    QCOMPARE(ApiVcPageStyleDomain::sniffImageMimeType(QByteArray("<html><script>")), QString());
+}
+
+void ApiVcDomain_Test::widgetUpdateZIndexReordersStacking()
+{
+    helloAndGetClientId();
+    QString a = createWidget(QStringLiteral("Button"));
+    QString b = createWidget(QStringLiteral("Label"));
+
+    QJsonObject params = widgetParams(a);
+    params.insert(QStringLiteral("zIndex"), 5);
+    params.insert(QStringLiteral("baseRevision"), currentDocRevision());
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("vc.widget.update"), params, QStringLiteral("t-z1")).value(QStringLiteral("ok")).toBool(), true);
+
+    QJsonObject list = sendAndWaitForReply(QStringLiteral("vc.widget.list"), QJsonObject(), QStringLiteral("t-z2"));
+    int za = -1, zb = -1;
+    for (const QJsonValue &v : list.value(QStringLiteral("result")).toObject().value(QStringLiteral("widgets")).toArray())
+    {
+        QJsonObject w = v.toObject();
+        if (w.value(QStringLiteral("id")).toString() == a) za = w.value(QStringLiteral("zIndex")).toInt();
+        if (w.value(QStringLiteral("id")).toString() == b) zb = w.value(QStringLiteral("zIndex")).toInt();
+    }
+    QCOMPARE(za, 5);
+    QCOMPARE(zb, 0);
 }

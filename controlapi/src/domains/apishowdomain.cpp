@@ -22,6 +22,7 @@
 #include <QSet>
 
 #include "apishowdomain.h"
+#include "apishowpreviewdomain.h"
 #include "apifunctionsdomain.h"
 #include "apiserver.h"
 #include "apisession.h"
@@ -713,6 +714,11 @@ QJsonObject ApiShowDomain::trackToJson(Doc *doc, Track *track)
     for (ShowFunction *sf : track->showFunctions())
         items.append(itemToJson(doc, sf));
     obj.insert(QStringLiteral("items"), items);
+    // Spout output size block (apishowpreviewdomain.cpp), only on tracks
+    // holding Spout-mode Videos or a fixed size
+    QJsonObject spout = ApiShowPreviewDomain::trackSpoutJson(doc, track);
+    if (spout.isEmpty() == false)
+        obj.insert(QStringLiteral("spout"), spout);
     return obj;
 }
 
@@ -734,6 +740,8 @@ QJsonObject ApiShowDomain::detailToJson(Doc *doc, Show *show)
     obj.insert(QStringLiteral("timeDivisionBPM"), show->timeDivisionBPM());
     obj.insert(QStringLiteral("tracks"), tracksToJson(doc, show));
     obj.insert(QStringLiteral("totalDuration"), double(show->totalDuration()));
+    // runtime: frozen at the cursor (functions.show.preview or the desktop's preview)
+    obj.insert(QStringLiteral("previewing"), show->isScrubMode());
     obj.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
     return obj;
 }

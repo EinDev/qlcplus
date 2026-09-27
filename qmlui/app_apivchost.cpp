@@ -763,6 +763,9 @@ QJsonObject App::vcPageSnapshot(int index) const
     obj.insert(QStringLiteral("index"), index);
     obj.insert(QStringLiteral("name"), page != nullptr ? page->caption() : QString());
     obj.insert(QStringLiteral("hasPin"), page != nullptr && page->PIN() != 0);
+    // vc.page.setSize (app_apivcpage.cpp): VCPageProperties.qml's Width / Height
+    obj.insert(QStringLiteral("width"), page != nullptr ? qRound(page->geometry().width()) : 0);
+    obj.insert(QStringLiteral("height"), page != nullptr ? qRound(page->geometry().height()) : 0);
     return obj;
 }
 

@@ -264,7 +264,15 @@ QJsonObject FakeVcHost::vcPageSnapshot(int index) const
     obj.insert(QStringLiteral("index"), index);
     obj.insert(QStringLiteral("name"), m_pages.at(index).name);
     obj.insert(QStringLiteral("hasPin"), m_pages.at(index).pin.isEmpty() == false);
+    obj.insert(QStringLiteral("width"), m_pages.at(index).width);
+    obj.insert(QStringLiteral("height"), m_pages.at(index).height);
     return obj;
+}
+
+void FakeVcHost::vcSetPageSize(int index, int width, int height)
+{
+    m_pages[index].width = width;
+    m_pages[index].height = height;
 }
 
 int FakeVcHost::vcSelectedPage() const

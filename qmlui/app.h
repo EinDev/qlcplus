@@ -28,6 +28,7 @@
 #include "apiprojecthost.h"
 #include "apivchost.h"
 #include "apiwizardhost.h"
+#include "apishowhost.h"
 // Full definition, not a forward declaration: moc registers the VCWidget* parameter of the
 // slotVcWidgetRegistered() slot, which needs a complete type (same trap as apidispatcher.h).
 #include "virtualconsole/vcwidget.h"
@@ -60,6 +61,7 @@ class QMouseEvent;
 #define KXMLQLCWorkspace QStringLiteral("Workspace")
 
 class App final : public QQuickView, public ApiProjectHost, public ApiVcHost, public ApiWizardHost
+class App final : public QQuickView, public ApiProjectHost, public ApiVcHost, public ApiShowHost
 {
     Q_OBJECT
     Q_DISABLE_COPY(App)
@@ -576,6 +578,11 @@ public:
     void vcRenamePage(int index, const QString &name) override;
     bool vcSetPagePin(int index, const QString &currentPin, const QString &newPin) override;
     bool vcValidatePagePin(int index, const QString &pin) const override;
+    void vcSetPageSize(int index, int width, int height) override; // app_apivcpage.cpp
+
+    /* ApiShowHost (app_apivcpage.cpp) */
+    QSize showTrackSpoutOutputSize(const Track *track) const override;
+    void showTrackSpoutSizeChanged(Show *show, Track *track) override;
 
     bool vcWidgetExists(quint32 id) const override;
     QString vcWidgetType(quint32 id) const override;

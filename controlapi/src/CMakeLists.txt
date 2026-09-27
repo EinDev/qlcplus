@@ -31,6 +31,9 @@ set(CONTROLAPI_SOURCES
     domains/apiwizarddomain.cpp domains/apiwizarddomain.h
     domains/apiimportdomain.cpp domains/apiimportdomain.h
     domains/apitoolsdomain.cpp domains/apitoolsdomain.h
+    domains/apivcpagestyledomain.cpp domains/apivcpagestyledomain.h
+    domains/apishowpreviewdomain.cpp domains/apishowpreviewdomain.h
+    apishowhost.h
 )
 
 # Static, linked directly into the qlcplus5 executable - same reasoning as

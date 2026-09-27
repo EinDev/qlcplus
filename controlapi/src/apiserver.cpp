@@ -45,6 +45,8 @@
 #include "domains/apiwizarddomain.h"
 #include "domains/apiimportdomain.h"
 #include "domains/apitoolsdomain.h"
+#include "domains/apivcpagestyledomain.h"
+#include "domains/apishowpreviewdomain.h"
 #include "qlcconfig.h"
 #include "doc.h"
 
@@ -85,6 +87,8 @@ ApiServer::ApiServer(QObject *parent, Doc *doc)
     m_wizardDomain = new ApiWizardDomain(m_doc, this, this);
     m_importDomain = new ApiImportDomain(m_doc, this, this);
     m_toolsDomain = new ApiToolsDomain(m_doc, this, m_ioDomain, m_coreDomain, this);
+    m_vcPageStyleDomain = new ApiVcPageStyleDomain(m_doc, this, this);
+    m_showPreviewDomain = new ApiShowPreviewDomain(m_doc, this, this);
 }
 
 ApiServer::~ApiServer()

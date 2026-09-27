@@ -84,6 +84,14 @@ private slots:
     void widgetPresetAddUpdateApplyRemove();
     void widgetPresetRejectsWidgetsWithoutPresets();
 
+    // Page size and widget background images (ApiVcPageStyleDomain, added 2026-09-27).
+    void pageSetSizePersistsAndBroadcasts();
+    void pageSetSizeValidates();
+    void widgetBackgroundImageRefusesNetworkPaths();
+    void widgetBackgroundImageNormalizesFileUrl();
+    void widgetGetBackgroundImageReturnsDataUrl();
+    void widgetUpdateZIndexReordersStacking();
+
 private:
     QJsonObject sendAndWaitForReply(const QString &method, const QJsonObject &params, const QString &requestId = QStringLiteral("t-1"));
     QString helloAndGetClientId();

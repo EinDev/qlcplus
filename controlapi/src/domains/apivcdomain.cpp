@@ -23,6 +23,7 @@
 #include <limits>
 
 #include "apivcdomain.h"
+#include "apivcpagestyledomain.h"
 #include "apivchost.h"
 #include "apiserver.h"
 #include "apisession.h"
@@ -497,9 +498,15 @@ void ApiVcDomain::registerWidgetMethods(ApiDispatcher *d)
         }
 
         QString error;
+        QJsonObject style = params.value(QStringLiteral("style")).toObject();
+        if (ApiVcPageStyleDomain::checkStyle(style, &error) == false)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams, error));
+            return;
+        }
         quint32 wid = host->vcCreateWidget(widgetType, page, parentId,
                                             params.value(QStringLiteral("geometry")).toObject(),
-                                            params.value(QStringLiteral("style")).toObject(),
+                                            style,
                                             params.value(QStringLiteral("typeConfig")).toObject(),
                                             &error);
         if (wid == ApiVcHost::InvalidWidgetId)
@@ -604,6 +611,16 @@ void ApiVcDomain::registerWidgetMethods(ApiDispatcher *d)
         }
 
         QString error;
+        if (commonFields.contains(QStringLiteral("style")))
+        {
+            QJsonObject style = commonFields.value(QStringLiteral("style")).toObject();
+            if (ApiVcPageStyleDomain::checkStyle(style, &error) == false)
+            {
+                session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams, error));
+                return;
+            }
+            commonFields.insert(QStringLiteral("style"), style);
+        }
         if (commonFields.isEmpty() == false && host->vcUpdateWidgetCommon(wid, commonFields, &error) == false)
         {
             session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams,

@@ -67,6 +67,14 @@ private slots:
     void staleRevisionIsConflict();
     void playheadEventIsGatedAndFollowsStartOffset();
 
+    // scrub preview and track Spout size (ApiShowPreviewDomain, added 2026-09-27)
+    void previewStartsFrozenAndSeeks();
+    void previewEndWithPlayPlaysOn();
+    void previewEndsWhenStoppedElsewhere();
+    void previewValidates();
+    void trackSetSpoutSizeStoresAndBroadcasts();
+    void trackSetSpoutSizeValidates();
+
 private:
     QJsonObject sendAndWaitForReply(const QString &method, const QJsonObject &params);
     QString helloAndGetClientId();

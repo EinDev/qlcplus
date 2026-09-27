@@ -23,6 +23,7 @@
 #include <algorithm>
 
 #include "apivclayoutdomain.h"
+#include "apivcpagestyledomain.h"
 #include "apivchost.h"
 #include "apiserver.h"
 #include "apisession.h"
@@ -645,6 +646,12 @@ void ApiVcLayoutDomain::registerLayoutMethods(ApiDispatcher *d)
         {
             session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams,
                                                             QStringLiteral("At least one of caption/foregroundColor/backgroundColor/backgroundImage/font is required")));
+            return;
+        }
+        QString styleError;
+        if (ApiVcPageStyleDomain::checkStyle(style, &styleError) == false)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams, styleError));
             return;
         }
 

@@ -22,6 +22,7 @@ set(SRC_FILES
     app_apivchost.cpp app_apivchost_cue.cpp app_apivcinput.cpp app_apivchost_live.cpp
     app_apivcconfig.h app_apivcconfig_layout.cpp app_apivcconfig_cue.cpp app_apivcconfig_live.cpp
     app_apiwizard.cpp
+    app_apivcpage.cpp
     asynclogwriter.cpp asynclogwriter.h
     audioeditor.cpp audioeditor.h
     chasereditor.cpp chasereditor.h

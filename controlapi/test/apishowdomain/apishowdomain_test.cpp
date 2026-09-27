@@ -19,11 +19,15 @@
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QWebSocket>
+#include <QBuffer>
+#include <QXmlStreamWriter>
 #include <QtTest>
 
 #include "apishowdomain_test.h"
 #include "apiserver.h"
 #include "mastertimer.h"
+#include "functionparent.h"
+#include "video.h"
 #include "showfunction.h"
 #include "chaserstep.h"
 #include "fixture.h"
@@ -955,6 +959,265 @@ void ApiShowDomain_Test::playheadEventIsGatedAndFollowsStartOffset()
     reply = sendAndWaitForReply(QStringLiteral("functions.stop"), params);
     QVERIFY(reply.value(QStringLiteral("ok")).toBool());
     QVERIFY(QTest::qWaitFor([this]() { return m_show->isRunning() == false; }, 2000));
+}
+
+/*****************************************************************************
+ * Scrub preview and track Spout size (ApiShowPreviewDomain)
+ *****************************************************************************/
+
+static QJsonObject previewParams(Show *show, int time)
+{
+    QJsonObject params;
+    params.insert(QStringLiteral("showId"), QString::number(show->id()));
+    params.insert(QStringLiteral("time"), time);
+    return params;
+}
+
+void ApiShowDomain_Test::previewStartsFrozenAndSeeks()
+{
+    QSignalSpy spy(m_client, &QWebSocket::textMessageReceived);
+    int rev = revision();
+
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("functions.show.preview"), previewParams(m_show, 1000));
+    QVERIFY2(reply.value(QStringLiteral("ok")).toBool(), qPrintable(QJsonDocument(reply).toJson()));
+    QCOMPARE(reply.value(QStringLiteral("result")).toObject().value(QStringLiteral("previewing")).toBool(), true);
+    QJsonObject ev = waitForEvent(spy, QStringLiteral("functions.show.previewChanged"),
+                                  [](const QJsonObject &d) { return d.value(QStringLiteral("previewing")).toBool(); });
+    QVERIFY(ev.isEmpty() == false);
+    QCOMPARE(ev.value(QStringLiteral("data")).toObject().value(QStringLiteral("time")).toInt(), 1000);
+
+    // the Scene under the cursor runs, the Show stays frozen in scrub mode
+    QVERIFY(QTest::qWaitFor([this]() { return m_show->isRunning() && m_scene->isRunning(); }, 2000));
+    QVERIFY(m_show->isScrubMode());
+    QCOMPARE(getDetail().value(QStringLiteral("previewing")).toBool(), true);
+
+    // a playing Show would have finished the 5 s item by now; frozen, it holds
+    QTest::qWait(300);
+    QVERIFY(m_scene->isRunning());
+
+    // seek past the item: the Scene stops, the Show keeps running (no end)
+    reply = sendAndWaitForReply(QStringLiteral("functions.show.preview"), previewParams(m_show, 7000));
+    QVERIFY(reply.value(QStringLiteral("ok")).toBool());
+    QVERIFY(QTest::qWaitFor([this]() { return m_scene->isRunning() == false; }, 2000));
+    QTest::qWait(200);
+    QVERIFY(m_show->isRunning());
+
+    // and back onto it
+    reply = sendAndWaitForReply(QStringLiteral("functions.show.preview"), previewParams(m_show, 2000));
+    QVERIFY(reply.value(QStringLiteral("ok")).toBool());
+    QVERIFY(QTest::qWaitFor([this]() { return m_scene->isRunning(); }, 2000));
+
+    // only one previewChanged for the whole scrub
+    QTest::qWait(100);
+    int starts = 0;
+    for (const QList<QVariant> &frame : spy)
+    {
+        QJsonObject obj = QJsonDocument::fromJson(frame.at(0).toString().toUtf8()).object();
+        if (obj.value(QStringLiteral("topic")).toString() == QStringLiteral("functions.show.previewChanged"))
+            starts++;
+    }
+    QCOMPARE(starts, 1);
+
+    // end without playing: everything stops
+    QJsonObject end;
+    end.insert(QStringLiteral("showId"), QString::number(m_show->id()));
+    end.insert(QStringLiteral("play"), false);
+    reply = sendAndWaitForReply(QStringLiteral("functions.show.endPreview"), end);
+    QVERIFY(reply.value(QStringLiteral("ok")).toBool());
+    QCOMPARE(reply.value(QStringLiteral("result")).toObject().value(QStringLiteral("previewing")).toBool(), false);
+    QVERIFY(QTest::qWaitFor([this]() { return m_show->isRunning() == false && m_scene->isRunning() == false; }, 2000));
+    ev = waitForEvent(spy, QStringLiteral("functions.show.previewChanged"),
+                      [](const QJsonObject &d) { return d.value(QStringLiteral("previewing")).toBool() == false; });
+    QVERIFY(ev.isEmpty() == false);
+
+    // runtime only: the document never changed
+    QCOMPARE(revision(), rev);
+}
+
+void ApiShowDomain_Test::previewEndWithPlayPlaysOn()
+{
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("functions.show.preview"), previewParams(m_show, 1000));
+    QVERIFY(reply.value(QStringLiteral("ok")).toBool());
+    QVERIFY(QTest::qWaitFor([this]() { return m_show->isRunning() && m_scene->isRunning(); }, 2000));
+
+    QJsonObject end;
+    end.insert(QStringLiteral("showId"), QString::number(m_show->id()));
+    end.insert(QStringLiteral("play"), true);
+    reply = sendAndWaitForReply(QStringLiteral("functions.show.endPreview"), end);
+    QVERIFY(reply.value(QStringLiteral("ok")).toBool());
+    QCOMPARE(reply.value(QStringLiteral("result")).toObject().value(QStringLiteral("playing")).toBool(), true);
+    QVERIFY(m_show->isScrubMode() == false);
+
+    // playing on from the cursor: the playhead moves forward from 1000
+    const QString topic = QStringLiteral("functions.show.%1.playhead").arg(m_show->id());
+    QSignalSpy spy(m_client, &QWebSocket::textMessageReceived);
+    QJsonObject sub;
+    sub.insert(QStringLiteral("topics"), QJsonArray({ topic }));
+    QVERIFY(sendAndWaitForReply(QStringLiteral("subscribe"), sub).value(QStringLiteral("ok")).toBool());
+    QJsonObject ev = waitForEvent(spy, topic, [](const QJsonObject &d) { return d.value(QStringLiteral("time")).toInt() > 1000; });
+    QVERIFY2(ev.isEmpty() == false, "the Show should play on from the preview cursor");
+    QVERIFY(m_show->isRunning());
+
+    // a playing Show refuses a preview
+    reply = sendAndWaitForReply(QStringLiteral("functions.show.preview"), previewParams(m_show, 3000));
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("INVALID_STATE"));
+}
+
+void ApiShowDomain_Test::previewEndsWhenStoppedElsewhere()
+{
+    QSignalSpy spy(m_client, &QWebSocket::textMessageReceived);
+    QVERIFY(sendAndWaitForReply(QStringLiteral("functions.show.preview"), previewParams(m_show, 1000)).value(QStringLiteral("ok")).toBool());
+    QVERIFY(QTest::qWaitFor([this]() { return m_show->isRunning(); }, 2000));
+
+    // stopped by the engine side (desktop, VC, stopAllFunctions)
+    m_show->stop(FunctionParent::master());
+    QJsonObject ev = waitForEvent(spy, QStringLiteral("functions.show.previewChanged"),
+                                  [](const QJsonObject &d) { return d.value(QStringLiteral("previewing")).toBool() == false; });
+    QVERIFY(ev.isEmpty() == false);
+    QVERIFY(ev.value(QStringLiteral("originClientId")).isNull());
+    QVERIFY(m_show->isScrubMode() == false);
+    QVERIFY(QTest::qWaitFor([this]() { return m_show->isRunning() == false; }, 2000));
+
+    // a paused Show is handed over to the preview
+    QJsonObject start;
+    start.insert(QStringLiteral("functionId"), QString::number(m_show->id()));
+    QVERIFY(sendAndWaitForReply(QStringLiteral("functions.start"), start).value(QStringLiteral("ok")).toBool());
+    QVERIFY(QTest::qWaitFor([this]() { return m_show->isRunning() && m_scene->isRunning(); }, 2000));
+    m_show->setPause(true);
+    QVERIFY(QTest::qWaitFor([this]() { return m_show->isPaused(); }, 2000));
+    QVERIFY(sendAndWaitForReply(QStringLiteral("functions.show.preview"), previewParams(m_show, 7000)).value(QStringLiteral("ok")).toBool());
+    QVERIFY(m_show->isScrubMode());
+    QVERIFY(QTest::qWaitFor([this]() { return m_show->isPaused() == false && m_scene->isRunning() == false; }, 2000));
+    QVERIFY(m_show->isRunning());
+}
+
+void ApiShowDomain_Test::previewValidates()
+{
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("functions.show.preview"), previewParams(m_show, -1));
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("INVALID_PARAMS"));
+
+    QJsonObject bad = previewParams(m_show, 0);
+    bad.insert(QStringLiteral("time"), QStringLiteral("soon"));
+    reply = sendAndWaitForReply(QStringLiteral("functions.show.preview"), bad);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("INVALID_PARAMS"));
+
+    QJsonObject notShow = previewParams(m_show, 0);
+    notShow.insert(QStringLiteral("showId"), QString::number(m_scene->id()));
+    reply = sendAndWaitForReply(QStringLiteral("functions.show.preview"), notShow);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("INVALID_PARAMS"));
+
+    QJsonObject unknown = previewParams(m_show, 0);
+    unknown.insert(QStringLiteral("showId"), QStringLiteral("9999"));
+    reply = sendAndWaitForReply(QStringLiteral("functions.show.preview"), unknown);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("NOT_FOUND"));
+
+    // ending a preview that is not running is a no-op
+    QJsonObject end;
+    end.insert(QStringLiteral("showId"), QString::number(m_show->id()));
+    reply = sendAndWaitForReply(QStringLiteral("functions.show.endPreview"), end);
+    QVERIFY(reply.value(QStringLiteral("ok")).toBool());
+    QCOMPARE(reply.value(QStringLiteral("result")).toObject().value(QStringLiteral("previewing")).toBool(), false);
+    QVERIFY(m_show->isRunning() == false);
+    QCOMPARE(getDetail().value(QStringLiteral("previewing")).toBool(), false);
+}
+
+void ApiShowDomain_Test::trackSetSpoutSizeStoresAndBroadcasts()
+{
+    // no Spout clip, no fixed size: no spout block
+    QJsonObject detail = getDetail();
+    QVERIFY(detail.value(QStringLiteral("tracks")).toArray().at(0).toObject().contains(QStringLiteral("spout")) == false);
+
+    Video *video = new Video(m_doc);
+    video->setName(QStringLiteral("Clip V"));
+    video->setOutputMode(Video::Spout);
+    video->setResolution(QSize(1280, 720));
+    QVERIFY(m_doc->addFunction(video));
+    ShowFunction *sf = m_track->createShowFunction(video->id());
+    sf->setStartTime(6000);
+    sf->setDuration(2000);
+
+    detail = getDetail();
+    QJsonObject spout = detail.value(QStringLiteral("tracks")).toArray().at(0).toObject().value(QStringLiteral("spout")).toObject();
+    QVERIFY(spout.value(QStringLiteral("fixedSize")).isNull());
+    QVERIFY(spout.value(QStringLiteral("outputSize")).isNull()); // no host: nothing live
+    QCOMPARE(spout.value(QStringLiteral("clips")).toArray().size(), 1);
+    QJsonObject clip = spout.value(QStringLiteral("clips")).toArray().at(0).toObject();
+    QCOMPARE(clip.value(QStringLiteral("functionId")).toString(), QString::number(video->id()));
+    QCOMPARE(clip.value(QStringLiteral("itemId")).toString(), QString::number(sf->id()));
+    QCOMPARE(clip.value(QStringLiteral("width")).toInt(), 1280);
+    QCOMPARE(clip.value(QStringLiteral("height")).toInt(), 720);
+    QCOMPARE(spout.value(QStringLiteral("mismatch")).toBool(), false);
+
+    QSignalSpy spy(m_client, &QWebSocket::textMessageReceived);
+    int rev = revision();
+    QJsonObject size;
+    size.insert(QStringLiteral("trackId"), QString::number(m_track->id()));
+    size.insert(QStringLiteral("width"), 1920);
+    size.insert(QStringLiteral("height"), 1080);
+    QJsonObject reply = mutate(QStringLiteral("functions.show.track.setSpoutSize"), size);
+    QVERIFY(reply.value(QStringLiteral("ok")).toBool());
+    QVERIFY(revision() > rev);
+    QCOMPARE(m_track->spoutSize(), QSize(1920, 1080));
+
+    QJsonObject ev = waitForEvent(spy, QStringLiteral("functions.show.track.spoutSizeChanged"), [](const QJsonObject &) { return true; });
+    QVERIFY(ev.isEmpty() == false);
+    QJsonObject data = ev.value(QStringLiteral("data")).toObject();
+    QCOMPARE(data.value(QStringLiteral("trackId")).toString(), QString::number(m_track->id()));
+    QCOMPARE(data.value(QStringLiteral("spoutSize")).toObject().value(QStringLiteral("width")).toInt(), 1920);
+    QCOMPARE(data.value(QStringLiteral("spout")).toObject().value(QStringLiteral("mismatch")).toBool(), true);
+    QCOMPARE(data.value(QStringLiteral("docRevision")).toInt(), revision());
+
+    spout = getDetail().value(QStringLiteral("tracks")).toArray().at(0).toObject().value(QStringLiteral("spout")).toObject();
+    QCOMPARE(spout.value(QStringLiteral("fixedSize")).toObject().value(QStringLiteral("height")).toInt(), 1080);
+    QCOMPARE(spout.value(QStringLiteral("outputSize")).toObject().value(QStringLiteral("width")).toInt(), 1920);
+    QCOMPARE(spout.value(QStringLiteral("mismatch")).toBool(), true);
+
+    // saved with the track
+    {
+        QBuffer buffer;
+        buffer.open(QIODevice::WriteOnly);
+        QXmlStreamWriter writer(&buffer);
+        QVERIFY(m_track->saveXML(&writer));
+        buffer.close();
+        QVERIFY2(buffer.data().contains("SpoutSize=\"1920,1080\""), buffer.data().constData());
+    }
+
+    // the same size again: no revision bump
+    rev = revision();
+    QVERIFY(mutate(QStringLiteral("functions.show.track.setSpoutSize"), size).value(QStringLiteral("ok")).toBool());
+    QCOMPARE(revision(), rev);
+
+    // unset
+    size.insert(QStringLiteral("width"), 0);
+    size.insert(QStringLiteral("height"), 0);
+    QVERIFY(mutate(QStringLiteral("functions.show.track.setSpoutSize"), size).value(QStringLiteral("ok")).toBool());
+    QVERIFY(m_track->spoutSize().isEmpty());
+    spout = getDetail().value(QStringLiteral("tracks")).toArray().at(0).toObject().value(QStringLiteral("spout")).toObject();
+    QVERIFY(spout.value(QStringLiteral("fixedSize")).isNull());
+}
+
+void ApiShowDomain_Test::trackSetSpoutSizeValidates()
+{
+    int rev = revision();
+    auto code = [&](const QJsonValue &w, const QJsonValue &h, const QString &trackId, int baseRevision)
+    {
+        QJsonObject params;
+        params.insert(QStringLiteral("showId"), QString::number(m_show->id()));
+        params.insert(QStringLiteral("trackId"), trackId);
+        params.insert(QStringLiteral("width"), w);
+        params.insert(QStringLiteral("height"), h);
+        params.insert(QStringLiteral("baseRevision"), baseRevision);
+        return sendAndWaitForReply(QStringLiteral("functions.show.track.setSpoutSize"), params)
+                .value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString();
+    };
+    const QString tid = QString::number(m_track->id());
+    QCOMPARE(code(0, 100, tid, rev), QStringLiteral("INVALID_PARAMS"));
+    QCOMPARE(code(20000, 100, tid, rev), QStringLiteral("INVALID_PARAMS"));
+    QCOMPARE(code(QStringLiteral("640"), 480, tid, rev), QStringLiteral("INVALID_PARAMS"));
+    QCOMPARE(code(640, 480, QStringLiteral("777"), rev), QStringLiteral("NOT_FOUND"));
+    QCOMPARE(code(640, 480, tid, rev - 1), QStringLiteral("CONFLICT"));
+    QCOMPARE(revision(), rev);
+    QVERIFY(m_track->spoutSize().isEmpty());
 }
 
 QTEST_GUILESS_MAIN(ApiShowDomain_Test)

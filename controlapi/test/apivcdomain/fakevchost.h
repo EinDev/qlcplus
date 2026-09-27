@@ -52,6 +52,7 @@ public:
     void vcRenamePage(int index, const QString &name) override;
     bool vcSetPagePin(int index, const QString &currentPin, const QString &newPin) override;
     bool vcValidatePagePin(int index, const QString &pin) const override;
+    void vcSetPageSize(int index, int width, int height) override;
 
     // --- Widgets: queries ---
     bool vcWidgetExists(quint32 id) const override;
@@ -161,6 +162,8 @@ private:
     {
         QString name;
         QString pin; // empty = no PIN set
+        int width = 1920;  // VCPage's default geometry
+        int height = 1080;
     };
 
     struct VcWidgetState
