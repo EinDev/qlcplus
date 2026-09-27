@@ -718,6 +718,8 @@ void appendLiveStateToJson(VCWidget *w, QJsonObject &obj)
         default:
         break;
     }
+    // XYPad floor / active preset, Clock, Animation, AudioTriggers seeds (app_apivcconfig_live.cpp).
+    ApiVcConfig::appendLiveSeed(w, obj);
 }
 
 } // namespace
@@ -1241,6 +1243,8 @@ void App::slotVcWidgetRegistered(VCWidget *widget)
         default:
         break;
     }
+    // XYPad floor / active preset, Clock, Animation, AudioTriggers relays (app_apivchost_live.cpp).
+    vcConnectLiveRelaysExt(widget);
 }
 
 bool App::vcButtonPress(quint32 id, bool pressed, QString *error)

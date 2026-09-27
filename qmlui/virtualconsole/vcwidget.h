@@ -141,6 +141,10 @@ public:
     /** Return a QML resource for preset properties */
     virtual QString presetsResource() const;
 
+    /** The project document this widget belongs to (read access for external inspectors such
+     *  as the control API's per-type config shaping, which has to resolve fixture/function ids) */
+    Doc *doc() const { return m_doc; }
+
 protected:
     /** Copy the contents for this widget from the given widget */
     virtual bool copyFrom(const VCWidget* widget);
