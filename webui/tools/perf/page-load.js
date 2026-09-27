@@ -11,8 +11,8 @@
 // plus: bytes/requests over HTTP, API calls made on load (method -> count, bytes), long tasks,
 // and a CPU profile split by script URL (babel.min.js self time = in-browser JSX compile cost).
 // Chrome's HTTP cache is disabled for "cold" runs; run 2+ reuses the tab with the cache enabled
-// ("warm") - with the server's current Cache-Control: no-cache and no validators that still
-// re-downloads everything.
+// ("warm") - since 2026-09-27 the server sends ETag/Last-Modified, so a warm run revalidates every
+// file and gets 304s (a few KiB); before that it re-downloaded everything.
 
 const { launch, sleep } = require('../cdp.js');
 const arg = (n, d) => { const i = process.argv.indexOf('--' + n); return i < 0 ? d : process.argv[i + 1]; };

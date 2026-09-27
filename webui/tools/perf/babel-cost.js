@@ -1,8 +1,10 @@
 // How much does compiling the web UI's JSX cost? Runs the vendored @babel/standalone in Node over
-// every <script type="text/babel"> of webui/index.html, once with the exact options the browser
-// uses for script tags (babel-standalone defaults: presets react+env with no targets = full ES5
-// downlevel, 3 plugins, inline source maps) and once with a lean variant (react preset only, no
-// source maps), and prints per-file and total times plus output sizes.
+// every <script type="text/babel"> of webui/index.html, once with babel-standalone's DEFAULT
+// options for script tags (presets react+env with no targets = full ES5 downlevel, 3 plugins,
+// inline source maps - what the browser used before index.html set data-presets/data-plugins on
+// 2026-09-27) and once with a lean variant (react preset only, no source maps; the browser now
+// uses react + transform-block-scoping, still with inline source maps), and prints per-file and
+// total times plus output sizes.
 //
 //   node webui/tools/perf/babel-cost.js [--runs 3]
 //
