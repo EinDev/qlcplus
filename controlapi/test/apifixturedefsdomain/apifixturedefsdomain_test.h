@@ -56,6 +56,7 @@ private slots:
     void channelRemoveCascadesToModesAndAliases();
     void capabilityAddUpdateRemove();
     void capabilityWizardCreatesRangesAndRejectsOverlap();
+    void capabilityWizardRejectsOverflowingWidthTimesAmount();
     void channelWizardCreatesCompoundChannels();
     void autoPatchColorsDetectsNamedColors();
     void aliasAddUpdateRemoveApplyToAllModes();
@@ -67,6 +68,7 @@ private slots:
     void deleteSystemIsReadOnly();
     void deleteInUseIsRejected();
     void deleteUserCopyRestoresBundledDefinition();
+    void saveRejectsPatchedFixturesThatWouldNotFit();
     void importCreatesUserSession();
     void fullRoundTrip();
 

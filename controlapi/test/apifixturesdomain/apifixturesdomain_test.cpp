@@ -686,6 +686,52 @@ void ApiFixturesDomain_Test::findAvailableAddressScansWhenRequestedTaken()
     QCOMPARE(result.value(QStringLiteral("available")).toBool(), false);
 }
 
+void ApiFixturesDomain_Test::hugeAddressesAndCountsAreRejectedNotOverflowed()
+{
+    // Crash audit: address + channels (and channels*quantity) were summed in
+    // int, so values near INT_MAX wrapped negative and passed the 512-channel
+    // check - letting a ~2^31-channel generic definition be allocated, the
+    // overlap check test the wrong range, or findAvailableAddress scan ~4e9
+    // addresses on the main thread.
+    helloAndGetClientId();
+
+    QJsonObject params;
+    params.insert(QStringLiteral("universe"), 0);
+    params.insert(QStringLiteral("address"), 1);
+    params.insert(QStringLiteral("definition"), genericDefinition(2147483647));
+    params.insert(QStringLiteral("baseRevision"), int(m_doc->docRevision()));
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("fixtures.patch"), params);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("INVALID_PARAMS"));
+
+    params.insert(QStringLiteral("address"), 2147483000);
+    params.insert(QStringLiteral("definition"), genericDefinition(1000));
+    reply = sendAndWaitForReply(QStringLiteral("fixtures.patch"), params);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("INVALID_PARAMS"));
+    QCOMPARE(m_doc->fixtures().count(), 0);
+
+    QJsonObject find;
+    find.insert(QStringLiteral("universe"), 0);
+    find.insert(QStringLiteral("channels"), 65536);
+    find.insert(QStringLiteral("quantity"), 65536);
+    find.insert(QStringLiteral("requestedAddress"), 2147483000);
+    QElapsedTimer timer;
+    timer.start();
+    reply = sendAndWaitForReply(QStringLiteral("fixtures.findAvailableAddress"), find);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(reply.value(QStringLiteral("result")).toObject().value(QStringLiteral("available")).toBool(), false);
+    QVERIFY(timer.elapsed() < 1500);
+
+    quint32 fxId = patchGenericFixture(0, 10, 4, QStringLiteral("A"));
+    QVERIFY(fxId != Fixture::invalidId());
+    QJsonObject update;
+    update.insert(QStringLiteral("fixtureId"), QString::number(fxId));
+    update.insert(QStringLiteral("address"), 2147483647);
+    update.insert(QStringLiteral("baseRevision"), int(m_doc->docRevision()));
+    reply = sendAndWaitForReply(QStringLiteral("fixtures.update"), update);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(m_doc->fixture(fxId)->address(), quint32(10));
+}
+
 /*********************************************************************
  * Fixture definition library browsing (fixtures.defs.*)
  *********************************************************************/

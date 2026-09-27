@@ -48,6 +48,7 @@ private slots:
     void collectionTypeDetailListsMembers();
     void collectionAddFunctionAppendsInsertsAndBroadcasts();
     void collectionAddRejectsSelfDuplicateLoopAndStaleRevision();
+    void collectionAddWhileRunningThenAdjustIntensity();
     void collectionRemoveFunction();
     void collectionSetMembersReplacesInOrder();
 

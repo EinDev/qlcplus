@@ -358,6 +358,44 @@ void ApiFunctionsDomain_Test::deleteRemovesFunction()
     QVERIFY(m_doc->function(functionId) == nullptr);
 }
 
+void ApiFunctionsDomain_Test::deleteRunningFunctionStopsItFirst()
+{
+    // Crash audit: Doc::deleteFunction() frees the Function without
+    // stopping it, and MasterTimer keeps raw Function* in its running list
+    // and start queue - deleting a running (or just-started) function left
+    // a dangling pointer the MasterTimer thread dereferenced on its next tick.
+    helloAndGetClientId();
+    QJsonObject idParams;
+    idParams.insert(QStringLiteral("functionId"), QString::number(m_scene->id()));
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("functions.start"), idParams).value(QStringLiteral("ok")).toBool(), true);
+    QVERIFY(QTest::qWaitFor([this]() { return m_scene->isRunning(); }, 2000));
+    QCOMPARE(m_doc->masterTimer()->runningFunctions(), 1);
+
+    QJsonObject params = idParams;
+    params.insert(QStringLiteral("baseRevision"), int(m_doc->docRevision()));
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("functions.delete"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    // Must be off MasterTimer's list by the time the delete is acknowledged
+    QCOMPARE(m_doc->masterTimer()->runningFunctions(), 0);
+    m_scene = nullptr;
+
+    // Same thing for a function whose start is still queued: start + delete
+    // back to back, before MasterTimer's next tick picks the start up.
+    Scene *second = new Scene(m_doc);
+    second->setValue(Fixture::invalidId(), 0, 255);
+    QVERIFY(m_doc->addFunction(second));
+    QJsonObject secondId;
+    secondId.insert(QStringLiteral("functionId"), QString::number(second->id()));
+    QJsonObject secondDelete = secondId;
+    secondDelete.insert(QStringLiteral("baseRevision"), int(m_doc->docRevision()));
+    m_client->sendTextMessage(buildRequest(QStringLiteral("functions.start"), secondId, QStringLiteral("t-start")));
+    reply = sendAndWaitForReply(QStringLiteral("functions.delete"), secondDelete);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(m_doc->masterTimer()->runningFunctions(), 0);
+    QTest::qWait(100); // a few MasterTimer ticks: must not touch the freed function
+    QCOMPARE(m_doc->masterTimer()->runningFunctions(), 0);
+}
+
 void ApiFunctionsDomain_Test::renameChangesName()
 {
     helloAndGetClientId();
@@ -687,6 +725,48 @@ void ApiFunctionsDomain_Test::chaserStepsAddReplaceRemoveMove()
     QJsonObject removeReply = sendAndWaitForReply(QStringLiteral("functions.steps.removeStep"), removeParams);
     QCOMPARE(removeReply.value(QStringLiteral("ok")).toBool(), true);
     QCOMPARE(chaser->stepsCount(), 1);
+}
+
+void ApiFunctionsDomain_Test::chaserStepsRejectCycles()
+{
+    // Crash audit: a Chaser step targeting the Chaser itself (replaceStep
+    // had no self check at all) or a function that already contains it made
+    // Chaser::contains() recurse forever (stack overflow) and a self-stepping
+    // Chaser deadlock MasterTimer once started.
+    helloAndGetClientId();
+    QString aId = createFunctionViaApi(QStringLiteral("Chaser"));
+    QString bId = createFunctionViaApi(QStringLiteral("Chaser"));
+    Chaser *a = qobject_cast<Chaser *>(m_doc->function(aId.toUInt()));
+    Chaser *b = qobject_cast<Chaser *>(m_doc->function(bId.toUInt()));
+    QVERIFY(a != nullptr && b != nullptr);
+
+    auto stepOn = [&](const QString &method, const QString &chaserId, const QString &targetId) {
+        QJsonObject step;
+        step.insert(QStringLiteral("targetFunctionId"), targetId);
+        QJsonObject params;
+        params.insert(QStringLiteral("functionId"), chaserId);
+        params.insert(QStringLiteral("index"), 0);
+        params.insert(QStringLiteral("step"), step);
+        params.insert(QStringLiteral("baseRevision"), int(m_doc->docRevision()));
+        return sendAndWaitForReply(method, params);
+    };
+
+    // A -> scene, then replace that step with A itself
+    QCOMPARE(stepOn(QStringLiteral("functions.steps.addStep"), aId, QString::number(m_scene->id())).value(QStringLiteral("ok")).toBool(), true);
+    QJsonObject reply = stepOn(QStringLiteral("functions.steps.replaceStep"), aId, aId);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("INVALID_PARAMS"));
+    QCOMPARE(a->stepAt(0)->fid, m_scene->id());
+
+    // A -> B is fine; B -> A (add or replace) would close the cycle
+    QCOMPARE(stepOn(QStringLiteral("functions.steps.addStep"), aId, bId).value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(stepOn(QStringLiteral("functions.steps.addStep"), bId, QString::number(m_scene->id())).value(QStringLiteral("ok")).toBool(), true);
+    reply = stepOn(QStringLiteral("functions.steps.addStep"), bId, aId);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    reply = stepOn(QStringLiteral("functions.steps.replaceStep"), bId, aId);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(b->stepsCount(), 1);
+    QVERIFY(a->contains(9999) == false); // terminates
 }
 
 /*********************************************************************

@@ -262,7 +262,9 @@ void VCCueList::setSideFaderLevel(int level)
         level = 255 - level;
 
         Chaser *ch = chaser();
-        if (ch == nullptr || ch->stopped())
+        // no steps: 256 / 0 below is inf and qFloor() asserts on it (a
+        // just-started empty chaser is not stopped until its first tick)
+        if (ch == nullptr || ch->stopped() || ch->stepsCount() == 0)
             return;
 
         int newStep = level; // by default we assume the Chaser has more than 256 steps

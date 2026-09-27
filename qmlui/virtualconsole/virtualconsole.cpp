@@ -408,18 +408,48 @@ void VirtualConsole::deletePage(int index)
     if (m_pages.count() == 1)
         return;
 
-    m_pages.at(index)->deleteChildren();
-    VCPage *page = m_pages.takeAt(index);
+    VCPage *page = m_pages.at(index);
+
+    /* Widgets moved here from another page (vc.widget.update/reparent)
+     * keep their input source/key sequence entries in that page's maps,
+     * and an auto-detection may be armed on one of them: drop every such
+     * reference before the widgets are freed, like deleteVCWidgets() does */
+    QList<VCWidget *> doomed = page->children(true);
+    doomed.append(page);
+    for (VCWidget *w : doomed)
+    {
+        if (w == m_autoDetectionWidget)
+            disableAutoDetection();
+        for (VCPage *other : m_pages)
+        {
+            if (other != page)
+                other->removeWidgetFromMaps(w);
+        }
+    }
+
+    page->deleteChildren();
+    m_pages.takeAt(index);
     m_contextManager->unregisterContext(page->previewContext()->name());
+    /* the default pages are registered in the widgets map (constructor) */
+    if (m_widgetsMap.value(page->id()) == page)
+        m_widgetsMap.remove(page->id());
     delete page;
 
     m_itemsMap.clear();
 
     emit pagesCountChanged();
 
-    if (index > 0)
+    /* keep the same page selected when an earlier one is deleted, move to
+     * the previous one when the selected page itself is deleted, and never
+     * leave the index outside the remaining pages (selectedWidget() and
+     * pasteFromClipboard() index m_pages with it) */
+    int selected = m_selectedPage;
+    if (index <= selected && selected > 0)
+        selected--;
+    selected = qBound(0, selected, int(m_pages.count()) - 1);
+    if (selected != m_selectedPage)
     {
-        m_selectedPage--;
+        m_selectedPage = selected;
         emit selectedPageChanged(m_selectedPage);
     }
 }
@@ -942,6 +972,8 @@ void VirtualConsole::deleteVCWidgets(QVariantList IDList)
                  * child, otherwise the page maps would keep dangling pointers */
                 for (VCPage *page : m_pages)
                     page->removeWidgetFromMaps(child);
+                if (child == m_autoDetectionWidget)
+                    disableAutoDetection();
                 m_widgetsMap.remove(child->id());
             }
         }
@@ -950,6 +982,9 @@ void VirtualConsole::deleteVCWidgets(QVariantList IDList)
          * otherwise the page maps would keep dangling pointers to freed memory */
         for (VCPage *page : m_pages)
             page->removeWidgetFromMaps(w);
+        /* ...and an input/key auto-detection armed on it (raw pointer) */
+        if (w == m_autoDetectionWidget)
+            disableAutoDetection();
 
         /* 3- remove the widget from the global VC widgets map */
         VCFrame *parent = qobject_cast<VCFrame *>(w->parent());

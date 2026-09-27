@@ -1440,6 +1440,63 @@ void ApiFixtureDefsDomain::registerMethods()
             return;
         }
 
+        // Patched fixtures using the library entry get re-pointed to the
+        // saved definition below (same as FixtureEditor::slotReloadFixture).
+        // Check first that every one of them still fits: a mode that grew
+        // into the next fixture's channels made Doc::slotFixtureChanged()
+        // hit Q_ASSERT(!m_addresses.contains(i)), and a definition left
+        // without modes kept those fixtures pointing at the modes that
+        // reloadOrAddFixtureDef()'s deep copy frees. Only fixtures holding
+        // the library instance itself count - per-fixture generic
+        // definitions (Generic/Generic dimmers) merely share its name.
+        QLCFixtureDef *libraryDef = cache->fixtureDef(def->manufacturer(), def->model());
+        QMap<quint32, QString> fixturesToModes;
+        QJsonArray blocked;
+        for (Fixture *fixture : m_doc->fixtures())
+        {
+            if (libraryDef == nullptr || fixture == nullptr ||
+                fixture->fixtureDef() != libraryDef || fixture->fixtureMode() == nullptr)
+                continue;
+            fixturesToModes.insert(fixture->id(), fixture->fixtureMode()->name());
+
+            QLCFixtureMode *newMode = def->mode(fixture->fixtureMode()->name());
+            if (newMode == nullptr && def->modes().isEmpty() == false)
+                newMode = def->modes().first();
+            QString reason;
+            if (newMode == nullptr)
+            {
+                reason = QStringLiteral("definition has no modes");
+            }
+            else
+            {
+                const quint32 newCount = quint32(newMode->channels().size());
+                if (fixture->address() + newCount > 512)
+                    reason = QStringLiteral("mode no longer fits in the universe");
+                for (quint32 i = fixture->channels(); reason.isEmpty() && i < newCount; i++)
+                {
+                    const quint32 owner = m_doc->fixtureForAddress(fixture->universeAddress() + i);
+                    if (owner != Fixture::invalidId() && owner != fixture->id())
+                        reason = QStringLiteral("mode would overlap fixture %1").arg(owner);
+                }
+            }
+            if (reason.isEmpty() == false)
+            {
+                QJsonObject entry;
+                entry.insert(QStringLiteral("fixtureId"), QString::number(fixture->id()));
+                entry.insert(QStringLiteral("reason"), reason);
+                blocked.append(entry);
+            }
+        }
+        if (blocked.isEmpty() == false)
+        {
+            QJsonObject details;
+            details.insert(QStringLiteral("fixtures"), blocked);
+            sendError(client, id, ApiEnvelope::ErrConflict,
+                      QStringLiteral("Patched fixtures using this definition would not fit the saved version; re-patch them first"),
+                      details);
+            return;
+        }
+
         if (s->fileName.isEmpty())
             s->fileName = defaultUserFileName(def);
         QDir().mkpath(QFileInfo(s->fileName).absolutePath());
@@ -1454,18 +1511,9 @@ void ApiFixtureDefsDomain::registerMethods()
             return;
         }
 
-        // FixtureEditor::slotReloadFixture(): remember which patched fixtures
-        // use this definition BEFORE the cache copy is overwritten (their
-        // QLCFixtureMode pointers die with it), then re-point them.
-        QMap<quint32, QString> fixturesToModes;
-        for (Fixture *fixture : m_doc->fixtures())
-        {
-            if (fixture == nullptr || fixture->fixtureDef() == nullptr || fixture->fixtureMode() == nullptr)
-                continue;
-            if (fixture->fixtureDef()->manufacturer() == def->manufacturer() &&
-                fixture->fixtureDef()->model() == def->model())
-                fixturesToModes.insert(fixture->id(), fixture->fixtureMode()->name());
-        }
+        // FixtureEditor::slotReloadFixture(): fixturesToModes (collected
+        // above, BEFORE the cache copy is overwritten - their QLCFixtureMode
+        // pointers die with it) get re-pointed to the new modes.
         cache->reloadOrAddFixtureDef(def);
         QLCFixtureDef *cacheDef = cache->fixtureDef(def->manufacturer(), def->model());
         if (cacheDef != nullptr)
@@ -2016,7 +2064,9 @@ void ApiFixtureDefsDomain::registerMethods()
             sendInvalid(client, id, QStringLiteral("start must be 0..254, width and amount >= 1"));
             return;
         }
-        const int end = start + width * amount - 1;
+        // 64-bit: width * amount in int wraps (65536 * 65536 == 0), which
+        // slipped past this check into a loop creating `amount` capabilities
+        const qint64 end = qint64(start) + qint64(width) * amount - 1;
         if (end > 255)
         {
             sendInvalid(client, id, QStringLiteral("start + width * amount exceeds 255"));

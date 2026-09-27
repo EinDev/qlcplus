@@ -41,6 +41,7 @@ private slots:
     void projectGetReturnsMetadata();
     void modeGetSetBroadcastsEvent();
     void settingsGetSetBroadcastsEvent();
+    void settingsRejectInvalidMasterTimerFrequency();
 
     void bpmGetReportsDisabledGeneratorOnFreshDoc();
     void bpmSetEnablesInternalGeneratorAndBroadcasts();

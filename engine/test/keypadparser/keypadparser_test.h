@@ -37,6 +37,7 @@ private slots:
     void percentTokens();
     void fullZeroByNumbers();
     void outOfUniverse();
+    void malformedRanges();
 
     void cleanupTestCase();
 

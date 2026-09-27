@@ -24,6 +24,7 @@
 #include <QJsonValue>
 #include <QMetaMethod>
 #include <QMetaObject>
+#include <QPointer>
 #include <QRegularExpression>
 #include <QSettings>
 #include <memory>
@@ -526,7 +527,13 @@ void ApiIoConfigDomain::registerPluginMethods()
                 QStringLiteral("Plugin \"%1\" is configured through a native dialog, and this QLC+ host has no desktop to show it on; use io.patch.setParameters").arg(plugin->name())));
             return;
         }
+        // A modal dialog runs a nested event loop: this client may disconnect
+        // meanwhile, and ApiServer's deleteLater() of its session then runs
+        // inside that loop - don't answer through a dangling pointer.
+        QPointer<ApiSession> guard(session);
         doc->inputOutputMap()->configurePlugin(plugin->name());
+        if (guard.isNull())
+            return;
         QJsonObject result;
         result.insert(QStringLiteral("openedOnHost"), true);
         session->send(ApiEnvelope::buildOkResponse(id, result));

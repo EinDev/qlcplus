@@ -39,6 +39,7 @@ private slots:
     void cleanup();
 
     void createAddsColorPalette();
+    void createPanTiltWithOneValueSavesSafely();
     void createWithStaleRevisionConflicts();
     void createWithUnknownTypeIsInvalidParams();
     void getReturnsFullDetail();

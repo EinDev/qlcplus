@@ -40,6 +40,7 @@
 #include <QMediaPlayer>
 #include <QFileInfo>
 #include <QFileOpenEvent>
+#include <QDesktopServices>
 #include <QPointer>
 #include <QDir>
 #include <unistd.h>
@@ -265,7 +266,8 @@ void App::startup()
     m_apiServer = new ApiServer(this, m_doc);
 
     // Static-file HTTP server for the browser-based web UI (docs/webui.md),
-    // same lazy pattern: only listens once main.cpp sees --webui. Unlike
+    // same lazy pattern: only listens once main.cpp sees --webui (or the
+    // actions menu's "Open web UI" entry starts it, App::openWebUi()). Unlike
     // m_apiServer it touches neither m_doc nor the engine, so plain
     // QObject-child cleanup is fine for it (no explicit delete in ~App()).
     m_webServer = new WebServer(this);
@@ -1171,6 +1173,97 @@ ApiServer *App::apiServer() const
 WebServer *App::webServer() const
 {
     return m_webServer;
+}
+
+bool App::startApiServer(quint16 port)
+{
+    if (m_apiServer == nullptr)
+        return false;
+
+    if (m_apiServer->serverPort() != 0)
+        return true;
+
+    if (m_apiServer->listen(port) == false)
+    {
+        qCritical().noquote() << "Could not start the WebSocket control API:" << m_apiServer->errorString();
+        return false;
+    }
+
+    qInfo().noquote() << "WebSocket control API listening on port" << m_apiServer->serverPort();
+    return true;
+}
+
+bool App::startWebUiServer(quint16 port, const QString &root)
+{
+    if (m_webServer == nullptr)
+        return false;
+
+    if (m_webServer->isListening())
+        return true;
+
+    // Default root: the installed WebUI directory, resolved the same way
+    // every other data directory is (Meshes, Gobos, ...) - next to the
+    // executable on Windows/macOS, the share/ data dir on Linux. A root set
+    // by an earlier, failed start (--webui-root, then the port was taken) is
+    // kept when openWebUi() retries without one.
+    if (root.isEmpty() == false)
+        m_webServer->setRootDirectory(root);
+    else if (m_webServer->rootDirectory().isEmpty())
+        m_webServer->setRootDirectory(QLCFile::systemDirectory(WEBUIDIR).path());
+
+    // Tell the UI the port the API *actually* listens on (after listen(),
+    // so an OS-assigned/fallback port is what it reads), not the flag value
+    if (m_apiServer != nullptr && m_apiServer->serverPort() != 0)
+        m_webServer->setApiPort(m_apiServer->serverPort());
+    else
+        qCritical().noquote() << "Web UI: the WebSocket control API is not listening - "
+                                 "the UI will load but cannot connect to QLC+";
+
+    // Same bind address as the API server (all interfaces)
+    if (m_webServer->listen(port) == false)
+    {
+        qCritical().noquote() << "Could not start the web UI HTTP server on port" << port
+                              << "(already in use? try --webui-port):" << m_webServer->errorString();
+        return false;
+    }
+
+    qInfo().noquote() << "Web UI available at" << webUiUrl();
+    emit webUiUrlChanged();
+    return true;
+}
+
+QString App::webUiUrl() const
+{
+    if (m_webServer == nullptr || m_webServer->isListening() == false)
+        return QString();
+
+    return QStringLiteral("http://localhost:%1/").arg(m_webServer->serverPort());
+}
+
+QString App::openWebUi()
+{
+    if (m_webServer == nullptr || m_apiServer == nullptr)
+        return tr("The web UI is not available in this build.");
+
+    if (m_webServer->isListening() == false)
+    {
+        // Started without --webui: start both servers now, the same way
+        // --webui does. The default ports may be taken (e.g. by another QLC+
+        // instance), so fall back to OS-assigned ones: the page learns the
+        // API port from /qlcplus-config.json and the URL below uses the port
+        // actually bound, so neither needs to be the default.
+        if (startApiServer(API_SERVER_DEFAULT_PORT) == false && startApiServer(0) == false)
+            return tr("Could not start the control API server: %1").arg(m_apiServer->errorString());
+
+        if (startWebUiServer(WEB_SERVER_DEFAULT_PORT) == false && startWebUiServer(0) == false)
+            return tr("Could not start the web UI server: %1").arg(m_webServer->errorString());
+    }
+
+    QString url = webUiUrl();
+    if (QDesktopServices::openUrl(QUrl(url)) == false)
+        return tr("Could not open a web browser. The web UI is available at %1").arg(url);
+
+    return QString();
 }
 
 bool App::docLoaded()

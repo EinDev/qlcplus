@@ -437,10 +437,13 @@ int Collection::adjustAttribute(qreal fraction, int attributeId)
 
         QMutexLocker locker(&m_functionListMutex);
 
-        for (int i = 0; i < m_functions.count(); i++)
+        // m_intensityOverrideIds is filled once in preRun(): members added
+        // while running (Control API, or the editor) have no override id yet
+        for (int i = 0; i < m_functions.count() && i < m_intensityOverrideIds.count(); i++)
         {
             Function* function = document->function(m_functions.at(i));
-            Q_ASSERT(function != NULL);
+            if (function == NULL)
+                continue;
             function->adjustAttribute(getAttributeValue(Function::Intensity), m_intensityOverrideIds.at(i));
         }
     }

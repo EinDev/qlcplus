@@ -787,6 +787,29 @@ void ApiFixtureDefsDomain_Test::capabilityWizardCreatesRangesAndRejectsOverlap()
     QCOMPARE(caps.at(3).toObject().value(QStringLiteral("max")).toInt(), 63);
 }
 
+void ApiFixtureDefsDomain_Test::capabilityWizardRejectsOverflowingWidthTimesAmount()
+{
+    // Crash audit: width * amount was computed in int; 65536 * 65536 wraps
+    // to 0, the "exceeds 255" and overlap checks passed, and the loop then
+    // created `amount` capabilities (2^31 for other wrapping pairs: an
+    // endless allocation loop on the main thread).
+    hello();
+    QString sid = createSession().value(QStringLiteral("sessionId")).toString();
+    QString chId = callOk(QStringLiteral("fixturedefs.channel.add"), params(sid, 0)).value(QStringLiteral("channelId")).toString();
+    QJsonObject p = params(sid, 1);
+    p.insert(QStringLiteral("channelId"), chId);
+    p.insert(QStringLiteral("capabilityIndex"), 0);
+    p.insert(QStringLiteral("max"), 15);
+    callOk(QStringLiteral("fixturedefs.channel.capability.update"), p);
+
+    p = params(sid, 2);
+    p.insert(QStringLiteral("channelId"), chId);
+    p.insert(QStringLiteral("start"), 16);
+    p.insert(QStringLiteral("width"), 65536);
+    p.insert(QStringLiteral("amount"), 65536);
+    QCOMPARE(callError(QStringLiteral("fixturedefs.channel.capability.wizard"), p), QStringLiteral("INVALID_PARAMS"));
+}
+
 void ApiFixtureDefsDomain_Test::channelWizardCreatesCompoundChannels()
 {
     hello();
@@ -1349,6 +1372,70 @@ void ApiFixtureDefsDomain_Test::deleteInUseIsRejected()
     QCOMPARE(fixture->fixtureMode()->name(), QStringLiteral("1 Channel"));
     QCOMPARE(fixture->fixtureDef()->author(), QStringLiteral("edited"));
     QCOMPARE(fixture->channels(), 1u);
+}
+
+void ApiFixtureDefsDomain_Test::saveRejectsPatchedFixturesThatWouldNotFit()
+{
+    // Crash audit: saving a user definition re-points every patched fixture
+    // to the new modes. A mode that grew into the next fixture's channels
+    // aborted in Doc::slotFixtureChanged() (Q_ASSERT(!m_addresses.contains(i)));
+    // a definition saved without modes left the fixtures on freed modes.
+    hello();
+    QJsonObject opened = openSession(SysMan, SysModel);
+    QString sid = opened.value(QStringLiteral("sessionId")).toString();
+    QJsonObject defJson = opened.value(QStringLiteral("definition")).toObject();
+    QString modeId = defJson.value(QStringLiteral("modes")).toArray().first().toObject().value(QStringLiteral("modeId")).toString();
+    QString ch1 = defJson.value(QStringLiteral("channels")).toArray().first().toObject().value(QStringLiteral("channelId")).toString();
+    QVERIFY(modeId.isEmpty() == false && ch1.isEmpty() == false);
+    callOk(QStringLiteral("fixturedefs.session.forkToUser"), params(sid, 0));
+    QJsonObject save;
+    save.insert(QStringLiteral("sessionId"), sid);
+    save.insert(QStringLiteral("baseRevision"), 0);
+    callOk(QStringLiteral("fixturedefs.save"), save);
+    save.insert(QStringLiteral("baseRevision"), 1);
+
+    QLCFixtureDef *def = m_doc->fixtureDefCache()->fixtureDef(SysMan, SysModel);
+    QList<Fixture *> patched;
+    for (quint32 address : { 0u, 1u })
+    {
+        Fixture *fixture = new Fixture(m_doc);
+        fixture->setFixtureDefinition(def, def->modes().first());
+        fixture->setAddress(address);
+        fixture->setUniverse(0);
+        QVERIFY(m_doc->addFixture(fixture));
+        patched << fixture;
+    }
+
+    // Grow the (only) mode to 2 channels: fixture 0 would overlap fixture 1
+    QString ch2 = callOk(QStringLiteral("fixturedefs.channel.add"), params(sid, 1)).value(QStringLiteral("channelId")).toString();
+    QJsonObject s1; s1.insert(QStringLiteral("channelId"), ch1);
+    QJsonObject s2; s2.insert(QStringLiteral("channelId"), ch2);
+    QJsonObject p = params(sid, 2);
+    p.insert(QStringLiteral("modeId"), modeId);
+    p.insert(QStringLiteral("channels"), QJsonArray{ s1, s2 });
+    callOk(QStringLiteral("fixturedefs.mode.setChannels"), p);
+
+    QJsonObject details;
+    QCOMPARE(callError(QStringLiteral("fixturedefs.save"), save, &details), QStringLiteral("CONFLICT"));
+    QCOMPARE(details.value(QStringLiteral("fixtures")).toArray().count(), 1);
+    QCOMPARE(details.value(QStringLiteral("fixtures")).toArray().first().toObject().value(QStringLiteral("fixtureId")).toString(),
+             QString::number(patched.first()->id()));
+    QCOMPARE(patched.first()->channels(), 1u);
+    QCOMPARE(m_doc->fixtureDefCache()->fixtureDef(SysMan, SysModel)->modes().first()->channels().count(), 1);
+
+    // With the neighbour gone the grown mode fits and is applied
+    QVERIFY(m_doc->deleteFixture(patched.last()->id()));
+    QCOMPARE(callOk(QStringLiteral("fixturedefs.save"), save).value(QStringLiteral("defRevision")).toInt(), 2);
+    QCOMPARE(patched.first()->channels(), 2u);
+    save.insert(QStringLiteral("baseRevision"), 2);
+
+    // A definition without modes can't be saved while a fixture uses it
+    p = params(sid, 3);
+    p.insert(QStringLiteral("modeId"), modeId);
+    callOk(QStringLiteral("fixturedefs.mode.remove"), p);
+    QCOMPARE(callError(QStringLiteral("fixturedefs.save"), save), QStringLiteral("CONFLICT"));
+    QVERIFY(patched.first()->fixtureMode() != nullptr);
+    QCOMPARE(patched.first()->channels(), 2u);
 }
 
 void ApiFixtureDefsDomain_Test::importCreatesUserSession()

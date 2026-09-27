@@ -51,6 +51,7 @@ private slots:
     void scriptAppendLineAppendsAndBroadcasts();
     void scriptValidateReportsErrorLinesAndRefs();
     void scriptGetCarriesSourceOnly();
+    void scriptWithEndlessLoopDoesNotHangGet();
     void scriptSetSourceOnStaleRevisionIsConflict();
     void scriptMethodsOnWrongTypeAreInvalidParams();
 
