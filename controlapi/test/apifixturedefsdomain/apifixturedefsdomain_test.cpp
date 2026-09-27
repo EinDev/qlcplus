@@ -790,10 +790,14 @@ void ApiFixtureDefsDomain_Test::autoPatchColorsDetectsNamedColors()
     // The detection reads the bundled namedrgb.qxcf from the system colour
     // filter directory (applicationDirPath-relative on Windows/macOS): stage a
     // small one there so the colour path is exercised, not just title-casing.
+    // On Windows/macOS that directory is under the build tree (applicationDirPath-
+    // relative); on Linux COLORFILTERSDIR is the absolute install prefix, which a
+    // test must not (and usually cannot) write into - skip rather than litter it.
     QDir filtersDir = QLCFile::systemDirectory(QString(COLORFILTERSDIR), QString(KExtColorFilters));
     QDir().mkpath(filtersDir.absolutePath());
     QFile filters(filtersDir.absoluteFilePath(QStringLiteral("namedrgb.qxcf")));
-    QVERIFY(filters.open(QIODevice::WriteOnly | QIODevice::Text));
+    if (filtersDir.exists() == false || filters.open(QIODevice::WriteOnly | QIODevice::Text) == false)
+        QSKIP("system colour-filter directory is not writable here; colour detection is covered on Windows/macOS");
     filters.write("<?xml version='1.0' encoding='UTF-8'?>\n<!DOCTYPE ColorFilters>\n"
                   "<ColorFilters xmlns=\"http://www.qlcplus.org/ColorFilters\">\n <Name>Named RGB</Name>\n"
                   " <Color RGB=\"#FF0000\" Name=\"Red\" />\n <Color RGB=\"#00FF00\" Name=\"Green\" />\n"
