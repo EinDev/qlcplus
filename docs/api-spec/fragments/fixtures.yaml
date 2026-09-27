@@ -2018,6 +2018,7 @@ schemas:
       universe: { type: integer }
       address: { type: integer, description: "0-based DMX start address within its universe." }
       channels: { type: integer, description: Fixture::channels() — the instance's channel footprint. }
+      heads: { type: integer, description: "Fixture::heads() — number of heads (fixture group grid cells it needs)." }
       fixtureType:
         type: string
         description: >

@@ -1075,6 +1075,7 @@ void ApiFixturesDomain_Test::getReportsChannelBehaviourAndModes()
     QCOMPARE(modes.count(), 2);
     QCOMPARE(modes.at(1).toObject().value(QStringLiteral("channelCount")).toInt(), 4);
     QVERIFY(get.value(QStringLiteral("physical")).isObject());
+    QCOMPARE(get.value(QStringLiteral("heads")).toInt(), 1);
 }
 
 /* ------------------------------------------------------------------ */

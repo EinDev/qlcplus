@@ -25047,6 +25047,9 @@ components:
         channels:
           type: integer
           description: Fixture::channels() — the instance's channel footprint.
+        heads:
+          type: integer
+          description: Fixture::heads() — number of heads (fixture group grid cells it needs).
         fixtureType:
           type: string
           description: 'Fixture::typeString() — QLCFixtureDef::typeToString(fixtureDef()->type()) when

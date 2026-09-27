@@ -237,8 +237,12 @@
     const drop = (id) => { c.fixtures.delete(String(id)); c.listeners.forEach(fn => fn(String(id))); };
     client.on('fixtures.updated', d => { if (d && d.fixture) drop(d.fixture.id); });
     client.on('fixtures.unpatched', d => ((d && d.fixtureIds) || []).forEach(drop));
+    /* Per-channel behaviour lives in fixtures.get's channelList too. */
+    client.on('fixtures.channel.behaviourChanged', d => ((d && d.fixtureIds) || []).forEach(drop));
     const flush = () => { const ids = Array.from(c.fixtures.keys()); c.fixtures.clear(); c.modes.clear(); ids.forEach(id => c.listeners.forEach(fn => fn(id))); };
     client.on('core.project.loaded', flush);
+    /* A renamed / deleted modifier template changes channel "modifier" names anywhere. */
+    client.on('fixtures.modifiers.changed', d => { if (d && d.action !== 'saved') { const ids = Array.from(c.fixtures.keys()); c.fixtures.clear(); ids.forEach(id => c.listeners.forEach(fn => fn(id))); } });
     /* Undo/redo emits no domain events, only core.history.changed — anything cached may be stale.
        (The same topic also follows our own mutations; those are recognised by revision.) */
     client.on('core.history.changed', (d) => { if (!FF.isOwnHistory(d)) flush(); });

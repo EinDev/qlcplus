@@ -65,6 +65,7 @@ QJsonObject fixtureSummaryToJson(Fixture *fixture)
     obj.insert(QStringLiteral("universe"), int(fixture->universe()));
     obj.insert(QStringLiteral("address"), int(fixture->address()));
     obj.insert(QStringLiteral("channels"), int(fixture->channels()));
+    obj.insert(QStringLiteral("heads"), fixture->heads());
     obj.insert(QStringLiteral("fixtureType"), fixture->typeString());
     obj.insert(QStringLiteral("isGeneric"), isGenericFixture(fixture));
     obj.insert(QStringLiteral("crossUniverse"), fixture->crossUniverse());
