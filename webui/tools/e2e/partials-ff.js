@@ -170,9 +170,47 @@ async function settings(page, open) {
 async function shot(page, name) { const f = path.join(SHOTS, 'pff-' + name + '.png'); await page.screenshot(f); console.log('  shot ' + f); }
 const dialogBtn = (text) => `[...document.querySelectorAll('button')].filter(b => b.textContent.trim() === ${JSON.stringify(text)}).pop()`;
 
+/* Test RGB script with one float and one string property, for the sandbox's RGBScripts folder. */
+const TEST_SCRIPT = `// E2E test script (webui/tools/e2e/partials-ff.js): one float and one string property.
+var testAlgo;
+(function () {
+  var algo = new Object;
+  algo.apiVersion = 2;
+  algo.name = "E2E Typed Props";
+  algo.author = "e2e";
+  algo.acceptColors = 1;
+  algo.properties = new Array();
+  algo.gain = 1.5;
+  algo.properties.push("name:gain|type:float|display:Gain|write:setGain|read:getGain");
+  algo.setGain = function (v) { algo.gain = parseFloat(v); };
+  algo.getGain = function () { return algo.gain; };
+  algo.label = "hello";
+  algo.properties.push("name:label|type:string|display:Label|write:setLabel|read:getLabel");
+  algo.setLabel = function (v) { algo.label = v; };
+  algo.getLabel = function () { return algo.label; };
+  algo.rgbMap = function (width, height, rgb, step) {
+    var map = new Array(height);
+    for (var y = 0; y < height; y++) {
+      map[y] = new Array(width);
+      for (var x = 0; x < width; x++) map[y][x] = (x === step % width) ? rgb : 0;
+    }
+    return map;
+  };
+  algo.rgbMapStepCount = function (width, height) { return Math.max(1, width); };
+  testAlgo = algo;
+  return algo;
+})();
+`;
+
 /* ---------------------------------------------------------------- the run */
 async function main() {
   fs.mkdirSync(SHOTS, { recursive: true });
+  const scriptDir = path.join(SANDBOX, 'RGBScripts');
+  if (!/qlcsandbox/i.test(SANDBOX)) { console.log('refusing: QLC_SANDBOX must be a C:\\qlcsandbox\\<name> folder'); process.exit(2); }
+  if (fs.existsSync(scriptDir) && !fs.existsSync(path.join(scriptDir, 'e2e-typed-props.js'))) {
+    fs.writeFileSync(path.join(scriptDir, 'e2e-typed-props.js'), TEST_SCRIPT);
+    console.log('wrote the test RGB script into ' + scriptDir + ' (relaunch the sandbox before the rgb section can use it)');
+  }
   const api = new Api(API);
   await api.connect();
   console.log('API connected, docRevision ' + api.rev);
