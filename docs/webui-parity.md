@@ -208,12 +208,12 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | Slider: flash button ("Flash the controlled Function") | virtualconsole/VCSliderItem.qml | live | - ; sandbox 2026-09-27 via vc.slider.flash + Show flash button config |
 | Slider: monitor channel levels display | virtualconsole/VCSliderItem.qml | partial | U; monitor mode configurable and on/off exercised (sandbox 2026-09-27); the live monitorValueChanged feed is not shown in the widget body yet |
 | Cue list: play / pause / stop / next / previous / jump to step, current step highlighted | virtualconsole/VCCueListItem.qml | live | - |
-| Cue list: side fader (crossfade / steps) | virtualconsole/VCCueListItem.qml | missing | S: vc.cueList.setSideFaderLevel, vc.cueList.sideFaderChanged |
+| Cue list: side fader (crossfade / steps) | virtualconsole/VCCueListItem.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/vc-cue.js; both modes driven |
 | XY pad: move the position | virtualconsole/VCXYPadItem.qml | live | - |
 | XY pad: presets (position / fixture group / Scene / EFX preset buttons) | virtualconsole/VCXYPadItem.qml, virtualconsole/VCXYPadPresets.qml | missing | S: vc.xyPad.preset.move, vc.xyPad.preset.rename, vc.xyPad.activePresetChanged |
 | XY pad: floor control (point fixtures at a stage floor position) | virtualconsole/VCXYPadItem.qml | missing | S: vc.xyPad.setFloorPosition, vc.xyPad.floorPositionChanged |
 | Speed dial: set time, tap | virtualconsole/VCSpeedDialItem.qml | live | - |
-| Speed dial: plus / minus buttons, multiplier factors, apply, reset tap, preset buttons | virtualconsole/VCSpeedDialItem.qml, virtualconsole/VCSpeedDialPresets.qml | missing | S: vc.speedDial.apply, vc.speedDial.setFactor, vc.speedDial.resetTap, vc.speedDial.preset.update, vc.speedDial.factorChanged; note the UI also calls vc.speedDial.setCurrentTime, which is in neither spec nor server |
+| Speed dial: plus / minus buttons, multiplier factors, apply, reset tap, preset buttons | virtualconsole/VCSpeedDialItem.qml, virtualconsole/VCSpeedDialPresets.qml | live | - ; sandbox 2026-09-27; the stray speedDial.setCurrentTime wrapper is deprecated (preset.apply covers it) |
 | Frame / Solo frame: multipage next / previous | virtualconsole/VCFrameItem.qml | live | - |
 | Frame: enable / disable, expand / collapse | virtualconsole/VCFrameItem.qml | partial | U; enable button + header configured and exercised (sandbox 2026-09-27); Collapsed toggle server-tested only |
 | Frame: page shortcuts by keyboard | virtualconsole/VCFrameProperties.qml | missing | S: vc.widget.keySequence.set; see editing section |
@@ -245,7 +245,7 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | Align selected widgets left / right / top / bottom | virtualconsole/VCWidgetProperties.qml | partial | U; top / left exercised (sandbox 2026-09-27), right / bottom server-tested only; selection must share one parent (INVALID_PARAMS otherwise, by design) |
 | Distribute selected widgets horizontally / vertically | virtualconsole/VCWidgetProperties.qml | partial | U; horizontal exercised (sandbox 2026-09-27), vertical server-tested only |
 | Bulk style on a multi-selection (caption, colours, font) | virtualconsole/VCWidgetProperties.qml | partial | U; caption exercised via one vc.widget.bulkStyle (sandbox 2026-09-27); colours / font server-tested only |
-| Widget presets (save / apply / remove a style preset) | virtualconsole/VCWidgetProperties.qml | missing | S: vc.widget.preset.add, vc.widget.preset.apply, vc.widget.preset.remove |
+| Widget presets (save / apply / remove a style preset) | virtualconsole/VCWidgetProperties.qml | partial | U; generic vc.widget.preset.add/apply/remove + per-type host dispatch live for Speed (sandbox 2026-09-27); XYPad / Animation preset payloads are stubs (INVALID_STATE) until the live-widgets slice fills them |
 | External controls: add / remove an input source, auto-detect, manual selection | ExternalControls.qml, ExternalControlDelegate.qml, popup/PopupManualInputSource.qml | missing | S: vc.widget.inputSource.set, vc.widget.inputSource.remove, vc.widget.inputDetect.start, vc.widget.inputDetect.stop |
 | External controls: custom feedback values / colours per input source | popup/PopupCustomFeedback.qml | missing | S: vc.widget.inputSource.set (carries feedback fields) |
 | External controls: add / remove a keyboard combination, auto-detect | ExternalControls.qml, KeyboardSequenceDelegate.qml | missing | S: vc.widget.keySequence.set, vc.widget.keySequence.remove |
@@ -258,12 +258,12 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | Slider properties: Function Control (Adjust) mode - attached function and attribute | virtualconsole/VCSliderProperties.qml | live | - ; sandbox 2026-09-27 (function picker + attribute + Show flash button) |
 | Slider properties: Grand Master mode (value / channel mode) | virtualconsole/VCSliderProperties.qml | partial | U; GM modes in VcSliderConfig, server-tested only; io.grandMaster.setMode is another slice |
 | Slider properties: show flash button | virtualconsole/VCSliderProperties.qml | live | - ; sandbox 2026-09-27 |
-| Cue list properties: attached chaser, next / previous behaviour, playback layout, side fader mode | virtualconsole/VCCueListProperties.qml | missing | S: vc.widget.setConfig for CueList (VcCueListConfig is specced) |
+| Cue list properties: attached chaser, next / previous behaviour, playback layout, side fader mode | virtualconsole/VCCueListProperties.qml | live | - ; sandbox 2026-09-27 |
 | Frame properties: header, enable button, pages (count, labels, loop, clone first page), shortcut names, solo options | virtualconsole/VCFrameProperties.qml | live | - ; sandbox 2026-09-27; pages 3, label, circular scrolling, enable button, header, clone first page, solo exclude-monitored + mixing; Collapsed server-tested only |
 | XY pad properties: fixtures / heads (add, remove, pan-tilt range, reverse), axis ranges, inverted Y, floor control, display units | virtualconsole/VCXYPadProperties.qml | missing | S: vc.widget.setConfig for XYPad, vc.xyPad.fixture.add, vc.xyPad.fixture.remove, vc.xyPad.setHeadsRange |
 | XY pad properties: presets (create from position, drop Scene / EFX / fixture group, rename, reorder, remove) | virtualconsole/VCXYPadPresets.qml | missing | S: vc.xyPad.preset.move, vc.xyPad.preset.rename (add / remove not specced: spec+S+U) |
-| Speed dial properties: functions list, multipliers, dial time range, visibility of parts, tap controls BPM, reset on change | virtualconsole/VCSpeedDialProperties.qml | missing | S: vc.widget.setConfig for Speed (VcSpeedDialConfig is specced) |
-| Speed dial properties: presets (add / remove, name, time) | virtualconsole/VCSpeedDialPresets.qml | missing | S: vc.speedDial.preset.update (add / remove not specced: spec+S+U) |
+| Speed dial properties: functions list, multipliers, dial time range, visibility of parts, tap controls BPM, reset on change | virtualconsole/VCSpeedDialProperties.qml | live | - ; sandbox 2026-09-27; tap-controls-BPM checkbox rendered, not clicked in the driver |
+| Speed dial properties: presets (add / remove, name, time) | virtualconsole/VCSpeedDialPresets.qml | live | - ; sandbox 2026-09-27 via vc.widget.preset.* + vc.speedDial.preset.update |
 | Clock properties: clock type, schedules (add / remove / update, function, start / stop time, weekdays) | virtualconsole/VCClockProperties.qml | missing | S: vc.widget.setConfig for Clock, vc.clock.schedule.add, vc.clock.schedule.remove, vc.clock.schedule.update |
 | Animation properties: attached function, visibility, instant changes, presets list (colour / text / algorithm presets) | virtualconsole/VCAnimationProperties.qml, virtualconsole/VCAnimationPresets.qml, popup/PopupAnimationPreset.qml | missing | S: vc.widget.setConfig for Animation, vc.animation.preset.move (preset add / remove not specced: spec+S+U) |
 | Audio triggers properties: number of bars, per-bar type (DMX / function / widget), thresholds, targets | virtualconsole/VCAudioTriggersProperties.qml | missing | S: vc.widget.setConfig for AudioTriggers, vc.audioTriggers.setBarConfig |
@@ -425,8 +425,8 @@ the total is larger than the number of distinct actions). Recompute after editin
 
 | Status | Rows |
 | --- | --- |
-| live | 121 |
-| partial | 35 |
-| missing | 136 |
+| live | 126 |
+| partial | 36 |
+| missing | 130 |
 | n/a | 22 |
 | total | 314 |
