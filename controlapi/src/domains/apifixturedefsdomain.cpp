@@ -2001,10 +2001,11 @@ void ApiFixtureDefsDomain::registerMethods()
         if (channel->group() == QLCChannel::Colour)
         {
             const QVector<NamedColor> named = loadNamedColors();
-            const QList<QLCCapability *> caps = channel->capabilities();
-            for (int i = 0; i < caps.count(); i++)
+            // Re-read the list every round: replaceCapabilityAt() rebuilds
+            // it, so pointers taken before are dead afterwards.
+            for (int i = 0; i < channel->capabilities().count(); i++)
             {
-                QLCCapability *cap = caps.at(i);
+                QLCCapability *cap = channel->capabilities().at(i);
                 if (isEntirelyLowercase(cap->name()))
                 {
                     cap->setName(titleCaseWords(cap->name()));
