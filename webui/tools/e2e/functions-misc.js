@@ -431,10 +431,15 @@ async function waitApi(fn, what, timeout = 8000) {
     console.log('Audio / Video editors');
     await openInTree(AUDIO.name);
     await page.waitFor('!!document.querySelector(".qlc-audio-editor")', 10000);
+    // the reload above restarted the automatic analysis: let it finish first (the button is
+    // disabled while one runs), then run Detect BPM for real
+    await waitApi(async () => (await api.call('functions.get', { functionId: AUDIO.id })).typeDetail.config.bpm.state !== 'analyzing', 'automatic analysis', 90000);
+    await page.waitFor(`document.querySelector('.qlc-audio-editor').textContent.indexOf('Detecting') === -1`, 10000);
     const bpmEv = api.events.length;
     await clickTitle(page, 'Detect BPM', '.qlc-audio-editor');
     // the analysis restarts (analyzing), then ends (done / failed) - a 4-minute mp3 takes ~15 s
-    await waitApi(async () => api.events.slice(bpmEv).some(e => e.topic === 'functions.audio.bpmChanged' && e.data.bpm.state === 'analyzing'), 'analysis start', 10000);
+    check(await waitApi(async () => api.events.slice(bpmEv).some(e => e.topic === 'functions.audio.bpmChanged' && e.data.bpm.state === 'analyzing'), 'analysis start', 10000),
+      'detect BPM: the click restarted the analysis (bpmChanged analyzing)');
     const bpmDone = await waitApi(async () => api.events.slice(bpmEv).some(e => e.topic === 'functions.audio.bpmChanged' && (e.data.bpm.state === 'done' || e.data.bpm.state === 'failed')), 'bpm analysis', 90000);
     const bpm = (await api.call('functions.get', { functionId: AUDIO.id })).typeDetail.config.bpm;
     check(bpmDone && bpm.state === 'done' && bpm.value > 0, 'detect BPM: ' + bpm.state + ' ' + bpm.value + ' (confidence ' + bpm.confidence + ')');
