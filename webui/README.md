@@ -186,7 +186,10 @@ and a second tab checked for the pushed event:
   waveforms / beat markers inside items.
 
 Still not available in the web UI: the 2D / 3D / DMX monitor views, fixture-address
-remap, the fixture editor, UI settings, audio sample rate / channels / buffer size and the input
+remap, the fixture editor (its whole backend is live as of 2026-09-27 - `fixturedefs.*` in
+`api/domains/fixturedefs.js`, every method implemented, unit-tested and smoke-checked over the
+socket against a `fixdefs` sandbox on ports 9200/9201 - but no screen uses it yet; that file's
+header comment is the starting point for the screen), UI settings, audio sample rate / channels / buffer size and the input
 level check, the input signal indicator on a patch. Disconnected, every screen keeps
 working on its built-in mock data (`data.js`), clearly labelled as such.
 
