@@ -34,7 +34,7 @@
 #include "show.h"
 #include "doc.h"
 
-ApiShowHost *ApiShowPreviewDomain::s_host = nullptr;
+ApiShowHost *ApiShowPreviewDomain::s_showHost = nullptr;
 ApiShowPreviewDomain *ApiShowPreviewDomain::s_instance = nullptr;
 
 namespace {
@@ -101,7 +101,7 @@ ApiShowPreviewDomain::ApiShowPreviewDomain(Doc *doc, ApiServer *server, QObject 
     Q_ASSERT(m_server != nullptr);
 
     s_instance = this;
-    s_host = dynamic_cast<ApiShowHost *>(m_server->parent());
+    s_showHost = dynamic_cast<ApiShowHost *>(m_server->parent());
 
     registerMethods(m_server->dispatcher());
 }
@@ -111,7 +111,7 @@ ApiShowPreviewDomain::~ApiShowPreviewDomain()
     if (s_instance == this)
     {
         s_instance = nullptr;
-        s_host = nullptr;
+        s_showHost = nullptr;
     }
 }
 
@@ -159,7 +159,7 @@ QJsonObject ApiShowPreviewDomain::trackSpoutJson(Doc *doc, Track *track)
     if (clips.isEmpty() && fixed.isEmpty())
         return obj;
 
-    QSize output = s_host != nullptr ? s_host->showTrackSpoutOutputSize(track) : fixed;
+    QSize output = s_showHost != nullptr ? s_showHost->showTrackSpoutOutputSize(track) : fixed;
     if (output.isEmpty() && fixed.isEmpty() == false)
         output = fixed;
 
@@ -374,8 +374,8 @@ void ApiShowPreviewDomain::registerMethods(ApiDispatcher *d)
 
         // like ShowManager::setTrackSpoutSize: an unchanged size is still
         // applied to the live sender (it may be elsewhere after a "keep")
-        if (s_host != nullptr)
-            s_host->showTrackSpoutSizeChanged(show, track);
+        if (s_showHost != nullptr)
+            s_showHost->showTrackSpoutSizeChanged(show, track);
 
         QJsonObject result;
         result.insert(QStringLiteral("docRevision"), int(doc->docRevision()));

@@ -26,7 +26,7 @@
 #include <QtTest>
 
 #include "apivcdomain_test.h"
-#include "apivcpagestyledomain.h"
+#include "domains/apivcpagestyledomain.h"
 #include "apiserver.h"
 #include "doc.h"
 #include "fakevchost.h"

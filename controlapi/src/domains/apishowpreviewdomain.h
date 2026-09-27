@@ -84,7 +84,7 @@ private:
 
     /** The host of the most recently constructed domain (cleared by its destructor), read by
      *  the static trackSpoutJson(), which ApiShowDomain's static serialisers call. */
-    static ApiShowHost *s_host;
+    static ApiShowHost *s_showHost;
     static ApiShowPreviewDomain *s_instance;
 };
 
