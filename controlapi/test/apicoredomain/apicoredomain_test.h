@@ -56,6 +56,7 @@ private slots:
 
     void projectOpenUploadRejectsNonWorkspace();
     void projectOpenUploadHasNoPathButReportsName();
+    void projectOpenPathRejectsBadFilesWithoutClearing();
 
 private:
     QJsonObject sendAndWaitForReply(const QString &method, const QJsonObject &params);

@@ -18,6 +18,8 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QFileInfo>
+#include <QFile>
+#include <QUrl>
 #include <QDir>
 #include <QDateTime>
 #include <QBuffer>
@@ -245,9 +247,13 @@ QString ApiCoreDomain::validateWorkspaceXml(const QByteArray &content, QString *
     if (reader.hasError() || reader.dtdName() != QLatin1String("Workspace"))
         return QStringLiteral("Not a QLC+ workspace (.qxw) file");
 
+    // App::loadXML() gives up (after the current project has been cleared) when the root element
+    // is not <Workspace>, whatever the DTD says - refuse that here too.
+    if (reader.readNextStartElement() == false || reader.name() != QLatin1String("Workspace"))
+        return QStringLiteral("Not a QLC+ workspace (.qxw) file");
+
     // <Workspace><Creator><Version>: only needed for the legacy Show timing
     // check (Doc::possiblyAffectedLegacyBeatShows), best effort.
-    if (reader.readNextStartElement() && reader.name() == QLatin1String("Workspace"))
     {
         while (reader.readNextStartElement())
         {
@@ -308,7 +314,25 @@ void ApiCoreDomain::registerMethods()
 
         if (source == QStringLiteral("path"))
         {
+            // Same up-front check as an upload: App::loadWorkspace() clears the current project
+            // before it even opens the file, so a missing / unreadable / non-workspace path used to
+            // leave the operator with an empty project behind the error.
             QString path = params.value(QStringLiteral("path")).toString();
+            QString localPath = path.startsWith(QStringLiteral("file:")) ? QUrl(path).toLocalFile() : path;
+            QFile file(localPath);
+            if (localPath.isEmpty() || QFileInfo(localPath).isFile() == false || file.open(QIODevice::ReadOnly) == false)
+            {
+                session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrNotFound,
+                                                                QStringLiteral("No readable file at this path")));
+                return;
+            }
+            QString problem = validateWorkspaceXml(file.readAll(), nullptr);
+            file.close();
+            if (problem.isEmpty() == false)
+            {
+                session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams, problem));
+                return;
+            }
             ok = a->loadWorkspace(path);
         }
         else if (source == QStringLiteral("upload"))
