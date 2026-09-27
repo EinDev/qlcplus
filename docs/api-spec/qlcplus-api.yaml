@@ -21397,8 +21397,15 @@ components:
             required:
             - widgetId
             - level
-            description: VCCueList::setSideFaderLevel() - live (§4b). Meaning depends on sideFaderMode
-              (Crossfade vs. Steps, see VcCueListConfig).
+            description: 'VCCueList::setSideFaderLevel() - live (§4b), bare {} ack; the new level arrives
+              as vc.cueList.sideFaderChanged (nothing is sent if unchanged). Meaning depends on sideFaderMode
+              (VcCueListConfig): Crossfade = 0..100 % between the current and the next step (the server
+              confines level to 0..100 there, like the on-screen fader), Steps = 0..255 mapped onto the
+              Chaser''s step index. Errors NOT_FOUND, INVALID_PARAMS (not a CueList, or level not an integer
+              0..255), INVALID_STATE (widget isDisabled, or sideFaderMode is None - the fader is hidden
+              then). Engine caveat: in Steps mode the level is stored but no event is emitted while the
+              Chaser is stopped or the level maps onto the step already current (VCCueList::setSideFaderLevel()
+              returns before emitting).'
             properties:
               widgetId:
                 type: string
@@ -21429,14 +21436,26 @@ components:
             - 'null'
           data:
             type: object
+            description: Also broadcast (with an unchanged level) whenever the crossfade bookkeeping the
+              on-screen fader labels show changes - nextStepIndex follows every playback step, primaryTop
+              flips when a crossfade completes - so a running crossfade cue list emits this alongside
+              vc.cueList.playbackChanged.
             required:
             - widgetId
             - level
+            - nextStepIndex
+            - primaryTop
             properties:
               widgetId:
                 type: string
               level:
                 type: integer
+              nextStepIndex:
+                type: integer
+                description: VCCueList::nextStepIndex(), -1 = none.
+              primaryTop:
+                type: boolean
+                description: VCCueList::primaryTop().
     VcSpeedDialSetValueRequest:
       payload:
         type: object
@@ -21528,9 +21547,14 @@ components:
             required:
             - widgetId
             - factor
-            description: VCSpeedDial::setCurrentFactor()/increaseSpeedFactor()/decreaseSpeedFactor() (client
-              can compute +/- from the current value in the widget's last-known state; server just accepts
-              the resulting factor).
+            description: 'VCSpeedDial::setCurrentFactor()/increaseSpeedFactor()/decreaseSpeedFactor()
+              (client can compute +/- from the current value in the widget''s last-known state; server
+              just accepts the resulting factor). Live (§4b), bare {} ack; the new factor arrives as vc.speedDial.factorChanged
+              (nothing if unchanged) and is applied to the attached Functions immediately, like the on-screen
+              1/16..16 buttons. Only OneSixteenth..Sixteen are accepted: None/Zero exist in VcSpeedDialMultiplier
+              as per-function overrides (VcSpeedDialConfig. functions) and would multiply every attached
+              Function''s speed by 0 here. Errors NOT_FOUND, INVALID_PARAMS (not a Speed widget, or factor
+              outside that set), INVALID_STATE (widget isDisabled).'
             properties:
               widgetId:
                 type: string
@@ -21666,7 +21690,10 @@ components:
         - type
         - topic
         - data
-        description: Broadcast after tap/resetTap.
+        description: Broadcast whenever VCSpeedDial::tapTimeValue() changes - i.e. after the second and
+          every further tap of a series (vc.speedDial.tap, the QML button, external input) and after a
+          vc.speedDial.resetTap that actually had a series to clear (a reset with nothing to clear sends
+          nothing, like every other unchanged live value).
         properties:
           type:
             const: event
@@ -21687,9 +21714,12 @@ components:
                 type: string
               tapTimeValue:
                 type: integer
-                description: Computed BPM.
+                description: The tap interval in milliseconds VCSpeedDial computed from the tap history
+                  (NOT a BPM - the engine derives its BPM as 60000 / tapTimeValue), 0 after a reset.
               currentTimeMs:
                 type: integer
+                description: VCSpeedDial::currentTime() at that moment (equals tapTimeValue right after
+                  a tap, since tap() sets the dial to the interval).
     VcSpeedDialPresetUpdateRequest:
       payload:
         type: object
@@ -22213,11 +22243,13 @@ components:
               and (if the fader level is already > 0) applies the preset''s content immediately. Knob-type
               presets are the one exception: applyPreset() no-ops for them server-side (they have no single
               "apply" moment) - use vc.animation.setPresetKnobValue instead, which is the actual live
-              control for a Knob preset. - SpeedDial: NOT SUPPORTED. VCSpeedDial has no applyPreset counterpart
-              in the engine at all (only add/remove/rename/setValue on the preset list itself). "Applying"
-              a SpeedDial preset is purely a client-side gesture: look up the preset''s stored value in
-              VcSpeedDialPreset and send that value via vc.speedDial.setValue - do not send vc.widget.preset.apply
-              for a SpeedDial widgetId, it has no defined effect.'
+              control for a Knob preset. - SpeedDial (implemented 2026-09-27): VCSpeedDial has no applyPreset()
+              of its own, so the server does what VCSpeedDialItem.qml''s preset button does - setCurrentTime(the
+              preset''s valueMs), reported as vc.speedDial.valueChanged (and applied to the attached Functions
+              like any other currentTime change). Nothing is persisted; no docRevision bump. Errors: NOT_FOUND
+              (widget or preset), INVALID_PARAMS (widget type has no presets), INVALID_STATE (widget isDisabled,
+              or the type''s apply is not implemented yet - XYPad and Animation presets are still stubs
+              on the host as of 2026-09-27).'
             properties:
               widgetId:
                 type: string
@@ -25335,6 +25367,18 @@ components:
         paused:
           type: boolean
           description: 'CueList only: see VcCueListPlaybackState.paused.'
+        sideFaderLevel:
+          type: integer
+          description: 'CueList only: live VCCueList::sideFaderLevel() (0..100 in Crossfade mode, 0..255
+            in Steps mode; VCCueList defaults it to 100), seed for vc.cueList.sideFaderChanged.'
+        nextStepIndex:
+          type: integer
+          description: 'CueList only: VCCueList::nextStepIndex() - the step the crossfade side fader''s
+            other end points at (-1 = none); seed for vc.cueList.sideFaderChanged.'
+        primaryTop:
+          type: boolean
+          description: 'CueList only: VCCueList::primaryTop() - whether the current step sits at the top
+            end of the crossfade fader (it flips each time a crossfade completes).'
         x:
           type: number
           description: 'XYPad only: live normalized 0..1 position, seed for vc.xyPad.positionChanged.'
@@ -25344,6 +25388,13 @@ components:
         ms:
           type: integer
           description: 'Speed only: live VCSpeedDial::currentTime() in ms, seed for vc.speedDial.valueChanged.'
+        factor:
+          $ref: '#/components/schemas/VcSpeedDialMultiplier'
+          description: 'Speed only: live VCSpeedDial::currentFactor(), seed for vc.speedDial.factorChanged.'
+        tapTimeValue:
+          type: integer
+          description: 'Speed only: live VCSpeedDial::tapTimeValue() - the current tap-tempo interval
+            in ms (0 = no tap series), seed for vc.speedDial.tapChanged.'
         currentPage:
           type: integer
           description: 'Frame/SoloFrame only: live internal page, seed for vc.frame.pageChanged.'
@@ -25354,10 +25405,11 @@ components:
           type: boolean
           description: 'Frame/SoloFrame only: VCFrame::multiPageMode().'
       description: Compact form used in list/usage results and as the base of VcWidgetDetail. The per-type
-        live (§4b) fields at the end (state / value+min+max / playbackIndex+running+paused / x+y / ms
-        / currentPage+pages+multipage) are present ONLY on widgets of the matching widgetType (a Label
-        carries none) and let a client seed its live view straight from vc.widget.list/get instead of
-        waiting for the first vc.*Changed event. Added additively (2026-09-26) - no pre-existing field
+        live (§4b) fields at the end (state / value+min+max / playbackIndex+running+paused+ sideFaderLevel+nextStepIndex+primaryTop
+        / x+y / ms+factor+tapTimeValue / currentPage+pages+ multipage) are present ONLY on widgets of
+        the matching widgetType (a Label carries none) and let a client seed its live view straight from
+        vc.widget.list/get instead of waiting for the first vc.*Changed event. Added additively (2026-09-26,
+        the cue list side fader and speed dial factor/tap seeds on 2026-09-27) - no pre-existing field
         was removed or renamed.
     VcCueListPlaybackState:
       type: object
@@ -25898,8 +25950,20 @@ components:
       - Sixteen
     VcSpeedDialConfig:
       type: object
-      description: VCSpeedDial document-state config. Presets managed via vc.speedDial.preset.*.
+      description: 'VCSpeedDial document-state config. Every key is optional in a vc.widget.setConfig
+        patch; `functions` replaces the whole controlled-Function list (an entry''s omitted factors keep
+        that Function''s current ones if it was already attached, else the VCSpeedDial::addFunction()
+        defaults None/None/One). The preset list is read-only here (`presets`, present in vc.widget.get/list
+        only): mutate it through vc.widget.preset.add/remove and vc.speedDial.preset.update - a patch
+        carrying `presets` is rejected with INVALID_PARAMS.'
       properties:
+        presets:
+          type: array
+          readOnly: true
+          description: The widget's preset list (VCSpeedDial::presetsList()), in display order. Read-only
+            convenience so one vc.widget.get seeds a client; kept current by vc.speedDial.presetsChanged.
+          items:
+            $ref: '#/components/schemas/VcSpeedDialPreset'
         visibilityMask:
           type: array
           items:

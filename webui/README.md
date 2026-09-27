@@ -118,8 +118,21 @@ and a second tab checked for the pushed event:
   set / tap; multipage frame next / previous (the frame page flip bumps docRevision - the event
   carries the new one); Grand Master. Design-mode editing: add page / rename / delete, add widgets
   from the palette, move, resize, caption, attach function, Flash action, copy / paste, delete,
-  all persisted (reload shows the same layout). Widget *configuration* beyond Button and Slider
-  is still view-only (server `vc.widget.setConfig` covers those two types).
+  all persisted (reload shows the same layout). Widget *configuration* beyond Button, Slider,
+  Cue List and Speed dial is still view-only (server `vc.widget.setConfig` covers those types).
+- **Cue List + Speed dial** (`webui/vc/vc-props-cue.jsx`, added 2026-09-27, verified against a
+  `vccue` sandbox on ports 9170/9171 by `webui/tools/e2e/vc-cue.js`): cue list properties (attach /
+  detach a Chaser or Sequence, Play/Pause+Stop vs Play/Stop+Pause layout, next/previous behaviour,
+  side fader None / Crossfade / Steps) and the live side fader with the crossfade step labels
+  (`vc.cueList.setSideFaderLevel` / `sideFaderChanged`); speed dial properties (controlled
+  functions with per-function fade in / fade out / duration factors, tap-controls-BPM, reset factor
+  on dial change, dial time range, visible parts, presets add / rename / retime / remove through
+  `vc.widget.preset.add/remove` + `vc.speedDial.preset.update`) and the live body per the
+  visibility mask: dial knob, 1/16..16 factor buttons and -/+/x (`vc.speedDial.setFactor`), TAP
+  with right-click reset (`vc.speedDial.resetTap`, blinking at the tapped interval), h/m/s/ms
+  fields, Apply (`vc.speedDial.apply`) and preset buttons (`vc.widget.preset.apply`). The Steps
+  side-fader mode is wired but was only exercised in Crossfade mode; XY pad / Animation presets are
+  server-side stubs (INVALID_STATE) until their own slice lands.
 - **Simple Desk**: universe tabs, live values + overrides, faders, keypad (`1 THRU 12 AT 128`,
   `+% 20`, `FULL`, `ZERO`, `CLR`, ...), per-channel reset, reset universe, dump to a new Scene,
   fixture list panel.
