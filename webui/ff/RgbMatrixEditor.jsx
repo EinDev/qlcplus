@@ -264,7 +264,9 @@
     const setScriptProperty = (name, value) => {
       const props = (algorithm.scriptProperties || []).some(p => p.name === name) ? algorithm.scriptProperties.map(p => p.name === name ? { name, value } : p) : (algorithm.scriptProperties || []).concat([{ name, value }]);
       patchConfig({ algorithm: Object.assign({}, algorithm, { scriptProperties: props }) });
-      FF.mutate(qlc, 'functions.rgbmatrix.setScriptProperty', { functionId: fid, propertyName: name, value: String(value) }, { key: 'rgbprop:' + fid + ':' + name }).catch(() => reload());
+      /* reload afterwards: a script may derive state from its properties (plasma.js flips
+         acceptColors between 0 and 5 on one), and the engine re-reads the script's colours */
+      FF.mutate(qlc, 'functions.rgbmatrix.setScriptProperty', { functionId: fid, propertyName: name, value: String(value) }, { key: 'rgbprop:' + fid + ':' + name }).then(() => reload()).catch(() => reload());
     };
 
     const configKey = JSON.stringify(config);

@@ -72,7 +72,7 @@
          * Live-rendered pixel frame for one algorithm step, at the bound Fixture Group's size —
          * a one-shot preview render (not a live/subscribable stream).
          * @param {object} params - {functionId: string, step: integer — 0-based, modulo result.stepsCount}
-         * @returns {Promise<object>} result - {stepsCount: integer, width: integer, height: integer, pixels: integer[][] — height rows x width cols of packed 0xRRGGBB (0 = off)}
+         * @returns {Promise<object>} result - {stepsCount: integer (0 without a fixture group), step: integer — the index actually rendered (params.step normalised), width: integer, height: integer, pixels: integer[][] — height rows x width cols of packed 0xRRGGBB (0 = off)}
          * @see docs/api-spec/fragments/functions-advanced.yaml (method: functions.rgbmatrix.getPreview)
          */
         getPreview: function (params) { return self.call('functions.rgbmatrix.getPreview', params); },
@@ -95,9 +95,10 @@
         listAlgorithms: function (params) { return self.call('functions.rgbmatrix.listAlgorithms', params); },
 
         /**
-         * Replaces the RGBMatrix's whole config (fixture group, algorithm, up to 5 direct hex
-         * color slots, control mode, blend mode). Broadcasts functions.rgbmatrix.configChanged
-         * with the full new config.
+         * Applies an RGBMatrix config (fixture group, algorithm, up to 5 direct hex color slots,
+         * control mode, blend mode). The config may be partial: absent keys (and absent algorithm
+         * parameters) are left unchanged. Broadcasts functions.rgbmatrix.configChanged with the
+         * full new config read back from the engine.
          * @param {object} params - {functionId: string, config: {fixtureGroupId: string, algorithm: {type, scriptName?, scriptProperties?: [{name,value}], text?, font?: {family,pointSize,bold,italic}, imagePath?, animationStyle?, xOffset?, yOffset?}, colors: (string|null)[] — exactly 5 slots, controlMode: 'rgb'|'white'|'amber'|'uv'|'dimmer'|'shutter', blendMode?, dimmerControl?: boolean — legacy, superseded by controlMode=dimmer}, baseRevision: integer}
          * @returns {Promise<object>} result - {docRevision: integer}
          * @see docs/api-spec/fragments/functions-advanced.yaml (method: functions.rgbmatrix.setConfig)
