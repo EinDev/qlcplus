@@ -88,6 +88,12 @@ function VCXLabel({ text, width = 62 }) {
   return <RobotoText label={text} fontSize="var(--text-size-small)" height="auto" style={{ flex: '0 0 ' + width + 'px' }} />;
 }
 
+/** A full-width combo that may shrink inside a flex row (CustomComboBox at width 100% next to a fixed
+    label would otherwise overflow the 300px property panel). */
+function VCXCombo(props) {
+  return <div style={{ flex: 1, minWidth: 0 }}><CustomComboBox width="100%" {...props} /></div>;
+}
+
 function controlModel(controls, keyboardOnly) {
   return (controls || []).filter(c => !keyboardOnly || c.allowKeyboard).map(c => ({ mLabel: c.name, mValue: String(c.controlId) }));
 }
@@ -145,7 +151,7 @@ function VCManualSourceDialog({ open, controls, defaultControl, onClose, onApply
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }} data-vcx-manual="">
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <VCXLabel text="Control" width={80} />
-          <CustomComboBox width="100%" height={24} currValue={control} onValueChanged={setControl} model={controlModel(controls)} data-vcx-manual-control="" />
+          <VCXCombo height={24} currValue={control} onValueChanged={setControl} model={controlModel(controls)} data-vcx-manual-control="" />
         </div>
         {radio('profile', 'Input profiles')}
         <div style={{ maxHeight: 220, overflow: 'auto', border: 'var(--border-dark)', opacity: mode === 'profile' ? 1 : .45, pointerEvents: mode === 'profile' ? 'auto' : 'none' }}>
@@ -170,7 +176,7 @@ function VCManualSourceDialog({ open, controls, defaultControl, onClose, onApply
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, opacity: mode === 'manual' ? 1 : .45, pointerEvents: mode === 'manual' ? 'auto' : 'none' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <VCXLabel text="Universe" width={80} />
-            <CustomComboBox width="100%" height={24} currValue={Number(uni)} onValueChanged={(v) => setUni(Number(v))}
+            <VCXCombo height={24} currValue={Number(uni)} onValueChanged={(v) => setUni(Number(v))}
               model={(universes.length ? universes : [{ id: 0, name: 'Universe 1' }]).map(u => ({ mLabel: u.name || 'Universe ' + (u.id + 1), mValue: u.id }))} />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -225,7 +231,7 @@ function VCCustomFeedbackDialog({ source, onClose, onApply }) {
   const routeRow = (key, label) => (
     <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
       <VCXLabel text={label} width={100} />
-      <CustomComboBox width="100%" height={24} currValue={routes[key]} onValueChanged={(v) => setRoutes(s => Object.assign({}, s, { [key]: Number(v) }))}
+      <VCXCombo height={24} currValue={routes[key]} onValueChanged={(v) => setRoutes(s => Object.assign({}, s, { [key]: Number(v) }))}
         model={[{ mLabel: 'From plugin settings', mValue: 0 }].concat(midi.map((m, i) => ({ mLabel: m.label, mValue: i + 1 })))} />
     </div>
   );
@@ -365,21 +371,31 @@ function VCExternalControls({ w, section }) {
         <IconButton faSource={VCX_GLYPH.handPointUp} size={28} tooltip="Manually select an input source" onClick={() => setManual(true)} data-vcx-add-manual="" />
       </div>
       {detect && !detect.replace ? (
-        <div style={vcxRowStyle} data-vcx-pending-detect="">
-          <VCXLabel text="Control" />
-          <CustomComboBox width="100%" height={24} currValue={String(detect.controlId)} model={controlModel(controls)}
-            onValueChanged={(v) => { if (Number(v) !== detect.controlId) startDetect(v); }} />
-          <span style={vcxBox(true)}>Waiting for a controller signal…</span>
-          <IconButton faSource="fa_xmark" size={24} tooltip="Cancel the auto detection" onClick={stopDetect} />
+        <div data-vcx-pending-detect="" style={{ borderBottom: '2px solid var(--fg-medium)', padding: '2px 0' }}>
+          <div style={vcxRowStyle}>
+            <VCXLabel text="Control" />
+            <VCXCombo height={24} currValue={String(detect.controlId)} model={controlModel(controls)}
+              onValueChanged={(v) => { if (Number(v) !== detect.controlId) startDetect(v); }} />
+          </div>
+          <div style={vcxRowStyle}>
+            <VCXLabel text="Input" />
+            <span style={vcxBox(true)}>Waiting for input…</span>
+            <IconButton faSource="fa_xmark" size={24} tooltip="Cancel the auto detection" onClick={stopDetect} data-vcx-detect-cancel="" />
+          </div>
         </div>
       ) : null}
       {capture && !capture.replace ? (
-        <div style={vcxRowStyle} data-vcx-pending-key="">
-          <VCXLabel text="Control" />
-          <CustomComboBox width="100%" height={24} currValue={String(capture.controlId)} model={controlModel(controls, true)}
-            onValueChanged={(v) => setCapture({ controlId: Number(v), replace: null })} />
-          <span style={vcxBox(true)}>Press a key combination…</span>
-          <IconButton faSource="fa_xmark" size={24} tooltip="Cancel" onClick={() => setCapture(null)} />
+        <div data-vcx-pending-key="" style={{ borderBottom: '2px solid var(--fg-medium)', padding: '2px 0' }}>
+          <div style={vcxRowStyle}>
+            <VCXLabel text="Control" />
+            <VCXCombo height={24} currValue={String(capture.controlId)} model={controlModel(controls, true)}
+              onValueChanged={(v) => setCapture({ controlId: Number(v), replace: null })} />
+          </div>
+          <div style={vcxRowStyle}>
+            <VCXLabel text="Keys" />
+            <span style={vcxBox(true)}>Press a key combination…</span>
+            <IconButton faSource="fa_xmark" size={24} tooltip="Cancel" onClick={() => setCapture(null)} data-vcx-key-cancel="" />
+          </div>
         </div>
       ) : null}
       {(detail.inputSources || []).map((s, i) => {
@@ -388,7 +404,7 @@ function VCExternalControls({ w, section }) {
           <div key={'s' + i + ':' + s.universe + ':' + s.channel} data-vcx-source={s.controlId + ':' + s.universe + ':' + s.channel} style={{ borderBottom: '2px solid var(--fg-medium)', padding: '2px 0' }}>
             <div style={vcxRowStyle}>
               <VCXLabel text="Control" />
-              <CustomComboBox width="100%" height={24} currValue={String(s.controlId)} model={controlModel(controls)} data-vcx-source-control=""
+              <VCXCombo height={24} currValue={String(s.controlId)} model={controlModel(controls)} data-vcx-source-control=""
                 onValueChanged={(v) => { if (Number(v) !== Number(s.controlId)) setSource({ controlId: Number(v), universe: s.universe, channel: s.channel }).catch(fail('Change control')); }} />
               <IconButton faSource={VCX_GLYPH.wand} size={24} checked={!!relearning} tooltip="Activate auto detection (the next controller signal replaces this source)"
                 onClick={() => relearning ? stopDetect() : startDetect(s.controlId, s)} />
@@ -415,7 +431,7 @@ function VCExternalControls({ w, section }) {
           <div key={'k' + k.keySequence} data-vcx-key={k.keySequence} style={{ borderBottom: '2px solid var(--fg-medium)', padding: '2px 0' }}>
             <div style={vcxRowStyle}>
               <VCXLabel text="Control" />
-              <CustomComboBox width="100%" height={24} currValue={String(k.controlId)} model={controlModel(controls, true)}
+              <VCXCombo height={24} currValue={String(k.controlId)} model={controlModel(controls, true)}
                 onValueChanged={(v) => { if (Number(v) !== Number(k.controlId)) setKey(v, k.keySequence).catch(fail('Change control')); }} />
             </div>
             <div style={vcxRowStyle}>
