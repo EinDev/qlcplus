@@ -21,6 +21,8 @@
 
   /* Font Awesome 7 Solid "image" - not in the bundle's FA map, FaIcon renders the raw glyph */
   const GLYPH_IMAGE = String.fromCharCode(0xf03e);
+  const GLYPH_TO_FRONT = String.fromCharCode(0xf102); /* angles-up */
+  const GLYPH_TO_BACK = String.fromCharCode(0xf103);  /* angles-down */
 
   const IMAGE_FILTERS = () => [
     window.ServerFileBrowser.filter('Image files', ['*.png', '*.bmp', '*.jpg', '*.jpeg', '*.gif', '*.svg', '*.webp']),
@@ -122,13 +124,13 @@
     const onTop = !sib.length || z > maxZ, atBottom = !sib.length || (z < minZ) || (z === 0 && minZ > 0);
     return (
       <PropRow label="Z-Index">
-        <span data-vc-zindex={z} style={{ display: 'inline-flex' }}><SpinField value={z} from={0} to={1000} width={64} height={24} onCommit={set} /></span>
-        <IconButton faSource="fa_chevron_up" size={24} tooltip="Raise (Z-Index + 1)" disabled={z >= 1000} onClick={() => set(z + 1)} data-vc-z="raise" />
-        <IconButton faSource="fa_chevron_down" size={24} tooltip="Lower (Z-Index - 1)" disabled={z <= 0} onClick={() => set(z - 1)} data-vc-z="lower" />
-        <GenericButton label="Front" width={46} height={24} fontSize="var(--text-size-menubar)" disabled={onTop} tooltip="Bring above every sibling"
-          onClick={() => set(maxZ + 1)} data-vc-z="front" />
-        <GenericButton label="Back" width={46} height={24} fontSize="var(--text-size-menubar)" disabled={atBottom} tooltip="Send below every sibling"
-          onClick={() => set(Math.max(0, minZ - 1))} data-vc-z="back" />
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2, minWidth: 0 }}>
+          <span data-vc-zindex={z} style={{ display: 'inline-flex' }}><SpinField value={z} from={0} to={1000} width={56} height={24} onCommit={set} /></span>
+          <IconButton faSource="fa_chevron_up" size={22} tooltip="Raise (Z-Index + 1)" disabled={z >= 1000} onClick={() => set(z + 1)} data-vc-z="raise" />
+          <IconButton faSource="fa_chevron_down" size={22} tooltip="Lower (Z-Index - 1)" disabled={z <= 0} onClick={() => set(z - 1)} data-vc-z="lower" />
+          <IconButton faSource={GLYPH_TO_FRONT} size={22} tooltip="Bring to front (above every sibling)" disabled={onTop} onClick={() => set(maxZ + 1)} data-vc-z="front" />
+          <IconButton faSource={GLYPH_TO_BACK} size={22} tooltip="Send to back (below every sibling)" disabled={atBottom} onClick={() => set(Math.max(0, minZ - 1))} data-vc-z="back" />
+        </div>
       </PropRow>
     );
   }
@@ -138,17 +140,26 @@
     const vc = useVC();
     const page = (vc.pages || []).find(p => p.index === vc.page);
     const PropRow = window.VCPropRow, SpinField = window.VCSpinField;
+    /* the size last sent: a Height commit right after a Width one must not send the old width
+       back (the page list only catches up when vc.page.updated arrives) */
+    const sent = React.useRef(null);
+    React.useEffect(() => { sent.current = null; }, [page && page.index, page && page.width, page && page.height]);
     if (!page) return <RobotoText label="Select a widget first" fontSize="var(--text-size-small)" labelColor="var(--fg-medium)" height="var(--icon-size-default)" textHAlign="center" style={{ width: '100%' }} />;
     const has = page.width != null && page.height != null;
-    const setSize = (width, height) => vcStructural(vc.qlc, 'vc.page.setSize', { index: page.index, width, height })
-      .catch(e => vc.notice('vc.page.setSize: ' + ((e && e.message) || 'failed')));
+    const setSize = (patch) => {
+      const cur = sent.current && sent.current.index === page.index ? sent.current : { index: page.index, width: page.width, height: page.height };
+      const next = Object.assign({}, cur, patch);
+      sent.current = next;
+      return vcStructural(vc.qlc, 'vc.page.setSize', { index: next.index, width: next.width, height: next.height })
+        .catch(e => { sent.current = null; vc.notice('vc.page.setSize: ' + ((e && e.message) || 'failed')); });
+    };
     return (
       <div data-vc-page-props="" style={{ display: 'flex', flexDirection: 'column' }}>
         <RobotoText label={'Page "' + (page.name || 'Page ' + (page.index + 1)) + '"'} fontSize="var(--text-size-small)" labelColor="var(--fg-light)" height="var(--list-item-height)" leftMargin={6} />
         {has ? (
           <>
-            <PropRow label="Width"><span data-vc-page-width={page.width} style={{ display: 'inline-flex' }}><SpinField value={page.width} from={1} to={100000} width={100} height={24} suffix="px" onCommit={(v) => setSize(v, page.height)} /></span></PropRow>
-            <PropRow label="Height"><span data-vc-page-height={page.height} style={{ display: 'inline-flex' }}><SpinField value={page.height} from={1} to={100000} width={100} height={24} suffix="px" onCommit={(v) => setSize(page.width, v)} /></span></PropRow>
+            <PropRow label="Width"><span data-vc-page-width={page.width} style={{ display: 'inline-flex' }}><SpinField value={page.width} from={1} to={100000} width={100} height={24} suffix="px" onCommit={(v) => setSize({ width: v })} /></span></PropRow>
+            <PropRow label="Height"><span data-vc-page-height={page.height} style={{ display: 'inline-flex' }}><SpinField value={page.height} from={1} to={100000} width={100} height={24} suffix="px" onCommit={(v) => setSize({ height: v })} /></span></PropRow>
           </>
         ) : <RobotoText label="This server does not report page sizes" fontSize="var(--text-size-menubar)" labelColor="var(--fg-medium)" height="auto" style={{ padding: 6 }} />}
         <RobotoText label="Select a widget to edit its properties" fontSize="var(--text-size-menubar)" labelColor="var(--fg-medium)" height="auto" style={{ padding: 6 }} wrapText />
