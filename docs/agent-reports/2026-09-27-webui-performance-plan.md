@@ -2,8 +2,9 @@
 
 Scope: the browser web UI (`webui/`) and the WebSocket Control API behind it (`controlapi/`),
 running against the real show file (`<test project>` = SF3: 236 fixtures, 6 universes,
-956 functions, 15 VC pages, 386 VC widgets). This is a plan. Nothing here has been implemented
-yet. Every number in the "Baseline" section was measured. Anything marked **estimate** was not.
+956 functions, 15 VC pages, 386 VC widgets). This is a plan; Phase 1 has since been implemented,
+see "Implemented (Phase 1)" at the end. Every number in the "Baseline" section was measured.
+Anything marked **estimate** was not.
 
 ## TL;DR
 
@@ -510,3 +511,117 @@ because the machine was loaded (§4). Re-measure on a quiet machine with `api-co
 - Clean-machine absolute numbers, and a Debug-vs-Release ratio (§4).
 - The unfiltered cold `fixturedefs.list` was not re-run after the watchdog incident. Its range
   (2-14 s) comes from the single call plus the per-manufacturer sums.
+
+## Implemented (Phase 1), 2026-09-27
+
+Items 2-6 of Phase 1. Item 1 (the F&F render loop) landed earlier in `f920175cd`; item 7 (DMX
+output off the main thread) is a separate task and was not touched here.
+
+Same method as the baseline: `dev-webui-sandbox.ps1` (SF3, patches stripped), Debug build,
+headless Chrome through the tools in `webui/tools/perf/`. "Before" is the commit this work started
+from (`2e9d1e239`, with item 1 already in), measured in the same session right before the changes.
+The machine was shared with other agents' builds throughout (a first build attempt hit
+`cc1plus: out of memory`), so absolute numbers are noisy; the ratios are large enough not to care.
+
+### What changed
+
+| Item | Change | Commit |
+|---|---|---|
+| P1a `fixturedefs.list` | One pass over the new `QLCFixtureDefCache::fixtureDefs()` (no more `fixtureDef()` linear lookup per row). Unfiltered: nothing is parsed, rows come from what the fixtures map knows; `type`/`author`/`channelCount`/`modeCount` only for already loaded definitions, flagged by a new `loaded` field. Filtered by manufacturer: loads that manufacturer only (`ensureLoaded()`), rows complete as before. Spec + notes + `listUnfilteredDoesNotLoadDefinitions` + engine `fixtureDefsAndEnsureLoaded`. | `d176cf541` |
+| P4 HTTP caching | `ETag` (size + mtime, taken before the read) and `Last-Modified` on every file; `If-None-Match` (list, weak, `*`) or, without it, `If-Modified-Since` answers a bodyless `304`. `Cache-Control: no-cache` stays, so every file is revalidated on each load and edits under `--webui-root` show up on a plain reload (verified against the sandbox: a touched file answers 200 to its old tag). 4 new `webserver_test` cases. | `ecc5d274b` |
+| P7 (partial) DMX diff | New `ApiServer::hasSubscriber()`; `slotUniverseWritten()` skips the per-channel diff when nobody subscribes to that universe but keeps the diff base current, so the first delta after `subscribe` is unchanged. Test `dmxDiffWithoutSubscriberKeepsSnapshotCurrent` (real ticks). | `066803054` |
+| P6 (partial) duplicate calls | `api/qlcplus-api.js` coalesces identical in-flight reads (`COALESCED_READS`), cleared by any non-read request, each sharer gets its own copy; `App.jsx` debounces the `core.project.get` refresh (150 ms trailing); Simple Desk fetches `fixtures.get` once per fixture type instead of once per fixture. | `cad19ce8d` |
+| P3-A Babel presets | `data-presets="react" data-plugins="transform-block-scoping"` on all 47 `text/babel` tags; `check-jsx.js` compiles with the same options and fails on a tag without them. No build step. | `daf3b207f` |
+
+### Before / after
+
+`fixturedefs.list` (`api-cost.js`; round trip = main thread blocked):
+
+| Call | Before | After |
+|---|---|---|
+| unfiltered, first call | **19,968 ms**, 280 KiB (tripped the freeze watchdog, see below) | **16 ms**, 187 KiB |
+| unfiltered, warm | 182 ms | 17 ms |
+| `manufacturer: "American DJ"` (161 defs), cold | 1691 ms | 122 ms (the machine was much quieter in the after run, so the parsing cost itself is not comparable; this row is the remaining bound per call) |
+| `manufacturer: "SF3"` | 4.6 ms | 0.8 ms |
+| `engine-stall.js --params '{}'` (DMX stream gap while the unfiltered call runs) | 1.2-20 s (baseline §5) | 63 ms max during vs 64 ms max before = noise floor |
+
+Page load, data shown (`page-load.js`, ms; x1 cold / warm):
+
+| Screen | Before x1 | After x1 | Babel CPU x1 cold | Longest task x1 cold | Before x4 cold | After x4 cold |
+|---|---|---|---|---|---|---|
+| fx | 6196 / 5339 | **1581 / 1585** | 5493 → 1000 | 759 → 166 | 32,933 | **7531** |
+| vc | 5162 / 4754 | **1556 / 1460** | 4713 → 1201 | 607 → 142 | 33,240 | **7900** |
+| sd | 4543 / 4534 | **1919 / 1706** | 3908 → 1244 | 477 → 172 | 31,705 | **9446** |
+| io | 4571 / 5626 | **1728 / 1383** | 4060 → 1288 | 431 → 160 | 29,352 | **7730** |
+| show | 6525 / 6452 | **1230 / 1064** | 5818 → 864 | 688 → 102 | 28,819 | **8117** |
+| fxeditor | 6652 / 6070 | **1407 / 1187** | 6021 → 1080 | 970 → 141 | 27,498 | **7707** |
+
+All six screens: 0 console errors before and after, same DOM node counts. The plan's estimate for
+P3-A (1.0-1.5 s / 5-8 s) held on desktop; x4 landed at 7.5-9.4 s. babel-standalone still adds
+inline source maps (the attributes cannot turn them off), which is part of what separates this
+from the precompiled 0.3-0.64 s of P3-B.
+
+HTTP bytes per load (`page-load.js`, run 2 = warm, cache enabled):
+
+| Screen | Before warm | After warm | Cold (unchanged) |
+|---|---|---|---|
+| fx | 127 req / 5682 KiB | 127 req / **18 KiB** | 5702 KiB |
+| vc | 89 / 5579 KiB | 89 / **13 KiB** | 5592 KiB |
+| sd | 103 / 5611 KiB | 115 / **16 KiB** | 5625 KiB |
+| io | 96 / 5605 KiB | 96 / **14 KiB** | 5618 KiB |
+| show | 100 / 5731 KiB | 100 / **14 KiB** | 5745 KiB |
+| fxeditor | 90 / 5600 KiB | 90 / **13 KiB** | 5613 KiB |
+
+The request count is unchanged: every file is still revalidated (one 304 each, one TCP connection
+each). Keep-alive and immutable hashed bundles remain Phase 2.
+
+API calls on load (`page-load.js`, cold):
+
+| Screen | Before | After | Removed |
+|---|---|---|---|
+| fx | 13 calls / 349 KiB | 11 / 200 KiB | `functions.list` 2 → 1, `core.project.get` 2 → 1 |
+| vc | 11 / 152 KiB | 10 / 152 KiB | `core.mode.get` 2 → 1 |
+| sd | **53** / 246 KiB | **16** / 166 KiB | `fixtures.get` 39 → 3, `io.simpleDesk.get` 2 → 1 |
+| io | 20 / 161 KiB | 19 / 161 KiB | `io.blackout.get` 2 → 1 |
+| show | 12 / **447 KiB** | 10 / **150 KiB** | `functions.list` 3 → 1 |
+| fxeditor | 9 / 149 KiB | 9 / 149 KiB | none |
+
+One `vc.widget.update` from another client (`multi-client.js`): each VC tab made 4 calls before
+(`core.project.get` x2, `vc.page.list`, `vc.widget.list`) and 3 after (`core.project.get` x1).
+
+DMX diff without subscribers (`dmx-fanout.js`, 15 RGB Matrices running, 0 clients, 20 s windows):
+QLC+ process CPU 0.25-0.30 core-s/s before, 0.27-0.35 after. The saving the baseline measured with
+a probe (about 21 ms per 5 s, 0.4 % of a core) is below this measurement's noise, so no after
+number is claimed; the change is kept because it costs nothing. With 1 subscriber the stream is
+unchanged (86 frames/s, 28 changed channels per frame, about 870 B per frame).
+
+### Tests and e2e
+
+- `apifixturedefsdomain_test` 31/31, `webserver_test` 34/34, `apiiodomain_test` 42/42,
+  `qlcfixturedefcache_test` 16/16 (engine; needs `resources/fixtures` staged into the build tree).
+- Against the sandbox after all changes: `vc-layout.js` 59/59, `show.js` PASS,
+  `fixtures-views.js` all passed, `tools-misc.js` all passed, `fixture-editor.js` all passed,
+  `check-jsx.js` ok for all 57 files. `fixturedefs-smoke.js` passes its list checks (1782 rows in
+  15 ms); its one failure is its own precondition (it expects the user fixture folder redirected
+  to a copy named `fixdefs`, which this sandbox did not have).
+
+### Deviations and notes
+
+- **`fixturedefs.list`**: answered from the map instead of rejecting unfiltered calls. Both kept
+  every web UI caller working (they all filter); this one also keeps the smoke test and any
+  "does this model exist" client working. The filtered form still parses on the main thread
+  (P1c, Phase 2).
+- **Duplicate calls**: done in the transport (in-flight coalescing) rather than a shared
+  app-wide `functions.list` store, because all the duplicates on load were concurrent. It also
+  removed duplicates the plan did not list (`core.mode.get`, `io.blackout.get`,
+  `io.simpleDesk.get`). Calls that are not concurrent (a refetch after an event) are unaffected;
+  applying event payloads instead of refetching is still P6 in Phase 2.
+- **Watchdog, again**: the "before" run of the cold unfiltered `fixturedefs.list` (19,968 ms) set
+  off the freeze watchdog in the sandbox (13.2 s heartbeat gap, recovered after about 77 s, which
+  is the time until its dialog was dismissed). The dialog is TOPMOST on the desktop of whoever is
+  at the machine. After the change the same call cannot do that any more.
+- **x4 "before"**: the first x4 run stalled on `sd` for over 15 minutes (headless Chrome did not
+  return while a build ran next to it) and was stopped. The x4 before numbers above are a re-run
+  against the new server serving the unchanged web UI of `2e9d1e239` (cold runs disable the HTTP
+  cache, so the server change does not affect them). The two x4 screens that did complete in the
+  first attempt (fx 43,575 ms, vc 41,543 ms) show how much machine load moves x4 numbers.
