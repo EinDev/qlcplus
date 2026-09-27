@@ -63,6 +63,7 @@ $all = @(
     # vc-live.js talks to [::1] by default (E2E_HOST): Logitech's lghub_updater can hold 127.0.0.1:9180.
     @{ Name = "vclive";   Api = 9180; Web = 9181; Script = "vc-live.js";        Args = @() },
     @{ Name = "fixtures"; Api = 9210; Web = 9211; Script = "fixtures-views.js"; Args = @() },
+    @{ Name = "fxmisc";   Api = 9250; Web = 9251; Script = "fixtures-misc.js";  Args = @(); Sandbox = @{ UserModifiersDir = "C:\qlcsandbox\fxmisc\UserModifiers" } },
     @{ Name = "io";       Api = 9190; Web = 9191; Script = "io.js";             Args = @("--api", "9190", "--web", "9191") },
     @{ Name = "vcinput";  Api = 9220; Web = 9221; Script = "vc-input.js";       Args = @() },
     # Sandbox = extra dev-webui-sandbox.ps1 parameters. The fixture editor writes .qxf files, so its

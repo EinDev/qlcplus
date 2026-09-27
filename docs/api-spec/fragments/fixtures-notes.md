@@ -373,7 +373,7 @@ Server: `controlapi/src/domains/apifixturesdomain.cpp` (mode, RGB panel,
   `modifiersRevision` (optional `baseRevision`, like `profilesRevision`).
   Templates are files in `QLCModifiersCache::userTemplateDirectory()`, which
   now honours `QLCPLUS_USER_MODIFIERS_DIR` (tests, and
-  `dev-webui-sandbox.ps1 -UserModifiersDir`). System templates are read-only.
+  `dev-webui-sandbox.ps1 -UserModifiersDir <sandbox>\UserModifiers` - NOT `<sandbox>\ModifiersTemplates`, which is the sandboxed app's system folder: templates saved there come back as read-only system templates on the next start; the script now refuses it). System templates are read-only.
   `rename`/`delete` are new (the Qt editor only saves); they needed
   `QLCModifiersCache::renameModifier()`/`takeModifier()`. A rename keeps the
   instance (every channel follows) and bumps `docRevision` when a fixture
@@ -386,3 +386,18 @@ Server: `controlapi/src/domains/apifixturesdomain.cpp` (mode, RGB panel,
   `qmlui/colorfilters.cpp` (which controlapi cannot link). Read-only: adding /
   editing / deleting filter files (the Qt tab's edit mode) is not covered.
 - None of the new events is subscribe-gated.
+- **`fixtures.list` / `fixtures.get`** also report `heads` (Fixture::heads()), which the group grid
+  editor needs to offer per-head placement.
+- **Fixed on the way**: `fixtures.group.assignHead` onto an explicit cell for a head not yet in the
+  group changed the group silently - `FixtureGroup::assignHead()` emits `changed()` only on its
+  auto-place path, so there was no `docRevision` bump and no `fixtures.group.updated`. The handler
+  now emits it (test `assignHeadToExplicitCellBumpsRevision`). The grid editor's rotate / flip are
+  computed in the browser (FixtureGroupEditor::transformSelection()'s maths) and applied as a chain of
+  `fixtures.group.swapHeads`, which never loses a head (the Qt code overwrites cells instead).
+- **Web UI** (`webui/ff/FixtureMisc.jsx`): the modifier template calls go out WITHOUT
+  `baseRevision` (the web UI's mutation queue stamps every call with `docRevision`, which the
+  modifiers library does not use). External-controller mapping of the console is not offered: the
+  Qt feature (BottomPanel's "external control", pan/tilt pages, fader pickup, VC input inhibit)
+  lives entirely in qmlui's `SceneEditor` on `InputOutputMap::inputValueChanged`; there is no engine
+  hook or API to route an input line to a browser console. Pan/tilt mode and the fader window shift
+  are offered as on-screen console navigation instead.
