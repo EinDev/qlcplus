@@ -231,7 +231,7 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | --- | --- | --- | --- |
 | Toggle widget edit mode | virtualconsole/VCRightPanel.qml | live | - ; Design mode |
 | Page: add (left / right), rename, delete | virtualconsole/VCPageProperties.qml | live | - ; left / right placement not checked |
-| Page: width / height | virtualconsole/VCPageProperties.qml | missing | spec+S+U; vc.page.* carries no size |
+| Page: width / height | virtualconsole/VCPageProperties.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/vc-show-leftovers.js (vc.page.setSize) |
 | Page: set / change PIN | virtualconsole/VCPageProperties.qml, popup/PopupPINSetup.qml | live | - ; sandbox 2026-09-27 via vc.page.setPin (+ new vc.page.updated event) |
 | Add widget from the palette (Frame, Solo Frame, Button, Slider, Knob, Cue List, Speed, XY Pad, Animation, Label, Audio Triggers, Clock) | virtualconsole/WidgetsList.qml, virtualconsole/WidgetDragItem.qml | live | - ; click-to-place instead of drag |
 | Add a Button matrix / Slider matrix (rows, columns, frame type) | virtualconsole/WidgetsList.qml, virtualconsole/VirtualConsole.qml ("Widget matrix setup") | live | - ; sandbox 2026-09-27 (3x3 button matrix through the dialog; slider / solo-frame variants server-tested) |
@@ -240,8 +240,8 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | Copy / cut / paste / delete widgets | virtualconsole/VCRightPanel.qml | live | - ; cut is copy + delete |
 | Widget caption | virtualconsole/VCWidgetProperties.qml | live | - |
 | Widget foreground / background colour, font, bold | virtualconsole/VCWidgetProperties.qml | partial | U; controls present in vc-edit.jsx, not in the README verified list |
-| Widget background image | virtualconsole/VCWidgetProperties.qml | missing | U; VcWidgetStyle has backgroundImage (server-side path) |
-| Widget z-index | virtualconsole/VCWidgetProperties.qml | missing | U; VcWidgetStyle has zIndex |
+| Widget background image | virtualconsole/VCWidgetProperties.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/vc-show-leftovers.js; image on the QLC+ host picked with the file browser, read back as a data URL (vc.widget.getBackgroundImage); UNC paths refused |
+| Widget z-index | virtualconsole/VCWidgetProperties.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/vc-show-leftovers.js |
 | Align selected widgets left / right / top / bottom | virtualconsole/VCWidgetProperties.qml | partial | U; top / left exercised (sandbox 2026-09-27), right / bottom server-tested only; selection must share one parent (INVALID_PARAMS otherwise, by design) |
 | Distribute selected widgets horizontally / vertically | virtualconsole/VCWidgetProperties.qml | partial | U; horizontal exercised (sandbox 2026-09-27), vertical server-tested only |
 | Bulk style on a multi-selection (caption, colours, font) | virtualconsole/VCWidgetProperties.qml | partial | U; caption exercised via one vc.widget.bulkStyle (sandbox 2026-09-27); colours / font server-tested only |
@@ -329,9 +329,9 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | Ripple: cut time / insert time | showmanager/TimingUtils.qml | partial | U; insert live (sandbox 2026-09-27); cut server-tested only |
 | Time division (Time, BPM 2/4, 3/4, 4/4) | showmanager/ShowManager.qml | live | - ; sandbox 2026-09-27 |
 | Playback: play from cursor, pause, stop / rewind, cursor follows playback | showmanager/ShowManager.qml | live | - ; sandbox 2026-09-27; functions.start startTime + the gated functions.show.<id>.playhead stream |
-| Preview the Show at the cursor while stopped / paused | showmanager/ShowManager.qml | missing | spec+S+U |
+| Preview the Show at the cursor while stopped / paused | showmanager/ShowManager.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/vc-show-leftovers.js (functions.show.preview / endPreview) |
 | Snap to grid, markers, zoom | showmanager/ShowManager.qml | partial | U; implemented client-side, not browser-driven |
-| Track Spout output size (set, unset, mismatch prompt) | showmanager/TrackDelegate.qml, popup/PopupTrackSpoutSize.qml, popup/PopupSpoutSizeMismatch.qml | missing | spec+S+U; the Spout sender is desktop-only, but its size is document state that the operator sets in this dialog (arguably n/a) |
+| Track Spout output size (set, unset, mismatch prompt) | showmanager/TrackDelegate.qml, popup/PopupTrackSpoutSize.qml, popup/PopupSpoutSizeMismatch.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/vc-show-leftovers.js; document state, header label and mismatch prompt verified; resizing a running Spout sender not observed |
 | Legacy Show timing conversion | showmanager/LegacyShowTimingDialog.qml, showmanager/LegacyShowTimingConvertDialog.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/tools-misc.js (upload path live; detection from a file on disk unit-tested; conversion is not on the undo stack) |
 
 ## Fixture Editor
@@ -378,7 +378,7 @@ duplicate a feature row above say so.
 | Disclaimer | popup/PopupDisclaimer.qml | n/a | - ; desktop first-run notice |
 | Folder browser (server-side file picker) | popup/PopupFolderBrowser.qml | live | - ; sandbox 2026-09-27 as window.ServerFileBrowser over core.fs.list, used by the Audio / Video editors; the Open-project dialog still takes a typed path plus recent files |
 | Import from project | popup/PopupImportProject.qml | live | - ; sandbox 2026-09-27 (server path, browse or upload; imported scenes reference the imported fixtures) |
-| Input channel editor | popup/PopupInputChannelEditor.qml | missing | S: io.inputProfile.save |
+| Input channel editor | popup/PopupInputChannelEditor.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/vc-show-leftovers.js (type-dependent sensitivity ranges, extra press, movement, custom feedback, MIDI mapping) |
 | Enter a number (select every Nth) | popup/PopupInputNumber.qml | partial | U; built, not clicked |
 | Invert selection in group(s) | popup/PopupInvertGroupSelection.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/fixtures-views.js |
 | Manual input source selection | popup/PopupManualInputSource.qml | live | - ; sandbox 2026-09-27 (universe / channel); picking a profile channel needs a patched profile, not driven |
@@ -389,8 +389,8 @@ duplicate a feature row above say so.
 | Page / frame PIN request | popup/PopupPINRequest.qml | live | - ; sandbox 2026-09-27 |
 | PIN setup | popup/PopupPINSetup.qml | live | - ; sandbox 2026-09-27 (frame via dialog, page via vc.page.setPin) |
 | Rename items with numbering | popup/PopupRenameItems.qml | partial | U; functions live (sandbox 2026-09-27); the same dialog for fixtures not browser-driven |
-| Spout size mismatch | popup/PopupSpoutSizeMismatch.qml | missing | spec+S+U; duplicate of the track Spout row |
-| Track Spout output size | popup/PopupTrackSpoutSize.qml | missing | spec+S+U; duplicate of the track Spout row |
+| Spout size mismatch | popup/PopupSpoutSizeMismatch.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/vc-show-leftovers.js |
+| Track Spout output size | popup/PopupTrackSpoutSize.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/vc-show-leftovers.js; document state, header label and mismatch prompt verified; resizing a running Spout sender not observed |
 | DMX Address tool | DMXAddressTool.qml, DMXAddressWidget.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/tools-misc.js |
 | Usage list | UsageList.qml | live | - ; sandbox 2026-09-27 |
 | UI Settings editor | UISettingsEditor.qml, UISettings.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/tools-misc.js; colours / scale / reset / save / load (desktop qlcplusUiStyle.json shape); engine settings write built but not exercised |
@@ -425,8 +425,8 @@ the total is larger than the number of distinct actions). Recompute after editin
 
 | Status | Rows |
 | --- | --- |
-| live | 230 |
+| live | 238 |
 | partial | 55 |
-| missing | 8 |
+| missing | 0 |
 | n/a | 21 |
 | total | 314 |
