@@ -66,6 +66,7 @@ private slots:
     void saveOnSystemSessionIsReadOnlyUntilForked();
     void deleteSystemIsReadOnly();
     void deleteInUseIsRejected();
+    void deleteUserCopyRestoresBundledDefinition();
     void importCreatesUserSession();
     void fullRoundTrip();
 

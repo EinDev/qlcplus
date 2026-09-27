@@ -252,3 +252,10 @@ Decisions made while implementing, all of them visible to a client:
   in `session.list` had no way to fetch their definitions (`export` is QXF,
   and a no-op mutation would bump the revision and mark the session
   modified). Test: `sessionGetReturnsSnapshot`.
+- **`fixturedefs.delete` restores a shadowed bundled definition (fixed by the
+  editor slice, 2026-09-27)**: deleting a user copy made by
+  `session.forkToUser` + `save` removed the cache entry, which also took the
+  bundled definition of the same manufacturer/model out of the library until
+  the next restart (found in the browser: Generic / Generic Smoke vanished).
+  The domain now looks the pair up in the system `FixturesMap.xml` and
+  reloads the bundled `.qxf`. Test: `deleteUserCopyRestoresBundledDefinition`.

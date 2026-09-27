@@ -93,6 +93,39 @@ bool isInsideUserDirectory(const QString &absPath)
 #endif
 }
 
+/** Absolute path of the bundled .qxf for manufacturer/model according to the
+ *  system FixturesMap.xml (the same map QLCFixtureDefCache::loadMap() reads:
+ *  <M n="Manu_Name"><F n="file-base" m="Model"/></M>), or an empty string when
+ *  there is no bundled definition of that name. */
+QString bundledDefinitionPath(const QString &manufacturer, const QString &model)
+{
+    QDir dir = QLCFixtureDefCache::systemDefinitionDirectory();
+    QFile map(dir.absoluteFilePath(QStringLiteral("FixturesMap.xml")));
+    if (map.open(QIODevice::ReadOnly) == false)
+        return QString();
+    QXmlStreamReader xml(&map);
+    QString mapManufacturer, spaced;
+    while (xml.atEnd() == false)
+    {
+        if (xml.readNext() != QXmlStreamReader::StartElement)
+            continue;
+        if (xml.name() == QLatin1String("M"))
+        {
+            mapManufacturer = xml.attributes().value(QStringLiteral("n")).toString();
+            spaced = mapManufacturer;
+            spaced.replace(QLatin1Char('_'), QLatin1Char(' '));
+        }
+        else if (xml.name() == QLatin1String("F") && spaced == manufacturer &&
+                 xml.attributes().value(QStringLiteral("m")).toString() == model)
+        {
+            QString path = dir.absoluteFilePath(mapManufacturer + QLatin1Char('/') +
+                                                xml.attributes().value(QStringLiteral("n")).toString() + KExtFixture);
+            return QFile::exists(path) ? path : QString();
+        }
+    }
+    return QString();
+}
+
 // ---------------------------------------------------------------------------
 // Physical
 // ---------------------------------------------------------------------------
@@ -1118,6 +1151,13 @@ void ApiFixtureDefsDomain::registerMethods()
             return;
         }
         cache->removeFixtureDef(def);
+        // A user definition can shadow a bundled one of the same name (that is
+        // what session.forkToUser + save produce). Removing the cache entry
+        // took the bundled definition out of the library with it until the
+        // next restart; put it back, as a restart would.
+        const QString bundled = bundledDefinitionPath(manufacturer, model);
+        if (bundled.isEmpty() == false && cache->loadQXF(bundled, false) == false)
+            qWarning() << "fixturedefs.delete: could not reload the bundled definition" << bundled;
         bumpDefRevision(manufacturer, model);
 
         QJsonObject result;
