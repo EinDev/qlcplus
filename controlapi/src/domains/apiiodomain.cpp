@@ -515,6 +515,12 @@ void ApiIoDomain::registerMethods()
             return;
         }
 
+        // addUniverse() only creates the Universe; its output thread is started separately
+        // (InputOutputManager::addUniverse() and FixtureManager do the same). Without this the
+        // new universe writes nothing until the project is reloaded. QThread::start() on the
+        // universes that already run is a no-op.
+        doc->inputOutputMap()->startUniverses();
+
         QJsonObject result;
         result.insert(QStringLiteral("universeId"), int(newUniverseId));
         result.insert(QStringLiteral("docRevision"), int(doc->docRevision()));

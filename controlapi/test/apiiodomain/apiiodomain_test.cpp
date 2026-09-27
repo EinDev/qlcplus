@@ -160,6 +160,32 @@ void ApiIoDomain_Test::universeCreateBumpsRevision()
     QCOMPARE(m_doc->docRevision(), quint32(newRevision));
 }
 
+void ApiIoDomain_Test::universeCreateStartsTheUniverseThread()
+{
+    helloAndGetClientId();
+
+    QJsonObject params;
+    params.insert(QStringLiteral("baseRevision"), int(m_doc->docRevision()));
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("io.universe.create"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+
+    quint32 newId = quint32(reply.value(QStringLiteral("result")).toObject().value(QStringLiteral("universeId")).toInt());
+    Universe *universe = m_doc->inputOutputMap()->universe(newId);
+    QVERIFY(universe != nullptr);
+    // Without its worker thread the new universe never processes its faders, so nothing written to
+    // it reaches the output until the project is reloaded.
+    QVERIFY(QTest::qWaitFor([universe]() { return universe->isRunning(); }, 2000));
+
+    // ...and it really processes: a Simple Desk value on the new universe reaches its output.
+    QJsonObject channel;
+    channel.insert(QStringLiteral("address"), int(newId) * 512 + 3); // absolute address
+    channel.insert(QStringLiteral("value"), 123);
+    QJsonObject setParams;
+    setParams.insert(QStringLiteral("channels"), QJsonArray({ channel }));
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("io.simpleDesk.setChannels"), setParams).value(QStringLiteral("ok")).toBool(), true);
+    QVERIFY(QTest::qWaitFor([universe]() { return uchar(universe->postGMValues()->at(3)) == 123; }, 3000));
+}
+
 void ApiIoDomain_Test::universeCreateWithStaleRevisionConflicts()
 {
     helloAndGetClientId();
