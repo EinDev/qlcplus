@@ -75,6 +75,7 @@ class App final : public QQuickView, public ApiProjectHost, public ApiVcHost
     Q_PROPERTY(bool is3DSupported READ is3DSupported CONSTANT)
     Q_PROPERTY(qreal screenDiagonal READ screenDiagonal NOTIFY screenDiagonalChanged)
     Q_PROPERTY(bool smallScreen READ smallScreen NOTIFY screenDiagonalChanged)
+    Q_PROPERTY(QString webUiUrl READ webUiUrl NOTIFY webUiUrlChanged)
 
 public:
     App();
@@ -311,6 +312,27 @@ public:
      *  (docs/webui.md); started by main.cpp behind --webui */
     WebServer *webServer() const;
 
+    /** Start the WebSocket control API on $port (0 = OS-assigned). No-op
+     *  returning true when it is already listening. Logs the outcome. */
+    bool startApiServer(quint16 port);
+
+    /** Start the web UI's HTTP server on $port (0 = OS-assigned), serving
+     *  $root (empty = the installed WEBUIDIR). The page is told the port the
+     *  API server actually listens on, so start that first. No-op returning
+     *  true when it is already listening. Logs the outcome. */
+    bool startWebUiServer(quint16 port, const QString &root = QString());
+
+    /** "http://localhost:<port>/" for the port the web UI server actually
+     *  listens on, or an empty string when it is not running */
+    QString webUiUrl() const;
+
+    /** Open the web UI in the system's default browser. When it is not
+     *  running yet (the app was started without --webui), starts the API
+     *  server and the web UI server first, on their default ports or, when
+     *  those are taken, on OS-assigned ones. Returns an empty string on
+     *  success, otherwise a human-readable error */
+    Q_INVOKABLE QString openWebUi();
+
     /** Return if the current Doc instance has been loaded */
     bool docLoaded();
 
@@ -382,6 +404,7 @@ signals:
     void docModifiedChanged();
     void runningFunctionsCountChanged();
     void mediaImportStatusChanged();
+    void webUiUrlChanged();
 
 private:
     Doc *m_doc;

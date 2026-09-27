@@ -761,6 +761,37 @@ Popup
 
         ContextMenuEntry
         {
+            id: webUiEntry
+            faSource: FontAwesome.fa_globe
+            // green once the web UI server is running, like the network
+            // server status in PopupNetworkServer.qml
+            faColor: qlcplus.webUiUrl ? "green" : UISettings.fgLight
+            entryText: qsTr("Open web UI")
+            onEntered: submenuItem = null
+            onClicked:
+            {
+                menuRoot.close()
+                // starts the web UI (and the control API it talks to) first
+                // when the app was not started with --webui
+                var error = qlcplus.openWebUi()
+                if (error)
+                {
+                    webUiErrorPopup.message = error
+                    webUiErrorPopup.open()
+                }
+            }
+
+            CustomPopupDialog
+            {
+                id: webUiErrorPopup
+                width: mainView.width / 3
+                title: qsTr("Web UI")
+                standardButtons: Dialog.Close
+            }
+        }
+
+        ContextMenuEntry
+        {
             id: info
             faSource: FontAwesome.fa_circle_info
             faColor: "skyblue"

@@ -319,43 +319,15 @@ int main(int argc, char *argv[])
         netMgr->startServer();
     }
 
-    if (enableApi && qlcplusApp.apiServer() != nullptr)
-    {
-        ApiServer *apiSrv = qlcplusApp.apiServer();
-        quint16 port = apiPort > 0 ? quint16(apiPort) : quint16(API_SERVER_DEFAULT_PORT);
-        if (apiSrv->listen(port) == false)
-            qCritical().noquote() << "Could not start the WebSocket control API:" << apiSrv->errorString();
-        else
-            qInfo().noquote() << "WebSocket control API listening on port" << port;
-    }
+    // Both started through App so the QML side (App::webUiUrl, the actions
+    // menu's "Open web UI" entry) is notified, and so that entry can start
+    // them the same way at runtime when none of these flags was given
+    if (enableApi)
+        qlcplusApp.startApiServer(apiPort > 0 ? quint16(apiPort) : quint16(API_SERVER_DEFAULT_PORT));
 
-    if (enableWebUi && qlcplusApp.webServer() != nullptr)
-    {
-        WebServer *webSrv = qlcplusApp.webServer();
-
-        // Default root: the installed WebUI directory, resolved the same way
-        // every other data directory is (Meshes, Gobos, ...) - next to the
-        // executable on Windows/macOS, the share/ data dir on Linux.
-        QString root = webUiRoot.isEmpty() ? QLCFile::systemDirectory(WEBUIDIR).path() : webUiRoot;
-        webSrv->setRootDirectory(root);
-
-        // Tell the UI the port the API *actually* listens on (after listen(),
-        // so an OS-assigned/fallback port is what it reads), not the flag value
-        ApiServer *apiSrv = qlcplusApp.apiServer();
-        if (apiSrv != nullptr && apiSrv->serverPort() != 0)
-            webSrv->setApiPort(apiSrv->serverPort());
-        else
-            qCritical().noquote() << "Web UI: the WebSocket control API is not listening - "
-                                     "the UI will load but cannot connect to QLC+";
-
-        // Same bind address as the API server (all interfaces)
-        quint16 port = webUiPort > 0 ? quint16(webUiPort) : quint16(WEB_SERVER_DEFAULT_PORT);
-        if (webSrv->listen(port) == false)
-            qCritical().noquote() << "Could not start the web UI HTTP server on port" << port
-                                  << "(already in use? try --webui-port):" << webSrv->errorString();
-        else
-            qInfo().noquote() << "Web UI available at http://localhost:" + QString::number(webSrv->serverPort()) + "/";
-    }
+    if (enableWebUi)
+        qlcplusApp.startWebUiServer(webUiPort > 0 ? quint16(webUiPort) : quint16(WEB_SERVER_DEFAULT_PORT),
+                                    webUiRoot);
 
     // fullscreen mode
     if (parser.isSet(fullscreenOption))
