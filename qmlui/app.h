@@ -60,8 +60,7 @@ class QMouseEvent;
 
 #define KXMLQLCWorkspace QStringLiteral("Workspace")
 
-class App final : public QQuickView, public ApiProjectHost, public ApiVcHost, public ApiWizardHost
-class App final : public QQuickView, public ApiProjectHost, public ApiVcHost, public ApiShowHost
+class App final : public QQuickView, public ApiProjectHost, public ApiVcHost, public ApiWizardHost, public ApiShowHost
 {
     Q_OBJECT
     Q_DISABLE_COPY(App)

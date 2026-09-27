@@ -170,6 +170,40 @@ channels:
         $ref: '#/components/messages/CoreProjectSetStartupFunctionOkResponse'
       coreProjectStartupFunctionChangedEvent:
         $ref: '#/components/messages/CoreProjectStartupFunctionChangedEvent'
+      coreWizardGetOptionsRequest:
+        $ref: '#/components/messages/CoreWizardGetOptionsRequest'
+      coreWizardGetOptionsResponse:
+        $ref: '#/components/messages/CoreWizardGetOptionsResponse'
+      coreWizardGetOptionsOkResponse:
+        $ref: '#/components/messages/CoreWizardGetOptionsOkResponse'
+      coreWizardPreviewRequest:
+        $ref: '#/components/messages/CoreWizardPreviewRequest'
+      coreWizardPreviewResponse:
+        $ref: '#/components/messages/CoreWizardPreviewResponse'
+      coreWizardPreviewOkResponse:
+        $ref: '#/components/messages/CoreWizardPreviewOkResponse'
+      coreWizardGenerateRequest:
+        $ref: '#/components/messages/CoreWizardGenerateRequest'
+      coreWizardGenerateResponse:
+        $ref: '#/components/messages/CoreWizardGenerateResponse'
+      coreWizardGenerateOkResponse:
+        $ref: '#/components/messages/CoreWizardGenerateOkResponse'
+      coreWizardGeneratedEvent:
+        $ref: '#/components/messages/CoreWizardGeneratedEvent'
+      coreProjectImportListRequest:
+        $ref: '#/components/messages/CoreProjectImportListRequest'
+      coreProjectImportListResponse:
+        $ref: '#/components/messages/CoreProjectImportListResponse'
+      coreProjectImportListOkResponse:
+        $ref: '#/components/messages/CoreProjectImportListOkResponse'
+      coreProjectImportRequest:
+        $ref: '#/components/messages/CoreProjectImportRequest'
+      coreProjectImportResponse:
+        $ref: '#/components/messages/CoreProjectImportResponse'
+      coreProjectImportOkResponse:
+        $ref: '#/components/messages/CoreProjectImportOkResponse'
+      coreProjectImportedEvent:
+        $ref: '#/components/messages/CoreProjectImportedEvent'
       fixturesDefsListManufacturersRequest:
         $ref: '#/components/messages/FixturesDefsListManufacturersRequest'
       fixturesDefsListManufacturersResponse:
@@ -1130,6 +1164,24 @@ channels:
         $ref: '#/components/messages/FunctionsRgbmatrixSaveToSequenceResponse'
       functionsRgbmatrixSaveToSequenceOkResponse:
         $ref: '#/components/messages/FunctionsRgbmatrixSaveToSequenceOkResponse'
+      functionsShowLegacyTimingGetRequest:
+        $ref: '#/components/messages/FunctionsShowLegacyTimingGetRequest'
+      functionsShowLegacyTimingGetResponse:
+        $ref: '#/components/messages/FunctionsShowLegacyTimingGetResponse'
+      functionsShowLegacyTimingGetOkResponse:
+        $ref: '#/components/messages/FunctionsShowLegacyTimingGetOkResponse'
+      functionsShowLegacyTimingConvertRequest:
+        $ref: '#/components/messages/FunctionsShowLegacyTimingConvertRequest'
+      functionsShowLegacyTimingConvertResponse:
+        $ref: '#/components/messages/FunctionsShowLegacyTimingConvertResponse'
+      functionsShowLegacyTimingConvertOkResponse:
+        $ref: '#/components/messages/FunctionsShowLegacyTimingConvertOkResponse'
+      functionsShowLegacyTimingDismissRequest:
+        $ref: '#/components/messages/FunctionsShowLegacyTimingDismissRequest'
+      functionsShowLegacyTimingDismissResponse:
+        $ref: '#/components/messages/FunctionsShowLegacyTimingDismissResponse'
+      functionsShowLegacyTimingDismissOkResponse:
+        $ref: '#/components/messages/FunctionsShowLegacyTimingDismissOkResponse'
       functionsShowPreviewRequest:
         $ref: '#/components/messages/FunctionsShowPreviewRequest'
       functionsShowPreviewResponse:
@@ -1374,6 +1426,12 @@ channels:
         $ref: '#/components/messages/IoAudioSetDeviceResponse'
       ioAudioDeviceChangedEvent:
         $ref: '#/components/messages/IoAudioDeviceChangedEvent'
+      ioDmxChannelInspectRequest:
+        $ref: '#/components/messages/IoDmxChannelInspectRequest'
+      ioDmxChannelInspectResponse:
+        $ref: '#/components/messages/IoDmxChannelInspectResponse'
+      ioDmxChannelInspectOkResponse:
+        $ref: '#/components/messages/IoDmxChannelInspectOkResponse'
       vcDocRevisionOkResponse:
         $ref: '#/components/messages/VcDocRevisionOkResponse'
       vcPageListRequest:
@@ -2113,6 +2171,78 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/coreProjectStartupFunctionChangedEvent'
+  sendCoreWizardGetOptions:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/coreWizardGetOptionsRequest'
+  receiveCoreWizardGetOptionsResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/coreWizardGetOptionsResponse'
+  sendCoreWizardPreview:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/coreWizardPreviewRequest'
+  receiveCoreWizardPreviewResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/coreWizardPreviewResponse'
+  sendCoreWizardGenerate:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/coreWizardGenerateRequest'
+  receiveCoreWizardGenerateResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/coreWizardGenerateResponse'
+  sendCoreProjectImportList:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/coreProjectImportListRequest'
+  receiveCoreProjectImportListResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/coreProjectImportListResponse'
+  sendCoreProjectImport:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/coreProjectImportRequest'
+  receiveCoreProjectImportResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/coreProjectImportResponse'
+  receiveCoreWizardGenerated:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/coreWizardGeneratedEvent'
+  receiveCoreProjectImported:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/coreProjectImportedEvent'
   sendFixturesDefsListManufacturers:
     action: send
     channel:
@@ -4424,30 +4554,39 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/functionsRgbmatrixSaveToSequenceResponse'
+  sendFunctionsShowLegacyTimingGet: null
   sendFunctionsShowPreview:
     action: send
     channel:
       $ref: '#/channels/qlcplus'
     messages:
-    - $ref: '#/channels/qlcplus/messages/functionsShowPreviewRequest'
+    - $ref: '#/channels/qlcplus/messages/functionsShowLegacyTimingGetRequest'
+  receiveFunctionsShowLegacyTimingGetResponse:
+  - $ref: '#/channels/qlcplus/messages/functionsShowPreviewRequest'
   receiveFunctionsShowPreviewResponse:
     action: receive
     channel:
       $ref: '#/channels/qlcplus'
     messages:
-    - $ref: '#/channels/qlcplus/messages/functionsShowPreviewResponse'
+    - $ref: '#/channels/qlcplus/messages/functionsShowLegacyTimingGetResponse'
+  sendFunctionsShowLegacyTimingConvert:
+  - $ref: '#/channels/qlcplus/messages/functionsShowPreviewResponse'
   sendFunctionsShowEndPreview:
     action: send
     channel:
       $ref: '#/channels/qlcplus'
     messages:
-    - $ref: '#/channels/qlcplus/messages/functionsShowEndPreviewRequest'
+    - $ref: '#/channels/qlcplus/messages/functionsShowLegacyTimingConvertRequest'
+  receiveFunctionsShowLegacyTimingConvertResponse:
+  - $ref: '#/channels/qlcplus/messages/functionsShowEndPreviewRequest'
   receiveFunctionsShowEndPreviewResponse:
     action: receive
     channel:
       $ref: '#/channels/qlcplus'
     messages:
-    - $ref: '#/channels/qlcplus/messages/functionsShowEndPreviewResponse'
+    - $ref: '#/channels/qlcplus/messages/functionsShowLegacyTimingConvertResponse'
+  sendFunctionsShowLegacyTimingDismiss:
+  - $ref: '#/channels/qlcplus/messages/functionsShowEndPreviewResponse'
   receiveFunctionsShowPreviewChanged:
     action: receive
     channel:
@@ -4459,12 +4598,15 @@ operations:
     channel:
       $ref: '#/channels/qlcplus'
     messages:
-    - $ref: '#/channels/qlcplus/messages/functionsShowTrackSetSpoutSizeRequest'
+    - $ref: '#/channels/qlcplus/messages/functionsShowLegacyTimingDismissRequest'
+  receiveFunctionsShowLegacyTimingDismissResponse:
+  - $ref: '#/channels/qlcplus/messages/functionsShowTrackSetSpoutSizeRequest'
   receiveFunctionsShowTrackSetSpoutSizeResponse:
     action: receive
     channel:
       $ref: '#/channels/qlcplus'
     messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowLegacyTimingDismissResponse'
     - $ref: '#/channels/qlcplus/messages/functionsShowTrackSetSpoutSizeResponse'
   receiveFunctionsShowTrackSpoutSizeChanged:
     action: receive
@@ -5026,6 +5168,18 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/ioAudioDeviceChangedEvent'
+  sendIoDmxChannelInspect:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/ioDmxChannelInspectRequest'
+  receiveIoDmxChannelInspectResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/ioDmxChannelInspectResponse'
   sendVcPageList:
     action: send
     channel:
@@ -7793,6 +7947,300 @@ components:
                 - 'null'
               docRevision:
                 type: integer
+    CoreWizardGetOptionsRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: core.wizard.getOptions
+          params:
+            type: object
+            description: 'No fields. Read-only: the catalogues the six Show Wizard steps offer (qmlui/qml/stagewizard/WizardStep1..6)
+              plus the project-dependent parts (existing fixture groups with detected capabilities, patched
+              input controllers).'
+    CoreWizardGetOptionsResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/CoreWizardGetOptionsOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    CoreWizardGetOptionsOkResponse:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - ok
+        - result
+        properties:
+          type:
+            const: response
+          id:
+            type: string
+          ok:
+            const: true
+          result:
+            $ref: '#/components/schemas/CoreWizardOptions'
+    CoreWizardPreviewRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: core.wizard.preview
+          params:
+            type: object
+            required:
+            - choices
+            description: 'Read-only dry run: resolves a choice set the way the wizard would (auto-detected
+              roles, show-type effect defaults, suggested stage size, availability per effect) and returns
+              what Step 6 "Summary" shows. Nothing in the document changes.'
+            properties:
+              choices:
+                $ref: '#/components/schemas/CoreWizardChoices'
+    CoreWizardPreviewResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/CoreWizardPreviewOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    CoreWizardPreviewOkResponse:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - ok
+        - result
+        properties:
+          type:
+            const: response
+          id:
+            type: string
+          ok:
+            const: true
+          result:
+            $ref: '#/components/schemas/CoreWizardPreview'
+    CoreWizardGenerateRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: core.wizard.generate
+          params:
+            type: object
+            required:
+            - baseRevision
+            - choices
+            description: 'Runs StageWizard::generate() for the choice set: creates the new fixture groups
+              (+ an "All Groups" aggregate), places fixtures in the 3D stage when a new group is selected,
+              generates palettes, scenes, chasers, EFX, RGB matrices and a Virtual Console multipage frame,
+              and maps a patched controller when chosen. Structural (4a). Every created resource is announced
+              with its own domain''s usual event (fixtures.group.created, functions.created, vc.page.created,
+              vc.widget.created, palette.created), then core.wizard.generated. NOT undoable: API edits
+              bypass qmlui''s Tardis (see ApiProjectHost).'
+            properties:
+              baseRevision:
+                type: integer
+              choices:
+                $ref: '#/components/schemas/CoreWizardChoices'
+    CoreWizardGenerateResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/CoreWizardGenerateOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    CoreWizardGenerateOkResponse:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - ok
+        - result
+        properties:
+          type:
+            const: response
+          id:
+            type: string
+          ok:
+            const: true
+          result:
+            $ref: '#/components/schemas/CoreWizardGenerated'
+    CoreWizardGeneratedEvent:
+      payload:
+        type: object
+        required:
+        - type
+        - topic
+        - data
+        properties:
+          type:
+            const: event
+          topic:
+            const: core.wizard.generated
+          originClientId:
+            type:
+            - string
+            - 'null'
+          data:
+            $ref: '#/components/schemas/CoreWizardGenerated'
+    CoreProjectImportListRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: core.project.importList
+          params:
+            allOf:
+            - $ref: '#/components/schemas/CoreProjectImportSource'
+            description: 'Read-only: parses another project (.qxw) and lists what the "Import from project"
+              popup (PopupImportProject.qml) offers - its fixtures (by universe, with linked fixtures),
+              fixture groups, palettes and functions (by folder path), each function with its direct dependencies
+              so a client can pre-check them the way the popup does. Nothing is kept server side: core.project.import
+              takes the same source again.'
+    CoreProjectImportListResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/CoreProjectImportListOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    CoreProjectImportListOkResponse:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - ok
+        - result
+        properties:
+          type:
+            const: response
+          id:
+            type: string
+          ok:
+            const: true
+          result:
+            $ref: '#/components/schemas/CoreProjectImportContents'
+    CoreProjectImportRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: core.project.import
+          params:
+            allOf:
+            - $ref: '#/components/schemas/CoreProjectImportSource'
+            - type: object
+              required:
+              - baseRevision
+              properties:
+                baseRevision:
+                  type: integer
+                fixtureIds:
+                  type: array
+                  items:
+                    type: string
+                  description: Fixture ids in the SOURCE project. A fixture brings its linked-fixture
+                    names along.
+                fixtureGroupIds:
+                  type: array
+                  items:
+                    type: string
+                  description: Fixture group ids in the source project; a group brings its fixtures.
+                functionIds:
+                  type: array
+                  items:
+                    type: string
+                  description: Function ids in the source project; each brings its dependencies (fixtures,
+                    groups, palettes, functions) - the closure is always computed server side.
+            description: 'Structural (4a). ImportManager::apply(): fixtures whose name already exists
+              in this project are matched (not duplicated) and their id remapped; new ones are patched
+              at the first free address from their original universe/address on; groups and palettes are
+              matched by name the same way; every function is copied with a NEW id, in dependency order,
+              and its references (scene values, groups, palettes, chaser steps, collection members, sequence
+              bound scene, EFX heads, RGB matrix group) are rewritten to the new ids; Audio/Video sources
+              are copied into this project''s media store. Announced with fixtures.patched, fixtures.group.created,
+              functions.created (and palette.created), then core.project.imported.'
+    CoreProjectImportResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/CoreProjectImportOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    CoreProjectImportOkResponse:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - ok
+        - result
+        properties:
+          type:
+            const: response
+          id:
+            type: string
+          ok:
+            const: true
+          result:
+            $ref: '#/components/schemas/CoreProjectImported'
+    CoreProjectImportedEvent:
+      payload:
+        type: object
+        required:
+        - type
+        - topic
+        - data
+        properties:
+          type:
+            const: event
+          topic:
+            const: core.project.imported
+          originClientId:
+            type:
+            - string
+            - 'null'
+          data:
+            $ref: '#/components/schemas/CoreProjectImported'
     FixturesDefsListManufacturersRequest:
       payload:
         type: object
@@ -19486,6 +19934,238 @@ components:
                 type: integer
               docRevision:
                 type: integer
+    FunctionsShowLegacyTimingGetRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: functions.show.legacyTiming.get
+          params:
+            type: object
+            description: 'ADR 0001 decision 4 (docs/adr/0001-show-timeline-canonical-time-storage.md):
+              the Shows of the current project that may still hold legacy beat-pseudo-count timeline values
+              (Doc::possiblyAffectedLegacyBeatShows()), i.e. beat-based Shows with items in a project
+              whose Creator/Version is older than 5.3.1 (or missing). The version is re-read from the
+              project file on the engine machine, or taken from the core.project.open upload; a project
+              that was never loaded from a file (source "none") has nothing to check. Shows converted
+              or dismissed since the project was loaded are left out. With showId (and optionally bpm,
+              default the Show''s own time-division BPM) the result also carries the conversion preview
+              the desktop LegacyShowTimingConvertDialog shows: the first and last 3 items by start time.'
+            properties:
+              showId:
+                type:
+                - string
+                - integer
+              bpm:
+                type: integer
+                minimum: 1
+                maximum: 1000
+    FunctionsShowLegacyTimingGetResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/FunctionsShowLegacyTimingGetOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    FunctionsShowLegacyTimingGetOkResponse:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - ok
+        - result
+        properties:
+          type:
+            const: response
+          id:
+            type: string
+          ok:
+            const: true
+          result:
+            type: object
+            required:
+            - creatorVersion
+            - source
+            - shows
+            properties:
+              creatorVersion:
+                type:
+                - string
+                - 'null'
+              source:
+                type: string
+                enum:
+                - file
+                - upload
+                - none
+              shows:
+                type: array
+                items:
+                  type: object
+                  required:
+                  - id
+                  - name
+                  - bpm
+                  - beatsDivision
+                  - itemCount
+                  properties:
+                    id:
+                      type: string
+                    name:
+                      type: string
+                    bpm:
+                      type: integer
+                      description: The Show's time-division BPM (the conversion default).
+                    beatsDivision:
+                      type: integer
+                    itemCount:
+                      type: integer
+              previewBpm:
+                type: integer
+              preview:
+                type: array
+                items:
+                  type: object
+                  required:
+                  - name
+                  - oldStart
+                  - newStart
+                  - oldDuration
+                  - newDuration
+                  properties:
+                    name:
+                      type: string
+                    oldStart:
+                      type: integer
+                    newStart:
+                      type: integer
+                    oldDuration:
+                      type: integer
+                    newDuration:
+                      type: integer
+    FunctionsShowLegacyTimingConvertRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: functions.show.legacyTiming.convert
+          params:
+            type: object
+            required:
+            - showId
+            - bpm
+            - baseRevision
+            description: 'Rescales every item of the Show from legacy beat-pseudo-count units to ms: value
+              * (60000 / bpm) / 1000, rounded (ShowManager::convertLegacyBeatShow()). §4a document edit;
+              broadcasts functions.updated {functionId, docRevision}. Not on the desktop undo stack (no
+              API edit is). The Show is no longer listed by legacyTiming.get afterwards.'
+            properties:
+              showId:
+                type:
+                - string
+                - integer
+              bpm:
+                type: integer
+                minimum: 1
+                maximum: 1000
+              baseRevision:
+                type: integer
+    FunctionsShowLegacyTimingConvertResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/FunctionsShowLegacyTimingConvertOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    FunctionsShowLegacyTimingConvertOkResponse:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - ok
+        - result
+        properties:
+          type:
+            const: response
+          id:
+            type: string
+          ok:
+            const: true
+          result:
+            type: object
+            required:
+            - docRevision
+            - itemsChanged
+            properties:
+              docRevision:
+                type: integer
+              itemsChanged:
+                type: integer
+    FunctionsShowLegacyTimingDismissRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: functions.show.legacyTiming.dismiss
+          params:
+            type: object
+            required:
+            - showId
+            description: '"This Show is already correct": stop listing it until the next project load.
+              Runtime state only (§4b); re-saving the project with this build clears the flag for good
+              because the file then carries the current Creator/Version.'
+            properties:
+              showId:
+                type:
+                - string
+                - integer
+    FunctionsShowLegacyTimingDismissResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/FunctionsShowLegacyTimingDismissOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    FunctionsShowLegacyTimingDismissOkResponse:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - ok
+        - result
+        properties:
+          type:
+            const: response
+          id:
+            type: string
+          ok:
+            const: true
+          result:
+            type: object
     FunctionsShowPreviewRequest:
       payload:
         type: object
@@ -21678,6 +22358,15 @@ components:
                   type: string
                 description: QLCChannel::Group names (e.g. Intensity, Pan, Colour) to include. Empty or
                   omitted means every channel, matching SimpleDesk's "all channels" dump mode.
+              fixtureIds:
+                type: array
+                items:
+                  type:
+                  - string
+                  - integer
+                description: Fixture ids to dump (PopupDMXDump.qml's "Dump the selected fixture channels").
+                  Empty or omitted means every patched fixture. An unknown id answers NOT_FOUND and creates
+                  nothing. Combines with channelGroups and nonZeroOnly.
               nonZeroOnly:
                 type: boolean
     IoSimpleDeskDumpResponse:
@@ -21964,6 +22653,60 @@ components:
                 - output
               privateName:
                 type: string
+    IoDmxChannelInspectRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: io.dmx.channel.inspect
+          params:
+            type: object
+            required:
+            - universeId
+            - channel
+            description: 'SimpleDesk.qml''s channel value debug (SimpleDesk::debugChannelInfo()) as data:
+              which sources currently drive one DMX channel. Read-only live state (§4b). Out-of-range
+              universeId / channel answer INVALID_PARAMS.'
+            properties:
+              universeId:
+                type: integer
+                minimum: 0
+              channel:
+                type: integer
+                minimum: 0
+                maximum: 511
+                description: 0-based channel within the universe.
+    IoDmxChannelInspectResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/IoDmxChannelInspectOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    IoDmxChannelInspectOkResponse:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - ok
+        - result
+        properties:
+          type:
+            const: response
+          id:
+            type: string
+          ok:
+            const: true
+          result:
+            $ref: '#/components/schemas/IoDmxChannelInspection'
     VcDocRevisionOkResponse:
       payload:
         type: object
@@ -26757,6 +27500,569 @@ components:
         mtime:
           type: integer
           description: Last modification time, epoch milliseconds (UTC); 0 when unknown.
+    CoreWizardShowType:
+      type: string
+      enum:
+      - ClubNight
+      - Concert
+      - Theatrical
+      - Architectural
+      - Custom
+      description: StageWizard::ShowType. Drives the default stage type and the default effect set.
+    CoreWizardRole:
+      type: string
+      enum:
+      - Key
+      - Fill
+      - Back
+      - Side
+      - Effect
+      - Strip
+      - Blinder
+      - Hazer
+      - Floor
+      description: StageWizard::FixtureRole. Decides 3D placement and which VC widgets a group gets.
+    CoreWizardStageType:
+      type: string
+      enum:
+      - Simple
+      - Box
+      - Rock
+      - Theatre
+      description: MonitorProperties::StageType (Open Space, Box / Club, Rock Stage, Theatre).
+    CoreWizardEffect:
+      type: string
+      enum:
+      - ColorPalette
+      - ColorRainbow
+      - SplitColor
+      - GoboPalette
+      - Shutter
+      - BlinderHit
+      - StrobeChase
+      - Heartbeat
+      - PositionPreset
+      - FlyOut
+      - FlyIn
+      - CircleChase
+      - FigureEight
+      - AudienceSweep
+      - PixelChase
+      - Wave
+      - Fireworks
+      - Plasma
+      - Marquee
+      - AmbientLoop
+      description: StageWizard::EffectFlag without the "Effect" prefix.
+    CoreWizardEnvSize:
+      type: object
+      required:
+      - width
+      - height
+      - depth
+      description: Stage size in whole metres. Clamped server side to width/depth 2..100, height 2..30.
+      properties:
+        width:
+          type: number
+        height:
+          type: number
+        depth:
+          type: number
+    CoreWizardCapabilities:
+      type: object
+      description: StageWizard::detectGroupCapabilities() over the group's fixtures.
+      properties:
+        hasMovement:
+          type: boolean
+          description: Pan and Tilt
+        hasRGB:
+          type: boolean
+          description: RGB or CMY colour mixing
+        hasColorWheel:
+          type: boolean
+        hasGobo:
+          type: boolean
+        hasShutter:
+          type: boolean
+        hasDimmer:
+          type: boolean
+    CoreWizardController:
+      type: object
+      description: A universe with an input patch (StageWizard::controllersModel()).
+      properties:
+        universe:
+          type: integer
+          description: 0-based universe index
+        universeName:
+          type: string
+        plugin:
+          type: string
+        line:
+          type: integer
+        lineName:
+          type: string
+        profile:
+          type: string
+        hasProfile:
+          type: boolean
+        buttons:
+          type: integer
+        faders:
+          type: integer
+        hasColorTable:
+          type: boolean
+        feedback:
+          type: boolean
+    CoreWizardOptions:
+      type: object
+      required:
+      - showTypes
+      - roles
+      - stageTypes
+      - effects
+      - groups
+      - controllers
+      - envSize
+      properties:
+        showTypes:
+          type: array
+          description: Step 1 cards (WizardStep1ShowType.qml).
+          items:
+            type: object
+            properties:
+              id:
+                $ref: '#/components/schemas/CoreWizardShowType'
+              name:
+                type: string
+              description:
+                type: string
+              stage:
+                type: string
+                description: Venue the type suggests
+              stageType:
+                $ref: '#/components/schemas/CoreWizardStageType'
+              tags:
+                type: array
+                items:
+                  type: string
+        roles:
+          type: array
+          description: Step 2 role picker + Step 3 placement blurbs.
+          items:
+            type: object
+            properties:
+              id:
+                $ref: '#/components/schemas/CoreWizardRole'
+              name:
+                type: string
+              placement:
+                type: string
+        stageTypes:
+          type: array
+          description: Step 3 venue cards (WizardStep3Venue.qml).
+          items:
+            type: object
+            properties:
+              id:
+                $ref: '#/components/schemas/CoreWizardStageType'
+              name:
+                type: string
+              description:
+                type: string
+              bestFor:
+                type: array
+                items:
+                  type: string
+        effects:
+          type: array
+          description: Step 4 catalogue in display order (availability depends on the groups, see core.wizard.preview).
+          items:
+            type: object
+            properties:
+              id:
+                $ref: '#/components/schemas/CoreWizardEffect'
+              name:
+                type: string
+              family:
+                type: string
+                enum:
+                - Color
+                - Intensity
+                - Movement
+                - Matrix
+                - Show Cues
+        groups:
+          type: array
+          description: Existing fixture groups of the project (Step 2 loads them as unticked boxes).
+          items:
+            allOf:
+            - $ref: '#/components/schemas/CoreWizardCapabilities'
+            - type: object
+              properties:
+                groupId:
+                  type: string
+                name:
+                  type: string
+                fixtureIds:
+                  type: array
+                  items:
+                    type: string
+                suggestedRole:
+                  $ref: '#/components/schemas/CoreWizardRole'
+        controllers:
+          type: array
+          items:
+            $ref: '#/components/schemas/CoreWizardController'
+        envSize:
+          $ref: '#/components/schemas/CoreWizardEnvSize'
+    CoreWizardChoices:
+      type: object
+      required:
+      - showType
+      - groups
+      description: Everything the operator picks across the six steps. Omitted optional fields take the
+        wizard's own defaults, exactly as when the operator clicks Next without touching a step.
+      properties:
+        showType:
+          $ref: '#/components/schemas/CoreWizardShowType'
+        groups:
+          type: array
+          minItems: 1
+          description: The ticked group boxes. An entry with groupId selects an EXISTING group (its membership
+            and grid are left untouched on generate); an entry without groupId is a NEW group the wizard
+            creates (and places on stage). At least one group must end up with fixtures.
+          items:
+            type: object
+            properties:
+              groupId:
+                type: string
+                description: Existing fixture group id; omit for a new group
+              name:
+                type: string
+                description: Required for a new group
+              fixtureIds:
+                type: array
+                items:
+                  type: string
+                description: Required for a new group. A fixture belongs to one box only (last one wins).
+              role:
+                $ref: '#/components/schemas/CoreWizardRole'
+        stageType:
+          $ref: '#/components/schemas/CoreWizardStageType'
+        envSize:
+          $ref: '#/components/schemas/CoreWizardEnvSize'
+        effects:
+          type: array
+          items:
+            $ref: '#/components/schemas/CoreWizardEffect'
+          description: Enabled effects. Omitted = the show type's defaults. Unavailable effects are ignored.
+        controller:
+          type: object
+          properties:
+            universe:
+              type:
+              - integer
+              - 'null'
+              description: Patched input universe (0-based); null/-1 = no controller
+            map:
+              type: boolean
+              default: true
+            feedback:
+              type: boolean
+              default: true
+            colors:
+              type: boolean
+              default: true
+    CoreWizardPreview:
+      type: object
+      required:
+      - showType
+      - groups
+      - placesFixtures
+      - stageType
+      - envSize
+      - effects
+      - controller
+      - summary
+      properties:
+        showType:
+          $ref: '#/components/schemas/CoreWizardShowType'
+        groups:
+          type: array
+          description: The resolved ticked groups (Step 2 column 3 / StageWizard::fixtureRoleModel()).
+          items:
+            allOf:
+            - $ref: '#/components/schemas/CoreWizardCapabilities'
+            - type: object
+              properties:
+                groupId:
+                  type:
+                  - string
+                  - 'null'
+                name:
+                  type: string
+                fixtureIds:
+                  type: array
+                  items:
+                    type: string
+                role:
+                  $ref: '#/components/schemas/CoreWizardRole'
+        placesFixtures:
+          type: boolean
+          description: 'StageWizard::hasNewGroups(): false = the Venue step is skipped and generation
+            leaves stage and positions alone.'
+        stageType:
+          $ref: '#/components/schemas/CoreWizardStageType'
+        envSize:
+          $ref: '#/components/schemas/CoreWizardEnvSize'
+        effects:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                $ref: '#/components/schemas/CoreWizardEffect'
+              name:
+                type: string
+              family:
+                type: string
+              enabled:
+                type: boolean
+              available:
+                type: boolean
+              preview:
+                type: string
+                description: StageWizard::effectPreview(), e.g. "3 chaser(s)"
+        controller:
+          type: object
+          properties:
+            universe:
+              type: integer
+              description: -1 = none
+            map:
+              type: boolean
+            feedback:
+              type: boolean
+            colors:
+              type: boolean
+            mappingPreview:
+              type: string
+        summary:
+          type: array
+          description: StageWizard::summaryModel().
+          items:
+            type: object
+            properties:
+              section:
+                type: string
+              detail:
+                type: string
+    CoreWizardGenerated:
+      type: object
+      required:
+      - docRevision
+      properties:
+        docRevision:
+          type: integer
+        fixtureGroupIds:
+          type: array
+          items:
+            type: string
+        functionIds:
+          type: array
+          items:
+            type: string
+        paletteIds:
+          type: array
+          items:
+            type: string
+        vcPageIndexes:
+          type: array
+          items:
+            type: integer
+          description: Pages created
+        vcWidgetIds:
+          type: array
+          items:
+            type: string
+          description: Every widget created (nested ones included)
+    CoreProjectImportSource:
+      type: object
+      required:
+      - source
+      description: Same transfer modes as core.project.open.
+      properties:
+        source:
+          type: string
+          enum:
+          - path
+          - upload
+        path:
+          type: string
+          description: Server-local .qxw path. Required when source=path.
+        fileName:
+          type: string
+          description: Original file name, informational. source=upload.
+        contentBase64:
+          type: string
+          description: Base64 UTF-8 XML of the .qxw. Required when source=upload.
+    CoreProjectImportContents:
+      type: object
+      required:
+      - universes
+      - fixtures
+      - fixtureGroups
+      - palettes
+      - functions
+      properties:
+        universes:
+          type: array
+          items:
+            type: object
+            properties:
+              universe:
+                type: integer
+                description: 0-based
+              name:
+                type: string
+        fixtures:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              name:
+                type: string
+              universe:
+                type: integer
+                description: 0-based
+              address:
+                type: integer
+                description: 0-based
+              channels:
+                type: integer
+              manufacturer:
+                type: string
+              model:
+                type: string
+              mode:
+                type: string
+              existsInProject:
+                type: boolean
+                description: 'A fixture with the same name exists here: it will be matched, not created.'
+              linked:
+                type: array
+                description: Linked fixtures (monitor-only duplicates) named in the 3D view.
+                items:
+                  type: object
+                  properties:
+                    headIndex:
+                      type: integer
+                    linkedIndex:
+                      type: integer
+                    name:
+                      type: string
+        fixtureGroups:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              name:
+                type: string
+              fixtureIds:
+                type: array
+                items:
+                  type: string
+        palettes:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              name:
+                type: string
+              type:
+                type: string
+        functions:
+          type: array
+          description: Visible functions only (hidden helpers such as a Sequence's bound scene come along
+            as dependencies).
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              name:
+                type: string
+              type:
+                type: string
+              path:
+                type: string
+                description: Folder path, '/'-separated, empty at the root
+              dependencies:
+                type: object
+                description: Everything checking this function would pull in (full closure).
+                properties:
+                  fixtureIds:
+                    type: array
+                    items:
+                      type: string
+                  fixtureGroupIds:
+                    type: array
+                    items:
+                      type: string
+                  paletteIds:
+                    type: array
+                    items:
+                      type: string
+                  functionIds:
+                    type: array
+                    items:
+                      type: string
+    CoreProjectImported:
+      type: object
+      required:
+      - docRevision
+      - fixtureIdMap
+      - fixtureGroupIdMap
+      - paletteIdMap
+      - functionIdMap
+      description: Source id -> id in this project, per resource kind.
+      properties:
+        docRevision:
+          type: integer
+        fixtureIdMap:
+          type: object
+          additionalProperties:
+            type: string
+        fixtureGroupIdMap:
+          type: object
+          additionalProperties:
+            type: string
+        paletteIdMap:
+          type: object
+          additionalProperties:
+            type: string
+        functionIdMap:
+          type: object
+          additionalProperties:
+            type: string
+        createdFixtureIds:
+          type: array
+          items:
+            type: string
+          description: Source ids of the fixtures newly patched (not name-matched); fixtureIdMap gives
+            their new ids
+        skippedFixtureIds:
+          type: array
+          items:
+            type: string
+          description: Source fixtures that could not be created (definition missing here, or no free
+            address)
     FixturesPhysical:
       type: object
       description: QLCPhysical, flattened (bulb/lens/dimensions/focus/technical groups).
@@ -29564,6 +30870,205 @@ components:
         overridden:
           type: boolean
           description: true if Simple Desk currently holds this channel (SimpleDesk::hasChannel).
+    IoDmxChannelInspection:
+      type: object
+      required:
+      - universeId
+      - channel
+      - address
+      - fixture
+      - simpleDeskOverride
+      - faders
+      - lastWrite
+      properties:
+        universeId:
+          type: integer
+        channel:
+          type: integer
+        address:
+          type: integer
+          description: (universeId << 9) + channel, the io.simpleDesk.* address encoding.
+        fixture:
+          type:
+          - object
+          - 'null'
+          description: The fixture patched on this address, null when none.
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+            channelIndex:
+              type: integer
+              description: 0-based channel within the fixture.
+            channelName:
+              type:
+              - string
+              - 'null'
+            group:
+              type:
+              - string
+              - 'null'
+              description: QLCChannel::Group name.
+        preGMValue:
+          type: integer
+          description: Universe::preGMValue - absent when the universe is not running.
+        postGMValue:
+          type: integer
+          description: Universe::postGMValue
+          the value actually sent.: null
+        simpleDeskOverride:
+          type:
+          - integer
+          - 'null'
+          description: Value held on this address by the Control API Simple Desk (io.simpleDesk.*), null
+            when not overridden. The desktop Simple Desk's own overrides are not visible here.
+        faders:
+          type: array
+          description: Every GenericFader currently holding a FadeChannel for this channel.
+          items:
+            type: object
+            required:
+            - name
+            - priority
+            - intensity
+            - paused
+            - fadingOut
+            - start
+            - current
+            - target
+            - fadeTimeMs
+            - elapsedMs
+            - ready
+            - flags
+            - source
+            properties:
+              name:
+                type: string
+              priority:
+                type: integer
+                description: Universe::FaderPriority.
+              intensity:
+                type: number
+              paused:
+                type: boolean
+              fadingOut:
+                type: boolean
+              start:
+                type: integer
+              current:
+                type: integer
+              target:
+                type: integer
+              fadeTimeMs:
+                type: integer
+              elapsedMs:
+                type: integer
+              ready:
+                type: boolean
+              flags:
+                type: array
+                items:
+                  type: string
+                  enum:
+                  - HTP
+                  - LTP
+                  - Fine
+                  - Intensity
+                  - CanFade
+                  - Flashing
+                  - Relative
+                  - Override
+                  - SetTarget
+                  - AutoRemove
+                  - CrossFade
+                  - ForceLTP
+              source:
+                type: string
+                enum:
+                - function
+                - controlApiSimpleDesk
+                - desktopTool
+                - unidentified
+                description: function = owned by a Function (see function/startedBy); controlApiSimpleDesk
+                  = io.simpleDesk.* overrides; desktopTool = a desktop UI tool tagged through GenericDMXSource
+                  (see feature); unidentified = an untagged fader (the desktop Simple Desk, a Virtual
+                  Console widget in level mode, a CueStack or Script).
+              function:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+                  type:
+                    type: string
+                  running:
+                    type: boolean
+              startedBy:
+                type: array
+                description: Function::sources() of the owning Function.
+                items:
+                  type: object
+                  required:
+                  - type
+                  - id
+                  properties:
+                    type:
+                      type: string
+                      enum:
+                      - function
+                      - autoVCWidget
+                      - manualVCWidget
+                      - master
+                    id:
+                      type: string
+                      description: Function id
+                      VC widget id: null
+                      or FunctionParent::MasterId.: null
+                    name:
+                      type: string
+                      description: Parent function name
+                      or the MasterId name (e.g. controlApi: null
+                      showManagerPlayback).: null
+                    functionType:
+                      type: string
+              feature:
+                type: string
+                description: GenericDMXSource::Feature in camelCase (colorTool, positionTool, sceneEditorPreview,
+                  ...).
+        lastWrite:
+          type:
+          - object
+          - 'null'
+          description: Universe::lastChannelWrite - the last fader write to this channel, kept after the
+            fader is gone (explains a latched LTP value no fader holds any more).
+          properties:
+            value:
+              type: integer
+            faderName:
+              type: string
+            timestampMs:
+              type: number
+            ageMs:
+              type: number
+            functionId:
+              type:
+              - string
+              - 'null'
+            function:
+              type:
+              - object
+              - 'null'
+              properties:
+                id:
+                  type: string
+                name:
+                  type: string
+                type:
+                  type: string
+                running:
+                  type: boolean
     VcWidgetType:
       type: string
       enum:
