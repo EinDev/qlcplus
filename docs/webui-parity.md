@@ -210,17 +210,17 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | Cue list: play / pause / stop / next / previous / jump to step, current step highlighted | virtualconsole/VCCueListItem.qml | live | - |
 | Cue list: side fader (crossfade / steps) | virtualconsole/VCCueListItem.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/vc-cue.js; both modes driven |
 | XY pad: move the position | virtualconsole/VCXYPadItem.qml | live | - |
-| XY pad: presets (position / fixture group / Scene / EFX preset buttons) | virtualconsole/VCXYPadItem.qml, virtualconsole/VCXYPadPresets.qml | missing | S: vc.xyPad.preset.move, vc.xyPad.preset.rename, vc.xyPad.activePresetChanged |
-| XY pad: floor control (point fixtures at a stage floor position) | virtualconsole/VCXYPadItem.qml | missing | S: vc.xyPad.setFloorPosition, vc.xyPad.floorPositionChanged |
+| XY pad: presets (position / fixture group / Scene / EFX preset buttons) | virtualconsole/VCXYPadItem.qml, virtualconsole/VCXYPadPresets.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/vc-live.js; EFX presets untested (SF3 has no EFX) |
+| XY pad: floor control (point fixtures at a stage floor position) | virtualconsole/VCXYPadItem.qml | live | - ; sandbox 2026-09-27 (target drag + height fader) |
 | Speed dial: set time, tap | virtualconsole/VCSpeedDialItem.qml | live | - |
 | Speed dial: plus / minus buttons, multiplier factors, apply, reset tap, preset buttons | virtualconsole/VCSpeedDialItem.qml, virtualconsole/VCSpeedDialPresets.qml | live | - ; sandbox 2026-09-27; the stray speedDial.setCurrentTime wrapper is deprecated (preset.apply covers it) |
 | Frame / Solo frame: multipage next / previous | virtualconsole/VCFrameItem.qml | live | - |
 | Frame: enable / disable, expand / collapse | virtualconsole/VCFrameItem.qml | partial | U; enable button + header configured and exercised (sandbox 2026-09-27); Collapsed toggle server-tested only |
 | Frame: page shortcuts by keyboard | virtualconsole/VCFrameProperties.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/vc-input.js; F flips the frame in Operate mode |
 | Label | virtualconsole/VCLabelItem.qml | live | - |
-| Clock: clock / stopwatch / countdown display, play / pause, reset, enable schedule | virtualconsole/VCClockItem.qml | missing | S: vc.clock.playPause, vc.clock.reset, vc.clock.timeChanged; view-only body |
-| Animation: level fader, preset buttons, colour knobs | virtualconsole/VCAnimationItem.qml | missing | S: vc.animation.setFaderLevel, vc.animation.setPresetKnobValue, vc.animation.activePresetChanged, vc.animation.faderLevelChanged; view-only body |
-| Audio triggers: enable / disable capture, live bars | virtualconsole/VCAudioTriggersItem.qml | missing | S: vc.audioTriggers.setCaptureEnabled, vc.audioTriggers.levelsChanged, vc.audioTriggers.captureEnabledChanged; capture runs on the host, which is fine |
+| Clock: clock / stopwatch / countdown display, play / pause, reset, enable schedule | virtualconsole/VCClockItem.qml | live | - ; sandbox 2026-09-27; Stopwatch server-tested only |
+| Animation: level fader, preset buttons, colour knobs | virtualconsole/VCAnimationItem.qml | partial | U; fader (starts / stops the matrix) and preset buttons live (sandbox 2026-09-27); knob turn and body colour swatch server-tested only |
+| Audio triggers: enable / disable capture, live bars | virtualconsole/VCAudioTriggersItem.qml | live | - ; sandbox 2026-09-27 (levelsChanged stream from the host's capture) |
 | Grand Master value | virtualconsole/VirtualConsole.qml | live | - |
 | Fire widgets by keyboard sequences in Operate mode | virtualconsole/VirtualConsole.qml, KeyboardSequenceDelegate.qml | partial | U; the web UI honours widget key bindings itself (the server cannot see browser keys); Button and Frame driven in the sandbox 2026-09-27, cue list / speed dial / slider flash built but not driven |
 | Fire widgets from an external controller (input sources) | ExternalControls.qml | n/a | - ; input lines are patched on the host and drive the engine directly; the web UI only needs to *configure* them (editing section) |
@@ -245,7 +245,7 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | Align selected widgets left / right / top / bottom | virtualconsole/VCWidgetProperties.qml | partial | U; top / left exercised (sandbox 2026-09-27), right / bottom server-tested only; selection must share one parent (INVALID_PARAMS otherwise, by design) |
 | Distribute selected widgets horizontally / vertically | virtualconsole/VCWidgetProperties.qml | partial | U; horizontal exercised (sandbox 2026-09-27), vertical server-tested only |
 | Bulk style on a multi-selection (caption, colours, font) | virtualconsole/VCWidgetProperties.qml | partial | U; caption exercised via one vc.widget.bulkStyle (sandbox 2026-09-27); colours / font server-tested only |
-| Widget presets (save / apply / remove a style preset) | virtualconsole/VCWidgetProperties.qml | partial | U; generic vc.widget.preset.add/apply/remove + per-type host dispatch live for Speed (sandbox 2026-09-27); XYPad / Animation preset payloads are stubs (INVALID_STATE) until the live-widgets slice fills them |
+| Widget presets (save / apply / remove a style preset) | virtualconsole/VCWidgetProperties.qml | live | - ; generic vc.widget.preset.* live for Speed, XY Pad and Animation (sandbox 2026-09-27) |
 | External controls: add / remove an input source, auto-detect, manual selection | ExternalControls.qml, ExternalControlDelegate.qml, popup/PopupManualInputSource.qml | partial | U; manual add / remove live (sandbox 2026-09-27); auto-detect arm / refuse-second-client / cancel verified in the browser, the actual binding from a controller signal unit-tested only (no input plugin in the sandbox) |
 | External controls: custom feedback values / colours per input source | popup/PopupCustomFeedback.qml | partial | U; values live (sandbox 2026-09-27); colour table and MIDI routing need a patched input profile |
 | External controls: add / remove a keyboard combination, auto-detect | ExternalControls.qml, KeyboardSequenceDelegate.qml | live | - ; sandbox 2026-09-27 (keys recorded by pressing them in the browser; re-recording leaves exactly one entry) |
@@ -260,13 +260,13 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | Slider properties: show flash button | virtualconsole/VCSliderProperties.qml | live | - ; sandbox 2026-09-27 |
 | Cue list properties: attached chaser, next / previous behaviour, playback layout, side fader mode | virtualconsole/VCCueListProperties.qml | live | - ; sandbox 2026-09-27 |
 | Frame properties: header, enable button, pages (count, labels, loop, clone first page), shortcut names, solo options | virtualconsole/VCFrameProperties.qml | live | - ; sandbox 2026-09-27; pages 3, label, circular scrolling, enable button, header, clone first page, solo exclude-monitored + mixing; Collapsed server-tested only |
-| XY pad properties: fixtures / heads (add, remove, pan-tilt range, reverse), axis ranges, inverted Y, floor control, display units | virtualconsole/VCXYPadProperties.qml | missing | S: vc.widget.setConfig for XYPad, vc.xyPad.fixture.add, vc.xyPad.fixture.remove, vc.xyPad.setHeadsRange |
-| XY pad properties: presets (create from position, drop Scene / EFX / fixture group, rename, reorder, remove) | virtualconsole/VCXYPadPresets.qml | missing | S: vc.xyPad.preset.move, vc.xyPad.preset.rename (add / remove not specced: spec+S+U) |
+| XY pad properties: fixtures / heads (add, remove, pan-tilt range, reverse), axis ranges, inverted Y, floor control, display units | virtualconsole/VCXYPadProperties.qml | partial | U; add fixtures / groups, pan-tilt range, reverse, units live (sandbox 2026-09-27); the body ignores inverted Y; fixture remove and the Universe tab server-tested only |
+| XY pad properties: presets (create from position, drop Scene / EFX / fixture group, rename, reorder, remove) | virtualconsole/VCXYPadPresets.qml | live | - ; sandbox 2026-09-27; preset remove server-tested only |
 | Speed dial properties: functions list, multipliers, dial time range, visibility of parts, tap controls BPM, reset on change | virtualconsole/VCSpeedDialProperties.qml | live | - ; sandbox 2026-09-27; tap-controls-BPM checkbox rendered, not clicked in the driver |
 | Speed dial properties: presets (add / remove, name, time) | virtualconsole/VCSpeedDialPresets.qml | live | - ; sandbox 2026-09-27 via vc.widget.preset.* + vc.speedDial.preset.update |
-| Clock properties: clock type, schedules (add / remove / update, function, start / stop time, weekdays) | virtualconsole/VCClockProperties.qml | missing | S: vc.widget.setConfig for Clock, vc.clock.schedule.add, vc.clock.schedule.remove, vc.clock.schedule.update |
-| Animation properties: attached function, visibility, instant changes, presets list (colour / text / algorithm presets) | virtualconsole/VCAnimationProperties.qml, virtualconsole/VCAnimationPresets.qml, popup/PopupAnimationPreset.qml | missing | S: vc.widget.setConfig for Animation, vc.animation.preset.move (preset add / remove not specced: spec+S+U) |
-| Audio triggers properties: number of bars, per-bar type (DMX / function / widget), thresholds, targets | virtualconsole/VCAudioTriggersProperties.qml | missing | S: vc.widget.setConfig for AudioTriggers, vc.audioTriggers.setBarConfig |
+| Clock properties: clock type, schedules (add / remove / update, function, start / stop time, weekdays) | virtualconsole/VCClockProperties.qml | live | - ; sandbox 2026-09-27; schedule remove server-tested only |
+| Animation properties: attached function, visibility, instant changes, presets list (colour / text / algorithm presets) | virtualconsole/VCAnimationProperties.qml, virtualconsole/VCAnimationPresets.qml, popup/PopupAnimationPreset.qml | live | - ; sandbox 2026-09-27 |
+| Audio triggers properties: number of bars, per-bar type (DMX / function / widget), thresholds, targets | virtualconsole/VCAudioTriggersProperties.qml | partial | U; bar count, DMX bar and Function bar live (sandbox 2026-09-27); VC-widget bar type and volume fader server-tested only |
 | Label properties (caption / style only) | virtualconsole/VCLabelItem.qml | live | - ; generic caption / style rows |
 | Widget usage (functions referenced by a widget) | virtualconsole/VCWidgetProperties.qml, UsageList.qml | live | - ; sandbox 2026-09-27, Usage popup over vc.widget.usage |
 | Function Manager side panel inside the VC (browse functions to attach) | virtualconsole/VCRightPanel.qml | live | - ; the FunctionPicker in the properties panel |
@@ -367,7 +367,7 @@ duplicate a feature row above say so.
 | Import project: group rows | popup/ImportGroupsFlatDelegate.qml | n/a | - ; delegate of PopupImportProject, not an action |
 | Input profile: channel rows | popup/InputChannelFlatDelegate.qml | n/a | - ; delegate of the profile editor, not an action |
 | About | popup/PopupAbout.qml | live | - ; duplicate of the toolbar row |
-| Animation algorithm preset | popup/PopupAnimationPreset.qml | missing | S: vc.widget.setConfig for Animation; duplicate of the Animation properties row |
+| Animation algorithm preset | popup/PopupAnimationPreset.qml | live | - ; sandbox 2026-09-27 (script-algorithm preset with parameters through the dialog) |
 | Arrange fixtures | popup/PopupArrangeFixtures.qml | missing | spec+S+U; duplicate of the 2D / 3D arrange row |
 | Audio configuration | popup/PopupAudioConfiguration.qml | n/a | - ; host audio devices |
 | Channel modifiers editor | popup/PopupChannelModifiers.qml | missing | spec+S+U; duplicate |
@@ -399,7 +399,7 @@ duplicate a feature row above say so.
 | Beat generators panel | BeatGeneratorsPanel.qml | missing | U; core.bpm.set generator enum |
 | Colour tool (basic / full / filters) | ColorTool.qml, ColorToolBasic.qml, ColorToolFull.qml, ColorToolFilters.qml, ColorToolPrimary.qml, MultiColorBox.qml | partial | U; filters tab missing, see the fixture-side row |
 | Time edit tool (typed time, tap, infinite) | TimeEditTool.qml | live | - ; inline "500, 1.5s, 2m, inf" fields |
-| Day-time tool (clock schedule times) | DayTimeTool.qml | missing | S: vc.clock.schedule.* |
+| Day-time tool (clock schedule times) | DayTimeTool.qml | live | - ; sandbox 2026-09-27 |
 | Keypad | KeyPad.qml | live | - |
 | Fixture console (per-channel faders) | FixtureConsole.qml, ChannelToolLoader.qml | live | - ; see the bottom-panel rows |
 | Palette fanning box | PaletteFanningBox.qml | missing | spec+S+U |
@@ -425,8 +425,8 @@ the total is larger than the number of distinct actions). Recompute after editin
 
 | Status | Rows |
 | --- | --- |
-| live | 132 |
-| partial | 62 |
-| missing | 100 |
+| live | 142 |
+| partial | 64 |
+| missing | 88 |
 | n/a | 20 |
 | total | 314 |
