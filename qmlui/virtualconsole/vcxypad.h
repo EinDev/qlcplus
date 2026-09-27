@@ -274,6 +274,10 @@ public:
     QVariantList presetsList() const;
     int activePresetId() const;
 
+    /** The preset objects in display order, for external inspectors (the control API's
+     *  VcXyPadPreset shaping needs the position / function / head data presetsList() omits) */
+    QList<class VCXYPadPreset*> presetObjects() const { return presets(); }
+
     /** Get/Set a string to filter Group/Fixture/Channel names */
     QString searchFilter() const;
     void setSearchFilter(QString searchFilter);

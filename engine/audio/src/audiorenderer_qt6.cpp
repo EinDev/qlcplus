@@ -33,6 +33,7 @@ AudioRendererQt6::AudioRendererQt6(QString device, Doc *doc, QObject *parent)
     , m_device(device)
     , m_bytesWritten(0)
     , m_processedUsecsBase(0)
+    , m_suspendPending(false)
 {
     QSettings settings;
     QString devName = "";
@@ -205,24 +206,34 @@ bool AudioRendererQt6::backendDrainedAtEos() const
     return drained;
 }
 
+// m_audioSink only exists once run() created it on the renderer thread (and stays NULL if
+// creation failed): every control call from outside must tolerate its absence. Pausing a
+// Show with an audio track right after starting it called suspend() on a NULL sink and
+// crashed inside Qt Multimedia.
 void AudioRendererQt6::drain()
 {
-    m_audioSink->reset();
+    if (m_audioSink != NULL)
+        m_audioSink->reset();
 }
 
 void AudioRendererQt6::reset()
 {
-    m_audioSink->reset();
+    if (m_audioSink != NULL)
+        m_audioSink->reset();
 }
 
 void AudioRendererQt6::suspend()
 {
-    m_audioSink->suspend();
+    m_suspendPending = true;
+    if (m_audioSink != NULL)
+        m_audioSink->suspend();
 }
 
 void AudioRendererQt6::resume()
 {
-    m_audioSink->resume();
+    m_suspendPending = false;
+    if (m_audioSink != NULL)
+        m_audioSink->resume();
 }
 
 void AudioRendererQt6::run()
@@ -261,6 +272,10 @@ void AudioRendererQt6::run()
             qWarning() << "Cannot start audio output stream. Error:" << m_audioSink->error();
             return;
         }
+
+        // A pause requested before the sink existed (see suspend())
+        if (m_suspendPending)
+            m_audioSink->suspend();
     }
     AudioRenderer::run();
     m_audioSink->stop();

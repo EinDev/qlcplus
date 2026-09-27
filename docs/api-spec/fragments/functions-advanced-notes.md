@@ -188,7 +188,11 @@ shared `ServerFileBrowser.jsx` over `core.fs.list` (see core-notes.md).
   QML Function Manager) calls `totalDuration()`. So an endlessly looping
   script already hangs/crashes those reads today; a watchdog calling
   `QJSEngine::setInterrupted` from another thread, or a static wait-time
-  scan, is the follow-up. Pre-existing bug fixed on the way: `apifunctionsdomain.cpp`
+  scan, is the follow-up. **Fixed 2026-09-27 (crash audit):**
+  `ScriptRunner::collectScriptData()` now interrupts the dry run from a
+  watchdog thread after 0.5 s; such a script reports `totalDuration` 0 and
+  an "interrupted (endless loop?)" syntax error, and the read returns
+  (after that 0.5 s) instead of hanging. Pre-existing bug fixed on the way: `apifunctionsdomain.cpp`
   included the legacy `script.h` while the engine DLL compiles `scriptv4` -
   `new Script(doc)` there allocated with the wrong class size; it now
   includes `scriptwrapper.h`. `Script::syntaxErrorsLines()` also leaked a

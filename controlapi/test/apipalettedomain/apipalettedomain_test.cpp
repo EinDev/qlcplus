@@ -20,6 +20,8 @@
 #include <QJsonArray>
 #include <QWebSocket>
 #include <QtTest>
+#include <QBuffer>
+#include <QXmlStreamWriter>
 
 #include "apipalettedomain_test.h"
 #include "apiserver.h"
@@ -145,6 +147,29 @@ void ApiPaletteDomain_Test::createAddsColorPalette()
     QVERIFY(palette != nullptr);
     QCOMPARE(palette->type(), QLCPalette::Color);
     QCOMPARE(palette->name(), QStringLiteral("Color A"));
+}
+
+void ApiPaletteDomain_Test::createPanTiltWithOneValueSavesSafely()
+{
+    // Crash audit: palette.create/update accept any number of values;
+    // QLCPalette::saveXML() read m_values.at(1) for PanTilt unguarded, so
+    // the next project save (or autosave) aborted on QList's bounds assert.
+    helloAndGetClientId();
+    QJsonObject params;
+    params.insert(QStringLiteral("type"), QStringLiteral("PanTilt"));
+    params.insert(QStringLiteral("name"), QStringLiteral("Half position"));
+    params.insert(QStringLiteral("values"), QJsonArray{ 90 });
+    params.insert(QStringLiteral("baseRevision"), currentDocRevision());
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("palette.create"), params, QStringLiteral("t-pt"));
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QLCPalette *palette = m_doc->palette(quint32(reply.value(QStringLiteral("result")).toObject().value(QStringLiteral("paletteId")).toInt()));
+    QVERIFY(palette != nullptr);
+
+    QBuffer buffer;
+    buffer.open(QIODevice::WriteOnly);
+    QXmlStreamWriter writer(&buffer);
+    QVERIFY(palette->saveXML(&writer));
+    QVERIFY(buffer.data().contains("PanTilt"));
 }
 
 void ApiPaletteDomain_Test::createWithStaleRevisionConflicts()

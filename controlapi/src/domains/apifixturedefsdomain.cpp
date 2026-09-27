@@ -93,6 +93,39 @@ bool isInsideUserDirectory(const QString &absPath)
 #endif
 }
 
+/** Absolute path of the bundled .qxf for manufacturer/model according to the
+ *  system FixturesMap.xml (the same map QLCFixtureDefCache::loadMap() reads:
+ *  <M n="Manu_Name"><F n="file-base" m="Model"/></M>), or an empty string when
+ *  there is no bundled definition of that name. */
+QString bundledDefinitionPath(const QString &manufacturer, const QString &model)
+{
+    QDir dir = QLCFixtureDefCache::systemDefinitionDirectory();
+    QFile map(dir.absoluteFilePath(QStringLiteral("FixturesMap.xml")));
+    if (map.open(QIODevice::ReadOnly) == false)
+        return QString();
+    QXmlStreamReader xml(&map);
+    QString mapManufacturer, spaced;
+    while (xml.atEnd() == false)
+    {
+        if (xml.readNext() != QXmlStreamReader::StartElement)
+            continue;
+        if (xml.name() == QLatin1String("M"))
+        {
+            mapManufacturer = xml.attributes().value(QStringLiteral("n")).toString();
+            spaced = mapManufacturer;
+            spaced.replace(QLatin1Char('_'), QLatin1Char(' '));
+        }
+        else if (xml.name() == QLatin1String("F") && spaced == manufacturer &&
+                 xml.attributes().value(QStringLiteral("m")).toString() == model)
+        {
+            QString path = dir.absoluteFilePath(mapManufacturer + QLatin1Char('/') +
+                                                xml.attributes().value(QStringLiteral("n")).toString() + KExtFixture);
+            return QFile::exists(path) ? path : QString();
+        }
+    }
+    return QString();
+}
+
 // ---------------------------------------------------------------------------
 // Physical
 // ---------------------------------------------------------------------------
@@ -1118,6 +1151,13 @@ void ApiFixtureDefsDomain::registerMethods()
             return;
         }
         cache->removeFixtureDef(def);
+        // A user definition can shadow a bundled one of the same name (that is
+        // what session.forkToUser + save produce). Removing the cache entry
+        // took the bundled definition out of the library with it until the
+        // next restart; put it back, as a restart would.
+        const QString bundled = bundledDefinitionPath(manufacturer, model);
+        if (bundled.isEmpty() == false && cache->loadQXF(bundled, false) == false)
+            qWarning() << "fixturedefs.delete: could not reload the bundled definition" << bundled;
         bumpDefRevision(manufacturer, model);
 
         QJsonObject result;
@@ -1288,6 +1328,21 @@ void ApiFixtureDefsDomain::registerMethods()
         client->send(ApiEnvelope::buildOkResponse(id, result));
     });
 
+    // Read-only snapshot of one session: the same shape session.open answers
+    // plus isModified. This is how a client that only knows a sessionId (from
+    // session.list after a page reload) gets the definition to edit - there is
+    // no other JSON read path (export is QXF only) and a fake mutation would
+    // bump the revision and mark the session modified.
+    dispatcher->registerMethod(QStringLiteral("fixturedefs.session.get"), [this](ApiSession *client, const QString &id, const QJsonObject &params)
+    {
+        Session *s = resolveSession(client, id, params, false);
+        if (s == nullptr)
+            return;
+        QJsonObject result = sessionOpenedResult(s);
+        result.insert(QStringLiteral("isModified"), s->modified);
+        client->send(ApiEnvelope::buildOkResponse(id, result));
+    });
+
     dispatcher->registerMethod(QStringLiteral("fixturedefs.session.forkToUser"), [this](ApiSession *client, const QString &id, const QJsonObject &params)
     {
         Session *s = resolveSession(client, id, params, true);
@@ -1385,6 +1440,63 @@ void ApiFixtureDefsDomain::registerMethods()
             return;
         }
 
+        // Patched fixtures using the library entry get re-pointed to the
+        // saved definition below (same as FixtureEditor::slotReloadFixture).
+        // Check first that every one of them still fits: a mode that grew
+        // into the next fixture's channels made Doc::slotFixtureChanged()
+        // hit Q_ASSERT(!m_addresses.contains(i)), and a definition left
+        // without modes kept those fixtures pointing at the modes that
+        // reloadOrAddFixtureDef()'s deep copy frees. Only fixtures holding
+        // the library instance itself count - per-fixture generic
+        // definitions (Generic/Generic dimmers) merely share its name.
+        QLCFixtureDef *libraryDef = cache->fixtureDef(def->manufacturer(), def->model());
+        QMap<quint32, QString> fixturesToModes;
+        QJsonArray blocked;
+        for (Fixture *fixture : m_doc->fixtures())
+        {
+            if (libraryDef == nullptr || fixture == nullptr ||
+                fixture->fixtureDef() != libraryDef || fixture->fixtureMode() == nullptr)
+                continue;
+            fixturesToModes.insert(fixture->id(), fixture->fixtureMode()->name());
+
+            QLCFixtureMode *newMode = def->mode(fixture->fixtureMode()->name());
+            if (newMode == nullptr && def->modes().isEmpty() == false)
+                newMode = def->modes().first();
+            QString reason;
+            if (newMode == nullptr)
+            {
+                reason = QStringLiteral("definition has no modes");
+            }
+            else
+            {
+                const quint32 newCount = quint32(newMode->channels().size());
+                if (fixture->address() + newCount > 512)
+                    reason = QStringLiteral("mode no longer fits in the universe");
+                for (quint32 i = fixture->channels(); reason.isEmpty() && i < newCount; i++)
+                {
+                    const quint32 owner = m_doc->fixtureForAddress(fixture->universeAddress() + i);
+                    if (owner != Fixture::invalidId() && owner != fixture->id())
+                        reason = QStringLiteral("mode would overlap fixture %1").arg(owner);
+                }
+            }
+            if (reason.isEmpty() == false)
+            {
+                QJsonObject entry;
+                entry.insert(QStringLiteral("fixtureId"), QString::number(fixture->id()));
+                entry.insert(QStringLiteral("reason"), reason);
+                blocked.append(entry);
+            }
+        }
+        if (blocked.isEmpty() == false)
+        {
+            QJsonObject details;
+            details.insert(QStringLiteral("fixtures"), blocked);
+            sendError(client, id, ApiEnvelope::ErrConflict,
+                      QStringLiteral("Patched fixtures using this definition would not fit the saved version; re-patch them first"),
+                      details);
+            return;
+        }
+
         if (s->fileName.isEmpty())
             s->fileName = defaultUserFileName(def);
         QDir().mkpath(QFileInfo(s->fileName).absolutePath());
@@ -1399,18 +1511,9 @@ void ApiFixtureDefsDomain::registerMethods()
             return;
         }
 
-        // FixtureEditor::slotReloadFixture(): remember which patched fixtures
-        // use this definition BEFORE the cache copy is overwritten (their
-        // QLCFixtureMode pointers die with it), then re-point them.
-        QMap<quint32, QString> fixturesToModes;
-        for (Fixture *fixture : m_doc->fixtures())
-        {
-            if (fixture == nullptr || fixture->fixtureDef() == nullptr || fixture->fixtureMode() == nullptr)
-                continue;
-            if (fixture->fixtureDef()->manufacturer() == def->manufacturer() &&
-                fixture->fixtureDef()->model() == def->model())
-                fixturesToModes.insert(fixture->id(), fixture->fixtureMode()->name());
-        }
+        // FixtureEditor::slotReloadFixture(): fixturesToModes (collected
+        // above, BEFORE the cache copy is overwritten - their QLCFixtureMode
+        // pointers die with it) get re-pointed to the new modes.
         cache->reloadOrAddFixtureDef(def);
         QLCFixtureDef *cacheDef = cache->fixtureDef(def->manufacturer(), def->model());
         if (cacheDef != nullptr)
@@ -1961,7 +2064,9 @@ void ApiFixtureDefsDomain::registerMethods()
             sendInvalid(client, id, QStringLiteral("start must be 0..254, width and amount >= 1"));
             return;
         }
-        const int end = start + width * amount - 1;
+        // 64-bit: width * amount in int wraps (65536 * 65536 == 0), which
+        // slipped past this check into a loop creating `amount` capabilities
+        const qint64 end = qint64(start) + qint64(width) * amount - 1;
         if (end > 255)
         {
             sendInvalid(client, id, QStringLiteral("start + width * amount exceeds 255"));

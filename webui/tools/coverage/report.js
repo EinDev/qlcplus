@@ -6,7 +6,11 @@ const fs = require('fs'), path = require('path');
 const MCR = require('monocart-coverage-reports');
 const [rawDir, outDir] = process.argv.slice(2);
 if (!rawDir || !outDir) { console.error('usage: node report.js <rawDir> <outDir>'); process.exit(2); }
-const INLINE_MAP = /sourceMappingURL=data:application\/json;(?:charset=utf-8;)?base64,([A-Za-z0-9+/=]+)/;
+// Drivers open the page on different hosts (vc-live.js uses [::1] because another program can hold
+// 127.0.0.1:9180). monocart turns an IPv6 host into a separate folder, so every URL is rewritten to
+// localhost before it is added; sourcePath then drops the host and port.
+const normHost = (u) => u.replace(/^(https?:\/\/)(\[[^\]]*\]|127\.0\.0\.1)(?=[:/])/, '$1localhost');
+const INLINE_MAP =/sourceMappingURL=data:application\/json;(?:charset=utf-8;)?base64,([A-Za-z0-9+/=]+)/;
 
 (async () => {
   const cr = MCR({
@@ -29,8 +33,15 @@ const INLINE_MAP = /sourceMappingURL=data:application\/json;(?:charset=utf-8;)?b
         if (!m) continue;
         const map = JSON.parse(Buffer.from(m[1], 'base64').toString('utf8'));
         if (!map.sources || !/^https?:/.test(map.sources[0])) continue;   // the inline bootstrap <script>
+        if (map.sources.some(s => s !== normHost(s))) {
+          // The map names the source files, so fix the host there too. It sits after the code,
+          // so rewriting it leaves every coverage offset valid.
+          map.sources = map.sources.map(normHost);
+          e.source = e.source.replace(m[1], Buffer.from(JSON.stringify(map), 'utf8').toString('base64'));
+        }
         e.url = map.sources[0] + '.compiled.js';
       }
+      e.url = normHost(e.url);
       keep.push(e);
     }
     await cr.add(keep);

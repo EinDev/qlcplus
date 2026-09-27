@@ -119,6 +119,30 @@ public:
     bool vcWidgetInputSourceRemove(quint32 id, quint32 controlId, quint32 universe, quint32 channel, QString *error) override;
     bool vcWidgetKeySequenceSet(quint32 id, quint32 controlId, const QString &keySequence, QString *error) override;
     bool vcWidgetKeySequenceRemove(quint32 id, const QString &keySequence, QString *error) override;
+    // --- XY Pad fixtures / presets / floor, Clock, Animation, Audio Triggers (ApiVcLiveDomain) ---
+    void vcSetLiveListenerExt(ApiVcLiveListenerExt *listener) override;
+    bool vcXyPadSetFloorPosition(quint32 id, double x, double y, double z, QString *error) override;
+    bool vcXyPadAddFixtures(quint32 id, XyPadAddKind kind, quint32 refId, int headIndex,
+                            int *addedPresetId, QString *error) override;
+    bool vcXyPadRemoveHeads(quint32 id, const QJsonArray &heads, QString *error) override;
+    bool vcXyPadSetHeadsRange(quint32 id, const QJsonArray &heads, int xMin, int xMax, bool xReverse,
+                              int yMin, int yMax, bool yReverse, QString *error) override;
+    int vcWidgetPresetMove(quint32 id, int presetId, bool up, QString *error) override;
+    bool vcXyPadRenamePreset(quint32 id, int presetId, const QString &name, QString *error) override;
+    bool vcClockPlayPause(quint32 id, QString *error) override;
+    bool vcClockReset(quint32 id, QString *error) override;
+    bool vcClockAddSchedules(quint32 id, const QList<quint32> &functionIds, QString *error) override;
+    bool vcClockUpdateSchedule(quint32 id, int index, const QJsonObject &patch, QString *error) override;
+    bool vcClockRemoveSchedule(quint32 id, int index, QString *error) override;
+    bool vcAnimationSetFaderLevel(quint32 id, int level, QString *error) override;
+    bool vcAnimationSetPresetKnobValue(quint32 id, int presetId, int value, QString *error) override;
+    bool vcAudioTriggersSetCaptureEnabled(quint32 id, bool enabled, QString *error) override;
+    bool vcAudioTriggersSetBarConfig(quint32 id, int index, const QJsonObject &patch, QString *error) override;
+
+    /** Engine-side changes of that slice (a clock ticking, the audio capture delivering levels) - the
+     *  domain must broadcast these with a null originClientId. */
+    void simulateClockTick(quint32 id, int currentTime, bool running);
+    void simulateAudioLevels(quint32 id, const QList<int> &levels);
 
     /** Every fake CueList pretends its Chaser has exactly this many steps (named "Step 1".."Step N"),
      *  so index-range validation in the domain has something real to check against. */
@@ -177,6 +201,15 @@ private:
         bool flashing = false;                            // Slider (Adjust): vc.slider.flash state
         QJsonArray inputSources;                          // VcInputSource entries (ApiVcInputDomain)
         QJsonArray keySequences;                          // {keySequence, controlId} entries (ApiVcInputDomain)
+        // XY Pad / Clock / Animation / AudioTriggers slice (ApiVcLiveDomain)
+        QJsonArray xyFixtures;                            // XYPad: VcXyPadFixtureEntry entries
+        double floorX = 5.0, floorY = 0.0, floorZ = 5.0;  // XYPad: floor target (metres)
+        QJsonArray schedules;                             // Clock: VcClockSchedule entries (index = position)
+        int clockTime = 0;                                // Clock: currentTime seed
+        bool clockRunning = false;                        // Clock
+        int faderLevel = 0;                               // Animation
+        bool captureEnabled = false;                      // AudioTriggers
+        QJsonArray bars;                                  // AudioTriggers: VcAudioTriggersBar entries
     };
 
     /** The external control table VCWidget subclasses register in their constructors, per wire
@@ -217,6 +250,7 @@ private:
     quint32 m_nextWidgetId;
 
     ApiVcLiveListener *m_liveListener;
+    ApiVcLiveListenerExt *m_liveListenerExt = nullptr;
 };
 
 #endif

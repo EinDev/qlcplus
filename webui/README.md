@@ -55,6 +55,8 @@ default until "Use server default" is pressed.
 | `tools/e2e/*.js` | Headless-Chrome end-to-end drivers per slice (`node webui/tools/e2e/efx-collection.js` against a `dev-webui-sandbox.ps1` instance). |
 | `tools/coverage/` | Dev-only JS coverage of this directory: `hook.js` (preloaded into an e2e driver, records V8 coverage through `cdp.js`) and `report.js` (maps it back to the `.jsx` sources via Babel's inline source maps). Run `.\dev-webui-coverage.ps1 -Open` from the repo root: every browser driver against its own sandbox, report in `coverage/webui/index.html`. |
 | `ff/FixtureDialogs.jsx` | Add Fixtures dialog (`fixtures.defs.*` + `fixtures.patch`), Fixture Groups panel, Palettes panel (create/edit/apply). |
+| `ff/View2D.jsx`, `ff/ViewDMX.jsx`, `ff/ViewUniverseGrid.jsx` | F&F centre-area views registered in `window.QLCFFViews` (2D stage over `fixtures.monitor.*`, per-fixture DMX values, 512-cell address grid); `View2D.jsx` also exports `FF.useMonitor` and the placement block of the fixture detail. |
+| `ff/FixtureRemap.jsx` | Fixture Remap dialog over `fixtures.remap.suggestChannelMap` / `apply`. |
 | `VirtualConsole.jsx` | Pages + widgets at their real geometry, live interaction, Design-mode layout editing, Grand Master. |
 | `vc/vc-shared.jsx`, `vc/vc-widgets.jsx`, `vc/vc-edit.jsx` | VC context + pointer-event fader/knob; one body per widget type (button, slider/knob, cue list, XY pad, speed dial, frame, label); selection/move/resize wrapper, widget palette and properties panel. |
 | `SimpleDesk.jsx` | 512 channel strips per universe, live DMX values + overrides, keypad, dump to scene. |
@@ -101,6 +103,24 @@ and a second tab checked for the pushed event:
   end on 2026-09-27 in a sandbox instance by `tools/e2e/efx-collection.js`, with the saved `.qxw`
   checked. Not in the EFX editor: the fake-3D sphere preview and adding one specific head of a
   multi-head fixture (every head is added). A Show is edited on the Show Manager screen (below).
+- **Fixture views and placement** (added 2026-09-27, verified against a `fixtures` sandbox on
+  ports 9210/9211 with the SF3 project by `webui/tools/e2e/fixtures-views.js`): a view switcher in
+  the F&F centre area (Details | 2D | DMX | Universe grid). 2D view: the stage in the project's point
+  of view with every fixture at its monitor position, live head colours from the watched universe,
+  click / ctrl-click / alt-click (single head) / rubber-band selection wired to the tree, drag to
+  move, zoom, align left / top, distribute, arrange circle / grid / line (with detect from placement
+  and face centre), rotate around the centroid, move to centre, gel colour, select all / odd / even /
+  every Nth, invert selection in group(s), stage settings (point of view, units, size, labels, fixture
+  groups overlay, background reset) and the initial point-of-view prompt, and "Pick a 3D point"
+  (`fixtures.monitor.aimAt` writes Pan/Tilt as desk overrides). Fixture detail: position / rotation /
+  gel colour, invert pan / tilt, lock, hide, linked copies. DMX view: per-fixture channel values from
+  the live stream, absolute / relative addresses, DMX / percent, double-click to set a value. Universe
+  grid: address map with hover details, click to select, cut / paste into the first free block of
+  the shown universe, drag a fixture to a new address. Fixture Remap: clone or retarget fixtures to
+  another definition / mode / universe / address, auto-connect channels, apply - Scenes, groups,
+  2D positions and VC widgets follow. Fixture Tools gained a Highlight (locate) toggle. Not in the
+  browser: the Qt3D view itself (position / rotation editing is the parity), uploading a background
+  picture (the file must already be on the server), DMX-driven position / rotation per axis.
 - **Script / Audio / Video editors** (added 2026-09-27, verified against a `media` sandbox on ports
   9140/9141 by `webui/tools/e2e/media.js`): Script - line-numbered editor, insert-method menu from
   `functions.script.listCommands`, function / fixture ID pickers, server-side syntax check with the
@@ -152,8 +172,21 @@ and a second tab checked for the pushed event:
   left / right / top / bottom to the first selected widget, distribute horizontally / vertically
   (3+ widgets in one frame), style a multi-selection in one `vc.widget.bulkStyle`, "Add widgets
   from functions" (a button, adjust slider or cue list per picked function), "Create a widget
-  matrix" (buttons or sliders in a new frame / solo frame) and the Usage popup. XY Pad,
-  Animation, Audio Triggers and Clock configuration is still view-only.
+  matrix" (buttons or sliders in a new frame / solo frame) and the Usage popup.
+- **XY Pad, Clock, Animation, Audio Triggers** (`webui/vc/vc-props-live.jsx`, added 2026-09-27,
+  verified against a `vclive` sandbox on ports 9180/9181 by `webui/tools/e2e/vc-live.js`): XY pad
+  fixtures (fixture / single head / fixture group / universe picker, per-head Pan/Tilt range and
+  reverse in degrees, % or DMX), Pan/Tilt window, inverted Y, floor control (stage-grid pad plus a
+  height fader), presets (position from the cursor, Scene/EFX function, fixture group or head;
+  rename, reorder, remove, apply from the body) - the pad drives real DMX; clock type, countdown
+  target and schedules (function, start / stop time, weekdays, repeat) with the day-time spin boxes,
+  play / pause / reset, a live countdown (`vc.clock.timeChanged`) and the local wall clock;
+  animation RGB Matrix, visibility, instant changes, colour swatches, algorithm combo, colour /
+  R-G-B knob / text / script-algorithm presets (with the script's parameters), fader and preset
+  buttons / knobs in the body; audio triggers bar count, volume, per-bar type (DMX with the channel
+  picker, Function, VC widget) and thresholds, capture toggle and the live bars meter
+  (`vc.audioTriggers.levelsChanged`; capture runs on the QLC+ host). Opening the page on
+  `http://[::1]:<port>/` now works (the connection split IPv6 literals at their first colon).
 - **External controls + key bindings** (`webui/vc/vc-external.jsx`, added 2026-09-27, verified
   against a `vcinput` sandbox on ports 9220/9221 by `webui/tools/e2e/vc-input.js`): every widget's
   property panel has an "External controls" section (ExternalControls.qml): input sources picked
@@ -225,11 +258,36 @@ and a second tab checked for the pushed event:
   stretch-function resize mode, track Spout output size, the legacy timing conversion dialog,
   waveforms / beat markers inside items.
 
+- **Fixture Editor** (2026-09-27, `FixtureEditor.jsx` + `fixtureeditor/*.jsx`, Ctrl+6, over
+  `fixturedefs.*`; driver `tools/e2e/fixture-editor.js` against a `fixdefs` sandbox on ports
+  9200/9201 started with `dev-webui-sandbox.ps1 -UserFixtureDir C:\qlcsandbox\fixdefs\UserFixtures`,
+  which keeps every saved / deleted `.qxf` out of the real `%UserProfile%\QLC+\Fixtures` - the
+  driver checks that folder is byte-for-byte untouched): one tab per open definition with the
+  modified marker and a Save / Discard / Cancel prompt on close, surviving a page reload
+  (`session.list` + the new `session.get`); New; Open from a manufacturer -> model picker with a
+  user / system badge (never the unfiltered `fixturedefs.list`); Save (into the host's user fixture
+  folder, `defRevision` handled, "someone else saved it" asks before overwriting); Save as user copy
+  for a bundled definition (`session.forkToUser`, with the read-only banner and the prompt when
+  saving a bundled one); Import (a `.qxf` uploaded from this computer) and Export (downloaded);
+  Delete a user definition (a bundled one it shadowed comes back); Validate. General (manufacturer,
+  model, author, type), Channels (add from a preset or Custom, remove, the channel wizard; name,
+  preset, type, colour, coarse / fine, default value; capabilities with inline range /
+  description, warnings, add / remove, the capability wizard, automatic colour assignment on
+  Colour channels, per-capability preset with its colours / values / picture path, the alias
+  editor with apply-to-all-modes), Modes (add / remove / rename, the slot list with drag or up /
+  down ordering, acts-on, emitters from ticked channels, global-or-override physical), Physical,
+  Aliases. Every session edit sends `baseRevision` and rebases on `CONFLICT`; a foreign edit from a
+  second client was checked. Opened from Fixtures & Functions too: Add Fixtures -> "New definition"
+  / "Edit this definition" (`window.QLCOpenFixtureEditor`). Not in the browser: uploading a gobo
+  picture (the capability takes the path of a picture on the QLC+ machine), the desktop's free
+  "Save as <path>" (definitions always land in the user fixture folder as
+  `<Manufacturer>-<Model>.qxf`, which is where QLC+ looks for them) and Avolites D4 import.
+  Exercised by the driver: everything above except drag-reordering of mode channels (the up /
+  down arrows were driven; the drag uses native HTML5 drag-and-drop, which the headless driver
+  does not synthesise) and Ctrl+S (the toolbar Save was driven).
+
 Still not available in the web UI: the 2D / 3D / DMX monitor views, fixture-address
-remap, the fixture editor (its whole backend is live as of 2026-09-27 - `fixturedefs.*` in
-`api/domains/fixturedefs.js`, every method implemented, unit-tested and smoke-checked over the
-socket against a `fixdefs` sandbox on ports 9200/9201 - but no screen uses it yet; that file's
-header comment is the starting point for the screen), UI settings, audio sample rate / channels / buffer size and the input
+remap, UI settings, audio sample rate / channels / buffer size and the input
 level check, the input signal indicator on a patch. Disconnected, every screen keeps
 working on its built-in mock data (`data.js`), clearly labelled as such.
 

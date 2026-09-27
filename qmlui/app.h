@@ -75,6 +75,7 @@ class App final : public QQuickView, public ApiProjectHost, public ApiVcHost
     Q_PROPERTY(bool is3DSupported READ is3DSupported CONSTANT)
     Q_PROPERTY(qreal screenDiagonal READ screenDiagonal NOTIFY screenDiagonalChanged)
     Q_PROPERTY(bool smallScreen READ smallScreen NOTIFY screenDiagonalChanged)
+    Q_PROPERTY(QString webUiUrl READ webUiUrl NOTIFY webUiUrlChanged)
 
 public:
     App();
@@ -311,6 +312,28 @@ public:
      *  (docs/webui.md); started by main.cpp behind --webui */
     WebServer *webServer() const;
 
+    /** Start the WebSocket control API on $port (0 = OS-assigned). No-op
+     *  returning true when it is already listening. Logs the outcome. */
+    bool startApiServer(quint16 port);
+
+    /** Start the web UI's HTTP server on $port (0 = OS-assigned), serving
+     *  $root (empty = the root set by an earlier call, else the installed
+     *  WEBUIDIR). The page is told the port the
+     *  API server actually listens on, so start that first. No-op returning
+     *  true when it is already listening. Logs the outcome. */
+    bool startWebUiServer(quint16 port, const QString &root = QString());
+
+    /** "http://localhost:<port>/" for the port the web UI server actually
+     *  listens on, or an empty string when it is not running */
+    QString webUiUrl() const;
+
+    /** Open the web UI in the system's default browser. When it is not
+     *  running yet (the app was started without --webui), starts the API
+     *  server and the web UI server first, on their default ports or, when
+     *  those are taken, on OS-assigned ones. Returns an empty string on
+     *  success, otherwise a human-readable error */
+    Q_INVOKABLE QString openWebUi();
+
     /** Return if the current Doc instance has been loaded */
     bool docLoaded();
 
@@ -382,6 +405,7 @@ signals:
     void docModifiedChanged();
     void runningFunctionsCountChanged();
     void mediaImportStatusChanged();
+    void webUiUrlChanged();
 
 private:
     Doc *m_doc;
@@ -559,6 +583,7 @@ public:
     bool vcIsContainerWidget(quint32 id) const override;
     QList<quint32> vcWidgetIds() const override;
     QJsonObject vcWidgetSnapshot(quint32 id) const override;
+    void vcRemapChannels(const QMap<SceneValue, SceneValue> &remapMap) override;
 
     quint32 vcCreateWidget(const QString &widgetType, int page, quint32 parentId,
                             const QJsonObject &geometry, const QJsonObject &style,
@@ -624,6 +649,27 @@ public:
     bool vcWidgetInputSourceRemove(quint32 id, quint32 controlId, quint32 universe, quint32 channel, QString *error) override;
     bool vcWidgetKeySequenceSet(quint32 id, quint32 controlId, const QString &keySequence, QString *error) override;
     bool vcWidgetKeySequenceRemove(quint32 id, const QString &keySequence, QString *error) override;
+    // XY Pad fixtures / presets / floor, Clock, Animation and Audio Triggers (vc.xyPad.*, vc.clock.*,
+    // vc.animation.*, vc.audioTriggers.*) - implemented in app_apivchost_live.cpp; the typeConfig /
+    // preset shaping lives in app_apivcconfig_live.cpp. See apivchost.h for each method's contract.
+    void vcSetLiveListenerExt(ApiVcLiveListenerExt *listener) override;
+    bool vcXyPadSetFloorPosition(quint32 id, double x, double y, double z, QString *error) override;
+    bool vcXyPadAddFixtures(quint32 id, XyPadAddKind kind, quint32 refId, int headIndex,
+                            int *addedPresetId, QString *error) override;
+    bool vcXyPadRemoveHeads(quint32 id, const QJsonArray &heads, QString *error) override;
+    bool vcXyPadSetHeadsRange(quint32 id, const QJsonArray &heads, int xMin, int xMax, bool xReverse,
+                              int yMin, int yMax, bool yReverse, QString *error) override;
+    int vcWidgetPresetMove(quint32 id, int presetId, bool up, QString *error) override;
+    bool vcXyPadRenamePreset(quint32 id, int presetId, const QString &name, QString *error) override;
+    bool vcClockPlayPause(quint32 id, QString *error) override;
+    bool vcClockReset(quint32 id, QString *error) override;
+    bool vcClockAddSchedules(quint32 id, const QList<quint32> &functionIds, QString *error) override;
+    bool vcClockUpdateSchedule(quint32 id, int index, const QJsonObject &patch, QString *error) override;
+    bool vcClockRemoveSchedule(quint32 id, int index, QString *error) override;
+    bool vcAnimationSetFaderLevel(quint32 id, int level, QString *error) override;
+    bool vcAnimationSetPresetKnobValue(quint32 id, int presetId, int value, QString *error) override;
+    bool vcAudioTriggersSetCaptureEnabled(quint32 id, bool enabled, QString *error) override;
+    bool vcAudioTriggersSetBarConfig(quint32 id, int index, const QJsonObject &patch, QString *error) override;
 
 protected slots:
     /** VirtualConsole::widgetRegistered() - hooks the per-type live-state signals of every widget
@@ -641,5 +687,13 @@ private:
     /** The control API's live-event receiver (ApiVcDomain), or nullptr while none is attached. Not
      *  owned. */
     ApiVcLiveListener *m_vcLiveListener = nullptr;
+
+    /** Hooks the XY Pad / Clock / Animation / Audio Triggers live signals of $widget to relays feeding
+     *  m_vcLiveListenerExt - called from slotVcWidgetRegistered() after the ApiVcLiveListener relays
+     *  (app_apivchost_live.cpp). */
+    void vcConnectLiveRelaysExt(VCWidget *widget);
+
+    /** The control API's receiver for that slice's live events (ApiVcLiveDomain), or nullptr. Not owned. */
+    ApiVcLiveListenerExt *m_vcLiveListenerExt = nullptr;
 };
 #endif // APP_H

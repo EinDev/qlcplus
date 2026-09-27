@@ -59,6 +59,7 @@ private slots:
     void getReturnsGenericAndSceneTypeDetail();
     void listFiltersByType();
     void deleteRemovesFunction();
+    void deleteRunningFunctionStopsItFirst();
     void renameChangesName();
     void moveChangesPath();
     void updateChangesGenericProperties();
@@ -74,6 +75,7 @@ private slots:
     void sceneSetMembersReplacesFixtureList();
 
     void chaserStepsAddReplaceRemoveMove();
+    void chaserStepsRejectCycles();
 
     void listAndGetCarryRunningAndPaused();
     void startAndStopBroadcastStatusChanged();

@@ -1106,8 +1106,12 @@ bool QLCPalette::saveXML(QXmlStreamWriter *doc) const
             doc->writeAttribute(KXMLQLCPaletteValue, value().toString());
         break;
         case PanTilt:
-            doc->writeAttribute(KXMLQLCPaletteValue,
-                                QString("%1,%2").arg(m_values.at(0).toInt()).arg(m_values.at(1).toInt()));
+            // same arity guard as Position3D/Shutter: a PanTilt palette given
+            // a single value (palette.create/update accept any count) made
+            // at(1) abort on every project save
+            if (m_values.count() == 2)
+                doc->writeAttribute(KXMLQLCPaletteValue,
+                                    QString("%1,%2").arg(m_values.at(0).toInt()).arg(m_values.at(1).toInt()));
         break;
         case Position3D:
             if (m_values.count() == 3)

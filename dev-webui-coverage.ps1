@@ -27,7 +27,7 @@
   generator (monocart-coverage-reports) into webui/tools/coverage/node_modules (git-ignored,
   never installed with the web UI).
 
-.PARAMETER Drivers   Only run these (efx, rgb, media, vclayout, show, vccue, io). Default: all.
+.PARAMETER Drivers   Only run these (efx, rgb, media, vclayout, show, vccue, vclive, fixtures, io, vcinput, fixdefs). Default: all.
 .PARAMETER BuildDir  CMake build directory with qmlui\qlcplus5.exe (default: build).
 .PARAMETER ReportOnly  Skip the drivers; regenerate the report from the last run's raw dumps.
 .PARAMETER Force     Restart a sandbox even if its process is already running.
@@ -60,8 +60,24 @@ $all = @(
     @{ Name = "vclayout"; Api = 9150; Web = 9151; Script = "vc-layout.js";      Args = @() },
     @{ Name = "show";     Api = 9160; Web = 9161; Script = "show.js";           Args = @("9160", "9161", "C:\qlcsandbox\show") },
     @{ Name = "vccue";    Api = 9170; Web = 9171; Script = "vc-cue.js";         Args = @() },
-    @{ Name = "io";       Api = 9190; Web = 9191; Script = "io.js";             Args = @("--api", "9190", "--web", "9191") }
+    # vc-live.js talks to [::1] by default (E2E_HOST): Logitech's lghub_updater can hold 127.0.0.1:9180.
+    @{ Name = "vclive";   Api = 9180; Web = 9181; Script = "vc-live.js";        Args = @() },
+    @{ Name = "fixtures"; Api = 9210; Web = 9211; Script = "fixtures-views.js"; Args = @() },
+    @{ Name = "io";       Api = 9190; Web = 9191; Script = "io.js";             Args = @("--api", "9190", "--web", "9191") },
+    @{ Name = "vcinput";  Api = 9220; Web = 9221; Script = "vc-input.js";       Args = @() },
+    # Sandbox = extra dev-webui-sandbox.ps1 parameters. The fixture editor writes .qxf files, so its
+    # user fixture folder must point into the sandbox (the driver refuses otherwise).
+    @{ Name = "fixdefs";  Api = 9200; Web = 9201; Script = "fixture-editor.js"; Args = @("--api", "9200", "--web", "9201", "--userdir", "C:\qlcsandbox\fixdefs\UserFixtures");
+       Sandbox = @{ UserFixtureDir = "C:\qlcsandbox\fixdefs\UserFixtures" } }
 )
+# New drivers keep landing in webui/tools/e2e; flag any browser driver (one that calls launch())
+# this list does not know yet, so a report never silently leaves one out.
+$known = $all | ForEach-Object { $_.Script }
+Get-ChildItem (Join-Path $repo "webui\tools\e2e") -Filter *.js | Where-Object {
+    $_.Name -notin $known -and (Select-String -Path $_.FullName -SimpleMatch -Pattern "launch(" -Quiet)
+} | ForEach-Object {
+    Write-Host "==> $($_.Name) is a browser e2e driver this script does not run yet - add it to the driver list (sandbox name, ports, args)." -ForegroundColor Yellow
+}
 if ($Drivers.Count) {
     $unknown = $Drivers | Where-Object { $_ -notin $all.Name }
     if ($unknown) { throw "Unknown driver(s): $($unknown -join ', '). Known: $($all.Name -join ', ')" }
@@ -87,8 +103,25 @@ if (-not $ReportOnly) {
             continue
         }
         Write-Host "==> $($d.Script) on sandbox '$($d.Name)' ($($d.Api)/$($d.Web))..." -ForegroundColor Cyan
+        $sandboxArgs = if ($d.Sandbox) { $d.Sandbox } else { @{} }
         & (Join-Path $repo "dev-webui-sandbox.ps1") -Name $d.Name -BuildDir (Join-Path $repo $BuildDir) `
-            -WebUiRoot (Join-Path $repo "webui") -ApiPort $d.Api -WebUiPort $d.Web *> (Join-Path $logDir "sandbox-$($d.Name).log")
+            -WebUiRoot (Join-Path $repo "webui") -ApiPort $d.Api -WebUiPort $d.Web @sandboxArgs *>&1 |
+            ForEach-Object { "$_" } | Out-File -Encoding utf8 (Join-Path $logDir "sandbox-$($d.Name).log")   # *> file = UTF-16 on PS 5
+        # dev-webui-sandbox.ps1 calls the sandbox ready once 127.0.0.1:<api> accepts a connection, but
+        # another program can hold that exact address (Logitech's lghub_updater on 127.0.0.1:9180), so it
+        # can return before QLC+ listens. Wait for this sandbox's own web UI (it serves the config file
+        # with its API port) and for the API port on [::1], which only the sandbox binds.
+        $deadline = (Get-Date).AddSeconds(90); $up = $false
+        while (-not $up -and (Get-Date) -lt $deadline) {
+            try {
+                $cfg = Invoke-RestMethod -UseBasicParsing -TimeoutSec 2 "http://localhost:$($d.Web)/qlcplus-config.json"
+                if ($cfg.apiPort -eq $d.Api) {
+                    $c = New-Object Net.Sockets.TcpClient([Net.Sockets.AddressFamily]::InterNetworkV6)
+                    try { $c.Connect([Net.IPAddress]::IPv6Loopback, $d.Api); $up = $true } finally { $c.Close() }
+                }
+            } catch { Start-Sleep -Milliseconds 500 }
+        }
+        if (-not $up) { Write-Host "    sandbox did not come up on its own ports within 90 s - see the sandbox log" -ForegroundColor Yellow }
         try {
             $shots = Join-Path $rawDir "shots\$($d.Name)"
             $env:QLC_JSCOV_DIR = $rawDir; $env:QLC_JSCOV_TAG = $d.Name
@@ -96,10 +129,10 @@ if (-not $ReportOnly) {
             $env:E2E_API_PORT = $d.Api; $env:E2E_WEB_PORT = $d.Web; $env:E2E_OUT = $shots
             $env:QLC_API = "ws://127.0.0.1:$($d.Api)/"; $env:QLC_WEB = "http://localhost:$($d.Web)/"; $env:QLC_SHOTS = $shots
             $driverArgs = $d.Args
-            if ($d.Name -in "media", "io") { $driverArgs += @("--out", $shots) }
+            if ($d.Name -in "media", "io", "fixdefs") { $driverArgs += @("--out", $shots) }
             Push-Location $repo
             $saved = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-            try { node -r $hook (Join-Path "webui\tools\e2e" $d.Script) @driverArgs *> (Join-Path $logDir "e2e-$($d.Name).log"); $code = $LASTEXITCODE }
+            try { node -r $hook (Join-Path "webui\tools\e2e" $d.Script) @driverArgs 2>&1 | ForEach-Object { "$_" } | Out-File -Encoding utf8 (Join-Path $logDir "e2e-$($d.Name).log"); $code = $LASTEXITCODE }
             finally { $ErrorActionPreference = $saved; Pop-Location }
             if ($code -eq 0) { Write-Host "    passed" }
             else { Write-Host "    FAILED (exit $code) - see coverage\webui-raw\logs\e2e-$($d.Name).log" -ForegroundColor Yellow; $failed += $d.Name }

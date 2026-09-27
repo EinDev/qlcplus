@@ -514,6 +514,38 @@ void ApiFixturesDomain_Test::updateMoveAddressRejectsOverlap()
     QCOMPARE(moveReply.value(QStringLiteral("ok")).toBool(), true);
 }
 
+void ApiFixturesDomain_Test::updateMoveToOtherUniverseIgnoresOldUniverseOccupant()
+{
+    // Regression: moving universe AND address used to call setAddress() then
+    // setUniverse(), each emitting changed(); after the first one the fixture
+    // was tracked at (new address, OLD universe) - here fxB's channels - and
+    // Doc::slotFixtureChanged()'s Q_ASSERT(!m_addresses.contains(i)) aborted
+    // this Debug build. The target (universe 1, address 20) is free.
+    helloAndGetClientId();
+    quint32 fxA = patchGenericFixture(0, 0, 4);
+    quint32 fxB = patchGenericFixture(0, 20, 4);
+
+    QJsonObject params;
+    params.insert(QStringLiteral("fixtureId"), QString::number(fxA));
+    params.insert(QStringLiteral("universe"), 1);
+    params.insert(QStringLiteral("address"), 20); // occupied by fxB in universe 0, free in universe 1
+    params.insert(QStringLiteral("baseRevision"), int(m_doc->docRevision()));
+
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("fixtures.update"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(m_doc->fixture(fxA)->universe(), quint32(1));
+    QCOMPARE(m_doc->fixture(fxA)->address(), quint32(20));
+
+    // Address tracking is exact: fxB still owns its channels in universe 0,
+    // fxA owns the new ones in universe 1, and fxA's old range is free.
+    for (quint32 i = 0; i < 4; i++)
+    {
+        QCOMPARE(m_doc->fixtureForAddress((0 << 9) + 20 + i), fxB);
+        QCOMPARE(m_doc->fixtureForAddress((1 << 9) + 20 + i), fxA);
+        QCOMPARE(m_doc->fixtureForAddress((0 << 9) + i), Fixture::invalidId());
+    }
+}
+
 void ApiFixturesDomain_Test::updateWithNoFieldsIsInvalidParams()
 {
     helloAndGetClientId();
@@ -649,6 +681,52 @@ void ApiFixturesDomain_Test::findAvailableAddressScansWhenRequestedTaken()
     QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
     QJsonObject result = reply.value(QStringLiteral("result")).toObject();
     QCOMPARE(result.value(QStringLiteral("available")).toBool(), false);
+}
+
+void ApiFixturesDomain_Test::hugeAddressesAndCountsAreRejectedNotOverflowed()
+{
+    // Crash audit: address + channels (and channels*quantity) were summed in
+    // int, so values near INT_MAX wrapped negative and passed the 512-channel
+    // check - letting a ~2^31-channel generic definition be allocated, the
+    // overlap check test the wrong range, or findAvailableAddress scan ~4e9
+    // addresses on the main thread.
+    helloAndGetClientId();
+
+    QJsonObject params;
+    params.insert(QStringLiteral("universe"), 0);
+    params.insert(QStringLiteral("address"), 1);
+    params.insert(QStringLiteral("definition"), genericDefinition(2147483647));
+    params.insert(QStringLiteral("baseRevision"), int(m_doc->docRevision()));
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("fixtures.patch"), params);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("INVALID_PARAMS"));
+
+    params.insert(QStringLiteral("address"), 2147483000);
+    params.insert(QStringLiteral("definition"), genericDefinition(1000));
+    reply = sendAndWaitForReply(QStringLiteral("fixtures.patch"), params);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("INVALID_PARAMS"));
+    QCOMPARE(m_doc->fixtures().count(), 0);
+
+    QJsonObject find;
+    find.insert(QStringLiteral("universe"), 0);
+    find.insert(QStringLiteral("channels"), 65536);
+    find.insert(QStringLiteral("quantity"), 65536);
+    find.insert(QStringLiteral("requestedAddress"), 2147483000);
+    QElapsedTimer timer;
+    timer.start();
+    reply = sendAndWaitForReply(QStringLiteral("fixtures.findAvailableAddress"), find);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(reply.value(QStringLiteral("result")).toObject().value(QStringLiteral("available")).toBool(), false);
+    QVERIFY(timer.elapsed() < 1500);
+
+    quint32 fxId = patchGenericFixture(0, 10, 4, QStringLiteral("A"));
+    QVERIFY(fxId != Fixture::invalidId());
+    QJsonObject update;
+    update.insert(QStringLiteral("fixtureId"), QString::number(fxId));
+    update.insert(QStringLiteral("address"), 2147483647);
+    update.insert(QStringLiteral("baseRevision"), int(m_doc->docRevision()));
+    reply = sendAndWaitForReply(QStringLiteral("fixtures.update"), update);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(m_doc->fixture(fxId)->address(), quint32(10));
 }
 
 /*********************************************************************

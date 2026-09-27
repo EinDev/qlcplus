@@ -24,6 +24,7 @@
 #include "apiefxcollectiondomain_test.h"
 #include "apiserver.h"
 #include "collection.h"
+#include "mastertimer.h"
 #include "efx.h"
 #include "efxfixture.h"
 #include "fixture.h"
@@ -277,6 +278,35 @@ void ApiEfxCollectionDomain_Test::collectionAddRejectsSelfDuplicateLoopAndStaleR
     QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("details")).toObject()
              .value(QStringLiteral("docRevision")).toInt(), int(m_doc->docRevision()));
     QCOMPARE(m_collection->functions(), QList<quint32>({ m_sceneA->id() }));
+}
+
+void ApiEfxCollectionDomain_Test::collectionAddWhileRunningThenAdjustIntensity()
+{
+    // Crash audit: Collection::preRun() records one intensity override id per
+    // member; a member added while the Collection runs had none, and the next
+    // intensity change (a VC slider on the Collection, or a parent starting
+    // it again) aborted on m_intensityOverrideIds.at(i)'s bounds assert.
+    helloAndGetClientId();
+    // raw non-fixture values keep the scenes (and so the Collection) running
+    m_sceneA->setValue(Fixture::invalidId(), 0, 255);
+    m_sceneB->setValue(Fixture::invalidId(), 1, 255);
+    QJsonObject params;
+    params.insert(QStringLiteral("functionId"), QString::number(m_collection->id()));
+    params.insert(QStringLiteral("memberFunctionId"), QString::number(m_sceneA->id()));
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("functions.collection.addFunction"), withRevision(params)).value(QStringLiteral("ok")).toBool(), true);
+
+    m_doc->masterTimer()->start();
+    m_collection->start(m_doc->masterTimer(), FunctionParent::master());
+    QVERIFY(QTest::qWaitFor([this]() { return m_collection->isRunning(); }, 2000));
+
+    params.insert(QStringLiteral("memberFunctionId"), QString::number(m_sceneB->id()));
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("functions.collection.addFunction"), withRevision(params)).value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(m_collection->functions().count(), 2);
+
+    m_collection->adjustAttribute(0.5, Function::Intensity);
+
+    m_collection->stopAndWait(FunctionParent::master());
+    m_doc->masterTimer()->stop();
 }
 
 void ApiEfxCollectionDomain_Test::collectionRemoveFunction()

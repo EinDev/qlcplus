@@ -21,6 +21,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QString>
+#include <QStringList>
 
 class VCWidget;
 class Doc;
@@ -118,6 +119,19 @@ namespace ApiVcConfig
     int addAnimationPreset(VCWidget *w, const QJsonObject &data, QString *error);
     bool removeAnimationPreset(VCWidget *w, int presetId, QString *error);
     bool applyAnimationPreset(VCWidget *w, int presetId, QString *error);
+
+    /**
+     * Live-state seeds of the XY Pad / Clock / Animation / Audio Triggers slice, added to
+     * vc.widget.get/list's VcWidgetSummary next to the fields appendLiveStateToJson() in
+     * app_apivchost.cpp already writes: XYPad floorPosition + activePresetId, Clock currentTime +
+     * running, Animation faderLevel + activePresetId, AudioTriggers captureEnabled + levels. No-op
+     * for every other widget type. (app_apivcconfig_live.cpp)
+     */
+    void appendLiveSeed(VCWidget *w, QJsonObject &obj);
+
+    /** The animation's colour slots as "#rrggbb" strings ("" for an unset slot), in slot order -
+     *  shared by animationConfigToJson() and the vc.animation.styleChanged relay. */
+    QStringList animationColorStrings(VCWidget *w);
 }
 
 #endif

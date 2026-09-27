@@ -29,6 +29,11 @@
 <script type="text/babel" src="FixturesFunctions.jsx"></script>
 <script type="text/babel" src="ff/ff-core.jsx"></script>
 <script type="text/babel" src="ff/FixtureTools.jsx"></script>
+<!-- Centre-area views of the Fixtures & Functions screen (window.QLCFFViews) + the fixture remap dialog. -->
+<script type="text/babel" src="ff/View2D.jsx"></script>
+<script type="text/babel" src="ff/ViewDMX.jsx"></script>
+<script type="text/babel" src="ff/ViewUniverseGrid.jsx"></script>
+<script type="text/babel" src="ff/FixtureRemap.jsx"></script>
 <script type="text/babel" src="ff/FunctionEditors.jsx"></script>
 <script type="text/babel" src="ff/RgbMatrixEditor.jsx"></script>
 <script type="text/babel" src="ff/CollectionEditor.jsx"></script>
@@ -49,6 +54,7 @@
 <script type="text/babel" src="vc/vc-props-cue.jsx"></script>
 <script type="text/babel" src="vc/vc-external.jsx"></script>
 <script type="text/babel" src="vc/vc-props-layout.jsx"></script>
+<script type="text/babel" src="vc/vc-props-live.jsx"></script>
 <script type="text/babel" src="VirtualConsole.jsx"></script>
 <script type="text/babel" src="io/io-shared.jsx"></script>
 <script type="text/babel" src="io/PatchProperties.jsx"></script>
@@ -58,6 +64,11 @@
 <script type="text/babel" src="InputOutput.jsx"></script>
 <!-- Show Manager screen (registers window.QLCScreens.show; uses window.FF from ff/ff-core.jsx). -->
 <script type="text/babel" src="ShowManager.jsx"></script>
+<!-- Fixture Editor screen (registers window.QLCScreens.fxeditor + window.QLCOpenFixtureEditor; pieces in fixtureeditor/). -->
+<script type="text/babel" src="fixtureeditor/fe-core.jsx"></script>
+<script type="text/babel" src="fixtureeditor/fe-channels.jsx"></script>
+<script type="text/babel" src="fixtureeditor/fe-modes.jsx"></script>
+<script type="text/babel" src="FixtureEditor.jsx"></script>
 <script type="text/babel" src="App.jsx"></script>
 <script type="text/babel" data-presets="react">ReactDOM.createRoot(document.getElementById('root')).render(<AppRoot />);</script>
 </body></html>

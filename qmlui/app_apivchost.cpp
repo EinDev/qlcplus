@@ -718,6 +718,8 @@ void appendLiveStateToJson(VCWidget *w, QJsonObject &obj)
         default:
         break;
     }
+    // XYPad floor / active preset, Clock, Animation, AudioTriggers seeds (app_apivcconfig_live.cpp).
+    ApiVcConfig::appendLiveSeed(w, obj);
 }
 
 } // namespace
@@ -871,6 +873,17 @@ bool App::vcIsContainerWidget(quint32 id) const
     if (w == nullptr)
         return false;
     return w->type() == VCWidget::FrameWidget || w->type() == VCWidget::SoloFrameWidget;
+}
+
+void App::vcRemapChannels(const QMap<SceneValue, SceneValue> &remapMap)
+{
+    // Same loop as FixtureRemapManager::applyRemap() (fixtureremapmanager.cpp)
+    for (const QVariant &v : m_virtualConsole->widgetsList())
+    {
+        VCWidget *w = v.toMap().value(QStringLiteral("classRef")).value<VCWidget *>();
+        if (w != nullptr)
+            w->remapChannels(remapMap);
+    }
 }
 
 QList<quint32> App::vcWidgetIds() const
@@ -1241,6 +1254,8 @@ void App::slotVcWidgetRegistered(VCWidget *widget)
         default:
         break;
     }
+    // XYPad floor / active preset, Clock, Animation, AudioTriggers relays (app_apivchost_live.cpp).
+    vcConnectLiveRelaysExt(widget);
 }
 
 bool App::vcButtonPress(quint32 id, bool pressed, QString *error)

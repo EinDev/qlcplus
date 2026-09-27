@@ -102,7 +102,7 @@ QJsonObject fixtureDetailToJson(Fixture *fixture)
 // addressing (universe<<9 | address) has no overflow guard of its own (an
 // out-of-range footprint silently encroaches into the next universe's own
 // address 0 instead of erroring), so this must be checked here.
-bool validAddressRange(int address, int channels)
+bool validAddressRange(qint64 address, qint64 channels)
 {
     return address >= 0 && channels >= 1 && (address + channels) <= 512;
 }
@@ -475,7 +475,7 @@ void ApiFixturesDomain::registerMethods()
         bool fits = true;
         for (int n = 0; n < quantity && fits; n++)
         {
-            int addr = requested + n * (channels + gap);
+            qint64 addr = qint64(requested) + qint64(n) * (qint64(channels) + gap);
             if (validAddressRange(addr, channels) == false ||
                 rangeIsFree(doc, quint32(universeId), quint32(addr), quint32(channels), excludeId) == false)
             {
@@ -500,7 +500,7 @@ void ApiFixturesDomain::registerMethods()
             // quirkier single-pass counter loop (see its comments), since the
             // universe is capped at 512 channels this is trivially fast and
             // easier to verify correct.
-            int blockSize = channels * quantity + gap * quantity;
+            qint64 blockSize = (qint64(channels) + gap) * quantity;
             int found = -1;
             for (int start = 0; start + blockSize <= 512 && found < 0; start++)
             {
@@ -635,7 +635,7 @@ void ApiFixturesDomain::registerMethods()
         // apply on error).
         for (int n = 0; n < quantity; n++)
         {
-            int addr = baseAddress + n * (channelCount + gap);
+            qint64 addr = qint64(baseAddress) + qint64(n) * (qint64(channelCount) + gap);
             if (validAddressRange(addr, channelCount) == false)
             {
                 session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams,
@@ -664,7 +664,7 @@ void ApiFixturesDomain::registerMethods()
 
         for (int n = 0; n < quantity; n++)
         {
-            int addr = baseAddress + n * (channelCount + gap);
+            qint64 addr = qint64(baseAddress) + qint64(n) * (qint64(channelCount) + gap);
             Fixture *fxi = new Fixture(doc);
             fxi->setUniverse(quint32(universeId));
             fxi->setAddress(quint32(addr));
@@ -785,21 +785,28 @@ void ApiFixturesDomain::registerMethods()
             }
         }
 
-        // Fixture::setAddress()/setUniverse() are two separate setters, each
-        // independently emitting changed(), and Doc::slotFixtureChanged()
-        // re-tracks this fixture's occupied addresses on every single call -
-        // when both are changing there's an unavoidable transient step where
-        // the fixture is briefly tracked at (new address, old universe) [this
-        // order] or (old address, new universe) [the other order] before the
-        // second call lands, matching a documented existing quirk in
-        // Doc::slotFixtureChanged() (doc.cpp). The overlap check above only
-        // guards the final state; a pathological transient collision with
-        // some other real fixture during this brief window is a pre-existing
-        // engine limitation, not something introduced or fixable here.
-        if (hasAddress)
-            fixture->setAddress(quint32(newAddress));
-        if (hasUniverse)
-            fixture->setUniverse(newUniverse);
+        // Fixture::setAddress()/setUniverse() each emit changed(), and
+        // Doc::slotFixtureChanged() re-tracks the fixture's footprint on every
+        // emit. Applied one after the other, the first emit would track the
+        // fixture at a transient (new address, OLD universe) position, which
+        // can collide with another fixture there even though the final
+        // position was validated free above - Doc::slotFixtureChanged()'s
+        // Q_ASSERT(!m_addresses.contains(i)) then aborts a Debug build and a
+        // Release build silently steals that fixture's address entries.
+        // Apply both with signals blocked and emit changed() exactly once
+        // (setID() to the same id does that, the idiom qmlui's
+        // FixtureManager::pasteFromClipboard() already uses): the slot first
+        // drops every address owned by this id, then adds the final footprint.
+        if (hasAddress || hasUniverse)
+        {
+            fixture->blockSignals(true);
+            if (hasAddress)
+                fixture->setAddress(quint32(newAddress));
+            if (hasUniverse)
+                fixture->setUniverse(newUniverse);
+            fixture->blockSignals(false);
+            fixture->setID(fixture->id());
+        }
         if (hasName)
             fixture->setName(params.value(QStringLiteral("name")).toString());
 

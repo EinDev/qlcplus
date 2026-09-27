@@ -72,7 +72,9 @@ MasterTimer::MasterTimer(Doc* doc)
 
     QSettings settings;
     QVariant var = settings.value(MASTERTIMER_FREQUENCY);
-    if (var.isValid() == true)
+    // ignore a stored frequency that would give a 0 ms tick (division by
+    // zero in every Script wait, a one-shot timer on Windows)
+    if (var.isValid() == true && var.toUInt() >= 1 && var.toUInt() <= 1000)
         s_frequency = var.toUInt();
 
     s_tick = uint(double(1000) / double(s_frequency));

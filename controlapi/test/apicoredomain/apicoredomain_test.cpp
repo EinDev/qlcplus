@@ -175,6 +175,40 @@ void ApiCoreDomain_Test::settingsGetSetBroadcastsEvent()
     QCOMPARE(event.value(QStringLiteral("data")).toObject().value(QStringLiteral("masterTimerFrequencyHz")).toInt(), 44);
 }
 
+void ApiCoreDomain_Test::settingsRejectInvalidMasterTimerFrequency()
+{
+    // Crash audit: any value giving a 0 ms MasterTimer tick (0, negative,
+    // non-numeric, > 1000) was stored as-is and broke the engine on the next
+    // start (integer division by zero in Script waits), across restarts.
+    helloAndGetClientId();
+    QJsonObject good;
+    good.insert(QStringLiteral("masterTimerFrequencyHz"), 50);
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("core.settings.set"), good).value(QStringLiteral("ok")).toBool(), true);
+
+    const QList<QJsonValue> bad = { QJsonValue(0), QJsonValue(-5), QJsonValue(5000), QJsonValue(2.5),
+                                    QJsonValue(QStringLiteral("fast")) };
+    for (const QJsonValue &value : bad)
+    {
+        QJsonObject params;
+        params.insert(QStringLiteral("masterTimerFrequencyHz"), value);
+        params.insert(QStringLiteral("locale"), QStringLiteral("xx")); // must not be applied either
+        QJsonObject reply = sendAndWaitForReply(QStringLiteral("core.settings.set"), params);
+        QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+        QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("INVALID_PARAMS"));
+    }
+    QSettings settings;
+    QCOMPARE(settings.value(QStringLiteral("mastertimer/frequency")).toInt(), 50);
+    QVERIFY(settings.value(QStringLiteral("ui/language")).toString() != QStringLiteral("xx"));
+
+    // A bad value already stored (older build) is ignored by MasterTimer
+    settings.setValue(QStringLiteral("mastertimer/frequency"), 0);
+    Doc *doc = new Doc(nullptr);
+    QVERIFY(MasterTimer::frequency() >= 1);
+    QVERIFY(MasterTimer::tick() >= 1);
+    delete doc;
+    settings.setValue(QStringLiteral("mastertimer/frequency"), 50);
+}
+
 QList<QJsonObject> ApiCoreDomain_Test::eventsWithTopic(QSignalSpy &spy, const QString &topic)
 {
     QList<QJsonObject> events;

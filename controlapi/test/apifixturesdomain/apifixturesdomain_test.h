@@ -55,6 +55,7 @@ private slots:
 
     void updateRenameBroadcastsUpdatedEvent();
     void updateMoveAddressRejectsOverlap();
+    void updateMoveToOtherUniverseIgnoresOldUniverseOccupant();
     void updateWithNoFieldsIsInvalidParams();
     void updateWithStaleRevisionConflicts();
 
@@ -64,6 +65,7 @@ private slots:
 
     void findAvailableAddressReturnsRequestedWhenFree();
     void findAvailableAddressScansWhenRequestedTaken();
+    void hugeAddressesAndCountsAreRejectedNotOverflowed();
 
     void defsListManufacturersIncludesRegisteredDefinition();
     void defsListModelsReturnsNamesAndDetails();
