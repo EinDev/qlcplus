@@ -13,19 +13,46 @@
   const { RobotoText, IconButton, GenericButton, CustomCheckBox, CustomPopupDialog, CustomComboBox } = window.PatchDesignSystem_5432c9;
   const { Row, TextField, isUnknownMethod, errorText, NOTE, withConflictRetry } = window.IOShared;
 
-  /* Parameter keys the network plugins read (plugins/artnet/src/artnetplugin.h, plugins/E1.31/e131plugin.h,
-     plugins/osc/oscplugin.h) — offered as suggestions; any key can still be typed. */
-  const KNOWN = {
-    ArtNet: { input: ['inputUni'], output: ['outputIP', 'outputUni', 'transmitMode'], feedback: ['outputIP', 'outputUni', 'transmitMode'] },
-    'E1.31': { input: ['universe', 'multicast', 'mcastIP', 'ucastPort'], output: ['universe', 'transmitMode', 'priority', 'multicast', 'mcastIP', 'mcastFullIP', 'ucastIP', 'ucastPort'], feedback: [] },
-    OSC: { input: ['inputPort', 'feedbackIP', 'feedbackPort'], output: ['outputIP', 'outputPort'], feedback: ['outputIP', 'outputPort'] }
+  /* Parameter keys the network plugins accept in setParameter(), per patch direction, with the value
+     each one parses (plugins/artnet/src/artnetplugin.cpp, plugins/E1.31/e131plugin.cpp,
+     plugins/osc/oscplugin.cpp — any other key is rejected with a warning and not stored). Offered as
+     suggestions; any key can still be typed for other plugins.
+       'int'  -> QVariant::toUInt()/toInt()   'text' -> toString()   [..] -> exact strings the plugin compares
+     ArtNet and E1.31 have no Feedback capability, hence no feedback keys. OSC sends feedback to
+     feedbackIP/feedbackPort (OSCController::sendFeedback), not to outputIP/outputPort. */
+  const SPEC = {
+    ArtNet: {
+      input: { inputUni: 'int' },
+      output: { outputIP: 'text', outputUni: 'int', transmitMode: ['Standard', 'Full', 'Partial'] },
+      feedback: {}
+    },
+    'E1.31': {
+      input: { universe: 'int', multicast: 'int', mcastFullIP: 'text', mcastIP: 'text', ucastPort: 'int' },
+      output: { universe: 'int', transmitMode: ['Full', 'Partial'], priority: 'int', multicast: 'int', mcastFullIP: 'text', mcastIP: 'text', ucastIP: 'text', ucastPort: 'int' },
+      feedback: {}
+    },
+    OSC: {
+      input: { inputPort: 'int', feedbackIP: 'text', feedbackPort: 'int' },
+      output: { outputIP: 'text', outputPort: 'int' },
+      feedback: { feedbackIP: 'text', feedbackPort: 'int' }
+    }
   };
+  const KNOWN = {};
+  Object.keys(SPEC).forEach(p => { KNOWN[p] = {}; Object.keys(SPEC[p]).forEach(d => { KNOWN[p][d] = Object.keys(SPEC[p][d]); }); });
   const HINTS = {
-    outputIP: 'Destination IP, e.g. 2.0.0.255 (broadcast) or one node', outputUni: 'Art-Net universe number (0-based)', inputUni: 'Art-Net universe to listen to',
-    transmitMode: '"Full" sends all 512 channels, "Partial" only the used ones', universe: 'sACN universe (1-63999)', priority: 'sACN priority 0-200 (default 100)',
-    multicast: '1 = multicast (default), 0 = unicast to ucastIP', mcastIP: 'Multicast address override', mcastFullIP: 'Full multicast address', ucastIP: 'Unicast destination IP', ucastPort: 'UDP port (default 5568)',
-    inputPort: 'UDP port to listen on', outputPort: 'Destination UDP port', feedbackIP: 'Feedback destination IP', feedbackPort: 'Feedback destination UDP port'
+    outputIP: 'Destination IP address; empty = broadcast', outputUni: 'Art-Net universe number (0-based; default = the QLC+ universe index)', inputUni: 'Art-Net universe to listen to (default = the QLC+ universe index)',
+    universe: 'sACN universe (1-63999)', priority: 'sACN priority 0-200 (default 100)',
+    multicast: '1 = multicast (default), 0 = unicast (ucastIP / ucastPort)', mcastFullIP: 'Full multicast address, e.g. 239.255.0.1', mcastIP: 'Legacy: last octet of 239.255.0.x (mcastFullIP replaces it)',
+    ucastIP: 'Unicast destination IP', ucastPort: 'UDP port (default 5568)',
+    inputPort: 'UDP port to listen on (default 7700 + universe index)', outputPort: 'Destination UDP port (default 9000 + universe index)',
+    feedbackIP: 'Feedback destination IP', feedbackPort: 'Feedback destination UDP port (default 9000 + universe index)'
   };
+  const PLUGIN_HINTS = {
+    ArtNet: { transmitMode: '"Standard" (default: sends changed frames), "Full" (all 512 channels, always) or "Partial" (only the used channels)', outputIP: 'Destination IP address, e.g. 2.255.255.255 or one node; empty = broadcast (default)' },
+    'E1.31': { universe: 'sACN universe 1-63999 (default = the QLC+ universe index + 1)', transmitMode: '"Full" (default: all 512 channels) or "Partial" (only the used channels)' },
+    OSC: { outputIP: 'Destination IP address (the 127.0.0.1 line defaults to 127.0.0.1)', feedbackIP: 'Feedback destination IP address (the 127.0.0.1 line defaults to 127.0.0.1)' }
+  };
+  const hintFor = (plugin, key) => (PLUGIN_HINTS[plugin] || {})[key] || HINTS[key] || '';
 
   /** Typed text -> the JSON value the server stores: keep the previous type when it still parses. */
   function coerce(text, previous) {
@@ -33,6 +60,20 @@
     if (typeof previous === 'boolean' || /^(true|false)$/i.test(t)) return /^true$/i.test(t);
     if ((typeof previous === 'number' || previous === undefined) && /^-?\d+(\.\d+)?$/.test(t)) return Number(t);
     return t;
+  }
+  /** Like coerce(), but a key the plugin is known to parse gets exactly that format ({value} or {error}):
+      the plugins persist parameters as text and read them back with toInt()/toString(), so e.g. a
+      boolean multicast=true would work live but reload from the .qxw as "true" -> 0 (unicast). */
+  function coerceFor(plugin, direction, key, text, previous) {
+    const spec = ((SPEC[plugin] || {})[direction] || {})[key];
+    const t = String(text).trim();
+    if (!spec) return { value: coerce(text, previous) };
+    if (spec === 'int') return /^\d+$/.test(t) ? { value: Number(t) } : { error: key + ' must be a whole number' };
+    if (Array.isArray(spec)) {
+      const hit = spec.find(v => v.toLowerCase() === t.toLowerCase());
+      return hit ? { value: hit } : { error: key + ' must be one of ' + spec.join(', ') };
+    }
+    return { value: t };
   }
 
   function PatchPropertiesDialog({ open, qlc, universe, direction, index, patch, plugin, onClose, onStatus }) {
@@ -52,19 +93,32 @@
     const suggestions = known.filter(k => keys.indexOf(k) === -1);
     const setParamsUnsupported = qlc.isUnsupported('io.patch.setParameters');
 
-    const send = (parameters, label) => {
+    const send = (parameters, label, setKey) => {
       setBusy(true);
       return withConflictRetry((details) => qlc.call('io.patch.setParameters', { universeId: universe.id, patchType: direction, index: index || 0, parameters, baseRevision: details && details.docRevision != null ? details.docRevision : qlc.docRevision() }))
-        .then(() => { setStatus({ text: label, error: false }); if (onStatus) onStatus(label, false); return true; },
+        .then(r => {
+          /* ArtNet / OSC drop a parameter that equals their default, and every network plugin ignores a
+             key it does not know: say so instead of a plain "set" when the line did not keep it. */
+          const kept = !setKey || !r || !r.parameters || Object.prototype.hasOwnProperty.call(r.parameters, setKey);
+          const text = kept ? label : label + ' — ' + pluginName + ' did not keep it (that value is its default, or it does not accept "' + setKey + '")';
+          setStatus({ text, error: false }); if (onStatus) onStatus(text, false); return true;
+        },
           e => { setStatus({ text: isUnknownMethod(e) ? 'Not available: this server has no io.patch.setParameters' : label + ' failed: ' + errorText(e), error: true }); return false; })
         .finally(() => setBusy(false));
     };
-    const setOne = (key, value) => { const p = {}; p[key] = value; return send(p, key + ' set to ' + JSON.stringify(value)); };
+    const setOne = (key, value) => { const p = {}; p[key] = value; return send(p, key + ' set to ' + JSON.stringify(value), key); };
+    /** Typed text for `key` -> set it, or show why the plugin would not parse it. */
+    const setTyped = (key, text, previous) => {
+      const c = coerceFor(pluginName, direction, key, text, previous);
+      if (c.error) { setStatus({ text: c.error, error: true }); return Promise.resolve(false); }
+      if (c.value === previous) return Promise.resolve(true);
+      return setOne(key, c.value);
+    };
     const remove = (key) => { const p = {}; p[key] = null; return send(p, key + ' reset to the plugin default'); };
     const add = () => {
       const key = newKey.trim();
       if (!key) return;
-      setOne(key, coerce(newValue, undefined)).then(ok => { if (ok) { setNewKey(''); setNewValue(''); } });
+      setTyped(key, newValue, undefined).then(ok => { if (ok) { setNewKey(''); setNewValue(''); } });
     };
     const configure = () => {
       setBusy(true);
@@ -95,10 +149,10 @@
 
           <div style={{ border: '1px solid var(--bg-light)', borderRadius: 4, background: 'var(--bg-stronger)', padding: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
             {keys.length ? keys.map(k => (
-              <Row key={k} label={k} width={130} title={HINTS[k] || ''} style={{ minHeight: 28 }}>
+              <Row key={k} label={k} width={130} title={hintFor(pluginName, k)} style={{ minHeight: 28 }}>
                 {typeof params[k] === 'boolean'
                   ? <CustomCheckBox checked={!!params[k]} size={22} disabled={busy || setParamsUnsupported} onToggled={v => setOne(k, v)} data-param={k} />
-                  : <TextField value={params[k]} width={260} disabled={busy || setParamsUnsupported} data-param={k} onCommit={(t) => { const v = coerce(t, params[k]); if (v !== params[k]) setOne(k, v); }} />}
+                  : <TextField value={params[k]} width={260} disabled={busy || setParamsUnsupported} data-param={k} onCommit={(t) => { if (String(t).trim() !== String(params[k])) setTyped(k, t, params[k]); }} />}
                 <RobotoText label={typeof params[k]} fontSize={12} labelColor={NOTE} height={24} style={{ width: 56 }} />
                 <IconButton faSource="fa_trash_can" faColor="var(--bg-strong)" size={24} tooltip="Remove: revert to the plugin default" disabled={busy || setParamsUnsupported} onClick={() => remove(k)} data-remove-param={k} />
               </Row>
@@ -116,7 +170,7 @@
             <TextField value={newValue} width={120} placeholder="value" onLive={setNewValue} onCommit={(t) => { setNewValue(t); }} data-role="param-value" />
             <GenericButton label="Set" width={54} height={24} disabled={busy || !newKey.trim() || setParamsUnsupported} onClick={add} data-role="param-add" />
           </Row>
-          {newKey && HINTS[newKey] ? <RobotoText label={HINTS[newKey]} fontSize={12} labelColor={NOTE} height={20} leftMargin={138} /> : null}
+          {newKey && hintFor(pluginName, newKey) ? <RobotoText label={hintFor(pluginName, newKey)} fontSize={12} labelColor={NOTE} wrapText height="auto" leftMargin={138} data-role="param-hint" /> : null}
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
             <GenericButton label="Configure plugin…" width={150} height={26} disabled={busy || !plugin || !plugin.canConfigure || qlc.isUnsupported('io.plugin.configure')} onClick={configure} data-role="configure-plugin" />
@@ -129,5 +183,5 @@
     );
   }
 
-  window.IOPatchProperties = { PatchPropertiesDialog, KNOWN_PARAMETERS: KNOWN };
+  window.IOPatchProperties = { PatchPropertiesDialog, KNOWN_PARAMETERS: KNOWN, PARAMETER_SPEC: SPEC };
 })();
