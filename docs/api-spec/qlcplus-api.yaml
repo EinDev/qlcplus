@@ -1182,6 +1182,8 @@ channels:
         $ref: '#/components/messages/VcPageSetPinRequest'
       vcPageSetPinResponse:
         $ref: '#/components/messages/VcPageSetPinResponse'
+      vcPageUpdatedEvent:
+        $ref: '#/components/messages/VcPageUpdatedEvent'
       vcPageValidatePinRequest:
         $ref: '#/components/messages/VcPageValidatePinRequest'
       vcPageValidatePinResponse:
@@ -4364,6 +4366,12 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/vcPageSetPinRequest'
+  receiveVcPageUpdated:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcPageUpdatedEvent'
   receiveVcPageSetPinResponse:
     action: receive
     channel:
@@ -18562,6 +18570,36 @@ components:
         oneOf:
         - $ref: '#/components/messages/VcDocRevisionOkResponse/payload'
         - $ref: '#/components/messages/ErrorResponse/payload'
+    VcPageUpdatedEvent:
+      payload:
+        type: object
+        required:
+        - type
+        - topic
+        - data
+        description: 'Broadcast after vc.page.setPin (added 2026-09-27): a page''s hasPin flag is document
+          state every client renders (the lock on the page tab, whether to prompt before showing the page),
+          and nothing else reported it - vc.page.list is not re-read on its own. Carries the page''s full
+          VcPage snapshot. The PIN itself is never sent.'
+        properties:
+          type:
+            const: event
+          topic:
+            const: vc.page.updated
+          originClientId:
+            type:
+            - string
+            - 'null'
+          data:
+            type: object
+            required:
+            - page
+            - docRevision
+            properties:
+              page:
+                $ref: '#/components/schemas/VcPage'
+              docRevision:
+                type: integer
     VcPageValidatePinRequest:
       payload:
         type: object

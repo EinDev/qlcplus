@@ -32,6 +32,7 @@
 #include "domains/apirgbmatrixdomain.h"
 #include "domains/apiefxcollectiondomain.h"
 #include "domains/apimediadomain.h"
+#include "domains/apivclayoutdomain.h"
 #include "qlcconfig.h"
 #include "doc.h"
 
@@ -59,6 +60,7 @@ ApiServer::ApiServer(QObject *parent, Doc *doc)
     m_rgbMatrixDomain = new ApiRgbMatrixDomain(m_doc, this, this);
     m_efxCollectionDomain = new ApiEfxCollectionDomain(m_doc, this, this);
     m_mediaDomain = new ApiMediaDomain(m_doc, this, this);
+    m_vcLayoutDomain = new ApiVcLayoutDomain(m_doc, this, this);
 }
 
 ApiServer::~ApiServer()

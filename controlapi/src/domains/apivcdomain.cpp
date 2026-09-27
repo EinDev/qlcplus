@@ -295,9 +295,14 @@ void ApiVcDomain::registerPageMethods(ApiDispatcher *d)
 
         doc->setModified();
 
-        // Note: docs/api-spec/fragments/virtualconsole.yaml defines no broadcast event for
-        // vc.page.setPin (unlike create/delete/rename) - see apivcdomain-notes.md. Other clients
-        // observe the new hasPin flag on their next vc.page.list.
+        // vc.page.updated (VcPageUpdatedEvent, added 2026-09-27): the page's hasPin flag is what
+        // every client draws on the page tab and checks before showing the page, and nothing else
+        // would tell them it changed. The PIN itself is never broadcast.
+        QJsonObject data;
+        data.insert(QStringLiteral("page"), host->vcPageSnapshot(index));
+        data.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
+        m_server->broadcast(QStringLiteral("vc.page.updated"), data, session->clientId(), false);
+
         QJsonObject result;
         result.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
         session->send(ApiEnvelope::buildOkResponse(id, result));

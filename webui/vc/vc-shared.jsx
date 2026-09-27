@@ -75,7 +75,10 @@ function vcMsToString(ms) {
  */
 function vcStructural(qlc, method, params) {
   const attempt = () => qlc.call(method, Object.assign({}, params, { baseRevision: qlc.docRevision() }));
-  return attempt().catch(e => { if (e && e.code === 'CONFLICT') return attempt(); throw e; });
+  /* Up to three tries: two edits fired back to back (a text field committing while a checkbox is
+     clicked) both conflict on the same revision, and the second retry must still find a fresh one. */
+  const retry = (left) => attempt().catch(e => { if (e && e.code === 'CONFLICT' && left > 0) return retry(left - 1); throw e; });
+  return retry(2);
 }
 
 /**

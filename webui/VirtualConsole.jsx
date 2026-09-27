@@ -20,7 +20,7 @@ const { ViewToolbar, ToolbarSpacer, IconButton, RobotoText, QLCPlusFader, Generi
 
 /* core.history.changed is in both lists: undo/redo emit no domain events, so the screen re-reads itself. */
 const WIDGET_REFRESH_TOPICS = ['vc.widget.created', 'vc.widget.deleted', 'vc.widget.updated', 'vc.widget.configChanged', 'vc.widget.bulkUpdated', 'vc.page.deleted', 'core.project.loaded', 'core.history.changed'];
-const PAGE_REFRESH_TOPICS = ['vc.page.created', 'vc.page.deleted', 'vc.page.renamed', 'core.project.loaded', 'core.history.changed'];
+const PAGE_REFRESH_TOPICS = ['vc.page.created', 'vc.page.deleted', 'vc.page.renamed', 'vc.page.updated', 'core.project.loaded', 'core.history.changed'];
 const NO_FUNCTION_ID = '4294967295';
 
 /* --- mock widgets (offline preview) -------------------------------------------------------- */
@@ -112,6 +112,8 @@ function VirtualConsole() {
   const [clipboard, setClipboard] = React.useState([]);
   const [functions, setFunctions] = React.useState([]);
   const [dialog, setDialog] = React.useState(null);
+  /* PIN unlocks are per browser session (vc.page/frame.validatePin are stateless server-side): 'page:<index>' / 'frame:<id>'. */
+  const [unlocked, setUnlocked] = React.useState({});
   const areaRef = React.useRef(null);
   const canvasRef = React.useRef(null);
   const [areaSize, setAreaSize] = React.useState({ w: 800, h: 600 });
@@ -154,7 +156,7 @@ function VirtualConsole() {
   /* Pages: list once per connection, follow page events. The page shown here is local — a
      remote should not flip the operator's screen, so vc.page.select is deliberately not called. */
   React.useEffect(() => {
-    if (!live) { setPages(null); setWidgets(null); return; }
+    if (!live) { setPages(null); setWidgets(null); setUnlocked({}); return; }
     let alive = true;
     const load = () => qlc.call('vc.page.list').then(r => { if (!alive) return; setPages(r.pages || []); setPage(p => (r.pages || []).some(x => x.index === p) ? p : (r.selectedPage || 0)); }).catch(() => {});
     load();
@@ -283,8 +285,34 @@ function VirtualConsole() {
       setWidgets(ws => ws ? ws.map(w => w.id === id ? Object.assign({}, w, { typeConfig: Object.assign({}, w.typeConfig, config) }) : w) : ws);
     }).catch(() => {}),
     deleteWidgets: (ids) => structural('vc.widget.delete', { widgetIds: ids.map(String) }).then(() => { setSelection([]); refreshRef.current(); }).catch(() => {}),
-    create: (params) => structural('vc.widget.create', Object.assign({ page }, params)).then(r => { refreshRef.current(); if (r && r.widgetId != null) { setSelection([String(r.widgetId)]); setPanel('props'); } return r; })
+    create: (params) => structural('vc.widget.create', Object.assign({ page }, params)).then(r => { refreshRef.current(); if (r && r.widgetId != null) { setSelection([String(r.widgetId)]); setPanel('props'); } return r; }),
+    /* Layout / configuration slice (vc/vc-props-layout.jsx drives these from the toolbar and the frame properties). */
+    bulkStyle: (ids, style) => structural('vc.widget.bulkStyle', Object.assign({ widgetIds: ids.map(String) }, style)).then(() => {
+      setWidgets(ws => ws ? ws.map(w => ids.indexOf(w.id) !== -1 ? Object.assign({}, w, { style: Object.assign({}, w.style, style) }) : w) : ws);
+    }).catch(() => {}),
+    setLevelChannels: (id, channels) => structural('vc.slider.setLevelChannels', { widgetId: String(id), channels }).then(() => {
+      setWidgets(ws => ws ? ws.map(w => w.id === id ? Object.assign({}, w, { typeConfig: Object.assign({}, w.typeConfig, { levelChannels: channels }) }) : w) : ws);
+    }).catch(() => {}),
+    align: (ids, referenceWidgetId, alignment) => structural('vc.widget.align', { widgetIds: ids.map(String), referenceWidgetId: String(referenceWidgetId), alignment }).then(() => refreshRef.current()).catch(() => {}),
+    distribute: (ids, direction) => structural('vc.widget.distribute', { widgetIds: ids.map(String), direction }).then(() => refreshRef.current()).catch(() => {}),
+    createFromFunctions: (params) => structural('vc.widget.createFromFunctions', Object.assign({ page }, params)).then(r => { refreshRef.current(); if (r && r.widgetIds) setSelection(r.widgetIds.map(String)); return r; }),
+    createMatrix: (params) => structural('vc.widget.createMatrix', Object.assign({ page }, params)).then(r => { refreshRef.current(); if (r && r.widgetIds && r.widgetIds.length) setSelection([String(r.widgetIds[0])]); return r; }),
+    frameSetPin: (id, currentPIN, newPIN) => structural('vc.frame.setPin', { widgetId: String(id), currentPIN: currentPIN || '', newPIN: newPIN || '' }).then(() => refreshRef.current()),
+    cloneFirstPage: (id) => structural('vc.frame.cloneFirstPage', { widgetId: String(id) }).then(() => refreshRef.current()).catch(() => {})
   }), [snap, byId, page, panel, qlc]);
+
+  /* PIN prompts (page and frame): a correct PIN unlocks for this browser session only. */
+  const pin = React.useMemo(() => ({
+    isUnlocked: (kind, key) => !!unlocked[kind + ':' + key],
+    unlock: (kind, key) => setUnlocked(u => Object.assign({}, u, { [kind + ':' + key]: true })),
+    validatePage: (index, value) => qlc.call('vc.page.validatePin', { index, pin: String(value) }).then(r => !!(r && r.valid)),
+    validateFrame: (id, value) => qlc.call('vc.frame.validatePin', { widgetId: String(id), pin: String(value) }).then(r => !!(r && r.valid))
+  }), [unlocked, qlc]);
+  const openPage = (index) => {
+    const p = (pages || []).find(x => x.index === index);
+    if (p && p.hasPin && !pin.isUnlocked('page', index)) { setDialog({ kind: 'pagePin', index }); return; }
+    setPage(index); setSelection([]);
+  };
 
   /** Absolute page position of a widget (geometry is parent-relative). */
   const absoluteOf = (w) => { let x = 0, y = 0, cur = w; while (cur) { const g = dragGeom[cur.id] || cur.geometry || {}; x += g.x || 0; y += g.y || 0; cur = cur.parentId ? byId[cur.parentId] : null; } return { x, y }; };
@@ -355,9 +383,12 @@ function VirtualConsole() {
     const render = (parentKey) => (byParent[parentKey] || []).filter(w => w.isVisible !== false).map(w => {
       const g = dragGeom[w.id] || w.geometry || { x: 0, y: 0, width: 100, height: 40 };
       const box = { position: 'absolute', left: g.x, top: g.y, width: g.width, height: g.height, boxSizing: 'border-box', zIndex: w.zIndex || 0 };
-      /* A frame whose children start inside the 26px header band runs headerless in the desktop app. */
-      const header = !(byParent[w.id] || []).some(c => c.geometry && c.geometry.y < 26);
-      const body = <VCWidgetBody w={w} header={header}>{render(w.id)}</VCWidgetBody>;
+      /* VcFrameConfig.showHeader when the server exposes it; otherwise a frame whose children start
+         inside the 26px header band runs headerless in the desktop app. A collapsed frame shows only
+         its header (VCFrameItem.qml hides the whole body). */
+      const fcfg = w.typeConfig || {};
+      const header = typeof fcfg.showHeader === 'boolean' ? fcfg.showHeader : !(byParent[w.id] || []).some(c => c.geometry && c.geometry.y < 26);
+      const body = <VCWidgetBody w={w} header={header}>{fcfg.isCollapsed ? null : render(w.id)}</VCWidgetBody>;
       return edit
         ? <VCEditable key={w.id} w={w} box={box} selected={selection.indexOf(w.id) !== -1}>{body}</VCEditable>
         : <div key={w.id} style={box} data-vc-widget={w.id} data-vc-type={w.widgetType}>{body}</div>;
@@ -371,13 +402,18 @@ function VirtualConsole() {
   const canvas = { width: Math.max(bounds.width, (areaSize.w - 24) / scale.current), height: Math.max(bounds.height, (areaSize.h - 24) / scale.current) };
   const selected = selection.map(id => byId[id]).filter(Boolean);
 
-  const ctx = { qlc, live: store, act, edit, scale: scale.current, unsupported: (m) => qlc.isUnsupported(m), notice: say, editApi };
+  /* Shared with every widget body / property panel / toolbar tool (vc/vc-props-layout.jsx registers
+     into window.QLCVCEditTools and reads selection, widgets, page, functions and pin from here). */
+  const ctx = { qlc, live: store, act, edit, scale: scale.current, unsupported: (m) => qlc.isUnsupported(m), notice: say, editApi,
+    selection, widgets: widgets || [], byId, page, pages: pages || [], functions, mode, pin, refresh: () => refreshRef.current(),
+    setSelection: (ids) => { setSelection(ids); if (ids.length) setPanel('props'); },
+    selectWidget: (w) => { if (w.page != null && Number(w.page) !== page) openPage(Number(w.page)); setSelection([String(w.id)]); if (edit) setPanel('props'); } };
 
   const pageEntries = live && pages ? pages.map(p => (
     <MenuBarEntry key={p.index} entryText={p.name || 'Page ' + (p.index + 1)} checked={p.index === page} checkedColor="var(--toolbar-selection-sub)" height="100%"
-      faSource={p.hasPin ? 'fa_lock' : undefined} onClick={() => { setPage(p.index); setSelection([]); }} style={{ padding: '0 10px', fontSize: 'var(--text-size-small)', flex: 'none' }}
+      faSource={p.hasPin ? (pin.isUnlocked('page', p.index) ? (window.VC_FA_LOCK_OPEN || 'fa_lock') : 'fa_lock') : undefined} onClick={() => openPage(p.index)} style={{ padding: '0 10px', fontSize: 'var(--text-size-small)', flex: 'none' }}
       onDoubleClick={() => { if (edit) setDialog({ kind: 'renamePage', name: p.name || '' }); }}
-      title={'Page ' + (p.index + 1) + (p.hasPin ? ' (PIN protected in the desktop app)' : '') + (edit ? ' — double-click to rename' : '')} />
+      title={'Page ' + (p.index + 1) + (p.hasPin ? ' (PIN protected)' : '') + (edit ? ' — double-click to rename' : '')} />
   )) : null;
 
   const glyphButton = (glyph, tooltip, disabled, onClick) => (
@@ -402,6 +438,8 @@ function VirtualConsole() {
               {glyphButton(VC_GLYPH.paste, 'Paste widgets from clipboard', !clipboard.length, paste)}
               {glyphButton('fa_trash_can', 'Remove the selected widgets', !selection.length, () => setDialog({ kind: 'deleteWidgets' }))}
               <IconButton imgSource={D.icon('grid')} size={26} checked={snap} tooltip="Enable/Disable widgets snapping" onClick={() => setSnap(!snap)} />
+              {/* Registry: window.QLCVCEditTools = [Component, ...] - extra edit-mode toolbar tools (align / distribute / matrix / ...), each reading useVC(). */}
+              {(window.QLCVCEditTools || []).map((Tool, i) => <Tool key={i} />)}
             </>
           ) : null}
           <ShortcutHint keys="Ctrl L" placement="corner">
@@ -482,6 +520,11 @@ function VirtualConsole() {
           message={'Are you sure you want to remove the selected widget' + (selection.length > 1 ? 's' : '') + '? Frames are removed with their contents.'}
           onClose={() => setDialog(null)}
           onClicked={(b) => { if (b === 'Remove' && selection.length) editApi.deleteWidgets(selection); setDialog(null); }} />
+        {window.VCPinDialog ? (
+          <VCPinDialog open={!!dialog && dialog.kind === 'pagePin'} title={dialog && dialog.kind === 'pagePin' && pages ? 'Page "' + ((pages.find(p => p.index === dialog.index) || {}).name || 'Page ' + (dialog.index + 1)) + '" is PIN protected' : 'PIN'}
+            onClose={() => setDialog(null)}
+            onSubmit={(value) => pin.validatePage(dialog.index, value).then(ok => { if (ok) { pin.unlock('page', dialog.index); setPage(dialog.index); setSelection([]); setDialog(null); } return ok; })} />
+        ) : null}
       </div>
     </VCContext.Provider>
   );

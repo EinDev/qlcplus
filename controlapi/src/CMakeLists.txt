@@ -16,6 +16,7 @@ set(CONTROLAPI_SOURCES
     domains/apirgbmatrixdomain.cpp domains/apirgbmatrixdomain.h
     domains/apiefxcollectiondomain.cpp domains/apiefxcollectiondomain.h
     domains/apimediadomain.cpp domains/apimediadomain.h
+    domains/apivclayoutdomain.cpp domains/apivclayoutdomain.h
 )
 
 # Static, linked directly into the qlcplus5 executable - same reasoning as
