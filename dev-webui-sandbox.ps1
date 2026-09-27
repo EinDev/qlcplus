@@ -36,9 +36,12 @@
 .PARAMETER UserModifiersDir  Same for the user channel modifier templates (QLCPLUS_USER_MODIFIERS_DIR): created on
                        first use as a copy of %UserProfile%\QLC+\ModifiersTemplates, so fixtures.modifiers.save /
                        rename / delete never touch the real folder. Pass "" (default) to leave it unset.
-.PARAMETER Plugins     IO plugins to put into the sandbox's Plugins\ folder, from <BuildDir>\plugins\<name>\src\<name>.dll.
-                       Only "loopback" is allowed (its outputs feed its own inputs, nothing leaves the machine);
-                       anything else is refused. Plugins\ is re-synced on every launch, so a sandbox started
+.PARAMETER Plugins     IO plugins to put into the sandbox's Plugins\ folder, copied from the build tree.
+                       Only "loopback" (<BuildDir>\plugins\loopback\src\loopback.dll: its outputs feed its own
+                       inputs) and "iopluginstub" (<BuildDir>\engine\test\iopluginstub\iopluginstub.dll, the
+                       engine tests' I/O stub: 4 fake input/output lines, writes into a memory buffer, stores
+                       any line parameter generically) are allowed - nothing leaves the machine. Real network
+                       or hardware plugins (ArtNet, E1.31, OSC, DMX USB, MIDI, ...) are refused. Plugins\ is re-synced on every launch, so a sandbox started
                        without -Plugins has none again.
 
 .EXAMPLE
@@ -117,14 +120,18 @@ foreach ($pair in @(@($exeSrc, (Join-Path $dest $exeName)), @($dllSrc, (Join-Pat
     }
 }
 
-# IO plugins: exactly the requested whitelisted ones, nothing else (see -Plugins).
-$allowedPlugins = @("loopback")
-$bad = @($Plugins | Where-Object { $_ -notin $allowedPlugins })
-if ($bad.Count) { throw "Plugin(s) not allowed in a sandbox: $($bad -join ', '). Only: $($allowedPlugins -join ', ')" }
+# IO plugins: exactly the requested whitelisted ones, nothing else (see -Plugins). Name -> DLL
+# path inside the build tree; only plugins that cannot send anything off the machine belong here.
+$allowedPlugins = [ordered]@{
+    "loopback"     = "plugins\loopback\src\loopback.dll"
+    "iopluginstub" = "engine\test\iopluginstub\iopluginstub.dll"
+}
+$bad = @($Plugins | Where-Object { -not $allowedPlugins.Contains($_) })
+if ($bad.Count) { throw "Plugin(s) not allowed in a sandbox: $($bad -join ', '). Only: $($allowedPlugins.Keys -join ', ')" }
 $pluginDir = Join-Path $dest "Plugins"
 if (Test-Path $pluginDir) { Get-ChildItem $pluginDir -Filter *.dll | Remove-Item -Force }
 foreach ($pl in $Plugins) {
-    $src = Join-Path $BuildDir "plugins\$pl\src\$pl.dll"
+    $src = Join-Path $BuildDir $allowedPlugins[$pl]
     if (-not (Test-Path $src)) { throw "Missing plugin $src (build the '$pl' target first)" }
     New-Item -ItemType Directory -Force $pluginDir | Out-Null
     Copy-Item $src (Join-Path $pluginDir "$pl.dll") -Force

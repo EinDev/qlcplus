@@ -302,9 +302,20 @@ and a second tab checked for the pushed event:
   QLC+ host's user profile folder, `QLCPLUS_USER_INPUTPROFILE_DIR` in a sandbox) with channel
   auto-detection over `io.inputProfile.learn.*`. Driven for real through the Loopback plugin on
   2026-09-27 (see the partials entry below): output / extra output / input / feedback lines,
-  per-output pause / blackout, profile assignment, learn, Rescan. Still only unit-tested: the
-  per-patch parameter editor for network plugins (`io/PatchProperties.jsx`, `io.patch.setParameters`)
-  and "Configure plugin" (opens the plugin's native dialog on the QLC+ host; Loopback has neither).
+  per-output pause / blackout, profile assignment, learn, Rescan. The per-patch plugin parameter
+  editor (`io/PatchProperties.jsx`, `io.patch.setParameters`) was driven on 2026-09-27 against the
+  engine's I/O plugin stub (driver `tools/e2e/plugin-params.js`, sandbox `plugparams` on 9390/9391,
+  `-Plugins iopluginstub`): output and input line keys added, edited as string / number / boolean,
+  removed, reopened, saved into `<PluginParameters>` and reloaded with `core.project.open`. The
+  real network plugins stay out of sandboxes (they send UDP); their suggested keys and value
+  formats (ArtNet `inputUni` / `outputIP` / `outputUni` / `transmitMode`, E1.31 `universe` /
+  `multicast` / `mcastFullIP` / `mcastIP` / `ucastIP` / `ucastPort` / `transmitMode` / `priority`,
+  OSC `inputPort` / `feedbackIP` / `feedbackPort` / `outputIP` / `outputPort`) are checked against
+  each plugin's `setParameter()` source, not driven. The `.qxw` stores every parameter as text, so
+  numbers and booleans reload as strings (plugins parse them with `toInt()` / `toString()`).
+  `UniverseChannels` is written by the engine on every output line and shown read-only. Still only
+  unit-tested: "Configure plugin" (opens the plugin's native dialog on the QLC+ host; neither
+  Loopback nor the stub has one).
 - **Toolbar**: Stop all with the running count, BPM set / tap / off with the beat pulse, Undo /
   Redo (desktop history), Design / Operate mode, New / Open / Save / Save as (server-side paths,
   discard prompt when the project is modified).
