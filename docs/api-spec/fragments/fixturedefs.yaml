@@ -520,7 +520,7 @@ messages:
             sessionRevision: { type: integer }
             changeKind:
               type: string
-              description: "What kind of mutation triggered this event, e.g. 'metadata', 'physical', 'channel.add', 'channel.update', 'channel.remove', 'capability.add', 'capability.update', 'capability.remove', 'capability.autoPatchColors', 'alias.add', 'alias.update', 'alias.remove', 'alias.applyToAllModes', 'mode.add', 'mode.rename', 'mode.remove', 'mode.setChannels', 'mode.setPhysical', 'head.add', 'head.remove', 'forkToUser'."
+              description: "What kind of mutation triggered this event, e.g. 'metadata', 'physical', 'channel.add', 'channel.update', 'channel.remove', 'channel.wizard', 'capability.add', 'capability.update', 'capability.remove', 'capability.wizard', 'capability.autoPatchColors', 'alias.add', 'alias.update', 'alias.remove', 'alias.applyToAllModes', 'mode.add', 'mode.rename', 'mode.remove', 'mode.setChannels', 'mode.setPhysical', 'head.add', 'head.remove', 'forkToUser'."
             definition:
               $ref: '#/components/schemas/FixtureDefsDefinition'
 
@@ -1178,6 +1178,113 @@ messages:
               minItems: 1
               items: { type: integer }
 
+  # ======================================================================
+  # Wizards (mirror qmlui/qml/popup/PopupChannelWizard.qml, which has two
+  # faces: bulk channels for a definition, bulk capabilities for a channel)
+  # ======================================================================
+
+  FixtureDefsChannelWizardRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixturedefs.channel.wizard }
+        params:
+          type: object
+          required: [sessionId, baseRevision, type]
+          description: >
+            Bulk-creates `amount` preset channels the way the desktop wizard
+            does (EditorView::addPresetChannel per generated name). `label`
+            is a pattern whose `#` is replaced by the 1-based index. `type`
+            is either a primary colour name (Red, Green, Blue, White, Amber,
+            UV, Lime, Indigo, ...: an Intensity channel of that colour with
+            the matching Intensity* preset), a compound colour set (RGB, RGBW,
+            RGBA, RGBL, RGBAW: one channel per component named "<Colour> N",
+            the label is ignored), or a channel group name (Intensity/
+            "Dimmer", Pan, Tilt, Colour/"Color Macro", Shutter, Beam, Effect,
+            ...: a channel of that group with its default preset). Every
+            generated name must be free - the whole call is rejected with
+            INVALID_PARAMS before anything is created otherwise.
+          properties:
+            sessionId: { type: string }
+            baseRevision: { type: integer }
+            amount: { type: integer, minimum: 1, maximum: 1000, default: 1 }
+            type: { type: string }
+            label: { type: string, default: "Channel #" }
+
+  FixtureDefsChannelWizardResponse:
+    payload:
+      oneOf:
+        - type: object
+          required: [type, id, ok, result]
+          properties:
+            type: { const: response }
+            id: { type: string }
+            ok: { const: true }
+            result:
+              allOf:
+                - $ref: '#/components/schemas/FixtureDefsSessionMutationResult'
+                - type: object
+                  required: [channelIds]
+                  properties:
+                    channelIds:
+                      type: array
+                      items: { type: string }
+                      description: "Ids of the created channels, in creation order."
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  FixtureDefsCapabilityWizardRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixturedefs.channel.capability.wizard }
+        params:
+          type: object
+          required: [sessionId, baseRevision, channelId]
+          description: >
+            Bulk-creates `amount` consecutive capabilities of `width` DMX
+            values starting at `start` (capability i covers
+            [start + width*i, start + width*i + width - 1]), named from
+            `label` with `#` replaced by the 1-based index. The whole range
+            must fit into 0..255 (INVALID_PARAMS) and must not touch any
+            existing capability (FIXTUREDEFS_RANGE_OVERLAP, the desktop
+            wizard's "Overlapping range detected") - nothing is created
+            otherwise.
+          properties:
+            sessionId: { type: string }
+            baseRevision: { type: integer }
+            channelId: { type: string }
+            start: { type: integer, minimum: 0, maximum: 254, default: 0 }
+            width: { type: integer, minimum: 1, maximum: 255, default: 1 }
+            amount: { type: integer, minimum: 1, default: 1 }
+            label: { type: string, default: "Capability #" }
+
+  FixtureDefsCapabilityWizardResponse:
+    payload:
+      oneOf:
+        - type: object
+          required: [type, id, ok, result]
+          properties:
+            type: { const: response }
+            id: { type: string }
+            ok: { const: true }
+            result:
+              allOf:
+                - $ref: '#/components/schemas/FixtureDefsSessionMutationResult'
+                - type: object
+                  required: [capabilityIndexes]
+                  properties:
+                    capabilityIndexes:
+                      type: array
+                      items: { type: integer }
+                      description: "Positions of the created capabilities within the channel's list."
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
 schemas:
 
   FixtureDefsSessionMutationResult:
@@ -1776,6 +1883,28 @@ operations:
     channel: { $ref: '#/channels/qlcplus' }
     messages:
       - $ref: '#/channels/qlcplus/messages/fixtureDefsHeadAddResponse'
+
+  sendFixtureDefsChannelWizard:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsChannelWizardRequest'
+  receiveFixtureDefsChannelWizardResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsChannelWizardResponse'
+
+  sendFixtureDefsCapabilityWizard:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsCapabilityWizardRequest'
+  receiveFixtureDefsCapabilityWizardResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixtureDefsCapabilityWizardResponse'
 
   # ---- Save ----
   sendFixtureDefsSave:

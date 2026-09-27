@@ -67,6 +67,17 @@ Instead it introduces a two-tier scheme, visible in the schemas:
 - **`FIXTUREDEFS_ACTS_ON_SELF`** (used by `fixturedefs.mode.setChannels`) —
   self-explanatory from its inline description in the fragment; listed here
   only so both domain-specific error codes are discoverable from one place.
+- **`FIXTUREDEFS_IN_USE`** (`fixturedefs.delete`) — the definition is
+  referenced by at least one patched `Fixture` in the open project;
+  `error.details.fixtureIds` lists them. Unpatch/re-patch those fixtures
+  first (`fixtures.*`). Reflects the conservative choice the delete
+  description in the fragment recommends.
+- **`FIXTUREDEFS_RANGE_OVERLAP`** (`fixturedefs.channel.capability.add`,
+  `.update` when `min`/`max` change, and `.wizard`) — the requested DMX range
+  collides with another capability of the same channel. The engine's
+  `QLCChannel::addCapability()`/`setCapabilityRange()` refuse overlaps, so
+  the server never gets to store an overlapping range; the wizard mirrors
+  PopupChannelWizard's "Overlapping range detected" check up front.
 
 ## Why base64-in-params for QXF import/export
 
@@ -153,3 +164,85 @@ same session's `sessionRevision` in between — exactly the multi-step
 batch-conflict hazard called out for ChaserEditor's bulk step ops
 elsewhere in the full audit. One "set channels" call is atomic against
 `baseRevision` and matches the actual granularity of a real edit.
+
+## Implemented 2026-09-27: whole domain (server + tests + client wrapper, no web UI yet)
+
+Server: `controlapi/src/domains/apifixturedefsdomain.{h,cpp}`; tests:
+`controlapi/test/apifixturedefsdomain/` (26 cases, one per method plus the
+read-only/system errors and a create -> edit everything -> validate -> save
+-> reopen -> export -> delete round trip); client wrapper
+`webui/api/domains/fixturedefs.js` (`qlc.fixtureDefs.*`). The editor screen
+is a follow-up slice - every "Fixture Editor" row of `docs/webui-parity.md`
+is `partial: server only` until it lands.
+
+Decisions made while implementing, all of them visible to a client:
+
+- **Wizards added to the spec** (`fixturedefs.channel.wizard`,
+  `fixturedefs.channel.capability.wizard`): the fragment had no counterpart
+  for `qmlui/qml/popup/PopupChannelWizard.qml`, whose two faces (bulk
+  preset channels by type/amount/label, bulk capabilities by
+  start/width/amount/label with an overlap check) are exactly what a web
+  editor needs to offer the "Wizard" button. Both are single atomic
+  session mutations (one `baseRevision`, one `fixturedefs.session.updated`
+  with `changeKind` `channel.wizard` / `capability.wizard`).
+- **Where the user directory is**: `QLCFixtureDefCache::userDefinitionDirectory()`
+  now honours, in order, `QLCFixtureDefCache::setUserDefinitionDirectoryOverride()`
+  (tests), the `QLCPLUS_USER_FIXTURE_DIR` environment variable (sandboxes -
+  `dev-webui-sandbox.ps1` inherits it from the launching PowerShell), then
+  the platform default. Every save/fork/import/delete resolves through it.
+  `fixturedefs.delete` additionally refuses (SYSTEM_READONLY) to remove a
+  file that isn't inside that directory, even if `isUser` says otherwise.
+- **`defRevision` bookkeeping** lives in the domain (`QHash` keyed by
+  manufacturer+model), starts at 0 for every library entry, increments on
+  every `save` and `delete`, and is never reset - a definition deleted at
+  revision 2 and re-saved comes back at 4, so a stale client can never
+  collide with 0. `fixturedefs.save`'s `baseRevision` must be `null` when
+  the library has no entry for the session's current manufacturer/model
+  and the entry's `defRevision` when it has; anything else is `CONFLICT`
+  with `details.defRevision` (`null` when there is no entry).
+- **Session `CONFLICT` details** carry `{sessionRevision, definition}` so a
+  client can rebase without a refetch.
+- **Duplicate names are rejected** (`INVALID_PARAMS`) by `channel.add`,
+  `channel.update`, `channel.wizard`, `mode.add`, `mode.rename`: the engine
+  resolves channels and modes by name when cloning a definition
+  (`QLCFixtureMode`'s copy constructor) and when saving aliases, so two
+  same-named channels silently merge on the next open. The desktop editor
+  avoids this by construction (its editors are keyed by name).
+- **Channel rename keeps aliases consistent on the source side**: an
+  `AliasInfo` stores the owning channel's name as `sourceChannel` (saved to
+  the QXF as `Channel="..."`), so `channel.update` with `name` rewrites that
+  field in the renamed channel's own Alias capabilities. Aliases *targeting*
+  the old name are left alone, exactly as the fragment documents.
+- **Heads and acts-on survive slot edits**: `QLCFixtureMode::removeChannel()`
+  / `removeAllChannels()` leave the index-based head list and acts-on map
+  untouched, so `mode.setChannels` and `channel.remove` snapshot both by
+  channel identity, rebuild the slot list and remap; a head whose channels
+  all vanished is dropped, an acts-on pointing at a removed channel becomes
+  `null`.
+- **Capability `resources` are rebuilt, not patched**: `QLCCapability` can
+  only append resources, so `capability.update` with `preset` or
+  `resources` swaps in a fresh capability at the same index carrying exactly
+  the values that fit the resulting `presetType` (colours as `#rrggbb`,
+  frequencies as numbers, pictures as strings; a preset change within the
+  same type keeps the old values). `autoPatchColors` does the same per
+  detected colour.
+- **`autoPatchColors` reads `namedrgb.qxcf`** from the system colour
+  filter directory with a bare `QXmlStreamReader` (the `ColorFilters` class
+  lives in qmlui); when the file is missing it only title-cases names, like
+  the desktop editor.
+- **`fixturedefs.get` ids** (`ch-1`, `mode-1`, ... in pool order) are
+  index-based and only meaningful within that response - they are not
+  session ids. Session ids are assigned when the session opens (same
+  scheme) and then stay stable for its life.
+- **Sessions outlive their client connection** (a browser reload can list
+  and continue them via `fixturedefs.session.list`), mirroring
+  `FixtureEditor` keeping editors open; they are freed by
+  `fixturedefs.session.close` or when the server shuts down.
+- **`fixturedefs.list` cost**: implemented per spec (force-loads every
+  definition once); measured against the full bundled library in the
+  sandbox smoke test (figure in the slice report). A manufacturer filter
+  keeps it cheap.
+- **`save` re-points patched fixtures**: after `reloadOrAddFixtureDef()`
+  overwrites the cache entry (deleting its modes), every `Fixture` using
+  that manufacturer/model is re-attached to the mode of the same name (or
+  the first mode) - the same thing `FixtureEditor::slotReloadFixture()` does.

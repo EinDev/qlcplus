@@ -22,6 +22,33 @@
  * or disk until fixturedefs.save. Every successful session mutation broadcasts the single shared
  * 'fixturedefs.session.updated' event carrying the session's full current definition snapshot
  * (not a JSON Patch — definitions are small; see notes.md) plus a `changeKind` tag.
+ *
+ * Server status (2026-09-27): every method below is implemented in
+ * controlapi/src/domains/apifixturedefsdomain.cpp and covered by controlapi/test/apifixturedefsdomain.
+ * What an editor screen built on this needs to know (details in fixturedefs-notes.md,
+ * "Implemented 2026-09-27"):
+ *   - Lifecycle: session.create | session.open({manufacturer, model}) | session.import({fileName,
+ *     qxfBase64}) -> {sessionId, definition, sessionRevision: 0, isUser, baseRevision}. Keep
+ *     sessionRevision from every ack / session.updated event and send it as baseRevision on the
+ *     next mutation; a CONFLICT carries {sessionRevision, definition} in error.details to rebase
+ *     from. Sessions survive a page reload — session.list shows them, session.close frees them.
+ *   - Saving: fixturedefs.save({sessionId, baseRevision}) where baseRevision is the defRevision
+ *     from session.open / the previous save result (null for a never-saved definition). A session
+ *     opened from a bundled definition (isUser:false) must session.forkToUser first or save is
+ *     FIXTUREDEFS_SYSTEM_READONLY. Save answers {defRevision, warnings} and broadcasts
+ *     'fixturedefs.saved'; the session stays open. Files land in the user fixture directory
+ *     (overridable server-side through QLCPLUS_USER_FIXTURE_DIR for sandboxes).
+ *   - Ids: channelId ("ch-N") / modeId ("mode-N") are stable for the session's life and appear in
+ *     every definition snapshot; capabilities, aliases and heads are addressed by index within
+ *     their parent. Ids from fixturedefs.get are index-based and only valid in that response.
+ *   - Names must be unique per definition (channels and modes): add/rename with a taken name is
+ *     INVALID_PARAMS. Aliases are name-addressed; renaming a channel or mode does not retarget
+ *     aliases pointing at it (see fixturedefs.mode.rename in the spec).
+ *   - Errors specific to this domain: FIXTUREDEFS_SYSTEM_READONLY, FIXTUREDEFS_IN_USE (delete of a
+ *     definition patched in the open project; details.fixtureIds), FIXTUREDEFS_RANGE_OVERLAP
+ *     (capability add/update/wizard), FIXTUREDEFS_ACTS_ON_SELF (mode.setChannels).
+ *   - The two wizard methods (channel.wizard, channel.capability.wizard) are this fork's addition
+ *     for the desktop "Fixture Editor Wizard" popup.
  */
 (function () {
   'use strict';
@@ -127,6 +154,21 @@
          */
         remove: function (params) { return self.call('fixturedefs.channel.remove', params); },
 
+        /**
+         * Bulk-creates preset channels (the channel face of the desktop "Fixture Editor Wizard",
+         * PopupChannelWizard.qml). `label`'s `#` becomes the 1-based index. `type` is a primary
+         * colour name (Red/Green/Blue/White/Amber/UV/Lime/Indigo/...: Intensity channel of that
+         * colour), a compound set (RGB/RGBW/RGBA/RGBL/RGBAW: one channel per component named
+         * "<Colour> N", label ignored) or a channel group (Intensity or "Dimmer", Pan, Tilt, Colour
+         * or "Color Macro", Shutter, Beam, Effect, ...). Every generated name must be free, or the
+         * whole call is refused with INVALID_PARAMS and nothing is created. One session mutation:
+         * one baseRevision, one session.updated event (changeKind 'channel.wizard').
+         * @param {object} params - {sessionId: string, baseRevision: integer, type: string, amount?: integer (1-1000, default 1), label?: string (default 'Channel #')}
+         * @returns {Promise<object>} result - {sessionId, sessionRevision, channelIds: string[] — created channels in order}
+         * @see docs/api-spec/fragments/fixturedefs.yaml (method: fixturedefs.channel.wizard)
+         */
+        wizard: function (params) { return self.call('fixturedefs.channel.wizard', params); },
+
         capability: {
           /**
            * Adds a capability (DMX sub-range) to a channel. If min/max are omitted, the server
@@ -168,6 +210,19 @@
            * @see docs/api-spec/fragments/fixturedefs.yaml (method: fixturedefs.channel.capability.autoPatchColors)
            */
           autoPatchColors: function (params) { return self.call('fixturedefs.channel.capability.autoPatchColors', params); },
+
+          /**
+           * Bulk-creates `amount` consecutive capabilities of `width` DMX values from `start`
+           * (capability i covers [start + width*i, start + width*i + width - 1]), named from
+           * `label` with `#` replaced by the 1-based index — the capability face of the desktop
+           * wizard. The whole range must fit 0..255 (INVALID_PARAMS) and must not touch an
+           * existing capability (FIXTUREDEFS_RANGE_OVERLAP, the wizard's "Overlapping range
+           * detected"); nothing is created otherwise. changeKind 'capability.wizard'.
+           * @param {object} params - {sessionId: string, baseRevision: integer, channelId: string, start?: integer (0-254, default 0), width?: integer (1-255, default 1), amount?: integer (>=1, default 1), label?: string (default 'Capability #')}
+           * @returns {Promise<object>} result - {sessionId, sessionRevision, capabilityIndexes: integer[] — positions of the created capabilities}
+           * @see docs/api-spec/fragments/fixturedefs.yaml (method: fixturedefs.channel.capability.wizard)
+           */
+          wizard: function (params) { return self.call('fixturedefs.channel.capability.wizard', params); },
 
           alias: {
             /**
