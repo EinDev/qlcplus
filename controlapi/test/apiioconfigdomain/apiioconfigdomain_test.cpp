@@ -203,6 +203,18 @@ QJsonObject ApiIoConfigDomain_Test::sampleProfile(const QString &model, const QS
     channel.insert(QStringLiteral("lowerValue"), 10);
     channel.insert(QStringLiteral("upperValue"), 200);
 
+    // Custom feedback (lower/upper value, MIDI channel) is a Button-only
+    // thing in the .qxi format (QLCInputChannel::saveXML) - a second channel
+    // carries it.
+    QJsonObject button;
+    button.insert(QStringLiteral("number"), 9);
+    button.insert(QStringLiteral("name"), QStringLiteral("Go"));
+    button.insert(QStringLiteral("type"), QStringLiteral("Button"));
+    button.insert(QStringLiteral("sendExtraPress"), true);
+    button.insert(QStringLiteral("lowerValue"), 10);
+    button.insert(QStringLiteral("upperValue"), 200);
+    button.insert(QStringLiteral("lowerChannel"), 3);
+
     QJsonObject color;
     color.insert(QStringLiteral("value"), 1);
     color.insert(QStringLiteral("label"), QStringLiteral("Red"));
@@ -217,7 +229,7 @@ QJsonObject ApiIoConfigDomain_Test::sampleProfile(const QString &model, const QS
     profile.insert(QStringLiteral("model"), model);
     profile.insert(QStringLiteral("type"), QStringLiteral("MIDI"));
     profile.insert(QStringLiteral("midiSendNoteOff"), false);
-    profile.insert(QStringLiteral("channels"), QJsonArray() << channel);
+    profile.insert(QStringLiteral("channels"), QJsonArray() << channel << button);
     profile.insert(QStringLiteral("colorTable"), QJsonArray() << color);
     profile.insert(QStringLiteral("midiChannelTable"), QJsonArray() << midiChannel);
     return profile;
@@ -303,24 +315,29 @@ void ApiIoConfigDomain_Test::pluginConfigureWithoutDialogIsUnsupported()
     QCOMPARE(stub->m_configureCalled, 0);
 }
 
-void ApiIoConfigDomain_Test::pluginConfigureOnHeadlessHostIsUnsupported()
+void ApiIoConfigDomain_Test::pluginConfigureCallsThroughOnGuiHost()
 {
-    // This test binary is a QCoreApplication: a plugin that does have a
-    // dialog must be refused explicitly rather than have configure() called
-    // with nowhere to show it.
+    // This test binary is a QApplication (QT_GUI_LIB comes in through the
+    // engine's public Qt6::Gui link, so QTEST_MAIN builds one): a plugin
+    // that has a dialog gets configure() called and the caller is told the
+    // dialog opened on the host. The stub's configure() also emits
+    // configurationChanged(), which must surface as io.plugin.linesChanged.
+    // (A QCoreApplication-only host answers UNSUPPORTED instead - see the
+    // handler; not reachable from this binary.)
     IOPluginStub *stub = loadStubPlugin();
     QVERIFY(stub != nullptr);
+    QVERIFY2(QCoreApplication::instance()->inherits("QGuiApplication"), "expected a GUI test application");
     stub->m_canConfigure = true;
     hello(m_client);
+    QSignalSpy spy(m_client, &QWebSocket::textMessageReceived);
 
     QJsonObject params;
     params.insert(QStringLiteral("pluginName"), stubName(stub));
     QJsonObject reply = sendAndWaitForReply(QStringLiteral("io.plugin.configure"), params);
-    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
-    QJsonObject error = reply.value(QStringLiteral("error")).toObject();
-    QCOMPARE(error.value(QStringLiteral("code")).toString(), QStringLiteral("UNSUPPORTED"));
-    QVERIFY(error.value(QStringLiteral("message")).toString().contains(QStringLiteral("no desktop")));
-    QCOMPARE(stub->m_configureCalled, 0);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(reply.value(QStringLiteral("result")).toObject().value(QStringLiteral("openedOnHost")).toBool(), true);
+    QCOMPARE(stub->m_configureCalled, 1);
+    QVERIFY(QTest::qWaitFor([&]() { return eventsWithTopic(spy, QStringLiteral("io.plugin.linesChanged")).count() >= 1; }, 2000));
 }
 
 /*********************************************************************
@@ -507,8 +524,12 @@ void ApiIoConfigDomain_Test::inputProfileSaveWritesFileAndBumpsRevision()
     QCOMPARE(reloaded->channel(5)->type(), QLCInputChannel::Slider);
     QCOMPARE(reloaded->channel(5)->movementType(), QLCInputChannel::Relative);
     QCOMPARE(reloaded->channel(5)->movementSensitivity(), 33);
-    QCOMPARE(int(reloaded->channel(5)->lowerValue()), 10);
-    QCOMPARE(int(reloaded->channel(5)->upperValue()), 200);
+    QVERIFY(reloaded->channel(9) != nullptr);
+    QCOMPARE(reloaded->channel(9)->type(), QLCInputChannel::Button);
+    QCOMPARE(reloaded->channel(9)->sendExtraPress(), true);
+    QCOMPARE(int(reloaded->channel(9)->lowerValue()), 10);
+    QCOMPARE(int(reloaded->channel(9)->upperValue()), 200);
+    QCOMPARE(reloaded->channel(9)->lowerChannel(), 3);
     QCOMPARE(reloaded->colorTable().count(), 1);
     QCOMPARE(reloaded->midiChannelTable().value(0), QStringLiteral("Main"));
     delete reloaded;
@@ -521,8 +542,9 @@ void ApiIoConfigDomain_Test::inputProfileSaveWritesFileAndBumpsRevision()
     getParams.insert(QStringLiteral("name"), QStringLiteral("Acme Faderbox"));
     QJsonObject get = sendAndWaitForReply(QStringLiteral("io.inputProfile.get"), getParams).value(QStringLiteral("result")).toObject();
     QJsonObject profile = get.value(QStringLiteral("profile")).toObject();
-    QCOMPARE(profile.value(QStringLiteral("channels")).toArray().count(), 1);
+    QCOMPARE(profile.value(QStringLiteral("channels")).toArray().count(), 2);
     QCOMPARE(profile.value(QStringLiteral("channels")).toArray().at(0).toObject().value(QStringLiteral("number")).toInt(), 5);
+    QCOMPARE(profile.value(QStringLiteral("channels")).toArray().at(1).toObject().value(QStringLiteral("lowerChannel")).toInt(), 3);
     QCOMPARE(profile.value(QStringLiteral("channels")).toArray().at(0).toObject().value(QStringLiteral("type")).toString(), QStringLiteral("Slider"));
     QCOMPARE(profile.value(QStringLiteral("isUser")).toBool(), true);
     QCOMPARE(profile.value(QStringLiteral("colorTable")).toArray().at(0).toObject().value(QStringLiteral("color")).toString(), QStringLiteral("#ff0000"));

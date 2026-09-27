@@ -52,7 +52,7 @@ private slots:
     void pluginRescanInvokesStubAndBroadcastsLinesChanged();
     void pluginRescanOnUnknownPluginIsNotFound();
     void pluginConfigureWithoutDialogIsUnsupported();
-    void pluginConfigureOnHeadlessHostIsUnsupported();
+    void pluginConfigureCallsThroughOnGuiHost();
 
     void patchSetParametersStoresAndBroadcastsUniverseUpdated();
     void patchSetParametersNullUnsetsKey();
