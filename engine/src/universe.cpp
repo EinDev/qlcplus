@@ -320,6 +320,8 @@ quint32 Universe::faderCycles() const
 void Universe::tick()
 {
     // Keep at most one pending tick to avoid queueing stale work when running late.
+    // available() + release() is not atomic against run()'s tryAcquire(): at worst
+    // two tokens are pending, i.e. one extra short fader cycle. Harmless.
     if (m_semaphore.available() == 0)
         m_semaphore.release(1);
 }

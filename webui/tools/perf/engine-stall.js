@@ -6,10 +6,11 @@
 //        [--heavy fixturedefs.list] [--params '{"manufacturer":"Chauvet"}']
 //
 // SANDBOX ONLY (it starts/stops a function). The DMX stream itself is delivered through the QLC+
-// main thread, so a gap here proves the web clients stop seeing output; whether the physical output
-// stops too is answered by Universe::tick() being a queued slot on the main thread (see the plan in
-// docs/agent-reports/2026-09-27-webui-performance-plan.md) and was confirmed there with a temporary
-// probe in Universe::run().
+// main thread, so a gap here proves the web clients stop seeing output. It does NOT prove the physical
+// output stops: since the "DMX output off the main thread" change, MasterTimer wakes the universe
+// writer threads directly, so output keeps flowing through a main-thread stall (see the plan in
+// docs/agent-reports/2026-09-27-webui-performance-plan.md, measured there with a temporary probe in
+// Universe::run()). Before that change, Universe::tick() was a queued slot on the main thread.
 
 const { connect, pct, sleep } = require('./ws-client.js');
 const arg = (n, d) => { const i = process.argv.indexOf('--' + n); return i < 0 ? d : process.argv[i + 1]; };

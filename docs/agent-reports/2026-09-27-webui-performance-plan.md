@@ -2,8 +2,9 @@
 
 Scope: the browser web UI (`webui/`) and the WebSocket Control API behind it (`controlapi/`),
 running against the real show file (`<test project>` = SF3: 236 fixtures, 6 universes,
-956 functions, 15 VC pages, 386 VC widgets). This is a plan; Phase 1 has since been implemented,
-see "Implemented (Phase 1)" at the end. Every number in the "Baseline" section was measured.
+956 functions, 15 VC pages, 386 VC widgets). This is a plan; Phase 1 has since been implemented (see
+"Implemented (Phase 1)"), and so has P1b, DMX output off the main thread (see "DMX output off the main
+thread - implemented"), both near the end. Every number in the "Baseline" section was measured.
 Anything marked **estimate** was not.
 
 ## TL;DR
@@ -279,7 +280,8 @@ S (hours), M (a day or two) or L (several days). "Verify" names the tool to re-r
 - Verify: `api-cost.js` (drop `--skip-defs`), `engine-stall.js --params '{}'` (unfiltered), on a
   fresh sandbox.
 
-**P1b: decouple DMX output from the main thread (one engine line, needs a soak test).**
+**P1b: decouple DMX output from the main thread (one engine line, needs a soak test).** Implemented,
+with a different mechanism than proposed here: see "DMX output off the main thread - implemented".
 - Fix: connect `MasterTimer::tickReady` → `Universe::tick` with `Qt::DirectConnection` instead of
   `Qt::QueuedConnection` (`engine/src/inputoutputmap.cpp:161,168`). `tick()` only touches a
   `QSemaphore`, which is thread-safe, so calling it from the timer thread is safe.
@@ -478,7 +480,7 @@ because the machine was loaded (§4). Re-measure on a quiet machine with `api-co
 4. P4: `ETag`/`Last-Modified` + 304 in `webserver.cpp` (warm loads stop re-downloading 5.6 MB).
 5. P6 (partial): drop the duplicate `functions.list` calls on fx and show; debounce `core.project.get`.
 6. P7 (partial): skip the DMX diff when nobody subscribes.
-7. P1b: **decide with the user**, then prototype the one-line `DirectConnection` change behind a
+7. P1b (done, see "DMX output off the main thread - implemented"): **decide with the user**, then prototype the one-line `DirectConnection` change behind a
    soak test. It is the largest live-safety gain, but it changes existing engine behaviour.
 
 **Phase 2: structural (M each)**
@@ -498,6 +500,155 @@ because the machine was loaded (§4). Re-measure on a quiet machine with `api-co
 - P7: compact DMX delta topic; serialise each broadcast once.
 - P1d: watchdog behaviour during shows.
 - P10: Release build for shows, after a clean measurement.
+
+## DMX output off the main thread - implemented (P1b, 2026-09-27)
+
+### What changed, and why this design
+
+Commit `fix(engine): keep DMX output running while the main thread is blocked`.
+`MasterTimer::timerTick()` now calls `Universe::tick()` on every universe itself, on the timer
+thread, after functions and DMX sources wrote their values and while the universe list is still
+claimed (`claimUniverses()` / `releaseUniverses()`). The two queued
+`tickReady()` → `Universe::tick()` connections in `InputOutputMap::addUniverse()` are gone.
+`tickReady()` is still emitted (nothing in this tree listens to it any more).
+
+What each thread does, before and after:
+
+| Work | Thread before | Thread after |
+|---|---|---|
+| Functions and DMX sources write their GenericFaders (`timerTickFunctions`, `timerTickDMXSources`) | MasterTimer (Windows timer-queue thread) | same |
+| `Universe::tick()`: release the writer semaphore (at most one pending token) | **main thread** (queued slot) | **MasterTimer thread**, under `m_universeMutex` |
+| `processFaders()`: compose faders, GM, modifiers into `m_postGMValues` | Universe's own `QThread` (`run()`) | same |
+| `dumpOutput()` → `OutputPatch::dump()` → plugin `writeUniverse()` | Universe's own thread | same |
+| `universeWritten` → web UI DMX stream, monitors | emitted on the Universe thread, delivered queued to the main thread | same |
+
+So the only thing that moved is a semaphore release. Plugin thread safety does not change at all:
+`writeUniverse()` was already called from each universe's own thread
+(`universe.cpp` `dumpOutput()`, `outputpatch.cpp` `dump()`), never from the main thread. ArtNet /
+E1.31 / DMXUSB / MIDI output code sees exactly the same threads as before.
+
+Why not the one-line `Qt::DirectConnection` the plan proposed: a direct cross-thread slot call is
+not protected against its receiver being deleted at the same time. `~Universe()` runs its body,
+then destroys `m_semaphore`, and only then does `~QObject()` disconnect; a tick arriving in that
+window would touch a destroyed semaphore. Calling `tick()` from inside `timerTick()` while
+`m_universeMutex` is held closes that window, because `removeUniverse()` and
+`removeAllUniverses()` (universe delete, project load, `~InputOutputMap`) delete under the same
+mutex. `~Doc` deletes the MasterTimer before the InputOutputMap.
+
+Upstream history: the queued connection dates from the 2018 "multithreaded universes" work
+(`e6f1b4cd9`, `3e6285189`) with no comment explaining it; the writer thread + semaphore design was
+introduced in the same series, so the main-thread hop looks like a default rather than a
+requirement.
+
+Side effects, all bounded:
+- `tick()`'s "at most one pending token" check (`available() == 0` then `release()`) is not atomic
+  against the writer's `tryAcquire()`. Worst case: two tokens, i.e. one extra short fader cycle.
+- The output cadence now follows the Windows timer queue directly instead of the main-thread event
+  loop. That queue sometimes fires a late tick and the next one on time, so two cycles land less
+  than 8 ms apart more often (see `< 8 ms` below): a catch-up cycle after a late one, not a
+  duplicate. Each cycle uses its real elapsed time, so fades are not sped up.
+
+### Soak test (measured)
+
+Setup: this worktree's Debug build, sandbox with only the Loopback plugin, SF3 (patches stripped,
+then re-patched over the API: universes 1-4 output to Loopback 1-4, universes 5-6 input from
+Loopback 1-2). Busy show: all 15 RGB Matrices, 3 Hardstyle chasers and one EFX over 12 moving
+heads (created by the driver, SF3 has none), 19 functions. A temporary probe in `Universe::run()`
+(not committed) timed every output cycle of every universe; a temporary `debug.stall` API method
+(not committed) blocked the main thread. A second WebSocket pinged the main thread every 20 ms.
+Each build ran 3 phases of 10 minutes back to back (30 minutes per build, same machine, other
+agents' sandboxes and builds running at the same time):
+
+- **A** idle: the show just runs.
+- **B** a 2, 3, 4 or 5 s main-thread stall every 60 s (9 stalls).
+- **C** every ~15 s one of: universe create + delete, output patch set + remove on universe 5,
+  output patch remove + set on universe 4 (a live, busy one), blackout on/off, grand master sweep
+  200 → 0 → 255, project reload (`core.project.open`) followed by re-patching and restarting the
+  show.
+
+Numbers are summed over all 6 universes (a cycle is one `processFaders()` + `dumpOutput()`; 50 Hz
+means one every 20 ms). "Cycles" is the share of expected 50 Hz cycles that happened.
+
+| Phase | Build | Cycles | Max gap | Gaps 45-100 ms | 100-500 ms | > 500 ms | < 8 ms (catch-up cycle) | Main thread max stall seen by ping |
+|---|---|---|---|---|---|---|---|---|
+| A idle | before | 99.96% | 205 ms | 46 | 12 | 0 | 494 | 192 ms |
+| A idle | after | 100.00% | **72 ms** | 232 | **0** | 0 | 3391 | 119 ms |
+| B stalls | before | **94.94%** | **5028 ms** | 160 | 5 | **54** | 1675 | 5013 ms |
+| B stalls | after | **100.00%** | **55 ms** | 121 | **0** | **0** | 2561 | 5020 ms |
+| C engine ops | before | 100.07% | 341 ms | 403 | 42 | 0 | 3642 | 2139 ms |
+| C engine ops | after | 99.99% | **79 ms** | 146 | **0** | 0 | 2354 | 2461 ms |
+
+- **Stalls (B)**: before, every stall froze all 6 universes for its full length (54 gaps > 500 ms
+  = 9 stalls x 6 universes, e.g. 5028 ms on all six at the same timestamp), about 9000 cycles lost.
+  After, the same 2-5 s stalls (the ping confirms the main thread was blocked for 5 s) left no gap
+  over 55 ms; not a single cycle was lost.
+- **Engine ops (C)**: before, grand master changes and patch changes caused gaps up to 341 ms
+  (they run on the busy main thread). After, the worst gap was 79 ms (during a blackout toggle),
+  none over 100 ms. Project reloads stop the MasterTimer on purpose (`App::clearDocument()`) and
+  replace every universe, in both builds; the replaced universes start new writer threads, so the
+  reload blackout itself is not in this table.
+- **Idle (A)**: after, the largest gap is 72 ms instead of 205 ms. The remaining 60-80 ms gaps hit
+  all universes at the same moment, so they come from the timer thread being scheduled late on a
+  loaded machine, not from the main thread; the before build has them too, hidden behind larger
+  main-thread gaps. The larger count of 45-100 ms gaps and `< 8 ms` catch-up cycles after the change
+  is probably that same timer-queue jitter, now visible directly at the output (writer-thread
+  scheduling on a loaded Debug box is an equally possible cause; the mechanism was not isolated,
+  and it is benign either way: no cycle is lost).
+- No crash, no assert, no "thread did not stop" message, no failed API call in either run
+  (Debug build; per run: 6 universe create/delete cycles, 24 patch set/remove calls, 12 of them on a
+  busy universe, 5 project reloads each followed by 6 re-patches).
+- Machine note: the box ran other agents' sandboxes and builds throughout, so absolute jitter is
+  pessimistic; both builds ran under comparable load one after the other.
+
+Unit tests (run directly, not through ctest), all passing on the fix commit: engine `universe`
+(44), `mastertimer` (16), `inputoutputmap` (43), `outputpatch` (6), `inputpatch` (8), `doc` (36),
+`genericfader` (11), `chaser` (32), `chaserrunner` (45), `universeperf` (2 + 1 skipped);
+controlapi `apiiodomain` (41), `apifunctionsdomain` (34). (The engine suites need
+`resources/fixtures` and `resources/inputprofiles` staged into `build/resources`, as documented.)
+
+### Risks left (reasoned, not measured)
+
+- **Main-thread writers vs. the writer thread.** Simple Desk, fixture edits, grand master
+  (`Universe::slotGMValueChanged()`), passthrough, `setChannelCapability()` / channel modifiers
+  and output patch changes run on the main thread and touch universe data the writer thread reads
+  without a lock (`m_outputPatchList`, `m_intensityChannels`, `m_postGMValues`). These races
+  existed before: the writer thread always ran concurrently with the main thread after each tick.
+  What changes is only *when*: before, output cycles clustered right after the main thread handled
+  a tick event; now they run on the timer's schedule, including while the main thread is inside a
+  long operation. The one structural case, a project load, is unchanged: `IOMap::loadXML()` deletes
+  and recreates the universes, and the new writer threads are only started after loading
+  (`App::loadXML()` → `startUniverses()`). The soak did 24 patch changes per run, 12 on a busy
+  universe, without a crash. A proper fix (a patch-list lock in `dumpOutput()`) is a separate change.
+- **Timer thread now blocks on `m_universeMutex` for the tick.** It already did every tick for
+  functions and DMX sources (`claimUniverses()`), so no new contention. Deleting a universe holds
+  the mutex while `~Universe` waits up to 2 s for its thread: output of the other universes pauses
+  for that time, as it did before.
+- **Not covered by the soak**: real network / USB plugins (ArtNet, E1.31, DMXUSB were deliberately
+  not loaded on this machine), a Release build, the QLC+ 4 widgets UI (it shares the engine; it
+  never connected `tickReady()` itself), and the freeze watchdog's gdb dump (it suspends every
+  thread, so it still stops output while it dumps).
+
+### How to verify live, before a show
+
+1. Deploy the build with this change and open the show file; patch the real outputs as usual.
+2. Start a visibly moving effect on a fixture you can see (RGB Matrix, chaser or EFX), and watch
+   the fixture or the video output.
+3. Block the QLC+ main thread on purpose and check the effect keeps moving smoothly. The
+   dependable way is a heavy Control API call right after starting QLC+ (definitions not cached
+   yet): in the web UI, open the fixture definition editor and pick a large manufacturer, or send
+   `fixturedefs.list` with `{}` from any API client. It blocks the main thread for 0.1 s to
+   several seconds (§4, §5); the desktop window stops responding meanwhile. Before this change the
+   whole rig froze for exactly that long; now the fixtures must keep moving. The web UI's own DMX
+   views may still pause (they are delivered via the main thread); that is expected, the fixtures
+   must not. (Modal dialogs are not a test: Qt keeps the main thread running inside them.)
+4. Toggle blackout and move the grand master fader while the effect runs: they must act as before.
+5. Change an output patch (Inputs/Outputs) on a spare universe while the show runs, then change it
+   back: no crash, other universes keep running.
+6. Save, close and reopen the show file; confirm output resumes after loading (a short blackout
+   during the load itself is expected, as before).
+7. Leave the show running for at least 30 minutes with the effects on; check that nothing stutters
+   or stops and the app does not crash. If anything misbehaves, going back to the previous build
+   restores the old behaviour exactly.
 
 ## Not measured / open
 
