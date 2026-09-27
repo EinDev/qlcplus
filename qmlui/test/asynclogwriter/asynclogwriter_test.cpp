@@ -20,6 +20,7 @@
 #include <QtTest/QtTest>
 
 #include <algorithm>
+#include <atomic>
 #include <condition_variable>
 #include <mutex>
 #include <vector>
@@ -156,6 +157,134 @@ void AsyncLogWriter_Test::destructorDrainsQueueBeforeReturning()
     QCOMPARE(int(received.size()), expected.size());
     for (int i = 0; i < expected.size(); i++)
         QCOMPARE(received[i], expected.at(i));
+}
+
+/* The app's message handler keeps forwarding to the writer after the event
+ * loop ends (App/Doc/plugin destructors log on the main thread, plugin and
+ * MasterTimer threads log while winding down). It used to delete the writer
+ * there, so the next log line pushed into a freed std::queue. Now the writer
+ * is shut down instead, and must deliver late messages synchronously. */
+void AsyncLogWriter_Test::enqueueAfterShutdownSameThread()
+{
+    RecordingSink sink;
+    AsyncLogWriter writer(std::ref(sink));
+
+    for (int i = 0; i < 100; i++)
+        writer.enqueue(QString("before-%1").arg(i));
+
+    writer.shutdown();
+    QVERIFY(writer.isStopped());
+    QCOMPARE(int(sink.snapshot().size()), 100);
+
+    for (int i = 0; i < 10; i++)
+        writer.enqueue(QString("after-%1").arg(i));
+
+    // Synchronous now: already recorded when enqueue() returns, no wait
+    std::vector<QString> received = sink.snapshot();
+    QCOMPARE(int(received.size()), 110);
+    for (int i = 0; i < 100; i++)
+        QCOMPARE(received[i], QString("before-%1").arg(i));
+    for (int i = 0; i < 10; i++)
+        QCOMPARE(received[100 + i], QString("after-%1").arg(i));
+}
+
+void AsyncLogWriter_Test::enqueueAfterShutdownOtherThread()
+{
+    RecordingSink sink;
+    AsyncLogWriter writer(std::ref(sink));
+
+    writer.enqueue("first");
+    writer.shutdown();
+
+    const int threadCount = 4;
+    const int perThread = 50;
+    std::vector<std::thread> threads;
+    for (int t = 0; t < threadCount; t++)
+    {
+        threads.emplace_back([&writer, t] {
+            for (int i = 0; i < perThread; i++)
+                writer.enqueue(QString("t%1-%2").arg(t).arg(i));
+        });
+    }
+    for (std::thread &th : threads)
+        th.join();
+
+    std::vector<QString> received = sink.snapshot();
+    QCOMPARE(int(received.size()), 1 + threadCount * perThread);
+    QCOMPARE(received[0], QString("first"));
+}
+
+void AsyncLogWriter_Test::shutdownWhileOtherThreadsEnqueue()
+{
+    for (int round = 0; round < 20; round++)
+    {
+        RecordingSink sink;
+        AsyncLogWriter writer(std::ref(sink));
+
+        const int threadCount = 6;
+        const int perThread = 300;
+        std::atomic<int> started(0);
+        std::vector<std::thread> threads;
+
+        for (int t = 0; t < threadCount; t++)
+        {
+            threads.emplace_back([&writer, &started, t] {
+                started++;
+                for (int i = 0; i < perThread; i++)
+                    writer.enqueue(QString("t%1-%2").arg(t).arg(i));
+            });
+        }
+
+        // Shut down mid-stream, like main() does while plugin threads may
+        // still be logging.
+        while (started.load() < threadCount)
+            std::this_thread::yield();
+        writer.shutdown();
+
+        for (std::thread &th : threads)
+            th.join();
+
+        std::vector<QString> received = sink.snapshot();
+        QCOMPARE(int(received.size()), threadCount * perThread);
+
+        // Nothing lost or duplicated, and each thread's lines stay in order
+        // across the async -> synchronous switch.
+        QVector<int> next(threadCount, 0);
+        for (const QString &msg : received)
+        {
+            const QStringList parts = msg.mid(1).split('-');
+            const int t = parts.at(0).toInt();
+            QCOMPARE(parts.at(1).toInt(), next[t]);
+            next[t]++;
+        }
+        for (int t = 0; t < threadCount; t++)
+            QCOMPARE(next[t], perThread);
+    }
+}
+
+void AsyncLogWriter_Test::concurrentShutdownIsIdempotent()
+{
+    RecordingSink sink;
+    {
+        AsyncLogWriter writer(std::ref(sink));
+        for (int i = 0; i < 100; i++)
+            writer.enqueue(QString("line-%1").arg(i));
+
+        std::vector<std::thread> threads;
+        for (int t = 0; t < 4; t++)
+            threads.emplace_back([&writer] { writer.shutdown(); });
+        writer.shutdown();
+        for (std::thread &th : threads)
+            th.join();
+
+        QVERIFY(writer.isStopped());
+        writer.enqueue("late");
+        // ~AsyncLogWriter calls shutdown() once more: must be harmless
+    }
+
+    std::vector<QString> received = sink.snapshot();
+    QCOMPARE(int(received.size()), 101);
+    QCOMPARE(received.back(), QString("late"));
 }
 
 QTEST_APPLESS_MAIN(AsyncLogWriter_Test)

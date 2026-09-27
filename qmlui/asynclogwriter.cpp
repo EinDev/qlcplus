@@ -22,28 +22,61 @@
 AsyncLogWriter::AsyncLogWriter(std::function<void(const QString &)> sink)
     : m_sink(std::move(sink))
     , m_running(true)
+    , m_stopped(false)
     , m_thread(&AsyncLogWriter::workerLoop, this)
+    , m_workerId(m_thread.get_id())
 {
 }
 
 AsyncLogWriter::~AsyncLogWriter()
+{
+    shutdown();
+}
+
+void AsyncLogWriter::shutdown()
 {
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         m_running = false;
     }
     m_cv.notify_one();
+
+    // Called from the worker itself (the sink logged a fatal message):
+    // joining would deadlock. The worker still exits once its queue is empty.
+    if (std::this_thread::get_id() == m_workerId)
+        return;
+
+    std::lock_guard<std::mutex> joinLock(m_joinMutex);
     if (m_thread.joinable())
         m_thread.join();
+}
+
+bool AsyncLogWriter::isStopped()
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_stopped;
 }
 
 void AsyncLogWriter::enqueue(const QString &msg)
 {
     {
         std::lock_guard<std::mutex> lock(m_mutex);
-        m_queue.push(msg);
+        if (m_stopped == false)
+        {
+            // The worker is alive (possibly already asked to stop, but it
+            // only exits with an empty queue), so it will deliver this.
+            m_queue.push(msg);
+            m_cv.notify_one();
+            return;
+        }
     }
-    m_cv.notify_one();
+
+    // The worker has drained everything and exited: write synchronously.
+    // Not under m_mutex, so a sink that itself logs cannot self-deadlock on
+    // it; m_syncSinkMutex only keeps concurrent late writers from
+    // interleaving inside the sink.
+    std::lock_guard<std::mutex> sinkLock(m_syncSinkMutex);
+    m_sink(msg);
 }
 
 void AsyncLogWriter::workerLoop()
@@ -63,7 +96,13 @@ void AsyncLogWriter::workerLoop()
             lock.lock();
         }
 
+        // Exit only with the lock held and the queue empty, and flag it in
+        // the same critical section: from here on enqueue() writes
+        // synchronously, so no message can be pushed that nobody drains.
         if (!m_running)
+        {
+            m_stopped = true;
             break;
+        }
     }
 }

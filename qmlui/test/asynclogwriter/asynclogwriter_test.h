@@ -30,6 +30,10 @@ private slots:
     void deliversInOrder();
     void concurrentEnqueueLosesNothing();
     void destructorDrainsQueueBeforeReturning();
+    void enqueueAfterShutdownSameThread();
+    void enqueueAfterShutdownOtherThread();
+    void shutdownWhileOtherThreadsEnqueue();
+    void concurrentShutdownIsIdempotent();
 };
 
 #endif
