@@ -411,6 +411,40 @@
       return () => offs.forEach(f => f());
     }, [qlc.online, showGroups, loadGroups]);
 
+    const liveRef = React.useRef({});
+    React.useEffect(() => {
+      if (!drag && !band) return undefined;
+      const L = () => liveRef.current;
+      const move = (e) => {
+        if (drag) setDrag(d => Object.assign({}, d, { dx: e.clientX - d.startX, dy: e.clientY - d.startY }));
+        if (band) { const p = L().toMm(e); setBand(b => Object.assign({}, b, { x1: p.x, y1: p.y })); }
+      };
+      const up = (e) => {
+        if (drag) {
+          const dx = (e.clientX - drag.startX) / L().pxPerMm, dy = (e.clientY - drag.startY) / L().pxPerMm;
+          const { items, stage, headSel, patch, commitPlacement } = L();
+          if (Math.abs(e.clientX - drag.startX) > 2 || Math.abs(e.clientY - drag.startY) > 2) {
+            const moving = items.filter(it => drag.sel.indexOf(String(it.fixtureId)) !== -1 && !(it.flags && it.flags.locked) && (!headSel.length || !headSel.some(k => k.split(':')[0] === String(it.fixtureId)) || headSel.indexOf(itemKey(it)) !== -1));
+            const list = moving.map(it => { const p2 = project(stage, it.position); return Object.assign(keyOf(it), { position: unproject(stage, { x: p2.x + dx, y: p2.y + dy }, it.position) }); });
+            if (list.length) { patch(list.map(l => { const it = moving.find(m => itemKey(m) === itemKey(l)); return Object.assign({}, it, { position: l.position, placed: true }); })); commitPlacement(list, 'drag'); }
+          }
+          setDrag(null);
+        }
+        if (band) {
+          const b = band; setBand(null);
+          const x0 = Math.min(b.x0, b.x1), x1 = Math.max(b.x0, b.x1), y0 = Math.min(b.y0, b.y1), y1 = Math.max(b.y0, b.y1);
+          if (x1 - x0 < 5 && y1 - y0 < 5) { if (!b.add) { L().onSelectFixtures([]); setHeadSel([]); } return; }
+          const { items, stage, onSelectFixtures, selectedFixtureIds } = L();
+          const hit = items.filter(it => { const p = project(stage, it.position), s = size2D(stage, it); return p.x < x1 && p.x + s.w > x0 && p.y < y1 && p.y + s.h > y0; }).map(it => String(it.fixtureId));
+          const ids = Array.from(new Set(b.add ? (selectedFixtureIds || []).map(String).concat(hit) : hit));
+          setHeadSel([]);
+          onSelectFixtures(ids);
+        }
+      };
+      window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
+      return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+    }, [drag, band]);
+
     if (!qlc.online) return <div style={{ padding: 20 }}><RobotoText label="Connect to a QLC+ instance to see the 2D view." fontSize={14} labelColor="var(--fg-medium)" /></div>;
     if (!monitor) return <div style={{ padding: 20 }}><RobotoText label="Loading placement…" fontSize={14} labelColor="var(--fg-medium)" /></div>;
 
@@ -489,35 +523,7 @@
       if (aimPick) { setAimPick(false); const pos = unproject(stage, p, { x: aimPoint.x, y: aimPoint.y, z: aimPoint.z }); setAimPoint(pos); aimAt(pos); return; }
       setBand({ x0: p.x, y0: p.y, x1: p.x, y1: p.y, add: e.ctrlKey || e.metaKey || e.shiftKey });
     };
-    React.useEffect(() => {
-      if (!drag && !band) return undefined;
-      const move = (e) => {
-        if (drag) setDrag(d => Object.assign({}, d, { dx: e.clientX - d.startX, dy: e.clientY - d.startY }));
-        if (band) { const p = toMm(e); setBand(b => Object.assign({}, b, { x1: p.x, y1: p.y })); }
-      };
-      const up = (e) => {
-        if (drag) {
-          const dx = (e.clientX - drag.startX) / pxPerMm, dy = (e.clientY - drag.startY) / pxPerMm;
-          if (Math.abs(e.clientX - drag.startX) > 2 || Math.abs(e.clientY - drag.startY) > 2) {
-            const moving = items.filter(it => drag.sel.indexOf(String(it.fixtureId)) !== -1 && !(it.flags && it.flags.locked) && (!headSel.length || !headSel.some(k => k.split(':')[0] === String(it.fixtureId)) || headSel.indexOf(itemKey(it)) !== -1));
-            const list = moving.map(it => { const p2 = project(stage, it.position); return Object.assign(keyOf(it), { position: unproject(stage, { x: p2.x + dx, y: p2.y + dy }, it.position) }); });
-            if (list.length) { patch(list.map(l => { const it = moving.find(m => itemKey(m) === itemKey(l)); return Object.assign({}, it, { position: l.position, placed: true }); })); commitPlacement(list, 'drag'); }
-          }
-          setDrag(null);
-        }
-        if (band) {
-          const b = band; setBand(null);
-          const x0 = Math.min(b.x0, b.x1), x1 = Math.max(b.x0, b.x1), y0 = Math.min(b.y0, b.y1), y1 = Math.max(b.y0, b.y1);
-          if (x1 - x0 < 5 && y1 - y0 < 5) { if (!b.add) { onSelectFixtures([]); setHeadSel([]); } return; }
-          const hit = items.filter(it => { const p = project(stage, it.position), s = size2D(stage, it); return p.x < x1 && p.x + s.w > x0 && p.y < y1 && p.y + s.h > y0; }).map(it => String(it.fixtureId));
-          const ids = Array.from(new Set(b.add ? (selectedFixtureIds || []).map(String).concat(hit) : hit));
-          setHeadSel([]);
-          onSelectFixtures(ids);
-        }
-      };
-      window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
-      return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
-    }, [drag, band, pxPerMm, items, stage, headSel.join('|')]);
+    liveRef.current = { toMm, pxPerMm, items, stage, headSel, commitPlacement, patch, onSelectFixtures, selectedFixtureIds };
     const onWheel = (e) => { if (e.ctrlKey) { e.preventDefault(); zoomBy(e.deltaY < 0 ? 1.2 : 1 / 1.2); } };
 
     /* ---- render helpers ---- */
