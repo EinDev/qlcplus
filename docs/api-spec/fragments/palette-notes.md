@@ -181,3 +181,11 @@ the repo owner's general "prefer fewer, more general methods" steer in
   palettes wrote nothing (on the desktop too - the "applying a Gobo palette still produces nothing"
   note above). It now maps the first coarse Gobo channel that is not a `GoboIndex`, preferring one
   with the `GoboWheel` preset; `engine/test/qlcpalette`'s `fixturesGobo` passes (no longer XFAIL).
+- **`PaletteValues` units corrected** (the description said Dimmer / Zoom were 0-100 percent):
+  Dimmer is DMX 0-255 (`valuesFromFixtures()` writes it as-is; the desktop IntensityTool stores
+  percent * 2.55), Zoom is the beam angle in degrees (`Fixture::zoomToValues()`), Position 3D is
+  metres. The web palette editor had stored percent / percent / millimetres; it now uses these units.
+- Known engine quirk, not changed: `Fixture::zoomToValues()` divides by the lens range, so a
+  definition with `DegreesMin == DegreesMax` (every SF3 custom definition has 0 / 0) gets a
+  meaningless zoom value (0 / 0 as an integer; 255 on this build's zoom channel) - the desktop does
+  the same.
