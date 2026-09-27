@@ -317,7 +317,7 @@ void ApiMediaDomain_Test::scriptWithEndlessLoopDoesNotHangGet()
     // Crash audit: functions.get evaluates a scriptv4 body on the main
     // thread (Script::totalDuration() -> ScriptRunner::collectScriptData());
     // an endless loop froze the whole application for good. The dry run is
-    // now interrupted by a watchdog after 1 s.
+    // now interrupted by a watchdog after 0.5 s.
     helloAndGetClientId();
     Script *script = addScript(QStringLiteral("for (;;) {}\n"));
     QVERIFY(script != nullptr);

@@ -149,7 +149,7 @@ QStringList ScriptRunner::collectScriptData()
         std::thread watchdog([&]()
         {
             std::unique_lock<std::mutex> lock(watchdogMutex);
-            if (watchdogCondition.wait_for(lock, std::chrono::milliseconds(1000),
+            if (watchdogCondition.wait_for(lock, std::chrono::milliseconds(500),
                                            [&]() { return evaluated; }) == false)
                 engine->setInterrupted(true);
         });
@@ -165,7 +165,9 @@ QStringList ScriptRunner::collectScriptData()
 
         if (engine->isInterrupted())
         {
-            QString msg = QString("Script evaluation interrupted after 1 second (endless loop?)");
+            // an endless body has no meaningful total wait time
+            m_waitCount = 0;
+            QString msg = QString("Script evaluation interrupted after 0.5 s (endless loop?)");
             qWarning() << msg;
             syntaxErrorList << msg;
         }
