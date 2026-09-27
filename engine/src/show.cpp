@@ -716,7 +716,7 @@ void Show::applyPendingRunnerRequests()
         intensity.swap(m_pendingIntensity);
     }
     for (auto it = intensity.constBegin(); it != intensity.constEnd(); ++it)
-        m_runner->adjustIntensity(it.value(), it.key());
+        m_runner->adjustTrackIntensity(it.value(), it.key());
 }
 
 void Show::write(MasterTimer* timer, QList<Universe *> universes)

@@ -554,10 +554,10 @@ void ShowRunner::adjustIntensity(qreal fraction, const Track *track)
     if (track == NULL)
         return;
 
-    adjustIntensity(fraction, track->id());
+    adjustTrackIntensity(fraction, track->id());
 }
 
-void ShowRunner::adjustIntensity(qreal fraction, quint32 trackId)
+void ShowRunner::adjustTrackIntensity(qreal fraction, quint32 trackId)
 {
     qDebug() << Q_FUNC_INFO << "Track ID: " << trackId << ", val:" << fraction;
     m_intensityMap[trackId] = fraction;
