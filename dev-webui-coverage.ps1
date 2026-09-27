@@ -74,6 +74,9 @@ $all = @(
     # Needs the Loopback IO plugin (build the "loopback" target): only this driver's sandbox gets it.
     @{ Name = "partialsvc"; Api = 9330; Web = 9331; Script = "partials-vc.js"; Args = @("--api", "9330", "--web", "9331", "--sandbox", "C:\qlcsandbox\partialsvc"); Sandbox = @{ Plugins = @("loopback") } },
     # Needs the engine's I/O plugin stub (build the "iopluginstub" target): per-line plugin parameters.
+    # functions-misc.js needs C:\qlcsandboxnmisc\Plugins\Audio\sndfileplugin.dll (an audio decoder, cannot output DMX) and one real
+    # external media file under the sandbox's project assets for Collect - see the driver header. Plugins\ root DLLs are re-synced, Audio\ is kept.
+    @{ Name = "fnmisc";   Api = 9240; Web = 9241; Script = "functions-misc.js"; Args = @("--api", "9240", "--web", "9241") },
     @{ Name = "plugparams"; Api = 9390; Web = 9391; Script = "plugin-params.js"; Args = @("--api", "9390", "--web", "9391", "--sandbox", "C:\qlcsandbox\plugparams"); Sandbox = @{ Plugins = @("iopluginstub") } },
     # Sandbox = extra dev-webui-sandbox.ps1 parameters. The fixture editor writes .qxf files, so its
     # user fixture folder must point into the sandbox (the driver refuses otherwise).
