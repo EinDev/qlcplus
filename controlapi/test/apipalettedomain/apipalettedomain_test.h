@@ -82,6 +82,7 @@ private:
     QWebSocket *m_client;
     QLCFixtureDef *m_moverDef;
     QLCFixtureDef *m_barDef;
+    bool m_helloed;
 };
 
 #endif

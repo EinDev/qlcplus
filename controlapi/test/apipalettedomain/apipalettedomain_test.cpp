@@ -177,6 +177,7 @@ void ApiPaletteDomain_Test::init()
 {
     m_moverDef = makeMoverDef();
     m_barDef = makeBarDef();
+    m_helloed = false;
     m_doc = new Doc(nullptr);
     m_apiServer = new ApiServer(nullptr, m_doc);
     QVERIFY(m_apiServer->listen(0, QHostAddress::LocalHost));
@@ -602,6 +603,8 @@ QJsonObject ApiPaletteDomain_Test::applyPalette(QLCPalette *palette, const QJson
 {
     if (palette->id() == QLCPalette::invalidId())
         m_doc->addPalette(palette);
+    if (m_helloed == false)
+        m_helloed = helloAndGetClientId().isEmpty() == false;
     QJsonObject params;
     params.insert(QStringLiteral("paletteId"), int(palette->id()));
     params.insert(QStringLiteral("fixtureIds"), ids);
@@ -761,6 +764,7 @@ void ApiPaletteDomain_Test::applyWritesGoboWheel()
 
 void ApiPaletteDomain_Test::applyValidatesParams()
 {
+    helloAndGetClientId();
     quint32 mover = addFixture(m_moverDef, 0);
     QLCPalette *palette = new QLCPalette(QLCPalette::Dimmer);
     palette->setValue(100);
@@ -797,13 +801,13 @@ void ApiPaletteDomain_Test::applyValidatesParams()
 void ApiPaletteDomain_Test::applyOverridesAreReleasable()
 {
     QString clientId = helloAndGetClientId();
+    m_helloed = true;
     quint32 mover = addFixture(m_moverDef, 0);
-    int revision = currentDocRevision();
 
     QLCPalette *palette = new QLCPalette(QLCPalette::PanTilt);
     palette->setValue(270, 135);
     m_doc->addPalette(palette);
-    revision = currentDocRevision();
+    int revision = currentDocRevision();
 
     QSignalSpy spy(m_client, &QWebSocket::textMessageReceived);
     QJsonObject reply = applyPalette(palette, QJsonArray{ QString::number(mover) });
