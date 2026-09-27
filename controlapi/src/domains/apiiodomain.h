@@ -33,6 +33,7 @@ class Universe;
 class GenericFader;
 class FadeChannel;
 class MasterTimer;
+class KeyPadParser;
 
 /**
  * First real vertical slice of the control API (see docs/api-spec/fragments/io.yaml
@@ -66,6 +67,18 @@ public:
      *  on MasterTimer's thread, rather than directly in a request handler). */
     void writeDMX(MasterTimer *timer, QList<Universe *> universes) override;
 
+    /** Broadcast io.universe.updated {universe: IoUniverseDetail, docRevision}
+     *  - the one structural event for io.universe.update AND every
+     *  io.patch.* mutation (io.yaml's own IoUniverseUpdatedEvent doc), so
+     *  clients never re-fetch after a patch change. Public so
+     *  ApiIoConfigDomain (io.patch.setParameters) reuses the same JSON. */
+    void broadcastUniverseUpdated(Universe *universe, const QString &originClientId);
+
+    /** §4c library counter for io.inputProfile.* (00-conventions.md): read by
+     *  io.inputProfile.list here, bumped by ApiIoConfigDomain's save/delete. */
+    quint32 profilesRevision() const { return m_profilesRevision; }
+    void bumpProfilesRevision() { m_profilesRevision++; }
+
 private:
     void registerMethods();
     void watchUniverse(Universe *universe);
@@ -82,11 +95,10 @@ private:
     FadeChannel *simpleDeskFader(const QList<Universe *> &universes, quint32 universeId,
                                   quint32 fixtureId, quint32 channel);
 
-    /** Broadcast io.universe.updated {universe: IoUniverseDetail, docRevision}
-     *  - the one structural event for io.universe.update AND every
-     *  io.patch.* mutation (io.yaml's own IoUniverseUpdatedEvent doc), so
-     *  clients never re-fetch after a patch change. */
-    void broadcastUniverseUpdated(Universe *universe, const QString &originClientId);
+    /** Hold (universeId<<9)+channel -> value overrides and broadcast one
+     *  io.simpleDesk.channelChanged per entry - the shared core of
+     *  setChannel/setChannels/sendKeypadCommand. */
+    void applySimpleDeskValues(const QList<QPair<quint32, uchar>> &entries, const QString &originClientId);
 
 private slots:
     void slotUniverseAdded(quint32 id);
@@ -161,6 +173,20 @@ private:
      *  shared by every connected client (io.yaml's own description of this
      *  field), not persisted, not per-session. */
     quint32 m_simpleDeskUniverseFilter = 0;
+
+    /** io.simpleDesk.sendKeypadCommand: the engine's own keypad grammar
+     *  (engine/src/keypadparser.h). One parser instance for the domain, as
+     *  qmlui's SimpleDesk has - it remembers the last channel selection so
+     *  "1 THRU 4" followed by "AT 50" works across two commands. Only ever
+     *  used from request handlers (server thread), so no mutex. */
+    KeyPadParser *m_keyPadParser;
+
+    /** Most recent first, capped at MAX_KEYPAD_HISTORY like qmlui's
+     *  SimpleDesk::m_keypadCommandHistory. Global (shared by every client),
+     *  broadcast via io.simpleDesk.commandHistoryChanged. */
+    QStringList m_keypadCommandHistory;
+
+    quint32 m_profilesRevision = 0;
 };
 
 #endif

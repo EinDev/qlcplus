@@ -37,6 +37,7 @@
 #include "fixture.h"
 #include "scene.h"
 #include "mastertimer.h"
+#include "keypadparser.h"
 #include "doc.h"
 
 namespace {
@@ -286,6 +287,7 @@ ApiIoDomain::ApiIoDomain(Doc *doc, ApiServer *server, QObject *parent)
     , DMXSource()
     , m_doc(doc)
     , m_server(server)
+    , m_keyPadParser(new KeyPadParser())
 {
     Q_ASSERT(m_doc != nullptr);
     Q_ASSERT(m_server != nullptr);
@@ -316,6 +318,7 @@ ApiIoDomain::ApiIoDomain(Doc *doc, ApiServer *server, QObject *parent)
 ApiIoDomain::~ApiIoDomain()
 {
     m_doc->masterTimer()->unregisterDMXSource(this);
+    delete m_keyPadParser;
 }
 
 void ApiIoDomain::watchUniverse(Universe *universe)
@@ -651,9 +654,9 @@ void ApiIoDomain::registerMethods()
         }
         QJsonObject result;
         result.insert(QStringLiteral("profiles"), profiles);
-        // No profile library mutations exist in this server yet, so the
-        // §4c library counter never moves - reported as 0 for spec parity.
-        result.insert(QStringLiteral("profilesRevision"), 0);
+        // §4c library counter, bumped by ApiIoConfigDomain's
+        // io.inputProfile.save/delete (apiioconfigdomain.cpp).
+        result.insert(QStringLiteral("profilesRevision"), int(profilesRevision()));
         session->send(ApiEnvelope::buildOkResponse(id, result));
     });
 
@@ -952,6 +955,10 @@ void ApiIoDomain::registerMethods()
         // this for anything beyond satisfying the schema.
         result.insert(QStringLiteral("slidersNumber"), 0);
         result.insert(QStringLiteral("currentPage"), 0);
+        // Server-side keypad history (io.simpleDesk.sendKeypadCommand), so a
+        // client can seed its list on load and then follow
+        // io.simpleDesk.commandHistoryChanged. Spec extension, see io-notes.md.
+        result.insert(QStringLiteral("commandHistory"), QJsonArray::fromStringList(m_keypadCommandHistory));
         session->send(ApiEnvelope::buildOkResponse(id, result));
     });
 
@@ -1284,6 +1291,104 @@ void ApiIoDomain::registerMethods()
             m_server->broadcast(QStringLiteral("functions.updated"), data, session->clientId(), false);
         }
     });
+
+    // io.simpleDesk.sendKeypadCommand {command, universeId?} -> {accepted, channelsChanged, history}
+    //
+    // The desktop keypad grammar (engine/src/keypadparser.h: AT/THRU/FULL/ZERO/
+    // BY/+/-/+%/-%), evaluated by the engine's own parser so the browser and
+    // the desktop agree on every edge case. universeId defaults to the Simple
+    // Desk universe filter (io.simpleDesk.setUniverseFilter); the web UI has
+    // one desk per tab and passes it explicitly. Spec extension (io-notes.md):
+    // the fragment only specifies {command}.
+    dispatcher->registerMethod(QStringLiteral("io.simpleDesk.sendKeypadCommand"), [this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        // Normalise like KeyPad.qml/the web keypad do before the engine sees
+        // it: KeyPadParser skips any token it doesn't know as "not a number",
+        // so a raw "1 THRU 4 @ 50" would otherwise read 50 as a channel.
+        QString command = params.value(QStringLiteral("command")).toString().toUpper();
+        command.replace(QLatin1Char('@'), QStringLiteral(" AT "));
+        QStringList tokens = command.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+        tokens.removeAll(QStringLiteral("ENTER"));
+        command = tokens.join(QLatin1Char(' '));
+        if (command.isEmpty())
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams,
+                                                            QStringLiteral("command must not be empty")));
+            return;
+        }
+
+        quint32 universeId = params.contains(QStringLiteral("universeId"))
+                ? quint32(params.value(QStringLiteral("universeId")).toInt())
+                : m_simpleDeskUniverseFilter;
+        Universe *universe = m_doc->inputOutputMap()->universe(universeId);
+        if (universe == nullptr)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrNotFound,
+                                                            QStringLiteral("No such universe")));
+            return;
+        }
+
+        // +%/-% and a bare channel selection read the channel's current level
+        // from here (KeyPadParser indexes it with at(channel - 1), so it must
+        // be a full 512 bytes). Pre-GM values: the Grand Master must not skew
+        // a relative change.
+        QByteArray uniData = universe->preGMValues();
+        if (uniData.size() < 512)
+            uniData.append(QByteArray(512 - uniData.size(), char(0)));
+
+        QList<SceneValue> values = m_keyPadParser->parseCommand(m_doc, command, uniData);
+        QList<QPair<quint32, uchar>> entries;
+        entries.reserve(values.count());
+        for (const SceneValue &scv : std::as_const(values))
+        {
+            if (scv.channel >= 512)
+                continue;
+            entries.append(qMakePair((universeId << 9) + scv.channel, scv.value));
+        }
+
+        // Same bookkeeping as SimpleDesk::sendKeypadCommand(): every
+        // syntactically usable command is remembered, even one that only
+        // selects channels ("1 THRU 4") for the next command to act on.
+        m_keypadCommandHistory.prepend(command);
+        while (m_keypadCommandHistory.count() > 10) // MAX_KEYPAD_HISTORY in qmlui/simpledesk.cpp
+            m_keypadCommandHistory.removeLast();
+
+        QJsonObject result;
+        result.insert(QStringLiteral("accepted"), true);
+        result.insert(QStringLiteral("channelsChanged"), entries.count());
+        result.insert(QStringLiteral("history"), QJsonArray::fromStringList(m_keypadCommandHistory));
+        session->send(ApiEnvelope::buildOkResponse(id, result));
+
+        applySimpleDeskValues(entries, session->clientId());
+
+        QJsonObject data;
+        data.insert(QStringLiteral("history"), QJsonArray::fromStringList(m_keypadCommandHistory));
+        m_server->broadcast(QStringLiteral("io.simpleDesk.commandHistoryChanged"), data, session->clientId(), false);
+    });
+}
+
+void ApiIoDomain::applySimpleDeskValues(const QList<QPair<quint32, uchar>> &entries, const QString &originClientId)
+{
+    if (entries.isEmpty())
+        return;
+
+    {
+        // Same locked-scope discipline as setChannel (see its own comment):
+        // setChanged() must stay inside this scope, once for the whole batch.
+        QMutexLocker locker(&m_simpleDeskMutex);
+        for (const auto &entry : entries)
+            m_simpleDeskValues[entry.first] = entry.second;
+        setChanged(true); // DMXSource::setChanged() - picked up by writeDMX()
+    }
+
+    for (const auto &entry : entries)
+    {
+        QJsonObject data;
+        data.insert(QStringLiteral("address"), int(entry.first));
+        data.insert(QStringLiteral("value"), int(entry.second));
+        data.insert(QStringLiteral("overridden"), true);
+        m_server->broadcast(QStringLiteral("io.simpleDesk.channelChanged"), data, originClientId, false);
+    }
 }
 
 QJsonObject ApiIoDomain::simpleDeskChannelToJson(quint32 address) const

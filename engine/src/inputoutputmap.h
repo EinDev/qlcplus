@@ -44,6 +44,9 @@ class Doc;
  */
 
 #define KXMLIOMap               QStringLiteral("InputOutputMap")
+/** Environment variable overriding userProfileDirectory() - see there. */
+#define USER_INPUTPROFILE_DIR_ENV "QLCPLUS_USER_INPUTPROFILE_DIR"
+
 #define KXMLIOBeatGenerator     QStringLiteral("BeatGenerator")
 #define KXMLIOBeatType          QStringLiteral("BeatType")
 #define KXMLIOBeatsPerMinute    QStringLiteral("BPM")
@@ -571,6 +574,9 @@ public:
     /**
      * Get the user's own default input profile directory that is used to save
      * custom input profiles. The location varies greatly between platforms.
+     * Overridable with the USER_INPUTPROFILE_DIR_ENV environment variable
+     * (an absolute directory path, created if missing) so sandboxed/test
+     * instances never write into the real per-user folder.
      *
      * @return User profile directory
      */

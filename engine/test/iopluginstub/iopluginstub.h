@@ -119,9 +119,15 @@ public:
     /** @reimp */
     bool canConfigure() const override;
 
+    /** Mirrors DMXUSB::rescanWidgets() (a Q_INVOKABLE, looked up by name by
+        the Control API's io.plugin.rescan): counts the calls and emits
+        configurationChanged() so a test can assert the line-change relay. */
+    Q_INVOKABLE bool rescanWidgets();
+
 public:
     int m_configureCalled;
     bool m_canConfigure;
+    int m_rescanCalled = 0;
 };
 
 #endif

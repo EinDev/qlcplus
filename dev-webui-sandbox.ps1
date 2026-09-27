@@ -90,6 +90,9 @@ $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $out = Join-Path $dest "log-$stamp.out.txt"
 $err = Join-Path $dest "log-$stamp.err.txt"
 $args = @("-d", "-o", $projectCopy, "--api", "--api-port", $ApiPort, "--webui", "--webui-port", $WebUiPort, "--webui-root", $WebUiRoot)
+# Input profiles saved/deleted through the API land in the sandbox, never in the user's real
+# %UserProfile%\QLC+\InputProfiles (InputOutputMap::userProfileDirectory() honours this variable).
+$env:QLCPLUS_USER_INPUTPROFILE_DIR = Join-Path $dest "InputProfiles"
 $p = Start-Process -FilePath (Join-Path $dest $exeName) -ArgumentList $args -WorkingDirectory $dest `
     -RedirectStandardOutput $out -RedirectStandardError $err -PassThru
 Write-Host "Started $exeName pid $($p.Id); log: $out / $err"
