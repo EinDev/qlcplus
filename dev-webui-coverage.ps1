@@ -27,7 +27,7 @@
   generator (monocart-coverage-reports) into webui/tools/coverage/node_modules (git-ignored,
   never installed with the web UI).
 
-.PARAMETER Drivers   Only run these (efx, rgb, media, vclayout, show, vccue, vclive, io, vcinput, fixdefs). Default: all.
+.PARAMETER Drivers   Only run these (efx, rgb, media, vclayout, show, vccue, vclive, fixtures, io, vcinput, fixdefs). Default: all.
 .PARAMETER BuildDir  CMake build directory with qmlui\qlcplus5.exe (default: build).
 .PARAMETER ReportOnly  Skip the drivers; regenerate the report from the last run's raw dumps.
 .PARAMETER Force     Restart a sandbox even if its process is already running.
@@ -62,6 +62,7 @@ $all = @(
     @{ Name = "vccue";    Api = 9170; Web = 9171; Script = "vc-cue.js";         Args = @() },
     # vc-live.js talks to [::1] by default (E2E_HOST): Logitech's lghub_updater can hold 127.0.0.1:9180.
     @{ Name = "vclive";   Api = 9180; Web = 9181; Script = "vc-live.js";        Args = @() },
+    @{ Name = "fixtures"; Api = 9210; Web = 9211; Script = "fixtures-views.js"; Args = @() },
     @{ Name = "io";       Api = 9190; Web = 9191; Script = "io.js";             Args = @("--api", "9190", "--web", "9191") },
     @{ Name = "vcinput";  Api = 9220; Web = 9221; Script = "vc-input.js";       Args = @() },
     # Sandbox = extra dev-webui-sandbox.ps1 parameters. The fixture editor writes .qxf files, so its
