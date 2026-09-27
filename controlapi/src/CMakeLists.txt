@@ -24,6 +24,7 @@ set(CONTROLAPI_SOURCES
     domains/apifixtureremapdomain.cpp domains/apifixtureremapdomain.h
     domains/apifixturedefsdomain.cpp domains/apifixturedefsdomain.h
     domains/apivclivedomain.cpp domains/apivclivedomain.h
+    domains/apifixturechannelsdomain.cpp domains/apifixturechannelsdomain.h
 )
 
 # Static, linked directly into the qlcplus5 executable - same reasoning as

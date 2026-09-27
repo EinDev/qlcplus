@@ -17,6 +17,9 @@
 
 #include <QJsonArray>
 #include <QJsonValue>
+#include <QVector3D>
+
+#include <algorithm>
 
 #include "apifixturesdomain.h"
 #include "apiserver.h"
@@ -32,9 +35,16 @@
 #include "qlccapability.h"
 #include "qlcchannel.h"
 #include "fixture.h"
+#include "fixturegroup.h"
+#include "grouphead.h"
+#include "qlcpoint.h"
+#include "channelmodifier.h"
+#include "monitorproperties.h"
 #include "doc.h"
 
 namespace {
+
+QJsonObject physicalToJson(const QLCPhysical &physical); // defined below
 
 // fixtures.yaml's FixturesDefinitionRef "generic" case attaches a procedural
 // def whose manufacturer AND model are both this literal string
@@ -75,6 +85,8 @@ QJsonObject fixtureSummaryToJson(Fixture *fixture)
 QJsonObject fixtureDetailToJson(Fixture *fixture)
 {
     QJsonObject obj = fixtureSummaryToJson(fixture);
+    const QList<int> forcedHTP = fixture->forcedHTPChannels();
+    const QList<int> forcedLTP = fixture->forcedLTPChannels();
 
     QJsonArray channelList;
     for (quint32 i = 0; i < fixture->channels(); i++)
@@ -90,9 +102,40 @@ QJsonObject fixtureDetailToJson(Fixture *fixture)
         if (ch->group() == QLCChannel::Intensity && ch->colour() != QLCChannel::NoColour)
             chObj.insert(QStringLiteral("colour"), QLCChannel::colourToString(ch->colour()));
         chObj.insert(QStringLiteral("absoluteAddress"), int(fixture->channelAddress(i)));
+        // Per-channel patch-time behaviour (fixtures.channel.setBehaviour):
+        // forced HTP/LTP, fade exclusion and the attached modifier template.
+        chObj.insert(QStringLiteral("canFade"), fixture->channelCanFade(int(i)));
+        QString precedence = QStringLiteral("auto");
+        if (forcedHTP.contains(int(i)))
+            precedence = QStringLiteral("htp");
+        else if (forcedLTP.contains(int(i)))
+            precedence = QStringLiteral("ltp");
+        chObj.insert(QStringLiteral("precedence"), precedence);
+        ChannelModifier *mod = fixture->channelModifier(i);
+        chObj.insert(QStringLiteral("modifier"), mod ? QJsonValue(mod->name()) : QJsonValue());
         channelList.append(chObj);
     }
     obj.insert(QStringLiteral("channelList"), channelList);
+
+    // Modes the fixture can be switched to with fixtures.update {mode}, and
+    // the current mode's physical block (fixture summary / universe summary).
+    // Served here because generic dimmer / RGB panel definitions are not in
+    // the definition cache, so fixtures.defs.getModel cannot answer for them.
+    QJsonArray availableModes;
+    QLCFixtureDef *def = fixture->fixtureDef();
+    if (def != nullptr)
+    {
+        for (QLCFixtureMode *mode : def->modes())
+        {
+            QJsonObject m;
+            m.insert(QStringLiteral("name"), mode->name());
+            m.insert(QStringLiteral("channelCount"), mode->channels().count());
+            availableModes.append(m);
+        }
+    }
+    obj.insert(QStringLiteral("availableModes"), availableModes);
+    if (fixture->fixtureMode() != nullptr)
+        obj.insert(QStringLiteral("physical"), physicalToJson(fixture->fixtureMode()->physical()));
 
     return obj;
 }
@@ -748,25 +791,52 @@ void ApiFixturesDomain::registerMethods()
         bool hasUniverse = params.contains(QStringLiteral("universe"));
         bool hasAddress = params.contains(QStringLiteral("address"));
         bool hasName = params.contains(QStringLiteral("name"));
-        if (hasUniverse == false && hasAddress == false && hasName == false)
+        bool hasMode = params.contains(QStringLiteral("mode"));
+        if (hasUniverse == false && hasAddress == false && hasName == false && hasMode == false)
         {
             session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams,
-                QStringLiteral("At least one of universe/address/name must be given")));
+                QStringLiteral("At least one of universe/address/name/mode must be given")));
             return;
         }
+
+        // Mode change: any mode of the fixture's own definition (for a
+        // generic dimmer / RGB panel row that is just its single mode), the
+        // same list FixtureManager::setFixtureModeIndex() offers.
+        QLCFixtureMode *newMode = fixture->fixtureMode();
+        if (hasMode)
+        {
+            QString modeName = params.value(QStringLiteral("mode")).toString();
+            QLCFixtureDef *def = fixture->fixtureDef();
+            QLCFixtureMode *found = nullptr;
+            if (def != nullptr)
+            {
+                for (QLCFixtureMode *m : def->modes())
+                    if (m->name() == modeName)
+                        found = m;
+            }
+            if (found == nullptr)
+            {
+                session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrNotFound,
+                    QStringLiteral("No mode \"%1\" in this fixture's definition").arg(modeName)));
+                return;
+            }
+            newMode = found;
+        }
+        bool modeChanges = hasMode && newMode != fixture->fixtureMode();
+        quint32 newChannels = modeChanges ? quint32(newMode->channels().count()) : fixture->channels();
 
         quint32 newUniverse = hasUniverse ? quint32(params.value(QStringLiteral("universe")).toInt())
                                            : fixture->universe();
         int newAddress = hasAddress ? params.value(QStringLiteral("address")).toInt()
                                      : int(fixture->address());
 
-        if (hasUniverse || hasAddress)
+        if (hasUniverse || hasAddress || modeChanges)
         {
-            if (validAddressRange(newAddress, int(fixture->channels())) == false)
+            if (validAddressRange(newAddress, int(newChannels)) == false)
             {
                 session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams,
                     QStringLiteral("Address %1 does not fit this fixture's %2 channels in a 512-channel universe")
-                        .arg(newAddress).arg(fixture->channels())));
+                        .arg(newAddress).arg(newChannels)));
                 return;
             }
             if (doc->inputOutputMap()->universe(newUniverse) == nullptr)
@@ -775,7 +845,7 @@ void ApiFixturesDomain::registerMethods()
                                                                 QStringLiteral("No such universe")));
                 return;
             }
-            if (rangeIsFree(doc, newUniverse, quint32(newAddress), fixture->channels(), fixture->id()) == false)
+            if (rangeIsFree(doc, newUniverse, quint32(newAddress), newChannels, fixture->id()) == false)
             {
                 QJsonObject details;
                 details.insert(QStringLiteral("address"), newAddress);
@@ -797,15 +867,56 @@ void ApiFixturesDomain::registerMethods()
         // (setID() to the same id does that, the idiom qmlui's
         // FixtureManager::pasteFromClipboard() already uses): the slot first
         // drops every address owned by this id, then adds the final footprint.
-        if (hasAddress || hasUniverse)
+        //
+        // A mode change goes through the same single changed(): the new
+        // footprint is tracked once, at its final position (the Qt UI's
+        // FixtureManager::setFixtureModeIndex() never re-tracks the address
+        // map at all). Per-channel settings on indices the new mode no longer
+        // has are dropped BEFORE switching - Fixture::setChannelModifier()
+        // refuses indices >= channels() afterwards, so they could never be
+        // cleared again. Functions are left untouched, exactly like the Qt
+        // UI: Scene values on vanished channels stay (Scene::postLoad() drops
+        // them on the next load), so switching back restores them.
+        QList<int> forcedHTP = fixture->forcedHTPChannels();
+        QList<int> forcedLTP = fixture->forcedLTPChannels();
+        if (modeChanges)
+        {
+            for (quint32 i = newChannels; i < fixture->channels(); i++)
+            {
+                fixture->setChannelModifier(i, nullptr);
+                fixture->setChannelCanFade(int(i), true);
+            }
+            auto prune = [newChannels](QList<int> &list)
+            {
+                list.erase(std::remove_if(list.begin(), list.end(),
+                                          [newChannels](int idx) { return idx < 0 || quint32(idx) >= newChannels; }),
+                           list.end());
+            };
+            prune(forcedHTP);
+            prune(forcedLTP);
+        }
+
+        if (hasAddress || hasUniverse || modeChanges)
         {
             fixture->blockSignals(true);
+            if (modeChanges)
+            {
+                // the lists must be set while the old (longer or shorter)
+                // mode is gone: setForced*Channels() checks the count only
+                fixture->setFixtureDefinition(fixture->fixtureDef(), newMode);
+                fixture->setForcedHTPChannels(forcedHTP);
+                fixture->setForcedLTPChannels(forcedLTP);
+            }
             if (hasAddress)
                 fixture->setAddress(quint32(newAddress));
             if (hasUniverse)
                 fixture->setUniverse(newUniverse);
             fixture->blockSignals(false);
             fixture->setID(fixture->id());
+
+            // Push the (new) footprint's HTP/LTP, default values and
+            // modifiers into its universe, as Doc::addFixture() does.
+            doc->updateFixtureChannelCapabilities(fixture->id(), forcedHTP, forcedLTP);
         }
         if (hasName)
             fixture->setName(params.value(QStringLiteral("name")).toString());
@@ -871,5 +982,274 @@ void ApiFixturesDomain::registerMethods()
         data.insert(QStringLiteral("fixtureIds"), deletedIdsJson);
         data.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
         m_server->broadcast(QStringLiteral("fixtures.unpatched"), data, session->clientId(), false);
+    });
+
+    /*********************************************************************
+     * Generic RGB panel (FixtureManager::addRGBPanel, RGBPanelProperties.qml)
+     *********************************************************************/
+
+    // fixtures.createRgbPanel {name?, universe, address, columns, rows,
+    //   components?, direction?, startCorner?, displacement?,
+    //   physicalWidth?, physicalHeight?, baseRevision}
+    //   -> {docRevision, fixtureIds, groupId}
+    // One generic "RGB panel" row fixture per row (per column when the
+    // direction is vertical) plus a fixture group laid out like the physical
+    // panel. Unlike the Qt UI this validates every row's footprint before
+    // creating anything and never creates universes: a row that does not
+    // fit the rest of a universe moves to address 0 of the NEXT EXISTING
+    // universe (the Qt UI's rollover), and fails with INVALID_PARAMS when
+    // there is none.
+    dispatcher->registerMethod(QStringLiteral("fixtures.createRgbPanel"), [doc, this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        quint32 baseRevision = quint32(params.value(QStringLiteral("baseRevision")).toInt());
+        if (baseRevision != doc->docRevision())
+        {
+            QJsonObject details;
+            details.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrConflict,
+                                                            QStringLiteral("baseRevision is stale"), details));
+            return;
+        }
+
+        auto invalid = [session, id](const QString &message)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams, message));
+        };
+
+        int universeId = params.value(QStringLiteral("universe")).toInt(-1);
+        int address = params.value(QStringLiteral("address")).toInt(-1);
+        int columns = params.value(QStringLiteral("columns")).toInt(0);
+        int rows = params.value(QStringLiteral("rows")).toInt(0);
+        int phyWidth = params.value(QStringLiteral("physicalWidth")).toInt(1000);
+        int phyHeightTotal = params.value(QStringLiteral("physicalHeight")).toInt(1000);
+        if (universeId < 0 || doc->inputOutputMap()->universe(quint32(universeId)) == nullptr)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrNotFound,
+                                                            QStringLiteral("No such universe")));
+            return;
+        }
+        // Same limits as RGBPanelProperties.qml's spin boxes.
+        if (columns < 1 || columns > 170 || rows < 1 || rows > 999)
+            return invalid(QStringLiteral("columns must be 1-170 and rows 1-999"));
+        if (address < 0 || address > 511)
+            return invalid(QStringLiteral("address must be 0-511"));
+        if (phyWidth < 1 || phyHeightTotal < 1)
+            return invalid(QStringLiteral("physicalWidth/physicalHeight must be >= 1"));
+
+        static const QStringList componentNames = { QStringLiteral("RGB"), QStringLiteral("BGR"), QStringLiteral("BRG"),
+                                                    QStringLiteral("GBR"), QStringLiteral("GRB"), QStringLiteral("RGBW"),
+                                                    QStringLiteral("RBG") };
+        QString compName = params.value(QStringLiteral("components")).toString(QStringLiteral("RGB"));
+        int compIndex = componentNames.indexOf(compName);
+        if (compIndex < 0)
+            return invalid(QStringLiteral("components must be one of ") + componentNames.join(QStringLiteral(", ")));
+        Fixture::Components components = Fixture::Components(compIndex); // same order as the enum
+
+        QString direction = params.value(QStringLiteral("direction")).toString(QStringLiteral("horizontal"));
+        QString corner = params.value(QStringLiteral("startCorner")).toString(QStringLiteral("topLeft"));
+        QString displacement = params.value(QStringLiteral("displacement")).toString(QStringLiteral("snake"));
+        if (direction != QStringLiteral("horizontal") && direction != QStringLiteral("vertical"))
+            return invalid(QStringLiteral("direction must be horizontal or vertical"));
+        if (corner != QStringLiteral("topLeft") && corner != QStringLiteral("topRight") &&
+            corner != QStringLiteral("bottomLeft") && corner != QStringLiteral("bottomRight"))
+            return invalid(QStringLiteral("startCorner must be topLeft, topRight, bottomLeft or bottomRight"));
+        if (displacement != QStringLiteral("snake") && displacement != QStringLiteral("zigzag"))
+            return invalid(QStringLiteral("displacement must be snake or zigzag"));
+        bool snake = displacement == QStringLiteral("snake");
+        bool left = corner == QStringLiteral("topLeft") || corner == QStringLiteral("bottomLeft");
+        bool top = corner == QStringLiteral("topLeft") || corner == QStringLiteral("topRight");
+
+        QString name = params.value(QStringLiteral("name")).toString().simplified();
+        if (name.isEmpty())
+            name = QStringLiteral("RGB Panel");
+
+        // Rows are the fixtures; a vertical panel is transposed (one fixture
+        // per physical column), exactly like FixtureManager::addRGBPanel().
+        const int groupColumns = columns, groupRows = rows;
+        int transpose = 0;
+        if (direction == QStringLiteral("vertical"))
+        {
+            std::swap(columns, rows);
+            transpose = 1;
+        }
+        const int perHead = components == Fixture::RGBW ? 4 : 3;
+        const int rowChannels = columns * perHead;
+        if (rowChannels > 512)
+            return invalid(QStringLiteral("One row needs %1 channels, more than a universe holds").arg(rowChannels));
+
+        // Lay out every row first: universe rollover onto existing universes
+        // only, and every footprint free.
+        QList<QPair<quint32, int>> placement;
+        quint32 uni = quint32(universeId);
+        int addr = address;
+        for (int i = 0; i < rows; i++)
+        {
+            if (addr + rowChannels > 512)
+            {
+                uni++;
+                addr = 0;
+                if (doc->inputOutputMap()->universe(uni) == nullptr)
+                    return invalid(QStringLiteral("Row %1 does not fit: the panel needs universe %2, which does not exist")
+                                   .arg(i + 1).arg(uni + 1));
+            }
+            if (rangeIsFree(doc, uni, quint32(addr), quint32(rowChannels), Fixture::invalidId()) == false)
+            {
+                QJsonObject details;
+                details.insert(QStringLiteral("universe"), int(uni));
+                details.insert(QStringLiteral("address"), addr);
+                session->send(ApiEnvelope::buildErrorResponse(id, QStringLiteral("FIXTURES_ADDRESS_OVERLAP"),
+                    QStringLiteral("Row %1 (universe %2, address %3) overlaps an existing fixture")
+                        .arg(i + 1).arg(uni + 1).arg(addr + 1), details));
+                return;
+            }
+            placement.append(qMakePair(uni, addr));
+            addr += rowChannels;
+        }
+
+        FixtureGroup *grp = new FixtureGroup(doc);
+        grp->setSize(QSize(groupColumns, groupRows));
+        if (doc->addFixtureGroup(grp) == false)
+        {
+            delete grp;
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInternal,
+                                                            QStringLiteral("Could not add fixture group")));
+            return;
+        }
+        for (FixtureGroup *other : doc->fixtureGroups())
+        {
+            if (other != grp && other->name() == name)
+            {
+                name = QStringLiteral("%1 [%2]").arg(name).arg(grp->id());
+                break;
+            }
+        }
+        grp->setName(name);
+
+        int currRow = 0, rowInc = 1, xPosStart = 0, xPosEnd = columns - 1, xPosInc = 1;
+        if (transpose)
+        {
+            if (left == false) { currRow = rows - 1; rowInc = -1; }
+            if (top == false) { xPosStart = columns - 1; xPosEnd = 0; xPosInc = -1; }
+        }
+        else
+        {
+            if (top == false) { currRow = rows - 1; rowInc = -1; }
+            if (left == false) { xPosStart = columns - 1; xPosEnd = 0; xPosInc = -1; }
+        }
+
+        MonitorProperties *monProps = doc->monitorProperties();
+        float gridUnits = monProps->gridUnits() == MonitorProperties::Meters ? 1000.0f : 304.8f;
+        qreal phyHeight = qreal(phyHeightTotal) / qreal(groupRows); // before the transpose, like the Qt UI
+        qreal xPos = params.value(QStringLiteral("x")).toDouble(0);
+        qreal yPos = params.value(QStringLiteral("y")).toDouble(0);
+
+        QLCFixtureDef *rowDef = nullptr;
+        QLCFixtureMode *rowMode = nullptr;
+        QJsonArray fixturesJson, fixtureIdsJson;
+        for (int i = 0; i < rows; i++)
+        {
+            Fixture *fxi = new Fixture(doc);
+            fxi->setName(QStringLiteral("%1 - Row %2").arg(name).arg(i + 1));
+            if (rowDef == nullptr)
+                rowDef = fxi->genericRGBPanelDef(columns, components, false);
+            if (rowMode == nullptr)
+                rowMode = fxi->genericRGBPanelMode(rowDef, components, false, quint32(phyWidth), quint32(phyHeight));
+            fxi->setFixtureDefinition(rowDef, rowMode);
+            fxi->setUniverse(placement.at(i).first);
+            fxi->setAddress(quint32(placement.at(i).second));
+            if (doc->addFixture(fxi) == false)
+            {
+                delete fxi;
+                session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInternal,
+                                                                QStringLiteral("Could not add row %1").arg(i + 1)));
+                return;
+            }
+
+            // Head placement in the group grid: zig-zag runs every row the
+            // same way, snake reverses every other row.
+            bool forward = snake == false || i % 2 == 0;
+            int x = forward ? xPosStart : xPosEnd;
+            int inc = forward ? xPosInc : -xPosInc;
+            for (int h = 0; h < fxi->heads(); h++)
+            {
+                if (transpose)
+                    grp->assignHead(QLCPoint(currRow, x), GroupHead(fxi->id(), h));
+                else
+                    grp->assignHead(QLCPoint(x, currRow), GroupHead(fxi->id(), h));
+                x += inc;
+            }
+
+            // 2D/3D placement, same maths as FixtureManager::addRGBPanel().
+            QVector3D pos;
+            QVector3D rot(0, 0, 0);
+            bool odd = snake && (i % 2);
+            switch (monProps->pointOfView())
+            {
+                case MonitorProperties::TopView:
+                    pos = QVector3D(xPos, 1000, yPos);
+                    if (odd) rot.setY(180);
+                break;
+                case MonitorProperties::LeftSideView:
+                    pos = QVector3D(0, yPos, xPos);
+                    rot.setY(odd ? -90 : 90);
+                    rot.setZ(-90);
+                break;
+                case MonitorProperties::RightSideView:
+                    pos = QVector3D(0, yPos, (monProps->gridSize().z() * gridUnits) - xPos);
+                    rot.setY(odd ? 90 : -90);
+                    rot.setZ(90);
+                break;
+                default:
+                    pos = QVector3D(xPos, (monProps->gridSize().y() * gridUnits) - yPos, 0);
+                    if (odd) rot.setZ(180);
+                    rot.setX(-90);
+                break;
+            }
+            monProps->setFixturePosition(fxi->id(), 0, 0, pos);
+            monProps->setFixtureRotation(fxi->id(), 0, 0, rot);
+            yPos += phyHeight;
+            currRow += rowInc;
+
+            fixtureIdsJson.append(QString::number(fxi->id()));
+            fixturesJson.append(fixtureSummaryToJson(fxi));
+        }
+        doc->setModified();
+
+        QJsonObject result;
+        result.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
+        result.insert(QStringLiteral("fixtureIds"), fixtureIdsJson);
+        result.insert(QStringLiteral("groupId"), QString::number(grp->id()));
+        session->send(ApiEnvelope::buildOkResponse(id, result));
+
+        QJsonObject data;
+        data.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
+        data.insert(QStringLiteral("fixtures"), fixturesJson);
+        m_server->broadcast(QStringLiteral("fixtures.patched"), data, session->clientId(), false);
+
+        // The group is built here, not by fixtures.group.create, so its
+        // event is sent here too (heads included).
+        QJsonObject groupJson;
+        groupJson.insert(QStringLiteral("id"), QString::number(grp->id()));
+        groupJson.insert(QStringLiteral("name"), grp->name());
+        QJsonObject size;
+        size.insert(QStringLiteral("columns"), grp->size().width());
+        size.insert(QStringLiteral("rows"), grp->size().height());
+        groupJson.insert(QStringLiteral("size"), size);
+        QJsonArray heads;
+        QMap<QLCPoint, GroupHead> map = grp->headsMap();
+        for (auto it = map.constBegin(); it != map.constEnd(); ++it)
+        {
+            QJsonObject h;
+            h.insert(QStringLiteral("x"), it.key().x());
+            h.insert(QStringLiteral("y"), it.key().y());
+            h.insert(QStringLiteral("fixtureId"), QString::number(it.value().fxi));
+            h.insert(QStringLiteral("headIndex"), it.value().head);
+            heads.append(h);
+        }
+        groupJson.insert(QStringLiteral("heads"), heads);
+        QJsonObject groupData;
+        groupData.insert(QStringLiteral("group"), groupJson);
+        groupData.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
+        m_server->broadcast(QStringLiteral("fixtures.group.created"), groupData, session->clientId(), false);
     });
 }

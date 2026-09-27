@@ -53,6 +53,24 @@ ChannelModifier *QLCModifiersCache::modifier(const QString& name) const
     return m_modifiers.value(name, NULL);
 }
 
+ChannelModifier *QLCModifiersCache::takeModifier(const QString &name)
+{
+    return m_modifiers.take(name);
+}
+
+bool QLCModifiersCache::renameModifier(const QString &oldName, const QString &newName)
+{
+    if (oldName == newName)
+        return m_modifiers.contains(oldName);
+    if (m_modifiers.contains(oldName) == false || m_modifiers.contains(newName))
+        return false;
+
+    ChannelModifier *mod = m_modifiers.take(oldName);
+    mod->setName(newName);
+    m_modifiers[newName] = mod;
+    return true;
+}
+
 QDir QLCModifiersCache::systemTemplateDirectory()
 {
     return QLCFile::systemDirectory(QString(MODIFIERSTEMPLATEDIR), QString(KExtModifierTemplate));
@@ -60,8 +78,24 @@ QDir QLCModifiersCache::systemTemplateDirectory()
 
 QDir QLCModifiersCache::userTemplateDirectory()
 {
-    return QLCFile::userDirectory(QString(USERMODIFIERSTEMPLATEDIR), QString(MODIFIERSTEMPLATEDIR),
-                                  QStringList() << QString("*%1").arg(KExtModifierTemplate));
+    QStringList filters;
+    filters << QString("*%1").arg(KExtModifierTemplate);
+
+    // Environment override first (tests, sandboxes), same treatment as
+    // QLCFixtureDefCache::userDefinitionDirectory(): ensure it exists and
+    // apply the name filters load() relies on.
+    QString overridePath = qEnvironmentVariable("QLCPLUS_USER_MODIFIERS_DIR");
+    if (overridePath.isEmpty() == false)
+    {
+        QDir dir(overridePath);
+        if (dir.exists() == false)
+            dir.mkpath(".");
+        dir.setFilter(QDir::Files);
+        dir.setNameFilters(filters);
+        return dir;
+    }
+
+    return QLCFile::userDirectory(QString(USERMODIFIERSTEMPLATEDIR), QString(MODIFIERSTEMPLATEDIR), filters);
 }
 
 bool QLCModifiersCache::load(const QDir& dir, bool systemTemplates)
