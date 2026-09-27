@@ -126,6 +126,17 @@ function SimpleDesk() {
     return () => { off(); client.unwatchUniverse(); };
   }, [live, universeId]);
 
+  /* Keypad history: the server's (shared by every client, io.simpleDesk.get + commandHistoryChanged)
+     when it evaluates keypad commands itself; the per-tab list stays as the fallback. */
+  const serverKeypad = live && !qlc.isUnsupported('io.simpleDesk.sendKeypadCommand');
+  React.useEffect(() => {
+    if (!live) { setHistory([]); return; }
+    let alive = true;
+    qlc.call('io.simpleDesk.get', { universeId }).then(r => { if (alive && Array.isArray(r.commandHistory)) setHistory(r.commandHistory.slice(0, SD_HISTORY_MAX)); }).catch(() => {});
+    const off = qlc.subscribeTo('io.simpleDesk.commandHistoryChanged', (data) => { if (alive && data && Array.isArray(data.history)) setHistory(data.history.slice(0, SD_HISTORY_MAX)); });
+    return () => { alive = false; off(); };
+  }, [live]);
+
   const applyLocal = (items) => {
     if (live) {
       setValues(p => { const n = p.slice(); items.forEach(i => { n[i.channel] = i.value; }); return n; });
@@ -161,17 +172,34 @@ function SimpleDesk() {
   };
   const showDebug = React.useCallback((i) => setDebugCh(i), []);
 
-  /* Keypad: parsed locally with the engine grammar (io/keypad-parser.js), applied via io.simpleDesk.setChannels. */
-  const execute = (text) => {
-    const normalized = window.QLCKeypadParser.normalize(text);
-    if (!normalized) return;
+  /* Keypad: the server evaluates the command with the engine's own KeyPadParser
+     (io.simpleDesk.sendKeypadCommand, results arrive as channelChanged events, the shared history as
+     commandHistoryChanged). Servers without it fall back to the browser port of the grammar
+     (io/keypad-parser.js) applied via io.simpleDesk.setChannels, with a per-tab history. */
+  const executeLocally = (normalized) => {
     const items = parser.current.parseCommand(normalized, live ? values : mockValues);
     setHistory(h => [normalized].concat(h).slice(0, SD_HISTORY_MAX));
-    setCmd('');
     if (!items.length) { setCmdNote({ text: 'Nothing applied: name a channel first (e.g. 1 THRU 12 AT 255)', error: true }); return; }
     applyLocal(items);
     if (live) qlc.client().setChannels(items.map(i => ({ address: universeId * 512 + i.channel, value: i.value })));
     setCmdNote({ text: items.length + (items.length === 1 ? ' channel' : ' channels') + ' set', error: false });
+  };
+  const execute = (text) => {
+    const normalized = window.QLCKeypadParser.normalize(text);
+    if (!normalized) return;
+    setCmd('');
+    if (!serverKeypad) { executeLocally(normalized); return; }
+    qlc.call('io.simpleDesk.sendKeypadCommand', { command: normalized, universeId })
+      .then(r => {
+        if (Array.isArray(r.history)) setHistory(r.history.slice(0, SD_HISTORY_MAX));
+        const n = r.channelsChanged || 0;
+        setCmdNote(n ? { text: n + (n === 1 ? ' channel' : ' channels') + ' set (server)', error: false }
+          : { text: 'Channels selected — now give a value (AT <0-255>, FULL, ZERO, + / - <n>)', error: false });
+      })
+      .catch(e => {
+        if (e.code === 'NOT_FOUND' && /Unknown method/.test(e.message || '')) { executeLocally(normalized); return; }
+        setCmdNote({ text: 'Keypad command failed: ' + (e.message || e.code || 'request failed'), error: true });
+      });
   };
   const dump = () => {
     if (!live) { setDumpOpen(false); return; }
@@ -258,7 +286,9 @@ function SimpleDesk() {
           </div>
         </div>
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', borderRight: '2px solid var(--bg-light)' }}>
-          <div style={head}><RobotoText label="Commands history" fontSize={14} fontBold height={26} /></div>
+          <div style={head}><RobotoText label="Commands history" fontSize={14} fontBold height={26} style={{ flex: 1 }} />
+            <RobotoText label={serverKeypad ? 'server' : (live ? 'this tab' : '')} fontSize={12} labelColor="var(--fg-light)" height={26} title={serverKeypad ? 'Commands are evaluated by the QLC+ engine; the history is shared with the desktop and every other client' : 'Commands are parsed in this browser; the history is local to this tab'} data-role="history-source" />
+          </div>
           <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
             {history.map((h, i) => (
               <div key={i} onClick={() => setCmd(h)} title="Load into the command line" data-history={i}

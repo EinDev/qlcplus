@@ -757,8 +757,36 @@ messages:
   IoPluginConfigureResponse:
     payload:
       oneOf:
-      - $ref: '#/components/messages/GenericAckResponse/payload'
+      - $ref: '#/components/messages/IoPluginConfigureOkResponse/payload'
       - $ref: '#/components/messages/ErrorResponse/payload'
+  IoPluginConfigureOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - openedOnHost
+          description: 'UNSUPPORTED is returned instead when the plugin has no dialog (canConfigure false) or
+            the QLC+ host has no desktop to show one on; a modal dialog keeps the response waiting until it
+            is closed.
+
+            '
+          properties:
+            openedOnHost:
+              type: boolean
+              description: The plugin''s native dialog was opened on the machine running QLC+.
   IoInputProfileListRequest:
     payload:
       type: object
@@ -1056,14 +1084,19 @@ messages:
           required:
           - universeId
           description: 'Puts the engine into MIDI/OSC-learn mode: raw input signals on this (already patched)
-            input universe are reported via io.inputProfile.learn.signal instead of being consumed normally,
-            mirroring InputProfileEditor::toggleDetection(). Live, no baseRevision — this is editor-session
-            state, not saved.
+            input universe are reported via io.inputProfile.learn.signal (to the requesting client only) while
+            still being consumed normally, mirroring InputProfileEditor::toggleDetection(). Live, no
+            baseRevision — this is editor-session state, not saved. One session per server: INVALID_STATE
+            (details.clientId) while another client is learning.
 
             '
           properties:
             universeId:
               type: integer
+            profileName:
+              type: string
+              description: Profile to compute alreadyMapped against (the one being edited); omit to use the
+                universe's current input profile.
   IoInputProfileLearnStartResponse:
     payload:
       oneOf:
@@ -1111,11 +1144,27 @@ messages:
           required:
           - channelNumber
           - alreadyMapped
+          description: 'Sent ONLY to the client whose io.inputProfile.learn.start opened the session (never
+            broadcast); originClientId is that client. channelNumber is the profile channel key (0-based, the
+            same number IoInputChannel.number uses), not the +1 display number.
+
+            '
           properties:
+            universeId:
+              type: integer
             channelNumber:
               type: integer
+            value:
+              type: integer
+              minimum: 0
+              maximum: 255
+            key:
+              type: string
+              description: Plugin-supplied key for the control (e.g. an OSC path), empty for MIDI.
             alreadyMapped:
               type: boolean
+              description: The profile (learn.start's profileName, else the universe's current input profile)
+                already has a channel with this number.
   IoGrandMasterGetRequest:
     payload:
       type: object
@@ -1536,6 +1585,12 @@ messages:
               type: integer
             currentPage:
               type: integer
+            commandHistory:
+              type: array
+              description: Server-side keypad command history, most recent first (max 10), so a client can
+                seed its list before following io.simpleDesk.commandHistoryChanged.
+              items:
+                type: string
   IoSimpleDeskSetChannelRequest:
     payload:
       type: object
@@ -1806,12 +1861,18 @@ messages:
           - command
           description: 'Console-style keypad syntax (e.g. "1 THRU 10 @ 50 ENTER"), see SimpleDesk::sendKeypadCommand
             / KeyPadParser. Side effects arrive as ordinary io.simpleDesk.channelChanged events, one per
-            affected channel.
+            affected channel, plus io.simpleDesk.commandHistoryChanged. The server upper-cases, maps "@" to
+            AT and drops ENTER before parsing; the channel selection is remembered across commands ("1 THRU
+            4" then "AT 50").
 
             '
           properties:
             command:
               type: string
+            universeId:
+              type: integer
+              description: Universe the channel numbers refer to. Defaults to the Simple Desk universe filter
+                (io.simpleDesk.setUniverseFilter).
   IoSimpleDeskSendKeypadCommandResponse:
     payload:
       oneOf:
@@ -1841,6 +1902,14 @@ messages:
               type: boolean
               description: false if the command string was not syntactically valid; see error.details
                 for the parser's message if ok:false was used instead.
+            channelsChanged:
+              type: integer
+              description: Number of channels the command wrote (0 for a bare channel selection).
+            history:
+              type: array
+              description: The new command history, most recent first (same as the event).
+              items:
+                type: string
   IoSimpleDeskCommandHistoryChangedEvent:
     payload:
       type: object
@@ -2080,7 +2149,147 @@ messages:
       oneOf:
       - $ref: '#/components/messages/IoPatchMutationOkResponse/payload'
       - $ref: '#/components/messages/ErrorResponse/payload'
+  IoAudioListDevicesRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: io.audio.listDevices
+        params:
+          type: object
+  IoAudioListDevicesResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/IoAudioListDevicesOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  IoAudioListDevicesOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - inputs
+          - outputs
+          - inputDevice
+          - outputDevice
+          description: 'The sound devices of the machine running QLC+ (AudioPluginCache::audioDevicesList),
+            each list starting with the "__qlcplusdefault__" pseudo-device like AudioCardsList.qml. inputDevice/
+            outputDevice are the selected privateNames (QSettings audio/input, audio/output - host-wide, not
+            part of the project).
+
+            '
+          properties:
+            inputs:
+              type: array
+              items:
+                $ref: '#/components/schemas/IoAudioDevice'
+            outputs:
+              type: array
+              items:
+                $ref: '#/components/schemas/IoAudioDevice'
+            inputDevice:
+              type: string
+            outputDevice:
+              type: string
+  IoAudioSetDeviceRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: io.audio.setDevice
+        params:
+          type: object
+          required:
+          - direction
+          - privateName
+          description: 'Selects the host audio device the engine uses for audio input (beat detection,
+            Audio Triggers) or output (Audio functions) - InputOutputManager::setAudioInput/setAudioOutput.
+            Live/host setting, no baseRevision; "__qlcplusdefault__" restores the system default.
+            NOT_FOUND for a privateName the host does not list.
+
+            '
+          properties:
+            direction:
+              enum:
+              - input
+              - output
+            privateName:
+              type: string
+  IoAudioSetDeviceResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/GenericAckResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  IoAudioDeviceChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: io.audio.deviceChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - direction
+          - privateName
+          properties:
+            direction:
+              enum:
+              - input
+              - output
+            privateName:
+              type: string
 schemas:
+  IoAudioDevice:
+    type: object
+    required:
+    - name
+    - privateName
+    properties:
+      name:
+        type: string
+        description: Human-readable device name.
+      privateName:
+        type: string
+        description: Stable device id to pass to io.audio.setDevice ("__qlcplusdefault__" for the system default).
   IoUniverseSummary:
     type: object
     required:
@@ -2324,6 +2533,18 @@ schemas:
             color:
               type: string
               description: '#rrggbb'
+      name:
+        type: string
+        description: Read-only, "<manufacturer> <model>" (QLCInputProfile::name), the key io.inputProfile.get/delete
+          take. Ignored on save.
+      path:
+        type: string
+        description: Read-only, the .qxi file the profile was loaded from / saved to (empty if never saved).
+      isUser:
+        type: boolean
+        description: Read-only, true when the profile lives in the user profile directory (or was never saved) -
+          only those can be deleted; a bundled system profile is INVALID_STATE on delete. Saving over a system
+          profile writes a user copy that overrides it.
       midiChannelTable:
         type: array
         description: Optional per-MIDI-channel labels (QLCInputProfile::midiChannelTable).
@@ -2386,10 +2607,12 @@ schemas:
         maximum: 255
       lowerChannel:
         type: integer
-        description: Extended/14-bit range support; -1 or omitted if unused.
+        description: MIDI channel for custom feedback (QLCInputChannel::lowerChannel, the .qxi MidiChannel
+          attribute); -1 or omitted if unused. Button channels only, like lowerValue/upperValue.
       upperChannel:
         type: integer
-        description: Extended/14-bit range support; -1 or omitted if unused.
+        description: Declared by the engine header but never defined, persisted or read - not served; kept in
+          the schema only as a placeholder should the engine ever implement it.
   IoGrandMasterChannelMode:
     type: string
     enum:
@@ -2982,3 +3205,33 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/ioPatchSetResponse'
+  sendIoAudioListDevices:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/ioAudioListDevicesRequest'
+  receiveIoAudioListDevicesResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/ioAudioListDevicesResponse'
+  sendIoAudioSetDevice:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/ioAudioSetDeviceRequest'
+  receiveIoAudioSetDeviceResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/ioAudioSetDeviceResponse'
+  receiveIoAudioDeviceChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/ioAudioDeviceChangedEvent'

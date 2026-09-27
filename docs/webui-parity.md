@@ -107,7 +107,7 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | Invert selection in group(s) | MainView.qml, popup/PopupInvertGroupSelection.qml | missing | U |
 | Rename items with numbering (start number, digits) | popup/PopupRenameItems.qml | missing | U; loop over fixtures.update / functions.rename |
 | Fixture remap (drag new fixtures, map channels, clone, apply and save) | fixturesfunctions/FixtureRemap.qml, fixturesfunctions/RemapRowDelegate.qml | missing | S: fixtures.remap.apply, fixtures.remap.suggestChannelMap; button present, disabled |
-| Create / edit a fixture definition (opens the Fixture Editor) | fixturesfunctions/FixtureBrowser.qml | missing | S: fixturedefs.*; see Fixture Editor section |
+| Create / edit a fixture definition (opens the Fixture Editor) | fixturesfunctions/FixtureBrowser.qml | partial | U; server domain fixturedefs.* complete + 26 unit tests + socket smoke (2026-09-27); web editor screen not built yet |
 | Live tool: Intensity | fixturesfunctions/IntensityTool.qml, fixturesfunctions/LeftPanel.qml | live | - ; writes Simple Desk overrides at the fixture addresses |
 | Live tool: Colour (basic palette, full picker, typed hex, RGB / CMY / WAUV) | ColorTool.qml, ColorToolBasic.qml, ColorToolFull.qml, ColorToolPrimary.qml | live | - |
 | Live tool: Colour filters tab (named colour filter lists) | ColorToolFilters.qml | missing | U; filter definitions come from the engine's colour filter files, palette.* has no listing, so possibly spec+S+U |
@@ -281,8 +281,8 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | DMX / percent value display | SimpleDesk.qml, DMXPercentageButton.qml | live | - ; verified read-only in the 2026-09-26 audit pass |
 | Reset a channel | SimpleDesk.qml | live | - |
 | Reset the whole universe | SimpleDesk.qml | live | - |
-| Keypad commands (THRU, AT / @, FULL, ZERO, BY, +, -, +%, -%, CLR) | KeyPad.qml, SimpleDesk.qml | live | - ; parsed client-side (io/keypad-parser.js); io.simpleDesk.sendKeypadCommand is not used |
-| Commands history (reload a past command) | SimpleDesk.qml | partial | S: io.simpleDesk.sendKeypadCommand, io.simpleDesk.commandHistoryChanged; the web history is per browser tab, not the server's |
+| Keypad commands (THRU, AT / @, FULL, ZERO, BY, +, -, +%, -%, CLR) | KeyPad.qml, SimpleDesk.qml | live | - ; since 2026-09-27 through the engine parser (io.simpleDesk.sendKeypadCommand), browser parser as fallback; sandbox-verified |
+| Commands history (reload a past command) | SimpleDesk.qml | live | - ; sandbox 2026-09-27; the server's shared history (io.simpleDesk.get commandHistory + commandHistoryChanged) |
 | Channel value debug (which functions / sources contribute to a channel) | SimpleDesk.qml | missing | spec+S+U |
 | Fixture list side panel | SimpleDesk.qml | live | - |
 | Dump to a new Scene (name, non-zero only) | SimpleDesk.qml, popup/PopupDMXDump.qml | live | - |
@@ -300,18 +300,18 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | Rename universe | inputoutput/UniverseIOItem.qml | live | - |
 | Passthrough toggle | inputoutput/UniverseIOItem.qml | live | - |
 | Patch input / output / feedback line (plugin + line pickers) | inputoutput/PluginsList.qml, inputoutput/InputPatchItem.qml, inputoutput/OutputPatchItem.qml, inputoutput/PatchWireBox.qml | live | - ; pickers replace drag-and-drop; verified on an instance without IO plugins, so real plugin lines are sandbox-unverified |
-| Multiple output patches per universe | inputoutput/UniverseIOItem.qml | partial | U; io.patch.set has an output `index`, InputOutput.jsx shows additional outputs read-only |
+| Multiple output patches per universe | inputoutput/UniverseIOItem.qml | partial | U; server + editable UI incl. add / remove / pause / blackout of extra output lines (2026-09-27, unit-tested with the stub plugin); not live-verified without an IO plugin |
 | Enable / disable feedback | inputoutput/UniverseIOItem.qml | partial | U; feedback picker present, not live-verified with a real line |
-| Refresh plugin lines / rescan | inputoutput/PluginsList.qml | missing | S: io.plugin.rescan, io.plugin.getLines, io.plugin.linesChanged |
-| Plugin line parameters for network plugins (ArtNet / E1.31 / OSC IP, port, transmission mode ...) | inputoutput/IOLeftPanel.qml, inputoutput/IORightPanel.qml ("Open the plugin configuration") | missing | S: io.patch.setParameters, io.plugin.getLines |
-| Plugin configuration dialog for native-hardware plugins (dmxusb, MIDI device dialogs ...) | inputoutput/IOLeftPanel.qml, inputoutput/IORightPanel.qml | n/a | - ; native Qt dialog with live hardware enumeration on the host |
-| Per-output-patch blackout, play / pause an output patch | inputoutput/OutputPatchItem.qml | missing | S: io.patch.output.setState, io.patch.output.stateChanged; shown read-only |
+| Refresh plugin lines / rescan | inputoutput/PluginsList.qml | partial | U; io.plugin.rescan / getLines / linesChanged implemented + Rescan buttons (2026-09-27); unit-tested only; DMXUSB gains rescan once Plugins dir is rebuilt |
+| Plugin line parameters for network plugins (ArtNet / E1.31 / OSC IP, port, transmission mode ...) | inputoutput/IOLeftPanel.qml, inputoutput/IORightPanel.qml ("Open the plugin configuration") | partial | U; io.patch.setParameters + parameter dialog (io/PatchProperties.jsx) with ArtNet / E1.31 / OSC key suggestions (2026-09-27); unit-tested only, no plugin in the sandbox |
+| Plugin configuration dialog for native-hardware plugins (dmxusb, MIDI device dialogs ...) | inputoutput/IOLeftPanel.qml, inputoutput/IORightPanel.qml | partial | U; io.plugin.configure opens the plugin's native dialog on the QLC+ host from a browser button (2026-09-27); the dialog itself stays on the host by nature |
+| Per-output-patch blackout, play / pause an output patch | inputoutput/OutputPatchItem.qml | partial | U; io.patch.output.setState + buttons (2026-09-27); unit-tested only |
 | Blackout on all output patches | inputoutput/IORightPanel.qml | live | - ; global blackout |
 | Assign an input profile to a universe | inputoutput/ProfilesList.qml, inputoutput/InputPatchItem.qml | partial | U; profile list is live, assignment via io.patch.set profile field present but not live-verified |
-| Input profile: create / edit / save / delete (channels, MIDI channels, colours, behaviour, sensitivity) | inputoutput/InputProfileEditor.qml, inputoutput/ProfilesList.qml, popup/PopupInputChannelEditor.qml | missing | S: io.inputProfile.get, io.inputProfile.save, io.inputProfile.delete |
-| Input profile: channel auto-detection (learn) | inputoutput/ProfilesList.qml, inputoutput/InputProfileEditor.qml | missing | S: io.inputProfile.learn.start, io.inputProfile.learn.stop, io.inputProfile.learn.signal |
-| Input profile: custom feedback and MIDI global settings | inputoutput/InputProfileEditor.qml, popup/PopupCustomFeedback.qml | missing | S: io.inputProfile.save (fields are part of the profile document) |
-| Audio input / output device selection, sample rate, channels, buffer size | inputoutput/AudioCardsList.qml, inputoutput/AudioIOItem.qml, popup/PopupAudioConfiguration.qml | n/a | - ; host device selection for the machine running QLC+ |
+| Input profile: create / edit / save / delete (channels, MIDI channels, colours, behaviour, sensitivity) | inputoutput/InputProfileEditor.qml, inputoutput/ProfilesList.qml, popup/PopupInputChannelEditor.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/io.js; io/InputProfileEditor.jsx, .qxi lands in the host's user profile folder (QLCPLUS_USER_INPUTPROFILE_DIR override in sandboxes / tests) |
+| Input profile: channel auto-detection (learn) | inputoutput/ProfilesList.qml, inputoutput/InputProfileEditor.qml | partial | U; io.inputProfile.learn.* scoped to the requesting client + Detect button (2026-09-27); unit-tested only (no input line in the sandbox) |
+| Input profile: custom feedback and MIDI global settings | inputoutput/InputProfileEditor.qml, popup/PopupCustomFeedback.qml | partial | U; MIDI note-off, colour table, MIDI channel labels live via the editor (sandbox 2026-09-27); custom feedback values unit-tested only (Button-only in the .qxi format) |
+| Audio input / output device selection, sample rate, channels, buffer size | inputoutput/AudioCardsList.qml, inputoutput/AudioIOItem.qml, popup/PopupAudioConfiguration.qml | partial | U; device lists live and io.audio.setDevice built (2026-09-27, not exercised: it writes the host's real settings); sample rate / channels / buffer size not exposed |
 | Audio input signal level check | popup/PopupAudioConfiguration.qml | n/a | - ; host audio capture |
 
 ## Show Manager
@@ -338,22 +338,22 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 
 | Qt UI action | Where in qmlui (file) | Web UI status | Blocker / notes |
 | --- | --- | --- | --- |
-| Open the Fixture Editor window, back to QLC+ | fixtureeditor/FixtureEditor.qml, WindowLoader.qml | missing | S: fixturedefs.session.list, fixturedefs.session.open, fixturedefs.session.close |
-| New definition | fixtureeditor/FixtureEditor.qml | missing | S: fixturedefs.session.create |
-| Open an existing definition (user or system) | fixtureeditor/FixtureEditor.qml, popup/PopupFolderBrowser.qml | missing | S: fixturedefs.list, fixturedefs.get, fixturedefs.session.open, fixturedefs.session.forkToUser |
-| Save / save as | fixtureeditor/FixtureEditor.qml | missing | S: fixturedefs.save, fixturedefs.export |
-| General: manufacturer, model, type, author | fixtureeditor/EditorView.qml | missing | S: fixturedefs.session.update |
-| Channels: add / remove / edit (name, group, preset, default value, coarse / fine, colours) | fixtureeditor/EditorView.qml, fixtureeditor/ChannelEditor.qml | missing | S: fixturedefs.channel.add, fixturedefs.channel.update, fixturedefs.channel.remove |
-| Capabilities: add / remove / edit (range, description, preset, values, colours) | fixtureeditor/ChannelEditor.qml | missing | S: fixturedefs.channel.capability.add, fixturedefs.channel.capability.update, fixturedefs.channel.capability.remove |
+| Open the Fixture Editor window, back to QLC+ | fixtureeditor/FixtureEditor.qml, WindowLoader.qml | partial | U; server domain fixturedefs.* complete + 26 unit tests + socket smoke (2026-09-27); web editor screen not built yet |
+| New definition | fixtureeditor/FixtureEditor.qml | partial | U; server domain fixturedefs.* complete + 26 unit tests + socket smoke (2026-09-27); web editor screen not built yet |
+| Open an existing definition (user or system) | fixtureeditor/FixtureEditor.qml, popup/PopupFolderBrowser.qml | partial | U; server domain fixturedefs.* complete + 26 unit tests + socket smoke (2026-09-27); web editor screen not built yet |
+| Save / save as | fixtureeditor/FixtureEditor.qml | partial | U; server domain fixturedefs.* complete + 26 unit tests + socket smoke (2026-09-27); web editor screen not built yet |
+| General: manufacturer, model, type, author | fixtureeditor/EditorView.qml | partial | U; server domain fixturedefs.* complete + 26 unit tests + socket smoke (2026-09-27); web editor screen not built yet |
+| Channels: add / remove / edit (name, group, preset, default value, coarse / fine, colours) | fixtureeditor/EditorView.qml, fixtureeditor/ChannelEditor.qml | partial | U; server domain fixturedefs.* complete + 26 unit tests + socket smoke (2026-09-27); web editor screen not built yet |
+| Capabilities: add / remove / edit (range, description, preset, values, colours) | fixtureeditor/ChannelEditor.qml | partial | U; server domain fixturedefs.* complete + 26 unit tests + socket smoke (2026-09-27); web editor screen not built yet |
 | Capabilities: gobo picture | fixtureeditor/ChannelEditor.qml | missing | spec+S+U; picture upload from the browser |
-| Capabilities: automatic colour assignment | fixtureeditor/ChannelEditor.qml | missing | S: fixturedefs.channel.capability.autoPatchColors |
-| Channel / capability wizard | popup/PopupChannelWizard.qml | missing | spec+S+U |
-| Modes: add / remove / rename, channel list, per-mode physical override | fixtureeditor/EditorView.qml, fixtureeditor/ModeEditor.qml | missing | S: fixturedefs.mode.add, fixturedefs.mode.remove, fixturedefs.mode.rename, fixturedefs.mode.setChannels, fixturedefs.mode.setPhysical |
-| Modes: heads / emitters (create, remove, acts-on channels) | fixtureeditor/ModeEditor.qml | missing | S: fixturedefs.mode.head.add, fixturedefs.mode.head.remove |
-| Physical properties (bulb, dimensions, lens, focus, layout, electrical) | fixtureeditor/PhysicalProperties.qml | missing | S: fixturedefs.session.setPhysical |
-| Aliases (replace channel with another while a capability is active, apply to all modes) | fixtureeditor/AliasEditor.qml | missing | S: fixturedefs.channel.capability.alias.add, fixturedefs.channel.capability.alias.update, fixturedefs.channel.capability.alias.remove, fixturedefs.channel.capability.alias.applyToAllModes |
-| Import a definition file | fixtureeditor/FixtureEditor.qml | missing | S: fixturedefs.session.import; browser-side upload is spec+S+U |
-| Validation errors and warnings | fixtureeditor/EditorView.qml | missing | S: fixturedefs.session.validate |
+| Capabilities: automatic colour assignment | fixtureeditor/ChannelEditor.qml | partial | U; server domain fixturedefs.* complete + 26 unit tests + socket smoke (2026-09-27); web editor screen not built yet |
+| Channel / capability wizard | popup/PopupChannelWizard.qml | partial | U; fixturedefs.channel.wizard + fixturedefs.channel.capability.wizard specced + implemented (2026-09-27); web editor screen not built yet |
+| Modes: add / remove / rename, channel list, per-mode physical override | fixtureeditor/EditorView.qml, fixtureeditor/ModeEditor.qml | partial | U; server domain fixturedefs.* complete + 26 unit tests + socket smoke (2026-09-27); web editor screen not built yet |
+| Modes: heads / emitters (create, remove, acts-on channels) | fixtureeditor/ModeEditor.qml | partial | U; server domain fixturedefs.* complete + 26 unit tests + socket smoke (2026-09-27); web editor screen not built yet |
+| Physical properties (bulb, dimensions, lens, focus, layout, electrical) | fixtureeditor/PhysicalProperties.qml | partial | U; server domain fixturedefs.* complete + 26 unit tests + socket smoke (2026-09-27); web editor screen not built yet |
+| Aliases (replace channel with another while a capability is active, apply to all modes) | fixtureeditor/AliasEditor.qml | partial | U; server domain fixturedefs.* complete + 26 unit tests + socket smoke (2026-09-27); web editor screen not built yet |
+| Import a definition file | fixtureeditor/FixtureEditor.qml | partial | U; server domain fixturedefs.* complete + 26 unit tests + socket smoke (2026-09-27); web editor screen not built yet |
+| Validation errors and warnings | fixtureeditor/EditorView.qml | partial | U; server domain fixturedefs.* complete + 26 unit tests + socket smoke (2026-09-27); web editor screen not built yet |
 
 ## Popups & tools
 
@@ -425,8 +425,8 @@ the total is larger than the number of distinct actions). Recompute after editin
 
 | Status | Rows |
 | --- | --- |
-| live | 126 |
-| partial | 36 |
-| missing | 130 |
-| n/a | 22 |
+| live | 128 |
+| partial | 58 |
+| missing | 108 |
+| n/a | 20 |
 | total | 314 |

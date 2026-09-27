@@ -36,6 +36,19 @@
         toggle: function () { return self.call('io.blackout.toggle', {}); }
       },
 
+      audio: {
+        /** -> {inputs: [{name, privateName}], outputs: [...], inputDevice, outputDevice} — the sound
+            devices of the machine running QLC+ ("__qlcplusdefault__" first = system default) and the
+            selected privateNames (host QSettings audio/input, audio/output, not part of the project). */
+        listDevices: function () { return self.call('io.audio.listDevices', {}); },
+        /** direction: 'input'|'output', privateName: from listDevices ("__qlcplusdefault__" restores
+            the default). Live host setting, no baseRevision. -> ack; broadcasts io.audio.deviceChanged
+            ({direction, privateName}). */
+        setDevice: function (direction, privateName) {
+          return self.call('io.audio.setDevice', { direction: direction, privateName: privateName });
+        }
+      },
+
       dmx: {
         universe: {
           /** universeId: integer (0-based). One-shot full 512-channel *post*-Grand-Master
@@ -77,12 +90,17 @@
           return self.call('io.inputProfile.save', { profile: profile, baseRevision: baseRevision });
         },
         learn: {
-          /** universeId: integer (0-based), an already-patched input universe. Puts the engine
-              into MIDI/OSC-learn mode; raw signals arrive as io.inputProfile.learn.signal events
-              instead of being consumed normally. Live editor-session state, no baseRevision.
-              -> ack. NOTE (io-notes.md): the signal event is a plain broadcast to every client,
-              not scoped to the requester — filter client-side if only the caller should react. */
-          start: function (universeId) { return self.call('io.inputProfile.learn.start', { universeId: universeId }); },
+          /** universeId: integer (0-based), an already-patched input universe; profileName?: the
+              profile alreadyMapped is computed against. Raw signals on that universe then arrive as
+              io.inputProfile.learn.signal events ({universeId, channelNumber (0-based profile key),
+              value, key, alreadyMapped}) sent to THIS client only, while input keeps flowing
+              normally. One session per server (INVALID_STATE while another client learns). Live
+              editor-session state, no baseRevision. -> ack. */
+          start: function (universeId, profileName) {
+            var params = { universeId: universeId };
+            if (profileName) params.profileName = profileName;
+            return self.call('io.inputProfile.learn.start', params);
+          },
           /** -> ack. */
           stop: function () { return self.call('io.inputProfile.learn.stop', {}); }
         }
@@ -127,23 +145,23 @@
       },
 
       plugin: {
-        /** pluginName: string. Thin passthrough to InputOutputMap::configurePlugin(). Per
-            io-notes.md: on today's engine build this pops a native Qt dialog SERVER-SIDE and is
-            NOT usable from a remote Electron client for most plugins — prefer io.patch.setParameters.
-            Kept only for parity/completeness (and plugins like dmxusb whose native dialog may do
-            things setParameters can't replicate without engine-side changes). -> ack. */
+        /** pluginName: string. Thin passthrough to InputOutputMap::configurePlugin(): the plugin's
+            native dialog opens on the machine running QLC+ (a modal one delays the response until
+            it is closed). -> {openedOnHost: true}; UNSUPPORTED when the plugin has no dialog or the
+            host has no desktop — prefer io.patch.setParameters for remote configuration. */
         configure: function (pluginName) { return self.call('io.plugin.configure', { pluginName: pluginName }); },
-        /** pluginName: string. -> {inputs: IoPluginLine[], outputs: IoPluginLine[]}
-            (each {line, name, uid}). Not registered by the server as of 2026-09-26. */
+        /** pluginName: string. -> {pluginName, inputs: IoPluginLine[], outputs: IoPluginLine[]}
+            (each {index, line, name, uid}) — the plugin's current lines after a rescan/hotplug. */
         getLines: function (pluginName) { return self.call('io.plugin.getLines', { pluginName: pluginName }); },
         /** Server contract as implemented (2026-09-26): -> {plugins: [{name, inputLines: [{index,
             name}], outputLines: [{index, name}], canConfigure}]} - lines inline, no separate
             getLines round trip. (The spec fragment describes {name, capabilities[], description,
             canConfigure, supportsFeedback} instead; InputOutput.jsx codes against the former.) */
         list: function () { return self.call('io.plugin.list', {}); },
-        /** pluginName: string. Ask a hotplug-style plugin (DMXUSB, HID, ...) to re-enumerate its
-            hardware. Not every plugin supports this. -> ack; broadcasts io.plugin.linesChanged
-            ({pluginName, inputs, outputs}) if the line set changed. */
+        /** pluginName: string. Ask a hotplug-style plugin (DMXUSB) to re-enumerate its hardware
+            (its Q_INVOKABLE rescanWidgets(), found by name); UNSUPPORTED for plugins without one.
+            -> ack; io.plugin.linesChanged ({pluginName, inputs, outputs}) follows when the plugin
+            reports a configuration change. */
         rescan: function (pluginName) { return self.call('io.plugin.rescan', { pluginName: pluginName }); }
       },
 
@@ -157,7 +175,8 @@
             functions.created/functions.updated instead (see io-notes.md). */
         dump: function (params) { return self.call('io.simpleDesk.dump', params); },
         /** universeId: integer (0-based). -> {universeId, channels: [{address, universeId,
-            channel, value, group, fixtureId, overridden}], slidersNumber, currentPage}. */
+            channel, value, group, fixtureId, overridden}], slidersNumber, currentPage,
+            commandHistory: string[] (server-side keypad history, most recent first)}. */
         get: function (universeId) { return self.call('io.simpleDesk.get', { universeId: universeId }); },
         /** address: integer, absolute flat 0-based (universeId*512 + channelWithinUniverse) —
             same encoding as setChannel. Releases a manual override (not the same as setting 0).
@@ -166,10 +185,16 @@
         /** universeId: integer (0-based). -> ack; broadcasts io.simpleDesk.universeReset
             ({universeId}) — carries no channel data, refetch via get() if needed. */
         resetUniverse: function (universeId) { return self.call('io.simpleDesk.resetUniverse', { universeId: universeId }); },
-        /** command: string, console keypad syntax (e.g. "1 THRU 10 @ 50 ENTER"). -> {accepted:
-            boolean}. Side effects arrive as ordinary io.simpleDesk.channelChanged events, plus
+        /** command: string, console keypad syntax (e.g. "1 THRU 10 @ 50 ENTER"), evaluated by the
+            engine's own KeyPadParser; universeId?: the universe the channel numbers refer to
+            (default: the Simple Desk universe filter). -> {accepted, channelsChanged, history}.
+            Side effects arrive as ordinary io.simpleDesk.channelChanged events, plus
             io.simpleDesk.commandHistoryChanged ({history: string[]}). */
-        sendKeypadCommand: function (command) { return self.call('io.simpleDesk.sendKeypadCommand', { command: command }); },
+        sendKeypadCommand: function (command, universeId) {
+          var params = { command: command };
+          if (universeId != null) params.universeId = universeId;
+          return self.call('io.simpleDesk.sendKeypadCommand', params);
+        },
         /** address: integer, absolute flat 0-based (universeId*512 + channelWithinUniverse).
             value: integer 0-255. Live/runtime, no baseRevision. -> ack; broadcasts
             io.simpleDesk.channelChanged ({address, value, overridden}). */
@@ -233,7 +258,8 @@
     'io.plugin.linesChanged',
     'io.inputProfile.changed',
     'io.inputProfile.deleted',
-    'io.inputProfile.learn.signal',  // NOT requester-scoped as of this reading — see io-notes.md
+    'io.inputProfile.learn.signal',  // delivered only to the client that started the learn session
+    'io.audio.deviceChanged',
     'io.grandMaster.changed',
     'io.blackout.changed',
     'io.simpleDesk.channelChanged',

@@ -144,3 +144,10 @@ bool IOPluginStub::canConfigure() const
 {
     return m_canConfigure;
 }
+
+bool IOPluginStub::rescanWidgets()
+{
+    m_rescanCalled++;
+    emit configurationChanged();
+    return true;
+}

@@ -125,3 +125,101 @@ Server: `controlapi/src/domains/apiiodomain.cpp`; tests load
   `details.fixtureIds`) unless `force: true` - then they are unpatched
   first with a `fixtures.unpatched` event. qmlui deletes them silently;
   the API chose the explicit form.
+
+## Implemented 2026-09-27: plugin lines/rescan/configure, patch parameters and output state, input profile CRUD + learn, GM modes, monitor, audio devices, server-side keypad
+
+Server: `controlapi/src/domains/apiioconfigdomain.cpp` (new domain, all of
+the below except the keypad), `apiiodomain.cpp` (`io.simpleDesk.
+sendKeypadCommand`, `commandHistory` on `io.simpleDesk.get`, the
+`profilesRevision` counter). Tests: `controlapi/test/apiioconfigdomain/`
+(32 cases, engine/test/iopluginstub as the patchable plugin). Web UI:
+`webui/io/*.jsx` + `InputOutput.jsx` + `SimpleDesk.jsx`, driver
+`webui/tools/e2e/io.js` (sandbox `io`, ports 9190/9191).
+
+- **`io.plugin.getLines`** returns `{pluginName, inputs, outputs}` with
+  `IoPluginLine` (both `index` and `line`). **`io.plugin.rescan`**: QLCIOPlugin
+  has no rescan entry point, so the domain looks for a `Q_INVOKABLE
+  rescanWidgets()` (now marked so on `DMXUSB`, no vtable/ABI change for
+  already-deployed plugin DLLs) or `rescan()` by name and answers
+  `UNSUPPORTED` when neither exists. Line changes arrive via the plugin's
+  `configurationChanged()` -> `InputOutputMap::pluginConfigurationChanged`
+  -> **`io.plugin.linesChanged`** (null origin, not subscribe-gated).
+- **`io.plugin.configure`**: `UNSUPPORTED` when `canConfigure()` is false or
+  the host process is not a `QGuiApplication` (nowhere to show a dialog);
+  otherwise `InputOutputMap::configurePlugin()` and `{openedOnHost: true}`
+  - the plugin's native dialog appears on the machine running QLC+, and a
+  modal one keeps the response waiting until it is closed. The web UI
+  offers it as a button with that warning; the remote path is
+  `io.patch.setParameters`.
+- **`io.patch.setParameters`**: `patchType`/`direction` alias, `index` for
+  outputs, null value -> `QLCIOPlugin::unSetParameter`, integral JSON
+  numbers are handed to the plugin as ints. `Doc::setModified()` (the
+  parameters are saved with the patch), `io.universe.updated` with the
+  patch's `parameters`, `baseRevision` enforced only when sent (same
+  deviation as the other web-UI methods). Result also echoes the plugin's
+  current `parameters`.
+- **`io.patch.output.setState`**: live only, `io.patch.output.stateChanged`.
+  Only API-driven changes are broadcast; a pause toggled in the desktop UI
+  is not relayed (no per-patch signal wiring yet - `io.universe.get` is the
+  source of truth).
+- **`io.inputProfile.get/save/delete`**: `IoInputProfile` gains read-only
+  `name`, `path`, `isUser`. `save` writes `<Manufacturer>-<Model>.qxi` (name
+  sanitised) into `InputOutputMap::userProfileDirectory()` and updates a
+  loaded profile of the same name **in place** (`QLCInputProfile::
+  operator=`), so an `InputPatch` holding it keeps working - qmlui's
+  `saveInputProfile()` leaves the loaded copy stale. `delete` refuses
+  bundled system profiles (`INVALID_STATE`), clears the profile from every
+  universe using it first (`io.universe.updated` per universe +
+  `Doc::setModified()`; qmlui's `removeInputProfile()` leaves the patch
+  pointer dangling) and removes the file. `profilesRevision` (§4c) is
+  bumped by both and reported by `list`/`get`; CONFLICT carries
+  `details.profilesRevision`. Channel `upperChannel` is NOT served: the
+  engine declares it but never defines, saves or reads it. Custom feedback
+  (`lowerValue`/`upperValue`/`lowerChannel`) is persisted for Button
+  channels only (engine `.qxi` format).
+- **Profile directory override**: `InputOutputMap::userProfileDirectory()`
+  honours `QLCPLUS_USER_INPUTPROFILE_DIR`. `dev-webui-sandbox.ps1` sets it
+  to `C:\qlcsandbox\<Name>\InputProfiles`, the tests to a `QTemporaryDir`,
+  so neither ever writes `%UserProfile%\QLC+\InputProfiles`. Verified in
+  the e2e run (file lands in the sandbox, the real folder stays untouched).
+- **`io.inputProfile.learn.start/stop`**: one session per server, owned by
+  the requesting client (`INVALID_STATE` + `details.clientId` for anyone
+  else; stop is idempotent for the owner; the session ends when that
+  client disconnects). **`io.inputProfile.learn.signal`** is sent to that
+  client only (the io-notes scoping issue), with `universeId`,
+  `channelNumber` (0-based profile key), `value`, `key`, `alreadyMapped`
+  (against `profileName` or the universe's current profile). Input keeps
+  flowing to the Virtual Console meanwhile, as in qmlui. The web editor
+  computes "already mapped" against its unsaved channel list itself and
+  mirrors `InputProfileEditor`'s button->slider promotion.
+- **`io.grandMaster.setMode`**: broadcasts `io.grandMaster.changed` from the
+  handler (no engine signal) and flags the doc modified. Caveat found: this
+  fork's qmlui `VirtualConsole::saveXML` does not write the GM modes (the
+  two setters in its load path are commented out too), so the modes are
+  runtime-only in practice until that is fixed upstream.
+- **`io.universe.setMonitor`**: live only, `io.universe.monitorChanged`.
+- **`io.audio.listDevices` / `io.audio.setDevice`** (new in the fragment):
+  the host's devices from `AudioPluginCache::audioDevicesList()`, the
+  selection in the same QSettings keys qmlui uses (`audio/input`,
+  `audio/output`), `Doc::destroyAudioCapture()` after an input change,
+  `io.audio.deviceChanged`. Sample rate / channels / buffer size are not
+  exposed (follow-up). The e2e driver only reads the list: a set would
+  change the developer's real audio setting.
+- **`io.simpleDesk.sendKeypadCommand`**: the engine's `KeyPadParser` (one
+  instance, remembers the channel selection across commands), optional
+  `universeId` (default: the desk universe filter), server-side
+  normalisation (`@` -> `AT`, `ENTER` dropped, upper-cased), values applied
+  as Simple Desk overrides (`io.simpleDesk.channelChanged` per channel),
+  history capped at 10 and shared by every client
+  (`io.simpleDesk.commandHistoryChanged`, `history` in the response and
+  `commandHistory` on `io.simpleDesk.get`). `accepted` mirrors qmlui: every
+  non-empty command is accepted, `channelsChanged` says what it wrote.
+  Behaviour change for web users, now identical to the desktop: a bare
+  relative command on the remembered selection (`1 THRU 4`, then `+ 10`)
+  writes the absolute value 10 - `KeyPadParser` stores the operand instead
+  of adding it in that branch (`webui/io/keypad-parser.js` had corrected
+  this locally; its header documents the deviation). An engine quirk worth
+  fixing upstream, not a regression of the server path.
+- Not exercised in the browser (the sandbox has no IO plugins): parameter
+  editing, per-output pause/blackout, additional outputs, feedback,
+  profile assignment and learn - all unit-tested against the plugin stub.
