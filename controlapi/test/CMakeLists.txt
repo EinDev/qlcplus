@@ -18,6 +18,7 @@ add_subdirectory(apifixtureremapdomain)
 add_subdirectory(apifixturedefsdomain)
 add_subdirectory(apiioconfigdomain)
 add_subdirectory(apivcinputdomain)
+add_subdirectory(apifunctionsmiscdomain)
 add_subdirectory(apivclivedomain)
 add_subdirectory(webserver)
 
@@ -43,6 +44,7 @@ set(QLCPLUS_CONTROLAPI_TESTS
     apifixturedefsdomain_test
     apiioconfigdomain_test
     apivcinputdomain_test
+    apifunctionsmiscdomain_test
     apivclivedomain_test
     webserver_test
 )

@@ -43,6 +43,7 @@ class ApiFixtureRemapDomain;
 class ApiFixtureDefsDomain;
 class ApiIoConfigDomain;
 class ApiVcInputDomain;
+class ApiFunctionsMiscDomain;
 class ApiVcLiveDomain;
 class Doc;
 
@@ -164,6 +165,7 @@ private:
     ApiFixtureDefsDomain *m_fixtureDefsDomain;
     ApiIoConfigDomain *m_ioConfigDomain;
     ApiVcInputDomain *m_vcInputDomain;
+    ApiFunctionsMiscDomain *m_functionsMiscDomain;
     ApiVcLiveDomain *m_vcLiveDomain;
 };
 

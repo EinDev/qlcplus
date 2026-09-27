@@ -123,6 +123,8 @@ messages:
                 Initial value(s), in the type-appropriate encoding described
                 on PaletteValues. Optional; a type-appropriate zero/default
                 value is used if omitted (mirrors QLCPalette::resetValues()).
+            fanning:
+              $ref: '#/components/schemas/PaletteFanning'
             baseRevision:
               type: integer
               description: "docRevision this client last observed (see 00-conventions.md §4a)"
@@ -216,6 +218,9 @@ messages:
                 palette's type itself is immutable after creation (see
                 QLCPalette::type(), CONSTANT), so it is never accepted here -
                 delete and re-create instead if the type is wrong.
+            fanning:
+              $ref: '#/components/schemas/PaletteFanning'
+              description: Optional; the keys present are applied (partial update).
             baseRevision:
               type: integer
   PaletteUpdateResponse:
@@ -422,7 +427,44 @@ schemas:
         $ref: '#/components/schemas/PaletteTypeEnum'
       values:
         $ref: '#/components/schemas/PaletteValues'
-
+      fanning:
+        $ref: '#/components/schemas/PaletteFanning'
+  PaletteFanning:
+    type: object
+    description: QLCPalette's fanning (PaletteFanningBox.qml; saved as Fan/Layout/Amount/FanValue). In palette.create
+      / palette.update every key is optional (partial update).
+    properties:
+      type:
+        type: string
+        enum:
+        - Flat
+        - Linear
+        - Sine
+        - Square
+        - Saw
+      layout:
+        type: string
+        enum:
+        - XAscending
+        - XDescending
+        - XCentered
+        - YAscending
+        - YDescending
+        - YCentered
+        - ZAscending
+        - ZDescending
+        - ZCentered
+        description: Axis and ordering the fan is spread along.
+      amount:
+        type: integer
+        description: Percent of the value range covered by the fan.
+      value:
+        type:
+        - integer
+        - string
+        - 'null'
+        description: 'End value: a number for Dimmer / Pan / Tilt / PanTilt / Zoom, a colour string (#rrggbb)
+          for Color, null when unset.'
 operations:
   sendPaletteList:
     action: send

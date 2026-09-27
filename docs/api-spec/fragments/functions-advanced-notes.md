@@ -306,3 +306,24 @@ registered; behaviour notes and the few additive deviations:
   the moved/added items until the Show is reopened) - the same gap the other
   domains have, not new here.
 - Lockable resource type: `function` (nothing new).
+
+## Implemented 2026-09-27: media store actions, remaining Audio/Video setters, RGB Matrix to Sequence
+
+- NEW `functions.media.status` (read), `functions.media.collect` (4a), `functions.media.removeUnused`
+  (files on disk: no baseRevision) in `apimediadomain.cpp`, mirroring App::collectMedia() /
+  unusedMedia() / removeUnusedMedia(). "Reload changed media" needs no bulk method: the client loops
+  `functions.media.reload` over `status.changed`.
+- NEW `functions.audio.detectBpm` (runtime, ack with the current `bpm`), `functions.audio.bpmChanged`
+  (relayed from Audio::bpmChanged for every Audio, the automatic analysis on load / source change /
+  reload included; not gated, a few events per analysis). `functions.video.setVolume` takes 0-100,
+  the Video Volume attribute's range, unlike Audio's 0-1. Needs a decoder plugin
+  (Plugins/Audio); the unit test loads the freshly built sndfile plugin and detects a 120 BPM click track.
+- NEW `functions.audio.setMuted`, `functions.video.setVolume` / `setMuted` / `setSpoutSize` (4a) with
+  `...mutedChanged` / `volumeChanged` / `spoutSizeChanged` events. The Spout sender *name* is not
+  settable (it follows the function name); `FunctionsVideoConfig.spoutSenderName` exposes it read-only.
+- "Replace file" needs nothing new: `functions.audio.setSource` / `functions.video.setSource` already
+  copy the new file into the store and record its origin.
+- NEW `functions.rgbmatrix.saveToSequence` in `apirgbmatrixdomain.cpp` (RGBMatrixEditor::saveToSequence
+  ported; renders through a private RGBMatrixStep like getPreview). Deliberate difference: the Qt editor
+  compares its step cursor against the doubled Ping Pong count, so it never bounces (and runs off the
+  end on Backward); the API bounces once (2n-2 steps) and wraps Backward correctly.

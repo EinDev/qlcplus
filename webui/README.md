@@ -129,9 +129,28 @@ and a second tab checked for the pushed event:
   project's media store and the origin recorded), Reload (`functions.media.reload`), duration,
   playback mode, output device (from `functions.audio.listCapabilities`), volume, fade in / out.
   Video - Replace file / URL, output screen and mode (windowed / fullscreen / Spout), custom
-  geometry, rotation, layer. Read-only there, no API setter yet: mute, Detect BPM, video volume,
-  Spout sender size. Media info (duration, sample rate, resolution, codecs) comes from the engine's
-  decoders / the desktop probe; an instance started without its `Plugins` directory reports none.
+  geometry, rotation, layer. Media info (duration, sample rate, resolution, codecs) comes from the
+  engine's decoders / the desktop probe; an instance started without its `Plugins` directory reports
+  none. Since the function-side slice below also: audio mute + Detect BPM, video volume / mute and
+  Spout sender size (the sender name follows the function name, read-only).
+- **Function-side actions** (added 2026-09-27, `webui/ff/FunctionActions.jsx`, `ff/MediaActions.jsx`
+  and the Chaser / Sequence / Scene / palette editors; verified against an `fnmisc` sandbox on ports
+  9240/9241 by `webui/tools/e2e/functions-misc.js`): Chaser speed modes, preview on the output from
+  the selected step with previous / next / jump-to-step (`functions.chaser.setAction`, the playing
+  step marked from `functions.chaser.currentStepChanged`), randomize step order, auto-set step
+  durations from the target functions, print the steps (browser print), tap tempo. Sequence: bound
+  Scene picker, add / remove the bound Scene's fixtures, per-step channel console (the Scene
+  editor's console fed with the step values; a channel new to the Sequence joins the bound Scene),
+  Capture live into the selected step (`functions.sequence.applyDumpValues` captureLive), preview
+  the selected step on the output. Detail header: Intensity slider (`functions.adjustAttribute`),
+  autostart toggle (`core.project.setStartupFunction`), Usage and Clone. Tree context menu: Clone
+  (every selected function), Usage…, Set / unset autostart, Select fixtures in function(s), Rename
+  with numbering (functions or fixtures; also the toolbar Rename with several selected). Scene
+  editor: add a fixture group. Palettes: every type (Dimmer, Colour, Pan, Tilt, Pan + Tilt,
+  Position 3D, Shutter, Gobo, Zoom) with "Also create a Scene", edit, and fanning (type, layout,
+  amount, end value). Actions menu: Collect media into project, Reload changed media, Remove unused
+  media. RGB Matrix editor: Save to Sequence. The Qt "Function Preview" toggle is start / stop of
+  the function (the engine does not distinguish a preview), which the header already offers.
 - **Server-side file browser** (`webui/ff/ServerFileBrowser.jsx`, `window.ServerFileBrowser`):
   drives / home, path crumbs, a typed path, glob filters over `core.fs.list`. Used by the Audio and
   Video editors; the Open-project dialog still takes a typed path plus recent files.

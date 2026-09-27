@@ -162,6 +162,14 @@ channels:
         $ref: '#/components/messages/CoreDocRevisionOkResponse'
       coreUndoRedoOkResponse:
         $ref: '#/components/messages/CoreUndoRedoOkResponse'
+      coreProjectSetStartupFunctionRequest:
+        $ref: '#/components/messages/CoreProjectSetStartupFunctionRequest'
+      coreProjectSetStartupFunctionResponse:
+        $ref: '#/components/messages/CoreProjectSetStartupFunctionResponse'
+      coreProjectSetStartupFunctionOkResponse:
+        $ref: '#/components/messages/CoreProjectSetStartupFunctionOkResponse'
+      coreProjectStartupFunctionChangedEvent:
+        $ref: '#/components/messages/CoreProjectStartupFunctionChangedEvent'
       fixturesDefsListManufacturersRequest:
         $ref: '#/components/messages/FixturesDefsListManufacturersRequest'
       fixturesDefsListManufacturersResponse:
@@ -716,6 +724,22 @@ channels:
         $ref: '#/components/messages/FunctionsStepsReplaceStepRequest'
       functionsStepsReplaceStepResponse:
         $ref: '#/components/messages/FunctionsStepsReplaceStepResponse'
+      functionsCloneRequest:
+        $ref: '#/components/messages/FunctionsCloneRequest'
+      functionsCloneResponse:
+        $ref: '#/components/messages/FunctionsCloneResponse'
+      functionsCloneOkResponse:
+        $ref: '#/components/messages/FunctionsCloneOkResponse'
+      functionsUsageRequest:
+        $ref: '#/components/messages/FunctionsUsageRequest'
+      functionsUsageResponse:
+        $ref: '#/components/messages/FunctionsUsageResponse'
+      functionsUsageOkResponse:
+        $ref: '#/components/messages/FunctionsUsageOkResponse'
+      functionsAttributeChangedEvent:
+        $ref: '#/components/messages/FunctionsAttributeChangedEvent'
+      functionsChaserCurrentStepChangedEvent:
+        $ref: '#/components/messages/FunctionsChaserCurrentStepChangedEvent'
       functionsRgbMatrixListAlgorithmsRequest:
         $ref: '#/components/messages/FunctionsRgbMatrixListAlgorithmsRequest'
       functionsRgbMatrixListAlgorithmsResponse:
@@ -990,6 +1014,72 @@ channels:
         $ref: '#/components/messages/FunctionsMediaReloadOkResponse'
       functionsMediaReloadedEvent:
         $ref: '#/components/messages/FunctionsMediaReloadedEvent'
+      functionsMediaStatusRequest:
+        $ref: '#/components/messages/FunctionsMediaStatusRequest'
+      functionsMediaStatusResponse:
+        $ref: '#/components/messages/FunctionsMediaStatusResponse'
+      functionsMediaStatusOkResponse:
+        $ref: '#/components/messages/FunctionsMediaStatusOkResponse'
+      functionsMediaCollectRequest:
+        $ref: '#/components/messages/FunctionsMediaCollectRequest'
+      functionsMediaCollectResponse:
+        $ref: '#/components/messages/FunctionsMediaCollectResponse'
+      functionsMediaCollectOkResponse:
+        $ref: '#/components/messages/FunctionsMediaCollectOkResponse'
+      functionsMediaCollectedEvent:
+        $ref: '#/components/messages/FunctionsMediaCollectedEvent'
+      functionsMediaRemoveUnusedRequest:
+        $ref: '#/components/messages/FunctionsMediaRemoveUnusedRequest'
+      functionsMediaRemoveUnusedResponse:
+        $ref: '#/components/messages/FunctionsMediaRemoveUnusedResponse'
+      functionsMediaRemoveUnusedOkResponse:
+        $ref: '#/components/messages/FunctionsMediaRemoveUnusedOkResponse'
+      functionsAudioDetectBpmRequest:
+        $ref: '#/components/messages/FunctionsAudioDetectBpmRequest'
+      functionsAudioDetectBpmResponse:
+        $ref: '#/components/messages/FunctionsAudioDetectBpmResponse'
+      functionsAudioDetectBpmOkResponse:
+        $ref: '#/components/messages/FunctionsAudioDetectBpmOkResponse'
+      functionsAudioBpmChangedEvent:
+        $ref: '#/components/messages/FunctionsAudioBpmChangedEvent'
+      functionsAudioSetMutedRequest:
+        $ref: '#/components/messages/FunctionsAudioSetMutedRequest'
+      functionsAudioSetMutedResponse:
+        $ref: '#/components/messages/FunctionsAudioSetMutedResponse'
+      functionsAudioSetMutedOkResponse:
+        $ref: '#/components/messages/FunctionsAudioSetMutedOkResponse'
+      functionsAudioMutedChangedEvent:
+        $ref: '#/components/messages/FunctionsAudioMutedChangedEvent'
+      functionsVideoSetVolumeRequest:
+        $ref: '#/components/messages/FunctionsVideoSetVolumeRequest'
+      functionsVideoSetVolumeResponse:
+        $ref: '#/components/messages/FunctionsVideoSetVolumeResponse'
+      functionsVideoSetVolumeOkResponse:
+        $ref: '#/components/messages/FunctionsVideoSetVolumeOkResponse'
+      functionsVideoVolumeChangedEvent:
+        $ref: '#/components/messages/FunctionsVideoVolumeChangedEvent'
+      functionsVideoSetMutedRequest:
+        $ref: '#/components/messages/FunctionsVideoSetMutedRequest'
+      functionsVideoSetMutedResponse:
+        $ref: '#/components/messages/FunctionsVideoSetMutedResponse'
+      functionsVideoSetMutedOkResponse:
+        $ref: '#/components/messages/FunctionsVideoSetMutedOkResponse'
+      functionsVideoMutedChangedEvent:
+        $ref: '#/components/messages/FunctionsVideoMutedChangedEvent'
+      functionsVideoSetSpoutSizeRequest:
+        $ref: '#/components/messages/FunctionsVideoSetSpoutSizeRequest'
+      functionsVideoSetSpoutSizeResponse:
+        $ref: '#/components/messages/FunctionsVideoSetSpoutSizeResponse'
+      functionsVideoSetSpoutSizeOkResponse:
+        $ref: '#/components/messages/FunctionsVideoSetSpoutSizeOkResponse'
+      functionsVideoSpoutSizeChangedEvent:
+        $ref: '#/components/messages/FunctionsVideoSpoutSizeChangedEvent'
+      functionsRgbmatrixSaveToSequenceRequest:
+        $ref: '#/components/messages/FunctionsRgbmatrixSaveToSequenceRequest'
+      functionsRgbmatrixSaveToSequenceResponse:
+        $ref: '#/components/messages/FunctionsRgbmatrixSaveToSequenceResponse'
+      functionsRgbmatrixSaveToSequenceOkResponse:
+        $ref: '#/components/messages/FunctionsRgbmatrixSaveToSequenceOkResponse'
       ioUniverseListRequest:
         $ref: '#/components/messages/IoUniverseListRequest'
       ioUniverseListResponse:
@@ -1925,6 +2015,24 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/coreFsListResponse'
+  sendCoreProjectSetStartupFunction:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/coreProjectSetStartupFunctionRequest'
+  receiveCoreProjectSetStartupFunctionResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/coreProjectSetStartupFunctionResponse'
+  receiveCoreProjectStartupFunctionChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/coreProjectStartupFunctionChangedEvent'
   sendFixturesDefsListManufacturers:
     action: send
     channel:
@@ -3342,6 +3450,42 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/functionsStepsReplaceStepResponse'
+  sendFunctionsClone:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsCloneRequest'
+  receiveFunctionsCloneResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsCloneResponse'
+  sendFunctionsUsage:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsUsageRequest'
+  receiveFunctionsUsageResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsUsageResponse'
+  receiveFunctionsAttributeChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsAttributeChangedEvent'
+  receiveFunctionsChaserCurrentStepChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsChaserCurrentStepChangedEvent'
   sendFunctionsRgbMatrixListAlgorithms:
     action: send
     channel:
@@ -3948,6 +4092,150 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/functionsMediaReloadedEvent'
+  sendFunctionsMediaStatus:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsMediaStatusRequest'
+  receiveFunctionsMediaStatusResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsMediaStatusResponse'
+  sendFunctionsMediaCollect:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsMediaCollectRequest'
+  receiveFunctionsMediaCollectResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsMediaCollectResponse'
+  receiveFunctionsMediaCollected:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsMediaCollectedEvent'
+  sendFunctionsMediaRemoveUnused:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsMediaRemoveUnusedRequest'
+  receiveFunctionsMediaRemoveUnusedResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsMediaRemoveUnusedResponse'
+  sendFunctionsAudioDetectBpm:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsAudioDetectBpmRequest'
+  receiveFunctionsAudioDetectBpmResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsAudioDetectBpmResponse'
+  receiveFunctionsAudioBpmChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsAudioBpmChangedEvent'
+  sendFunctionsAudioSetMuted:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsAudioSetMutedRequest'
+  receiveFunctionsAudioSetMutedResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsAudioSetMutedResponse'
+  receiveFunctionsAudioMutedChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsAudioMutedChangedEvent'
+  sendFunctionsVideoSetVolume:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsVideoSetVolumeRequest'
+  receiveFunctionsVideoSetVolumeResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsVideoSetVolumeResponse'
+  receiveFunctionsVideoVolumeChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsVideoVolumeChangedEvent'
+  sendFunctionsVideoSetMuted:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsVideoSetMutedRequest'
+  receiveFunctionsVideoSetMutedResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsVideoSetMutedResponse'
+  receiveFunctionsVideoMutedChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsVideoMutedChangedEvent'
+  sendFunctionsVideoSetSpoutSize:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsVideoSetSpoutSizeRequest'
+  receiveFunctionsVideoSetSpoutSizeResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsVideoSetSpoutSizeResponse'
+  receiveFunctionsVideoSpoutSizeChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsVideoSpoutSizeChangedEvent'
+  sendFunctionsRgbmatrixSaveToSequence:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsRgbmatrixSaveToSequenceRequest'
+  receiveFunctionsRgbmatrixSaveToSequenceResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsRgbmatrixSaveToSequenceResponse'
   sendIoUniverseList:
     action: send
     channel:
@@ -7160,6 +7448,91 @@ components:
               redoText:
                 type: string
                 description: Present only when canRedo.
+    CoreProjectSetStartupFunctionRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: core.project.setStartupFunction
+          params:
+            type: object
+            required:
+            - baseRevision
+            description: 'Doc::setStartupFunction(): the function started when the project enters Operate
+              mode (<Workspace Autostart="id"> in the .qxw). Structural (4a). core.project.get carries
+              it as startupFunctionId.'
+            properties:
+              functionId:
+                type:
+                - string
+                - 'null'
+                description: null (or omitted) clears it.
+              baseRevision:
+                type: integer
+    CoreProjectSetStartupFunctionResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/CoreProjectSetStartupFunctionOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    CoreProjectSetStartupFunctionOkResponse:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - ok
+        - result
+        properties:
+          type:
+            const: response
+          id:
+            type: string
+          ok:
+            const: true
+          result:
+            type: object
+            required:
+            - docRevision
+            properties:
+              docRevision:
+                type: integer
+    CoreProjectStartupFunctionChangedEvent:
+      payload:
+        type: object
+        required:
+        - type
+        - topic
+        - data
+        properties:
+          type:
+            const: event
+          topic:
+            const: core.project.startupFunctionChanged
+          originClientId:
+            type:
+            - string
+            - 'null'
+          data:
+            type: object
+            required:
+            - startupFunctionId
+            - docRevision
+            properties:
+              startupFunctionId:
+                type:
+                - string
+                - 'null'
+              docRevision:
+                type: integer
     FixturesDefsListManufacturersRequest:
       payload:
         type: object
@@ -13146,16 +13519,26 @@ components:
             type: object
             required:
             - functionId
-            - values
             - baseRevision
+            anyOf:
+            - required:
+              - values
+            - required:
+              - captureLive
             description: 'Captures a set of live DMX values into a step (Sequence:: applyDumpValues) -
               the typical "record current state as a cue" operation. Values are normalized against the
-              bound Scene''s channel set (missing channels default to 0).'
+              bound Scene''s channel set (missing channels default to 0). Either values or captureLive:
+              true. Every step is re-normalised, so the stepsChanged event carries one replace of /steps.'
             properties:
               functionId:
                 type: string
               values:
                 $ref: '#/components/schemas/FunctionsSceneValues'
+              captureLive:
+                type: boolean
+                description: Additive (2026-09-27). Instead of values, snapshot the live pre-Grand-Master
+                  output of every channel the bound Scene holds, the same source FunctionManager::dumpDmxValues()
+                  reads (passthrough applied). INVALID_STATE when the Sequence has no bound Scene.
               targetStepIndex:
                 type: integer
                 description: Omit to append a new step.
@@ -13864,6 +14247,218 @@ components:
         oneOf:
         - $ref: '#/components/messages/FunctionsStepsMutationOkResponse/payload'
         - $ref: '#/components/messages/ErrorResponse/payload'
+    FunctionsCloneRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: functions.clone
+          params:
+            type: object
+            required:
+            - baseRevision
+            description: 'FunctionManager::cloneFunctions(): Function::createCopy() of each id, named
+              ''<name> (Copy)'' in the same folder; a Sequence copy gets its own copy of the bound Scene
+              (re-bound, steps re-pointed). One functions.created per copy (not for the Sequence''s hidden
+              Scene copy). NOT_FOUND if any id is unknown (nothing is copied then).'
+            properties:
+              functionIds:
+                type: array
+                items:
+                  type: string
+                minItems: 1
+                description: Functions to copy (functionId alone is accepted too).
+              functionId:
+                type: string
+              baseRevision:
+                type: integer
+    FunctionsCloneResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/FunctionsCloneOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    FunctionsCloneOkResponse:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - ok
+        - result
+        properties:
+          type:
+            const: response
+          id:
+            type: string
+          ok:
+            const: true
+          result:
+            type: object
+            required:
+            - functionIds
+            - docRevision
+            properties:
+              functionIds:
+                type: array
+                items:
+                  type: string
+                description: The new ids, in request order.
+              docRevision:
+                type: integer
+    FunctionsUsageRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: functions.usage
+          params:
+            type: object
+            required:
+            - functionId
+            description: 'UsageList.qml / FunctionManager::usageList() plus the VC side. An unknown id
+              is not an error: the lists are simply empty.'
+            properties:
+              functionId:
+                type: string
+    FunctionsUsageResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/FunctionsUsageOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    FunctionsUsageOkResponse:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - ok
+        - result
+        properties:
+          type:
+            const: response
+          id:
+            type: string
+          ok:
+            const: true
+          result:
+            type: object
+            required:
+            - functions
+            - widgets
+            - vcAvailable
+            - isStartupFunction
+            properties:
+              functions:
+                type: array
+                description: 'Doc::getUsage(): functions referencing it.'
+                items:
+                  type: object
+                  required:
+                  - functionId
+                  - name
+                  - type
+                  - position
+                  properties:
+                    functionId:
+                      type: string
+                    name:
+                      type: string
+                    type:
+                      type: string
+                    position:
+                      type: integer
+                      description: Collection member index / Chaser step index / Show track position,
+                        as Doc::getUsage() reports it.
+              widgets:
+                type: array
+                description: 'Virtual Console widgets referencing it (vc.widget.usage shape: VcWidgetSnapshot);
+                  empty when no VC host is present.'
+                items:
+                  type: object
+              vcAvailable:
+                type: boolean
+              isStartupFunction:
+                type: boolean
+    FunctionsAttributeChangedEvent:
+      payload:
+        type: object
+        required:
+        - type
+        - topic
+        - data
+        properties:
+          type:
+            const: event
+          topic:
+            const: functions.attributeChanged
+          originClientId:
+            type:
+            - string
+            - 'null'
+          data:
+            type: object
+            required:
+            - functionId
+            - attributeIndex
+            - value
+            description: 'Broadcast after functions.adjustAttribute (live, not subscribe-gated: one per
+              adjust call).'
+            properties:
+              functionId:
+                type: string
+              attributeIndex:
+                type: integer
+              attributeName:
+                type: string
+              value:
+                type: number
+    FunctionsChaserCurrentStepChangedEvent:
+      payload:
+        type: object
+        required:
+        - type
+        - topic
+        - data
+        properties:
+          type:
+            const: event
+          topic:
+            const: functions.chaser.currentStepChanged
+          originClientId:
+            type:
+            - string
+            - 'null'
+          data:
+            type: object
+            required:
+            - functionId
+            - stepIndex
+            description: 'Live (4b): a running Chaser''s / Sequence''s current step changed (the runner''s
+              currentStepChanged). At most one per step change, not subscribe-gated; originClientId is
+              null.'
+            properties:
+              functionId:
+                type: string
+              stepIndex:
+                type: integer
     FunctionsRgbMatrixListAlgorithmsRequest:
       payload:
         type: object
@@ -17151,6 +17746,806 @@ components:
             - 'null'
           data:
             $ref: '#/components/schemas/FunctionsMediaReloadResult'
+    FunctionsMediaStatusRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: functions.media.status
+          params:
+            type: object
+            required: []
+            description: Read-only summary for the Actions menu media entries (Collect / Reload changed
+              / Remove unused).
+            properties: {}
+    FunctionsMediaStatusResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/FunctionsMediaStatusOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    FunctionsMediaStatusOkResponse:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - ok
+        - result
+        properties:
+          type:
+            const: response
+          id:
+            type: string
+          ok:
+            const: true
+          result:
+            type: object
+            required:
+            - storeDir
+            - staging
+            - external
+            - unused
+            - changed
+            properties:
+              storeDir:
+                type: string
+              staging:
+                type: boolean
+                description: True for an untitled project (the store is a staging dir until the first
+                  save).
+              external:
+                type: array
+                items:
+                  type: object
+                  required:
+                  - path
+                  - size
+                  properties:
+                    path:
+                      type: string
+                    size:
+                      type: number
+                description: Referenced Audio/Video sources outside the store (what collect copies).
+              unused:
+                type: array
+                items:
+                  type: object
+                  required:
+                  - path
+                  - size
+                  properties:
+                    path:
+                      type: string
+                    size:
+                      type: number
+                description: Store files no function references (what removeUnused deletes).
+              changed:
+                type: array
+                description: Audio/Video whose origin file differs from the stored copy (functions.media.reload
+                  candidates).
+                items:
+                  type: object
+                  properties:
+                    functionId:
+                      type: string
+                    name:
+                      type: string
+                    type:
+                      type: string
+                    running:
+                      type: boolean
+              pendingImports:
+                type: array
+                items:
+                  type: string
+    FunctionsMediaCollectRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: functions.media.collect
+          params:
+            type: object
+            required:
+            - baseRevision
+            description: 'App::collectMedia() / MediaAssets::collectExternal(): copy every external source
+              into the project''s media store and relink the functions (large files are queued in the
+              background). Broadcasts functions.media.collected with the same counts.'
+            properties:
+              baseRevision:
+                type: integer
+    FunctionsMediaCollectResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/FunctionsMediaCollectOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    FunctionsMediaCollectOkResponse:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - ok
+        - result
+        properties:
+          type:
+            const: response
+          id:
+            type: string
+          ok:
+            const: true
+          result:
+            type: object
+            required:
+            - copied
+            - queued
+            - failed
+            - docRevision
+            properties:
+              copied:
+                type: integer
+              queued:
+                type: integer
+              failed:
+                type: integer
+              error:
+                type:
+                - string
+                - 'null'
+              storeDir:
+                type: string
+              docRevision:
+                type: integer
+    FunctionsMediaCollectedEvent:
+      payload:
+        type: object
+        required:
+        - type
+        - topic
+        - data
+        properties:
+          type:
+            const: event
+          topic:
+            const: functions.media.collected
+          originClientId:
+            type:
+            - string
+            - 'null'
+          data:
+            type: object
+            required:
+            - copied
+            - queued
+            - failed
+            - docRevision
+            properties:
+              copied:
+                type: integer
+              queued:
+                type: integer
+              failed:
+                type: integer
+              error:
+                type:
+                - string
+                - 'null'
+              storeDir:
+                type: string
+              docRevision:
+                type: integer
+    FunctionsMediaRemoveUnusedRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: functions.media.removeUnused
+          params:
+            type: object
+            required: []
+            description: 'MediaAssets::removeUnreferenced(): deletes store files nothing references (files
+              outside the store layout or still referenced are refused). Files on disk, not project state:
+              no baseRevision.'
+            properties:
+              files:
+                type: array
+                items:
+                  type: string
+                description: Absolute paths from functions.media.status.unused; omitted = every unused
+                  file.
+    FunctionsMediaRemoveUnusedResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/FunctionsMediaRemoveUnusedOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    FunctionsMediaRemoveUnusedOkResponse:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - ok
+        - result
+        properties:
+          type:
+            const: response
+          id:
+            type: string
+          ok:
+            const: true
+          result:
+            type: object
+            required:
+            - removed
+            - complete
+            - unused
+            properties:
+              removed:
+                type: integer
+              complete:
+                type: boolean
+              error:
+                type:
+                - string
+                - 'null'
+              unused:
+                type: array
+                items:
+                  type: object
+                  required:
+                  - path
+                  - size
+                  properties:
+                    path:
+                      type: string
+                    size:
+                      type: number
+    FunctionsAudioDetectBpmRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: functions.audio.detectBpm
+          params:
+            type: object
+            required:
+            - functionId
+            description: 'AudioEditor::detectBpm(): (re)starts the background BPM analysis (Audio::requestBpmDetection(true)).
+              Needs a decoder plugin for the file; INVALID_STATE when the file is missing. The result
+              arrives as functions.audio.bpmChanged and in functions.get config.bpm.'
+            properties:
+              functionId:
+                type: string
+    FunctionsAudioDetectBpmResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/FunctionsAudioDetectBpmOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    FunctionsAudioDetectBpmOkResponse:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - ok
+        - result
+        properties:
+          type:
+            const: response
+          id:
+            type: string
+          ok:
+            const: true
+          result:
+            type: object
+            required:
+            - bpm
+            properties:
+              bpm:
+                type: object
+                properties:
+                  state:
+                    type: string
+                    enum:
+                    - notAnalyzed
+                    - analyzing
+                    - done
+                    - failed
+                  value:
+                    type: number
+                  confidence:
+                    type: number
+    FunctionsAudioBpmChangedEvent:
+      payload:
+        type: object
+        required:
+        - type
+        - topic
+        - data
+        properties:
+          type:
+            const: event
+          topic:
+            const: functions.audio.bpmChanged
+          originClientId:
+            type:
+            - string
+            - 'null'
+          data:
+            type: object
+            required:
+            - functionId
+            - bpm
+            properties:
+              functionId:
+                type: string
+              bpm:
+                type: object
+                properties:
+                  state:
+                    type: string
+                    enum:
+                    - notAnalyzed
+                    - analyzing
+                    - done
+                    - failed
+                  value:
+                    type: number
+                  confidence:
+                    type: number
+    FunctionsAudioSetMutedRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: functions.audio.setMuted
+          params:
+            type: object
+            required:
+            - functionId
+            - muted
+            - baseRevision
+            properties:
+              functionId:
+                type: string
+              muted:
+                type: boolean
+              baseRevision:
+                type: integer
+    FunctionsAudioSetMutedResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/FunctionsAudioSetMutedOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    FunctionsAudioSetMutedOkResponse:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - ok
+        - result
+        properties:
+          type:
+            const: response
+          id:
+            type: string
+          ok:
+            const: true
+          result:
+            type: object
+            required:
+            - docRevision
+            properties:
+              docRevision:
+                type: integer
+    FunctionsAudioMutedChangedEvent:
+      payload:
+        type: object
+        required:
+        - type
+        - topic
+        - data
+        properties:
+          type:
+            const: event
+          topic:
+            const: functions.audio.mutedChanged
+          originClientId:
+            type:
+            - string
+            - 'null'
+          data:
+            type: object
+            required:
+            - functionId
+            - muted
+            - docRevision
+            properties:
+              functionId:
+                type: string
+              muted:
+                type: boolean
+              docRevision:
+                type: integer
+    FunctionsVideoSetVolumeRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: functions.video.setVolume
+          params:
+            type: object
+            required:
+            - functionId
+            - volume
+            - baseRevision
+            properties:
+              functionId:
+                type: string
+              volume:
+                type: number
+                minimum: 0
+                maximum: 100
+                description: '0-100: Video''s Volume attribute range (unlike Audio''s 0-1).'
+              baseRevision:
+                type: integer
+    FunctionsVideoSetVolumeResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/FunctionsVideoSetVolumeOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    FunctionsVideoSetVolumeOkResponse:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - ok
+        - result
+        properties:
+          type:
+            const: response
+          id:
+            type: string
+          ok:
+            const: true
+          result:
+            type: object
+            required:
+            - docRevision
+            properties:
+              docRevision:
+                type: integer
+    FunctionsVideoVolumeChangedEvent:
+      payload:
+        type: object
+        required:
+        - type
+        - topic
+        - data
+        properties:
+          type:
+            const: event
+          topic:
+            const: functions.video.volumeChanged
+          originClientId:
+            type:
+            - string
+            - 'null'
+          data:
+            type: object
+            required:
+            - functionId
+            - volume
+            - docRevision
+            properties:
+              functionId:
+                type: string
+              volume:
+                type: number
+              docRevision:
+                type: integer
+    FunctionsVideoSetMutedRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: functions.video.setMuted
+          params:
+            type: object
+            required:
+            - functionId
+            - muted
+            - baseRevision
+            properties:
+              functionId:
+                type: string
+              muted:
+                type: boolean
+              baseRevision:
+                type: integer
+    FunctionsVideoSetMutedResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/FunctionsVideoSetMutedOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    FunctionsVideoSetMutedOkResponse:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - ok
+        - result
+        properties:
+          type:
+            const: response
+          id:
+            type: string
+          ok:
+            const: true
+          result:
+            type: object
+            required:
+            - docRevision
+            properties:
+              docRevision:
+                type: integer
+    FunctionsVideoMutedChangedEvent:
+      payload:
+        type: object
+        required:
+        - type
+        - topic
+        - data
+        properties:
+          type:
+            const: event
+          topic:
+            const: functions.video.mutedChanged
+          originClientId:
+            type:
+            - string
+            - 'null'
+          data:
+            type: object
+            required:
+            - functionId
+            - muted
+            - docRevision
+            properties:
+              functionId:
+                type: string
+              muted:
+                type: boolean
+              docRevision:
+                type: integer
+    FunctionsVideoSetSpoutSizeRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: functions.video.setSpoutSize
+          params:
+            type: object
+            required:
+            - functionId
+            - width
+            - height
+            - baseRevision
+            description: 'VideoEditor::setSpoutSize(): the Spout sender size; 0 (or any value <= 0) in
+              either axis = the video''s native size. The sender name is not settable: it follows the
+              function name (FunctionsVideoConfig.spoutSenderName, read-only).'
+            properties:
+              functionId:
+                type: string
+              width:
+                type: integer
+              height:
+                type: integer
+              baseRevision:
+                type: integer
+    FunctionsVideoSetSpoutSizeResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/FunctionsVideoSetSpoutSizeOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    FunctionsVideoSetSpoutSizeOkResponse:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - ok
+        - result
+        properties:
+          type:
+            const: response
+          id:
+            type: string
+          ok:
+            const: true
+          result:
+            type: object
+            required:
+            - docRevision
+            properties:
+              docRevision:
+                type: integer
+    FunctionsVideoSpoutSizeChangedEvent:
+      payload:
+        type: object
+        required:
+        - type
+        - topic
+        - data
+        properties:
+          type:
+            const: event
+          topic:
+            const: functions.video.spoutSizeChanged
+          originClientId:
+            type:
+            - string
+            - 'null'
+          data:
+            type: object
+            required:
+            - functionId
+            - spoutSize
+            - docRevision
+            properties:
+              functionId:
+                type: string
+              spoutSize:
+                type: object
+                properties:
+                  width:
+                    type: integer
+                  height:
+                    type: integer
+              docRevision:
+                type: integer
+    FunctionsRgbmatrixSaveToSequenceRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: functions.rgbmatrix.saveToSequence
+          params:
+            type: object
+            required:
+            - functionId
+            - baseRevision
+            description: 'RGBMatrixEditor::saveToSequence(): a hidden Scene named after the fixture group
+              holding the channels of the matrix''s control mode (RGB also writes CMY heads), plus a Sequence
+              ''<matrix> Sequence'' bound to it with one step per rendered matrix step (Per Step duration
+              = the matrix duration, fade modes Per Step when the matrix fades). Ping Pong renders 2n-2
+              steps (one bounce). INVALID_STATE without a fixture group or algorithm. Broadcasts functions.created
+              for the Sequence.'
+            properties:
+              functionId:
+                type: string
+              baseRevision:
+                type: integer
+    FunctionsRgbmatrixSaveToSequenceResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/FunctionsRgbmatrixSaveToSequenceOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    FunctionsRgbmatrixSaveToSequenceOkResponse:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - ok
+        - result
+        properties:
+          type:
+            const: response
+          id:
+            type: string
+          ok:
+            const: true
+          result:
+            type: object
+            required:
+            - sequenceId
+            - sceneId
+            - stepsCount
+            - docRevision
+            properties:
+              sequenceId:
+                type: string
+              sceneId:
+                type: string
+              stepsCount:
+                type: integer
+              docRevision:
+                type: integer
     IoUniverseListRequest:
       payload:
         type: object
@@ -23651,6 +25046,8 @@ components:
                 $ref: '#/components/schemas/PaletteValues'
                 description: Initial value(s), in the type-appropriate encoding described on PaletteValues.
                   Optional; a type-appropriate zero/default value is used if omitted (mirrors QLCPalette::resetValues()).
+              fanning:
+                $ref: '#/components/schemas/PaletteFanning'
               baseRevision:
                 type: integer
                 description: docRevision this client last observed (see 00-conventions.md §4a)
@@ -23742,6 +25139,9 @@ components:
                   encoding described on PaletteValues. The palette's type itself is immutable after creation
                   (see QLCPalette::type(), CONSTANT), so it is never accepted here - delete and re-create
                   instead if the type is wrong.
+              fanning:
+                $ref: '#/components/schemas/PaletteFanning'
+                description: Optional; the keys present are applied (partial update).
               baseRevision:
                 type: integer
     PaletteUpdateResponse:
@@ -23931,6 +25331,12 @@ components:
           description: 'docRevision at the moment of the last successful save (or saveAs with target=serverPath)
             this session. Null if never saved this session. Equivalent way to derive isModified: docRevision
             !== docRevisionAtLastSave.'
+        startupFunctionId:
+          type:
+          - string
+          - 'null'
+          description: Additive (2026-09-27). The autostart function (Doc::startupFunction()), started
+            when the project enters Operate mode; null when unset. Set with core.project.setStartupFunction.
         creator:
           type:
           - object
@@ -26099,12 +27505,16 @@ components:
             its window / sender is desktop-only, the mode itself is document state.
         spoutSize:
           type: object
-          description: Spout sender size, 0x0 = native resolution. Read-only here (no API setter yet).
+          description: Spout sender size, 0x0 = native resolution. Set with functions.video.setSpoutSize.
           properties:
             width:
               type: integer
             height:
               type: integer
+        spoutSenderName:
+          type: string
+          description: Read-only. The Spout sender name (Video::defaultSpoutSenderName()), derived from
+            the function name - rename the function to change it.
         volume:
           type: number
           description: Read-only here (Video::volume(), 0-100); no API setter yet
@@ -27773,3 +29183,41 @@ components:
           $ref: '#/components/schemas/PaletteTypeEnum'
         values:
           $ref: '#/components/schemas/PaletteValues'
+        fanning:
+          $ref: '#/components/schemas/PaletteFanning'
+    PaletteFanning:
+      type: object
+      description: QLCPalette's fanning (PaletteFanningBox.qml; saved as Fan/Layout/Amount/FanValue).
+        In palette.create / palette.update every key is optional (partial update).
+      properties:
+        type:
+          type: string
+          enum:
+          - Flat
+          - Linear
+          - Sine
+          - Square
+          - Saw
+        layout:
+          type: string
+          enum:
+          - XAscending
+          - XDescending
+          - XCentered
+          - YAscending
+          - YDescending
+          - YCentered
+          - ZAscending
+          - ZDescending
+          - ZCentered
+          description: Axis and ordering the fan is spread along.
+        amount:
+          type: integer
+          description: Percent of the value range covered by the fan.
+        value:
+          type:
+          - integer
+          - string
+          - 'null'
+          description: 'End value: a number for Dimmer / Pan / Tilt / PanTilt / Zoom, a colour string
+            (#rrggbb) for Color, null when unset.'

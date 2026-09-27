@@ -32,6 +32,7 @@
 #include "apiprojecthost.h"
 #include "inputoutputmap.h"
 #include "mastertimer.h"
+#include "function.h"
 
 #define MASTERTIMER_FREQUENCY "mastertimer/frequency"
 
@@ -100,6 +101,10 @@ QJsonObject projectMetadataToJson(Doc *doc, ApiProjectHost *host)
     obj.insert(QStringLiteral("docRevisionAtLastSave"), QJsonValue());
     // creator: engine doesn't expose this easily in Doc
     obj.insert(QStringLiteral("creator"), QJsonValue());
+    // the autostart function (core.project.setStartupFunction), null when unset
+    quint32 startup = doc->startupFunction();
+    obj.insert(QStringLiteral("startupFunctionId"), startup == Function::invalidId()
+               ? QJsonValue() : QJsonValue(QString::number(startup)));
     return obj;
 }
 

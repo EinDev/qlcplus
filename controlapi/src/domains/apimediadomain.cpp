@@ -23,6 +23,7 @@
 #include <QScreen>
 #include <QVector3D>
 #include <QRect>
+#include <QFileInfo>
 #include <limits>
 
 #include "apimediadomain.h"
@@ -36,6 +37,7 @@
 #include "audioplugincache.h"
 #include "audiorenderer.h"
 #include "video.h"
+#include "mediaassets.h"
 #include "function.h"
 #include "doc.h"
 
@@ -189,6 +191,21 @@ ApiMediaDomain::ApiMediaDomain(Doc *doc, ApiServer *server, QObject *parent)
     registerScriptMethods();
     registerAudioMethods();
     registerVideoMethods();
+    registerAssetMethods();
+
+    // every BPM analysis (the automatic one on load / source change / reload
+    // too, not only functions.audio.detectBpm) reaches clients as
+    // functions.audio.bpmChanged
+    for (Function *function : m_doc->functions())
+        slotFunctionAdded(function->id());
+    connect(m_doc, SIGNAL(functionAdded(quint32)), this, SLOT(slotFunctionAdded(quint32)));
+}
+
+void ApiMediaDomain::slotFunctionAdded(quint32 id)
+{
+    Function *function = m_doc->function(id);
+    if (function != nullptr && function->type() == Function::AudioType)
+        connect(function, SIGNAL(bpmChanged()), this, SLOT(slotAudioBpmChanged()), Qt::UniqueConnection);
 }
 
 QJsonObject ApiMediaDomain::scriptDetailToJson(Doc *doc, Script *script)
@@ -816,5 +833,271 @@ void ApiMediaDomain::registerVideoMethods()
         data.insert(QStringLiteral("outputMode"), outputModeToString(video->outputMode()));
         data.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
         m_server->broadcast(QStringLiteral("functions.video.screenTargetChanged"), data, session->clientId(), false);
+    });
+}
+
+/*********************************************************************
+ * Media store actions + remaining Audio/Video setters
+ *********************************************************************/
+
+namespace {
+
+QJsonObject bpmToJson(Audio *audio)
+{
+    QString state;
+    switch (audio->bpmAnalysisState())
+    {
+    case Audio::Analyzing: state = QStringLiteral("analyzing"); break;
+    case Audio::Done:      state = QStringLiteral("done"); break;
+    case Audio::Failed:    state = QStringLiteral("failed"); break;
+    default:               state = QStringLiteral("notAnalyzed"); break;
+    }
+    QJsonObject bpm;
+    bpm.insert(QStringLiteral("state"), state);
+    bpm.insert(QStringLiteral("value"), audio->detectedBpm());
+    bpm.insert(QStringLiteral("confidence"), audio->bpmConfidence());
+    return bpm;
+}
+
+QJsonArray filesToJson(const QStringList &files)
+{
+    QJsonArray arr;
+    for (const QString &path : files)
+    {
+        QJsonObject obj;
+        obj.insert(QStringLiteral("path"), path);
+        obj.insert(QStringLiteral("size"), double(QFileInfo(path).size()));
+        arr.append(obj);
+    }
+    return arr;
+}
+
+} // namespace
+
+void ApiMediaDomain::slotAudioBpmChanged()
+{
+    Audio *audio = qobject_cast<Audio *>(sender());
+    if (audio == nullptr || m_doc->function(audio->id()) != audio)
+        return;
+    QJsonObject data;
+    data.insert(QStringLiteral("functionId"), functionIdString(audio));
+    data.insert(QStringLiteral("bpm"), bpmToJson(audio));
+    m_server->broadcast(QStringLiteral("functions.audio.bpmChanged"), data, QString(), false);
+}
+
+void ApiMediaDomain::registerAssetMethods()
+{
+    ApiDispatcher *dispatcher = m_server->dispatcher();
+    Doc *doc = m_doc;
+
+    // What the Actions menu's media entries act on, in one call: sources
+    // outside the store (Collect), store files nothing references (Remove
+    // unused), Audio/Video whose origin file changed on disk (Reload changed).
+    dispatcher->registerMethod(QStringLiteral("functions.media.status"), [doc](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        Q_UNUSED(params)
+        MediaAssets *assets = doc->assets();
+        QJsonArray changed;
+        for (Function *function : assets->changedOrigins())
+        {
+            QJsonObject obj;
+            obj.insert(QStringLiteral("functionId"), functionIdString(function));
+            obj.insert(QStringLiteral("name"), function->name());
+            obj.insert(QStringLiteral("type"), Function::typeToString(function->type()));
+            obj.insert(QStringLiteral("running"), function->isRunning());
+            changed.append(obj);
+        }
+        QJsonObject result;
+        result.insert(QStringLiteral("storeDir"), assets->assetsDir());
+        result.insert(QStringLiteral("staging"), assets->isStaging());
+        result.insert(QStringLiteral("external"), filesToJson(assets->externalSources()));
+        result.insert(QStringLiteral("unused"), filesToJson(assets->unreferenced()));
+        result.insert(QStringLiteral("changed"), changed);
+        result.insert(QStringLiteral("pendingImports"), QJsonArray::fromStringList(assets->pendingImports()));
+        session->send(ApiEnvelope::buildOkResponse(id, result));
+    });
+
+    // App::collectMedia(): copy every external source into the store and
+    // relink the functions using it (large files are queued in the background
+    // and relinked when they land). Clients refetch on functions.media.collected.
+    dispatcher->registerMethod(QStringLiteral("functions.media.collect"), [this, doc](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        if (checkBaseRevision(session, id, params) == false)
+            return;
+        MediaAssets::CollectResult r = doc->assets()->collectExternal();
+        if (r.copied > 0 || r.queued > 0)
+            doc->setModified();
+
+        QJsonObject result = docRevisionResult(doc);
+        result.insert(QStringLiteral("copied"), r.copied);
+        result.insert(QStringLiteral("queued"), r.queued);
+        result.insert(QStringLiteral("failed"), r.failed);
+        result.insert(QStringLiteral("error"), r.firstError.isEmpty() ? QJsonValue() : QJsonValue(r.firstError));
+        result.insert(QStringLiteral("storeDir"), doc->assets()->assetsDir());
+        session->send(ApiEnvelope::buildOkResponse(id, result));
+
+        m_server->broadcast(QStringLiteral("functions.media.collected"), result, session->clientId(), false);
+    });
+
+    // App::removeUnusedMedia(): deletes store files nothing references. Files
+    // on disk, not project state - no baseRevision. Omitting `files` removes
+    // every currently unused file.
+    dispatcher->registerMethod(QStringLiteral("functions.media.removeUnused"), [doc](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        MediaAssets *assets = doc->assets();
+        QStringList files;
+        if (params.value(QStringLiteral("files")).isArray())
+        {
+            for (const QJsonValue &v : params.value(QStringLiteral("files")).toArray())
+                files << v.toString();
+        }
+        else
+        {
+            files = assets->unreferenced();
+        }
+        QString error;
+        bool ok = assets->removeUnreferenced(files, &error);
+        int removed = 0;
+        for (const QString &f : std::as_const(files))
+            removed += QFileInfo::exists(f) ? 0 : 1;
+
+        QJsonObject result;
+        result.insert(QStringLiteral("removed"), removed);
+        result.insert(QStringLiteral("complete"), ok);
+        result.insert(QStringLiteral("error"), error.isEmpty() ? QJsonValue() : QJsonValue(error));
+        result.insert(QStringLiteral("unused"), filesToJson(assets->unreferenced()));
+        session->send(ApiEnvelope::buildOkResponse(id, result));
+    });
+
+    // AudioEditor::detectBpm(): (re)runs the background BPM analysis. The
+    // result arrives as functions.audio.bpmChanged (and in functions.get's
+    // config.bpm); needs a decoder for the file (Plugins/audio).
+    dispatcher->registerMethod(QStringLiteral("functions.audio.detectBpm"), [this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        Function *function = requireFunctionOfType(session, id, params, Function::AudioType);
+        if (function == nullptr)
+            return;
+        Audio *audio = static_cast<Audio *>(function);
+        if (audio->getSourceFileName().isEmpty() || QFileInfo::exists(audio->getSourceFileName()) == false)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidState, QStringLiteral("The Audio function has no readable file")));
+            return;
+        }
+        connect(audio, SIGNAL(bpmChanged()), this, SLOT(slotAudioBpmChanged()), Qt::UniqueConnection);
+        audio->requestBpmDetection(true);
+
+        QJsonObject result;
+        result.insert(QStringLiteral("bpm"), bpmToJson(audio));
+        session->send(ApiEnvelope::buildOkResponse(id, result));
+    });
+
+    dispatcher->registerMethod(QStringLiteral("functions.audio.setMuted"), [this, doc](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        Function *function = requireFunctionOfType(session, id, params, Function::AudioType);
+        if (function == nullptr)
+            return;
+        if (params.value(QStringLiteral("muted")).isBool() == false)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams, QStringLiteral("muted must be a boolean")));
+            return;
+        }
+        if (checkBaseRevision(session, id, params) == false)
+            return;
+        Audio *audio = static_cast<Audio *>(function);
+        audio->setMuted(params.value(QStringLiteral("muted")).toBool());
+        doc->setModified();
+        session->send(ApiEnvelope::buildOkResponse(id, docRevisionResult(doc)));
+
+        QJsonObject data;
+        data.insert(QStringLiteral("functionId"), functionIdString(function));
+        data.insert(QStringLiteral("muted"), audio->muted());
+        data.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
+        m_server->broadcast(QStringLiteral("functions.audio.mutedChanged"), data, session->clientId(), false);
+    });
+
+    dispatcher->registerMethod(QStringLiteral("functions.video.setVolume"), [this, doc](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        Function *function = requireFunctionOfType(session, id, params, Function::VideoType);
+        if (function == nullptr)
+            return;
+        // Video's Volume is a 0-100 attribute (Video::Video registerAttribute),
+        // unlike Audio's 0-1 volume
+        QJsonValue v = params.value(QStringLiteral("volume"));
+        if (v.isDouble() == false || v.toDouble() < 0.0 || v.toDouble() > 100.0)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams, QStringLiteral("volume must be a number in 0..100")));
+            return;
+        }
+        if (checkBaseRevision(session, id, params) == false)
+            return;
+        Video *video = static_cast<Video *>(function);
+        video->setVolume(v.toDouble());
+        doc->setModified();
+        session->send(ApiEnvelope::buildOkResponse(id, docRevisionResult(doc)));
+
+        QJsonObject data;
+        data.insert(QStringLiteral("functionId"), functionIdString(function));
+        data.insert(QStringLiteral("volume"), video->volume());
+        data.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
+        m_server->broadcast(QStringLiteral("functions.video.volumeChanged"), data, session->clientId(), false);
+    });
+
+    dispatcher->registerMethod(QStringLiteral("functions.video.setMuted"), [this, doc](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        Function *function = requireFunctionOfType(session, id, params, Function::VideoType);
+        if (function == nullptr)
+            return;
+        if (params.value(QStringLiteral("muted")).isBool() == false)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams, QStringLiteral("muted must be a boolean")));
+            return;
+        }
+        if (checkBaseRevision(session, id, params) == false)
+            return;
+        Video *video = static_cast<Video *>(function);
+        video->setMuted(params.value(QStringLiteral("muted")).toBool());
+        doc->setModified();
+        session->send(ApiEnvelope::buildOkResponse(id, docRevisionResult(doc)));
+
+        QJsonObject data;
+        data.insert(QStringLiteral("functionId"), functionIdString(function));
+        data.insert(QStringLiteral("muted"), video->muted());
+        data.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
+        m_server->broadcast(QStringLiteral("functions.video.mutedChanged"), data, session->clientId(), false);
+    });
+
+    // VideoEditor::setSpoutSize(): the Spout sender size, 0x0 (or any
+    // width/height <= 0) = the video's native size. The sender *name* is not
+    // settable: it is derived from the function name (config.spoutSenderName).
+    dispatcher->registerMethod(QStringLiteral("functions.video.setSpoutSize"), [this, doc](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        Function *function = requireFunctionOfType(session, id, params, Function::VideoType);
+        if (function == nullptr)
+            return;
+        QJsonValue w = params.value(QStringLiteral("width"));
+        QJsonValue h = params.value(QStringLiteral("height"));
+        if (w.isDouble() == false || h.isDouble() == false)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams, QStringLiteral("width and height must be integers (0 = native size)")));
+            return;
+        }
+        if (checkBaseRevision(session, id, params) == false)
+            return;
+        QSize size(w.toInt(), h.toInt());
+        if (size.width() <= 0 || size.height() <= 0)
+            size = QSize(0, 0);
+        Video *video = static_cast<Video *>(function);
+        video->setSpoutSize(size);
+        doc->setModified();
+        session->send(ApiEnvelope::buildOkResponse(id, docRevisionResult(doc)));
+
+        QJsonObject data;
+        data.insert(QStringLiteral("functionId"), functionIdString(function));
+        QJsonObject s;
+        s.insert(QStringLiteral("width"), video->spoutSize().width());
+        s.insert(QStringLiteral("height"), video->spoutSize().height());
+        data.insert(QStringLiteral("spoutSize"), s);
+        data.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
+        m_server->broadcast(QStringLiteral("functions.video.spoutSizeChanged"), data, session->clientId(), false);
     });
 }

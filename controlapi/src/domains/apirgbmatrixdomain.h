@@ -77,6 +77,11 @@ public:
 private:
     void registerMethods();
 
+    /** functions.rgbmatrix.saveToSequence - RGBMatrixEditor::saveToSequence():
+     *  a hidden Scene of the group's heads plus a Sequence with one step per
+     *  matrix step, the matrix's colours rendered into the control-mode channels. */
+    void registerSaveToSequence();
+
     /** Apply the keys present in `config` to `matrix`. Returns an empty
      *  string on success, else an INVALID_PARAMS/NOT_FOUND message (the
      *  error code is returned through `code`). Nothing is applied when

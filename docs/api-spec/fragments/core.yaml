@@ -1030,6 +1030,91 @@ messages:
               type: string
               description: Present only when canRedo.
 
+  CoreProjectSetStartupFunctionRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: core.project.setStartupFunction
+        params:
+          type: object
+          required:
+          - baseRevision
+          description: 'Doc::setStartupFunction(): the function started when the project enters Operate
+            mode (<Workspace Autostart="id"> in the .qxw). Structural (4a). core.project.get carries it
+            as startupFunctionId.'
+          properties:
+            functionId:
+              type:
+              - string
+              - 'null'
+              description: null (or omitted) clears it.
+            baseRevision:
+              type: integer
+  CoreProjectSetStartupFunctionResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/CoreProjectSetStartupFunctionOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  CoreProjectSetStartupFunctionOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - docRevision
+          properties:
+            docRevision:
+              type: integer
+  CoreProjectStartupFunctionChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: core.project.startupFunctionChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - startupFunctionId
+          - docRevision
+          properties:
+            startupFunctionId:
+              type:
+              - string
+              - 'null'
+            docRevision:
+              type: integer
 schemas:
 
   CoreBpmState:
@@ -1067,6 +1152,9 @@ schemas:
       docRevisionAtLastSave:
         type: [integer, "null"]
         description: "docRevision at the moment of the last successful save (or saveAs with target=serverPath) this session. Null if never saved this session. Equivalent way to derive isModified: docRevision !== docRevisionAtLastSave."
+      startupFunctionId:
+        type: [string, "null"]
+        description: "Additive (2026-09-27). The autostart function (Doc::startupFunction()), started when the project enters Operate mode; null when unset. Set with core.project.setStartupFunction."
       creator:
         type: [object, "null"]
         description: >
@@ -1461,3 +1549,21 @@ operations:
 # lowerCamelCase entry added under channels.qlcplus.messages (e.g.
 # `coreProjectNewRequest: { $ref: '#/components/messages/CoreProjectNewRequest' }`)
 # for the operations' $refs above to resolve. Full list is in core-notes.md.
+  sendCoreProjectSetStartupFunction:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/coreProjectSetStartupFunctionRequest'
+  receiveCoreProjectSetStartupFunctionResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/coreProjectSetStartupFunctionResponse'
+  receiveCoreProjectStartupFunctionChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/coreProjectStartupFunctionChangedEvent'

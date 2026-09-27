@@ -143,3 +143,36 @@ Video seek into the file, a Chaser starts on the step covering the offset;
 Scene/EFX/RGBMatrix ignore it (they have no notion of an offset). Verified by
 `controlapi/test/apishowdomain`'s playhead case (the first playhead event of
 a Show started at 1000 ms is past 1000 ms).
+
+## Implemented 2026-09-27: function-side leftovers (server `apifunctionsmiscdomain.cpp`)
+
+- `functions.chaser.setSpeedModes` (4a): partial, each of fadeInMode / fadeOutMode /
+  durationMode optional; broadcasts `functions.chaser.changed` only when a mode changed.
+  Works on a Sequence too (Sequence is-a Chaser).
+- `functions.chaser.setAction` (4b ack): nextStep / previousStep / setStepIndex / stopStep /
+  pause. On a stopped Chaser the engine keeps the action as its startup action (the next
+  start begins there) - that is how the Qt editor previews a step, too. stepIndex is
+  range-checked (INVALID_PARAMS).
+- `functions.sequence.setBoundScene` (4a): also re-points every step's fid to the new Scene
+  (the engine setter alone would leave the steps on the old one); values are kept.
+- `functions.sequence.applyDumpValues`: additive `captureLive: true` (values then optional)
+  snapshots the live pre-GM output of the bound Scene's channels server side - the web UI has
+  no other way to read preGM values. The result also carries `stepIndex` (where the values
+  landed) and `capturedChannels`. Because `Sequence::applyDumpValues()` re-normalises every
+  step, the `functions.sequence.stepsChanged` patch is one `replace` of `/steps`.
+- `functions.adjustAttribute` (4b ack): resolves by name or index, clamps to the attribute's
+  own min/max, broadcasts the NEW `functions.attributeChanged` so every open header follows.
+- `functions.tap`: `Function::tap()` (meaningful for a running Chaser / Sequence).
+- NEW `functions.clone` (4a): FunctionManager::cloneFunctions() semantics (see the message
+  description); returns the new ids, one `functions.created` per copy.
+- NEW `functions.usage`: Doc::getUsage() pairs + the VC widgets through `ApiVcHost`
+  (`vcWidgetsUsingFunction`, the same host method vc.widget.usage uses); `vcAvailable` is false
+  when no host is present (tests, headless).
+- Function Preview (the Qt editors' "preview" toggle) is `Function::start/stop` with a
+  different FunctionParent (FunctionEditor::setPreviewEnabled); nothing else differs, so
+  `functions.start` / `functions.stop` are the parity - no `preview` flag was added.
+- Tests: `controlapi/test/apifunctionsmiscdomain` (18 cases, also covering the media,
+  RGB-matrix and palette additions below).
+- NEW event `functions.chaser.currentStepChanged` {functionId, stepIndex}: the runner's
+  currentStepChanged relayed for every Chaser / Sequence (live, at most one per step change,
+  not gated) - how the web editor marks the playing step and confirms next / previous.

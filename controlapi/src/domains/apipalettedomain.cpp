@@ -47,10 +47,92 @@ QJsonArray paletteValuesToJson(QLCPalette *palette)
     return arr;
 }
 
+/** PaletteFanning (palette.yaml): QLCPalette's fanning fields, the ones
+ *  PaletteFanningBox.qml edits and the .qxw stores as Fan/Layout/Amount/
+ *  FanValue. value is a number for the numeric types, a colour string for
+ *  Color, null when unset. */
+QJsonObject paletteFanningToJson(QLCPalette *palette)
+{
+    QJsonObject obj;
+    obj.insert(QStringLiteral("type"), QLCPalette::fanningTypeToString(palette->fanningType()));
+    obj.insert(QStringLiteral("layout"), QLCPalette::fanningLayoutToString(palette->fanningLayout()));
+    obj.insert(QStringLiteral("amount"), palette->fanningAmount());
+    QVariant value = palette->fanningValue();
+    if (value.isValid() == false || value.isNull())
+        obj.insert(QStringLiteral("value"), QJsonValue());
+    else if (palette->type() == QLCPalette::Color)
+        obj.insert(QStringLiteral("value"), value.toString());
+    else
+        obj.insert(QStringLiteral("value"), value.toInt());
+    return obj;
+}
+
+const QStringList &fanningTypeNames()
+{
+    static const QStringList names = { QStringLiteral("Flat"), QStringLiteral("Linear"), QStringLiteral("Sine"),
+                                       QStringLiteral("Square"), QStringLiteral("Saw") };
+    return names;
+}
+
+const QStringList &fanningLayoutNames()
+{
+    static const QStringList names = { QStringLiteral("XAscending"), QStringLiteral("XDescending"), QStringLiteral("XCentered"),
+                                       QStringLiteral("YAscending"), QStringLiteral("YDescending"), QStringLiteral("YCentered"),
+                                       QStringLiteral("ZAscending"), QStringLiteral("ZDescending"), QStringLiteral("ZCentered") };
+    return names;
+}
+
+/** Validates a PaletteFanning object; returns an error message or empty */
+QString checkFanning(const QJsonObject &fan)
+{
+    if (fan.contains(QStringLiteral("type")) && fanningTypeNames().contains(fan.value(QStringLiteral("type")).toString()) == false)
+        return QStringLiteral("fanning.type must be one of %1").arg(fanningTypeNames().join(QStringLiteral(", ")));
+    if (fan.contains(QStringLiteral("layout")) && fanningLayoutNames().contains(fan.value(QStringLiteral("layout")).toString()) == false)
+        return QStringLiteral("fanning.layout must be one of %1").arg(fanningLayoutNames().join(QStringLiteral(", ")));
+    if (fan.contains(QStringLiteral("amount")) && fan.value(QStringLiteral("amount")).isDouble() == false)
+        return QStringLiteral("fanning.amount must be a number (percent)");
+    return QString();
+}
+
+/** Applies the keys present in @fan; returns true if anything changed */
+bool applyFanning(QLCPalette *palette, const QJsonObject &fan)
+{
+    bool changed = false;
+    if (fan.contains(QStringLiteral("type")))
+    {
+        QLCPalette::FanningType t = QLCPalette::stringToFanningType(fan.value(QStringLiteral("type")).toString());
+        changed = changed || t != palette->fanningType();
+        palette->setFanningType(t);
+    }
+    if (fan.contains(QStringLiteral("layout")))
+    {
+        QLCPalette::FanningLayout l = QLCPalette::stringToFanningLayout(fan.value(QStringLiteral("layout")).toString());
+        changed = changed || l != palette->fanningLayout();
+        palette->setFanningLayout(l);
+    }
+    if (fan.contains(QStringLiteral("amount")))
+    {
+        int amount = fan.value(QStringLiteral("amount")).toInt();
+        changed = changed || amount != palette->fanningAmount();
+        palette->setFanningAmount(amount);
+    }
+    if (fan.contains(QStringLiteral("value")))
+    {
+        QJsonValue v = fan.value(QStringLiteral("value"));
+        QVariant value;
+        if (v.isNull() == false && v.isUndefined() == false)
+            value = palette->type() == QLCPalette::Color ? QVariant(v.toString()) : QVariant(v.toInt());
+        changed = changed || value != palette->fanningValue();
+        palette->setFanningValue(value);
+    }
+    return changed;
+}
+
 QJsonObject paletteDetailToJson(QLCPalette *palette)
 {
     QJsonObject obj = paletteSummaryToJson(palette);
     obj.insert(QStringLiteral("values"), paletteValuesToJson(palette));
+    obj.insert(QStringLiteral("fanning"), paletteFanningToJson(palette));
     return obj;
 }
 
@@ -169,9 +251,17 @@ void ApiPaletteDomain::registerMethods()
             return;
         }
 
+        QString fanError = checkFanning(params.value(QStringLiteral("fanning")).toObject());
+        if (fanError.isEmpty() == false)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams, fanError));
+            return;
+        }
+
         QLCPalette *palette = new QLCPalette(type);
         palette->setName(params.value(QStringLiteral("name")).toString());
         applyValuesFromJson(palette, params.value(QStringLiteral("values")).toArray());
+        applyFanning(palette, params.value(QStringLiteral("fanning")).toObject());
 
         // paletteAdded (relayed to Doc::setModified()/bumpRevision(), and to
         // this domain's own broadcast via slotPaletteAdded) fires
@@ -219,7 +309,17 @@ void ApiPaletteDomain::registerMethods()
             return;
         }
 
+        QString fanError = checkFanning(params.value(QStringLiteral("fanning")).toObject());
+        if (fanError.isEmpty() == false)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams, fanError));
+            return;
+        }
+
         bool changed = false;
+
+        if (params.value(QStringLiteral("fanning")).isObject())
+            changed = applyFanning(palette, params.value(QStringLiteral("fanning")).toObject()) || changed;
 
         if (params.contains(QStringLiteral("name")))
         {

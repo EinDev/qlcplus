@@ -23,6 +23,7 @@ set(CONTROLAPI_SOURCES
     domains/apimonitordomain.cpp domains/apimonitordomain.h
     domains/apifixtureremapdomain.cpp domains/apifixtureremapdomain.h
     domains/apifixturedefsdomain.cpp domains/apifixturedefsdomain.h
+    domains/apifunctionsmiscdomain.cpp domains/apifunctionsmiscdomain.h
     domains/apivclivedomain.cpp domains/apivclivedomain.h
 )
 

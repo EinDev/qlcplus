@@ -134,3 +134,10 @@ discriminated `oneOf` keyed by `type` - flagging it here rather than doing it
 preemptively, per the brief's "don't over-engineer every type" guidance and
 the repo owner's general "prefer fewer, more general methods" steer in
 `00-conventions.md`.
+
+## Implemented 2026-09-27: palette fanning
+
+- NEW `PaletteFanning` schema (type / layout / amount / value), returned in `palette.get`,
+  `palette.created` / `palette.updated` and accepted (partially) by `palette.create` / `palette.update`.
+  `value` is a number for the numeric types and a `#rrggbb` string for Color, exactly as
+  QLCPalette::loadXML() reads FanValue. Unknown type / layout names are INVALID_PARAMS.
