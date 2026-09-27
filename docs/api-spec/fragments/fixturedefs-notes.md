@@ -246,3 +246,9 @@ Decisions made while implementing, all of them visible to a client:
   overwrites the cache entry (deleting its modes), every `Fixture` using
   that manufacturer/model is re-attached to the mode of the same name (or
   the first mode) - the same thing `FixtureEditor::slotReloadFixture()` does.
+- **`fixturedefs.session.get` (added by the editor slice, 2026-09-27)**:
+  read-only snapshot of one open session (`session.open`'s result shape plus
+  `isModified`). Without it a browser that reloads and finds its sessions
+  in `session.list` had no way to fetch their definitions (`export` is QXF,
+  and a no-op mutation would bump the revision and mark the session
+  modified). Test: `sessionGetReturnsSnapshot`.

@@ -389,6 +389,16 @@
         list: function (params) { return self.call('fixturedefs.session.list', params); },
 
         /**
+         * Read-only snapshot of one open session (the session.open result shape plus
+         * isModified). The way to resume a session known only by id from session.list, e.g.
+         * after a page reload. Never bumps sessionRevision.
+         * @param {object} params - {sessionId: string}
+         * @returns {Promise<object>} result - {sessionId, definition, sessionRevision, isUser, baseRevision: integer|null, isModified}
+         * @see docs/api-spec/fragments/fixturedefs.yaml (method: fixturedefs.session.get)
+         */
+        get: function (params) { return self.call('fixturedefs.session.get', params); },
+
+        /**
          * Turns a session opened from a bundled/system (read-only) definition into a user-owned
          * copy that can be saved — required before fixturedefs.save whenever the session's isUser
          * is currently false (see FIXTUREDEFS_SYSTEM_READONLY in fixturedefs-notes.md).

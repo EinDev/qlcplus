@@ -49,6 +49,7 @@ private slots:
     void sessionCreateIsBlankUserSession();
     void sessionOpenClonesLibraryDefinition();
     void sessionListAndClose();
+    void sessionGetReturnsSnapshot();
     void sessionUpdateBumpsRevisionAndConflicts();
     void sessionSetPhysicalMergesPartially();
     void channelAddUpdateRemove();

@@ -1288,6 +1288,21 @@ void ApiFixtureDefsDomain::registerMethods()
         client->send(ApiEnvelope::buildOkResponse(id, result));
     });
 
+    // Read-only snapshot of one session: the same shape session.open answers
+    // plus isModified. This is how a client that only knows a sessionId (from
+    // session.list after a page reload) gets the definition to edit - there is
+    // no other JSON read path (export is QXF only) and a fake mutation would
+    // bump the revision and mark the session modified.
+    dispatcher->registerMethod(QStringLiteral("fixturedefs.session.get"), [this](ApiSession *client, const QString &id, const QJsonObject &params)
+    {
+        Session *s = resolveSession(client, id, params, false);
+        if (s == nullptr)
+            return;
+        QJsonObject result = sessionOpenedResult(s);
+        result.insert(QStringLiteral("isModified"), s->modified);
+        client->send(ApiEnvelope::buildOkResponse(id, result));
+    });
+
     dispatcher->registerMethod(QStringLiteral("fixturedefs.session.forkToUser"), [this](ApiSession *client, const QString &id, const QJsonObject &params)
     {
         Session *s = resolveSession(client, id, params, true);

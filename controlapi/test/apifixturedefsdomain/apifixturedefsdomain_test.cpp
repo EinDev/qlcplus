@@ -387,6 +387,47 @@ void ApiFixtureDefsDomain_Test::sessionListAndClose()
     QCOMPARE(callError(QStringLiteral("fixturedefs.session.close"), closeParams), QStringLiteral("NOT_FOUND"));
 }
 
+void ApiFixtureDefsDomain_Test::sessionGetReturnsSnapshot()
+{
+    hello();
+    QString sid = openSession(SysMan, SysModel).value(QStringLiteral("sessionId")).toString();
+
+    // Untouched: the snapshot equals what session.open answered, and reading is not a mutation.
+    QJsonObject sidOnly;
+    sidOnly.insert(QStringLiteral("sessionId"), sid);
+    QJsonObject snap = callOk(QStringLiteral("fixturedefs.session.get"), sidOnly);
+    QCOMPARE(snap.value(QStringLiteral("sessionId")).toString(), sid);
+    QCOMPARE(snap.value(QStringLiteral("sessionRevision")).toInt(), 0);
+    QCOMPARE(snap.value(QStringLiteral("isModified")).toBool(), false);
+    QCOMPARE(snap.value(QStringLiteral("isUser")).toBool(), false);
+    QCOMPARE(snap.value(QStringLiteral("baseRevision")).toInt(), 0);
+    QCOMPARE(snap.value(QStringLiteral("definition")).toObject().value(QStringLiteral("model")).toString(), SysModel);
+
+    // After an edit the snapshot carries the new state and revision.
+    QJsonObject p = params(sid, 0);
+    p.insert(QStringLiteral("model"), QStringLiteral("Renamed"));
+    callOk(QStringLiteral("fixturedefs.session.update"), p);
+    QJsonObject added = callOk(QStringLiteral("fixturedefs.channel.add"), params(sid, 1));
+    snap = callOk(QStringLiteral("fixturedefs.session.get"), sidOnly);
+    QCOMPARE(snap.value(QStringLiteral("sessionRevision")).toInt(), 2);
+    QCOMPARE(snap.value(QStringLiteral("isModified")).toBool(), true);
+    QJsonObject def = snap.value(QStringLiteral("definition")).toObject();
+    QCOMPARE(def.value(QStringLiteral("model")).toString(), QStringLiteral("Renamed"));
+    QCOMPARE(def.value(QStringLiteral("channels")).toArray().count(), 2);
+    bool sawNewChannel = false;
+    for (const QJsonValue &v : def.value(QStringLiteral("channels")).toArray())
+        if (v.toObject().value(QStringLiteral("channelId")).toString() == added.value(QStringLiteral("channelId")).toString())
+            sawNewChannel = true;
+    QVERIFY(sawNewChannel);
+    // A get never bumps the revision.
+    snap = callOk(QStringLiteral("fixturedefs.session.get"), sidOnly);
+    QCOMPARE(snap.value(QStringLiteral("sessionRevision")).toInt(), 2);
+
+    QJsonObject missing;
+    missing.insert(QStringLiteral("sessionId"), QStringLiteral("nope"));
+    QCOMPARE(callError(QStringLiteral("fixturedefs.session.get"), missing), QStringLiteral("NOT_FOUND"));
+}
+
 void ApiFixtureDefsDomain_Test::sessionUpdateBumpsRevisionAndConflicts()
 {
     QString clientId = hello();
