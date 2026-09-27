@@ -192,6 +192,20 @@ ApiMediaDomain::ApiMediaDomain(Doc *doc, ApiServer *server, QObject *parent)
     registerAudioMethods();
     registerVideoMethods();
     registerAssetMethods();
+
+    // every BPM analysis (the automatic one on load / source change / reload
+    // too, not only functions.audio.detectBpm) reaches clients as
+    // functions.audio.bpmChanged
+    for (Function *function : m_doc->functions())
+        slotFunctionAdded(function->id());
+    connect(m_doc, SIGNAL(functionAdded(quint32)), this, SLOT(slotFunctionAdded(quint32)));
+}
+
+void ApiMediaDomain::slotFunctionAdded(quint32 id)
+{
+    Function *function = m_doc->function(id);
+    if (function != nullptr && function->type() == Function::AudioType)
+        connect(function, SIGNAL(bpmChanged()), this, SLOT(slotAudioBpmChanged()), Qt::UniqueConnection);
 }
 
 QJsonObject ApiMediaDomain::scriptDetailToJson(Doc *doc, Script *script)

@@ -82,6 +82,9 @@ private slots:
      *  broadcasts functions.audio.bpmChanged with the analysis state. */
     void slotAudioBpmChanged();
 
+    /** Doc::functionAdded relay: hook every Audio's bpmChanged */
+    void slotFunctionAdded(quint32 id);
+
     /** Resolve params.functionId to a Function of the given type, sending
      *  NOT_FOUND / INVALID_PARAMS and returning nullptr otherwise. */
     Function *requireFunctionOfType(ApiSession *session, const QString &id, const QJsonObject &params, int type) const;

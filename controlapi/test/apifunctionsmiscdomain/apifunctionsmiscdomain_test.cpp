@@ -612,8 +612,12 @@ void ApiFunctionsMiscDomain_Test::audioSetMutedAndDetectBpm()
 #endif
     Audio *audio = new Audio(m_doc);
     QVERIFY(m_doc->addFunction(audio));
+    // the automatic analysis a new source starts is relayed too, not only detectBpm's
+    QSignalSpy autoSpy(m_client, &QWebSocket::textMessageReceived);
     audio->setSourceFileName(wav);
     QTRY_VERIFY_WITH_TIMEOUT(audio->bpmAnalysisState() != Audio::Analyzing, 20000);
+    QVERIFY2(waitForEvent(autoSpy, QStringLiteral("functions.audio.bpmChanged")).isEmpty() == false,
+             "no functions.audio.bpmChanged for the automatic analysis");
     QSignalSpy spy(m_client, &QWebSocket::textMessageReceived);
 
     QJsonObject p;
