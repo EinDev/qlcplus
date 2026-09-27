@@ -158,7 +158,10 @@ function VCSliderClickAndGo({ w, kind, lo, hi, onClose }) {
       <RobotoText label={colors[key]} fontSize="var(--text-size-small)" labelColor="var(--fg-light)" height="auto" />
     </label>
   );
-  return (
+  /* Rendered into document.body: inside the widget it would be clipped by the body (overflow hidden)
+     and scaled with the canvas. The fixed layer is what CustomPopupDialog's absolute backdrop fills. */
+  return ReactDOM.createPortal((
+    <div style={{ position: 'fixed', inset: 0, zIndex: 200 }} onPointerDown={(e) => e.stopPropagation()}>
     <CustomPopupDialog open title={kind === 'Colors' ? 'Click & Go colours' : 'Click & Go presets' + (title ? ' — ' + title : '')} width={kind === 'Colors' ? 380 : 460}
       standardButtons={['Close']} onClicked={onClose} onClose={onClose}>
       <div data-vc-cng-popup={kind} style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: '60vh', overflow: 'auto' }} onPointerDown={(e) => e.stopPropagation()}>
@@ -175,7 +178,8 @@ function VCSliderClickAndGo({ w, kind, lo, hi, onClose }) {
         )) : null}
       </div>
     </CustomPopupDialog>
-  );
+    </div>
+  ), document.body);
 }
 window.VCSliderClickAndGo = VCSliderClickAndGo;
 

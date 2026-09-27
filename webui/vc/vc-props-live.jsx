@@ -221,15 +221,16 @@ function VCXYPadBodyEx({ w }) {
           {!floor ? <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: 1, background: 'var(--bg-control)' }} /> : null}
           {!floor ? <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: 1, background: 'var(--bg-control)' }} /> : null}
           {limited ? <div style={Object.assign({ position: 'absolute', border: '1px solid turquoise', pointerEvents: 'none' }, win)} /> : null}
-          {!floor ? heads.map((h, i) => (
-            <div key={'h' + i} data-e2e-head={i} data-x={Number(h.x).toFixed(3)} data-y={Number(h.y).toFixed(3)}
-              style={{ position: 'absolute', left: Number(h.x) * 100 + '%', top: Number(h.y) * 100 + '%', width: 10, height: 10, marginLeft: -5, marginTop: -5, borderRadius: 5,
-                background: '#FFD95A', border: '1px solid #5E4A00', opacity: .9, pointerEvents: 'none' }} />
-          )) : null}
           <div style={{ position: 'absolute', left: cx, top: 0, bottom: 0, width: 1, background: press ? 'var(--selection)' : 'var(--fader-track)' }} />
           <div style={{ position: 'absolute', top: cy, left: 0, right: 0, height: 1, background: press ? 'var(--selection)' : 'var(--fader-track)' }} />
           <div style={{ position: 'absolute', left: cx, top: cy, width: 14, height: 14, marginLeft: -7, marginTop: -7, borderRadius: 7, background: press ? 'var(--selection)' : (floor ? 'var(--check-lime)' : 'var(--fader-track)'), border: '2px solid var(--fg-main)' }} />
           {floor && floorPos.y > 0 ? <div style={{ position: 'absolute', left: cx, top: cy, width: 14 + floorPos.y * 2, height: 14 + floorPos.y * 2, marginLeft: -(7 + floorPos.y), marginTop: -(7 + floorPos.y), borderRadius: '50%', border: '1px dashed var(--check-lime)', opacity: .8, pointerEvents: 'none' }} /> : null}
+          {/* above the cursor: a full-range head's dot sits right under it */}
+          {!floor ? heads.map((h, i) => (
+            <div key={'h' + i} data-e2e-head={i} data-x={Number(h.x).toFixed(3)} data-y={Number(h.y).toFixed(3)}
+              style={{ position: 'absolute', left: Number(h.x) * 100 + '%', top: Number(h.y) * 100 + '%', width: 8, height: 8, marginLeft: -4, marginTop: -4, borderRadius: 4,
+                background: '#FFD95A', border: '1px solid #5E4A00', opacity: .9, pointerEvents: 'none' }} />
+          )) : null}
         </div>
         {floor ? (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 'none', width: 44 }} onPointerDown={stop}>

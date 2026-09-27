@@ -32,6 +32,8 @@ const SANDBOX = opt('sandbox', process.env.QLC_SANDBOX || '');
 const SHOTS = opt('shots', process.env.QLC_SHOTS || path.join(os.tmpdir(), 'qlc-e2e-partials'));
 const ONLY = (opt('only', '') || '').split(',').filter(Boolean);
 const run = (name) => !ONLY.length || ONLY.includes(name);
+/* --vc external,keys,live,props: a subset of the VC sub-sections (debugging) */
+const ONLY_VC = (opt('vc', '') || '').split(',').filter(Boolean);
 if (!SANDBOX || !/qlcsandbox/i.test(SANDBOX)) {
   console.error('--sandbox <dir> is required and must be a dev-webui-sandbox.ps1 folder (…\\qlcsandbox\\<name>)');
   process.exit(2);
@@ -443,8 +445,10 @@ async function vcSection(browser, api, io) {
     await clickFn(page, `[...document.querySelectorAll('[title^="Page "]')].find(e => e.title.startsWith('Page ${scratch + 1}'))`, 'scratch page tab');
     await page.waitFor(`!!document.querySelector('[data-vc-widget="${W.a3}"]')`);
     await sleep(500);
-    await vcExternal(api, ctx, io);
-    await vcKeys(api, ctx);
+    for (const [name, fn] of [['external', () => vcExternal(api, ctx, io)], ['keys', () => vcKeys(api, ctx)], ['live', () => vcLive(api, ctx)], ['props', () => vcProps(api, ctx)]]) {
+      if (ONLY_VC.length && !ONLY_VC.includes(name)) continue;
+      try { await fn(); } catch (e) { sectionError('VC ' + name, e, page); try { await shot(page, 'partials-vc-' + name + '-failure'); } catch (x) { } }
+    }
     check(page.consoleErrors.length === 0, 'VC: no console errors', page.consoleErrors);
   } catch (e) {
     sectionError('VC', e, page);
@@ -600,6 +604,223 @@ async function vcKeys(api, ctx) {
     await waitCheck(async () => Number((await api.widget(W.anim)).activePresetId) === Number(colorPreset.presetId), 'Y applies the bound colour preset (activePresetId ' + colorPreset.presetId + ')', 5000, async () => (await api.widget(W.anim)).activePresetId);
   }
   await shot(page, 'partials-vc-keys');
+}
+
+/** A CheckRow (vc-edit.jsx: <div><CustomCheckBox/><RobotoText label/></div>) by its label, in the
+    properties panel. Returns the checkbox button. */
+const checkRow = (label) => `(function(){ const rows = [...document.querySelectorAll('div')].filter(d => d.children.length === 2 && d.children[0].tagName === 'BUTTON' && d.children[1].textContent.trim() === ${JSON.stringify(label)}); const r = rows[rows.length - 1]; return r ? r.children[0] : null; })()`;
+/** The input of a PropRow / SpinField by its row label. */
+const propInput = (label) => `(function(){ const rows = [...document.querySelectorAll('div')].filter(d => d.children.length === 2 && d.children[0].textContent.trim() === ${JSON.stringify(label)} && d.children[1].querySelector('input')); const r = rows[rows.length - 1]; return r ? r.children[1].querySelector('input') : null; })()`;
+
+/* ---- live bodies: slider monitor + override reset, Click & Go, frame collapse, animation swatch /
+   knob, XY pad head dots + inverted Y, audio triggers volume */
+async function vcLive(api, ctx) {
+  const { page, W, dimmer, goboCh, rgb, mover } = ctx;
+  console.log('\n[VC live bodies]');
+  await setEdit(page, false);
+  await deselectAll(page);
+
+  /* ---- slider monitor ---- */
+  const dimAddr = dimmer.f.address + dimmer.ch;
+  await api.sd(U_OUT, dimAddr, 150);
+  await waitCheck(() => page.eval(`(document.querySelector('[data-vc-widget="${W.mon}"] [data-vc-slider-monitor]') || {}).getAttribute && document.querySelector('[data-vc-widget="${W.mon}"] [data-vc-slider-monitor]').getAttribute('data-vc-slider-monitor') === '150'`),
+    'monitor bar of the Level slider shows the channel level 150 written by another source (vc.slider.monitorValueChanged)', 8000,
+    () => page.eval(`(document.querySelector('[data-vc-widget="${W.mon}"] [data-vc-slider-monitor]') || { getAttribute: () => 'no bar' }).getAttribute('data-vc-slider-monitor')`));
+  await waitCheck(async () => (await api.widget(W.mon)).value === 150, 'the non-overriding slider follows the monitored level (value 150)', 5000, async () => (await api.widget(W.mon)).value);
+  const fr = await page.rectOf(`[data-vc-widget="${W.mon}"] [data-vc-fader]`);
+  await page.drag(fr.x + fr.w / 2, fr.y + fr.h * 0.5, fr.x + fr.w / 2, fr.y + fr.h * 0.9);
+  await waitCheck(() => page.eval(`!!document.querySelector('[data-vc-widget="${W.mon}"] [data-vc-slider-override="on"]')`), 'moving the fader by hand overrides the monitor: the reset button turns red');
+  check((await api.widget(W.mon)).isOverriding === true, 'vc.widget.get reports isOverriding');
+  await shot(page, 'partials-vc-monitor');
+  await clickFn(page, q(`[data-vc-widget="${W.mon}"] [data-vc-slider-override]`), 'override reset');
+  await waitCheck(async () => (await api.widget(W.mon)).isOverriding === false, 'the reset button (vc.slider.resetOverride) ends the override');
+  await api.sd(U_OUT, dimAddr, 90);
+  await waitCheck(async () => (await api.widget(W.mon)).value === 90, 'after the reset the slider follows the channel again (90)', 5000, async () => (await api.widget(W.mon)).value);
+  await api.call('io.simpleDesk.resetUniverse', { universeId: U_OUT });
+
+  /* ---- Click & Go: preset ---- */
+  await clickFn(page, q(`[data-vc-widget="${W.cngP}"] [data-vc-slider-cng]`), 'Click & Go preset button');
+  await page.waitFor(`document.querySelectorAll('[data-vc-cng-popup="Preset"] [data-vc-cng-cap]').length >= 2`, 8000);
+  const capTitle = await page.eval(`document.querySelectorAll('[data-vc-cng-popup="Preset"] [data-vc-cng-cap]')[1].title`);
+  const [cmin, cmax] = (capTitle.match(/\((\d+)-(\d+)\)$/) || [0, 0, 0]).slice(1).map(Number);
+  await shot(page, 'partials-vc-cng-preset');
+  await clickFn(page, `document.querySelectorAll('[data-vc-cng-popup="Preset"] [data-vc-cng-cap]')[1]`, 'second capability');
+  await waitCheck(async () => { const v = (await api.widget(W.cngP)).value; return v >= cmin && v <= cmax; }, 'Click & Go preset: picking "' + capTitle + '" sets the slider inside that capability', 5000, async () => (await api.widget(W.cngP)).value);
+  const goboAddr = goboCh.f.universe * 512 + goboCh.f.address + goboCh.ch;
+  await waitCheck(async () => { const v = (await api.dmx(goboCh.f.universe))[goboCh.f.address + goboCh.ch]; return v >= cmin && v <= cmax; }, '...and the gobo channel outputs a value of that capability', 5000, async () => (await api.dmx(goboCh.f.universe))[goboCh.f.address + goboCh.ch]);
+  void goboAddr;
+
+  /* ---- Click & Go: colours ---- */
+  await clickFn(page, q(`[data-vc-widget="${W.cngC}"] [data-vc-slider-cng]`), 'Click & Go colour button');
+  await page.waitFor(`!!document.querySelector('[data-vc-cng-popup="Colors"] input[data-vc-cng-color="primary"]')`, 5000);
+  await setColorInput(page, q('input[data-vc-cng-color="primary"]'), '#ff8000');
+  await waitCheck(async () => (await api.widget(W.cngC)).typeConfig.cngPrimaryColor === '#ff8000', 'Click & Go colour: the primary colour #ff8000 is set on the slider', 5000, async () => (await api.widget(W.cngC)).typeConfig.cngPrimaryColor);
+  await waitCheck(async () => (await api.widget(W.cngC)).value === 128, '...and the fader moves to 128 like the desktop colour tool does');
+  const rgbVals = async () => { const d = await api.dmx(rgb.f.universe); return rgb.chs.map(c => d[rgb.f.address + c]); };
+  await waitCheck(async () => { const [r, g, b] = await rgbVals(); return r > g && g > b && b === 0 && r > 100; }, '...and the RGB channels output orange at half level', 5000, rgbVals);
+  await shot(page, 'partials-vc-cng-colors');
+  await clickFn(page, byText('button', 'Close'), 'Close');
+  await sleep(300);
+
+  /* ---- frame collapse in the body ---- */
+  const tall = (await page.rectOf(`[data-vc-widget="${W.frame}"]`)).h;
+  await clickFn(page, q(`[data-vc-widget="${W.frame}"] [data-vc-frame-collapse]`), 'collapse button');
+  await waitCheck(async () => (await api.widget(W.frame)).typeConfig.isCollapsed === true, 'frame collapse button -> isCollapsed (vc.widget.get)');
+  await waitCheck(async () => (await page.rectOf(`[data-vc-widget="${W.frame}"]`)).h < 40, 'the collapsed frame shrinks to its header strip (' + tall + ' px -> header)');
+  await clickFn(page, q(`[data-vc-widget="${W.frame}"] [data-vc-frame-collapse]`), 'expand button');
+  await waitCheck(async () => (await api.widget(W.frame)).typeConfig.isCollapsed === false && (await page.rectOf(`[data-vc-widget="${W.frame}"]`)).h > tall - 5, 'expanding restores the frame and its size');
+
+  /* ---- animation colour swatch + knob ---- */
+  await setColorInput(page, q(`[data-vc-widget="${W.anim}"] [data-e2e-color="0"] input`), '#00ffaa');
+  await waitCheck(async () => ((await api.widget(W.anim)).typeConfig.colors || [])[0] === '#00ffaa', 'animation body colour swatch 1 -> #00ffaa (typeConfig.colors)', 5000, async () => (await api.widget(W.anim)).typeConfig.colors);
+  const knob = ((await api.widget(W.anim)).typeConfig.presets || []).find(p => p.isKnob);
+  if (check(!!knob, 'the animation has colour knobs')) {
+    api.events.length = 0;
+    const kr = await page.rectOf(`[data-vc-widget="${W.anim}"] [data-e2e-knob="${knob.presetId}"] [data-vc-knob]`);
+    await page.drag(kr.x + kr.w / 2, kr.y + kr.h / 2, kr.x + kr.w / 2, kr.y - 60, 10);
+    await waitCheck(() => api.events.some(e => e.topic === 'vc.animation.activePresetChanged' && Number(e.data.knobPresetId) === Number(knob.presetId) && e.data.knobValue > 0),
+      'turning a colour knob in the body sends vc.animation.setPresetKnobValue (activePresetChanged with the knob value)', 5000, () => api.events.filter(e => /animation/.test(e.topic)).map(e => e.topic));
+  }
+  await shot(page, 'partials-vc-animation');
+
+  /* ---- audio triggers volume fader ---- */
+  const vr = await page.rectOf(`[data-vc-widget="${W.at}"] [data-vc-fader]`);
+  await page.drag(vr.x + vr.w / 2, vr.y + vr.h * 0.9, vr.x + vr.w / 2, vr.y + vr.h * 0.3, 10);
+  await waitCheck(async () => Number((await api.widget(W.at)).typeConfig.volumeLevel) > 40, 'audio triggers volume fader in the body -> volumeLevel', 5000, async () => (await api.widget(W.at)).typeConfig.volumeLevel);
+}
+
+/* ---- properties: XY pad fixtures (Universe tab, remove) + inverted Y, audio triggers widget bar,
+   slider display / modes / limits / Grand Master, widget colours / font, align / distribute / bulk */
+async function vcProps(api, ctx) {
+  const { page, W, mover } = ctx;
+  console.log('\n[VC properties]');
+  await setEdit(page, true);
+  await openProps(page);
+
+  /* ---- XY pad: add a whole universe, remove one entry ---- */
+  await selectWidget(page, W.pad);
+  await clickFn(page, q('[data-e2e="xypad-add"]'), 'XY add fixtures');
+  await page.waitFor(`!!document.querySelector('[data-e2e="xypad-add-dialog"]')`, 8000);
+  await clickFn(page, q('[data-e2e="xypad-add-tab-universes"]'), 'Universes tab');
+  await clickFn(page, q(`[data-e2e-universe="${mover.universe}"]`), 'universe of the moving head');
+  const added = await until(async () => { const c = (await api.widget(W.pad)).typeConfig; return (c.fixtures || []).length > 0 ? c.fixtures : null; }, 'fixtures from the universe', 8000).catch(() => null);
+  check(!!added && added.some(f => String(f.fixtureId) === String(mover.id)), 'XY pad Universes tab adds the universe\'s Pan/Tilt fixtures (' + (added ? added.length : 0) + ')', added && added.map(f => f.fixtureId));
+  await clickFn(page, byText('button', 'Close'), 'Close');
+  await sleep(300);
+  if (added && added.length > 1) {
+    const victim = added.find(f => String(f.fixtureId) !== String(mover.id)) || added[added.length - 1];
+    await clickFn(page, q(`[data-e2e-entry="f${victim.fixtureId}:${victim.headIndex != null ? victim.headIndex : 0}"]`), 'fixture entry');
+    await clickFn(page, q('[data-e2e="xypad-remove"]'), 'remove fixture');
+    await waitCheck(async () => ((await api.widget(W.pad)).typeConfig.fixtures || []).length === added.length - 1, 'removing the selected entry -> one fixture less (vc.xyPad.fixture.remove)');
+  }
+  /* inverted Y: the head dots are where the heads point, and the tilt output is flipped */
+  await setEdit(page, false);
+  await deselectAll(page);
+  const pr = await page.rectOf(`[data-vc-widget="${W.pad}"] [data-vc-pad]`);
+  await page.drag(pr.x + pr.w * 0.3, pr.y + pr.h * 0.5, pr.x + pr.w * 0.25, pr.y + pr.h * 0.2, 6);
+  /* one dot per head (the Universes tab added the whole universe); the moving head's own dot sits under the cursor */
+  const dots = () => page.eval(`[...document.querySelectorAll('[data-vc-widget="${W.pad}"] [data-e2e-head]')].map(d => [Number(d.getAttribute('data-x')), Number(d.getAttribute('data-y'))])`);
+  const near = await until(async () => { const d = await dots(); return d.length && d.some(([x, y]) => Math.abs(x - 0.25) < 0.05 && Math.abs(y - 0.2) < 0.05) ? d : null; }, 'a head dot under the cursor', 8000).catch(() => null);
+  check(!!near, 'XY pad head dots (vc.xyPad.fixturePositionsChanged): one per head (' + (near ? near.length : 0) + '), a full-range head dot under the cursor at (0.25, 0.2)', near ? near.slice(0, 4) : await dots());
+  const moverDetail = await api.call('fixtures.get', { fixtureId: String(mover.id) });
+  const tiltCh = (moverDetail.channelList || []).find(c => c.group === 'Tilt');
+  const tiltOut = async () => (await api.dmx(mover.universe))[mover.address + tiltCh.index];
+  await waitCheck(async () => (await tiltOut()) > 150, 'inverted Y: the cursor near the top drives the tilt high (' + (await tiltOut()) + ')');
+  await api.structural('vc.widget.setConfig', { widgetId: W.pad, config: { invertedAppearance: false } });
+  await page.drag(pr.x + pr.w * 0.25, pr.y + pr.h * 0.2, pr.x + pr.w * 0.26, pr.y + pr.h * 0.21, 3);
+  await waitCheck(async () => (await tiltOut()) < 100, 'normal Y: the same cursor position drives the tilt low', 5000, tiltOut);
+  await shot(page, 'partials-vc-xypad');
+  await setEdit(page, true);
+
+  /* ---- audio triggers: a VC widget bar ---- */
+  await selectWidget(page, W.at);
+  await page.waitFor(`!!document.querySelector('[data-e2e="audio-bar-type-1"]')`, 8000);
+  await pickCombo(page, q('[data-e2e="audio-bar-type-1"]'), 'Widget', 'bar 1 type');
+  await waitCheck(async () => (await api.widget(W.at)).typeConfig.bars[1].type === 'VCWidgetBar', 'bar 1 type -> VC widget (vc.audioTriggers.setBarConfig)');
+  await page.waitFor(`!!document.querySelector('[data-e2e="audio-bar-info-1"]')`, 8000).catch(() => {});
+  await clickFn(page, q('button[data-e2e="audio-bar-edit-1"]'), 'edit bar 1');
+  await page.waitFor(`!!document.querySelector('[data-e2e="audio-widget-1"]')`, 5000);
+  await pickCombo(page, q('[data-e2e="audio-widget-1"]'), 'FB flash', 'triggered widget', true);
+  await waitCheck(async () => String((await api.widget(W.at)).typeConfig.bars[1].triggeredWidgetId) === W.btn, 'bar 1 triggers the "FB flash" button', 5000, async () => (await api.widget(W.at)).typeConfig.bars[1]);
+
+  /* ---- slider properties: display style, modes, limits, Grand Master ---- */
+  await selectWidget(page, W.props);
+  const cfgOf = async () => (await api.widget(W.props)).typeConfig;
+  await clickFn(page, checkRow('Percentage'), 'Percentage');
+  await waitCheck(async () => (await cfgOf()).valueDisplayStyle === 'PercentageValue', 'display style Percentage');
+  await clickFn(page, checkRow('Inverted'), 'Inverted');
+  await waitCheck(async () => (await cfgOf()).invertedAppearance === true, 'appearance Inverted');
+  await pickCombo(page, `(function(){ const rows = [...document.querySelectorAll('div')].filter(d => d.children.length === 2 && d.children[0].textContent.trim() === 'Widget style'); const r = rows[rows.length - 1]; return r ? r.children[1].firstElementChild : null; })()`, 'Knob', 'widget style');
+  await waitCheck(async () => (await cfgOf()).widgetStyle === 'Knob', 'widget style Knob');
+  await waitCheck(() => page.eval(`!!document.querySelector('[data-vc-widget="${W.props}"] [data-vc-knob]')`), 'the body turns into a knob');
+  await clickFn(page, checkRow('Submaster'), 'Submaster');
+  await waitCheck(async () => (await cfgOf()).sliderMode === 'Submaster', 'mode Submaster');
+  await clickFn(page, checkRow('Grand Master'), 'Grand Master');
+  await waitCheck(async () => (await cfgOf()).sliderMode === 'GrandMaster', 'mode Grand Master');
+  await clickFn(page, checkRow('Limit values'), 'Limit values');
+  await waitCheck(async () => (await cfgOf()).grandMasterValueMode === 'Limit', 'Grand Master value mode Limit');
+  await clickFn(page, checkRow('All channels'), 'All channels');
+  await waitCheck(async () => (await cfgOf()).grandMasterChannelMode === 'AllChannels', 'Grand Master channel mode All channels');
+  await clickFn(page, checkRow('Level'), 'Level');
+  await waitCheck(async () => (await cfgOf()).sliderMode === 'Level', 'mode Level');
+  await clickFn(page, checkRow('DMX Value'), 'DMX Value');
+  await clickFn(page, checkRow('Normal'), 'Normal');
+  await waitCheck(async () => { const c = await cfgOf(); return c.valueDisplayStyle === 'DMXValue' && c.invertedAppearance === false; }, 'display back to DMX / normal');
+  const range = await page.eval(`!!document.body.textContent.includes('Values range')`);
+  if (!(await page.eval(`!!(${propInput('Upper limit')})`))) await clickFn(page, `[...document.querySelectorAll('*')].reverse().find(e => e.children.length === 0 && e.textContent.trim() === 'Values range')`, 'Values range section');
+  void range;
+  await typeInto(page, propInput('Upper limit'), '200', 'upper limit');
+  await waitCheck(async () => Math.round((await cfgOf()).rangeHighLimit) === 200, 'values range upper limit 200', 5000, async () => (await cfgOf()).rangeHighLimit);
+  await typeInto(page, propInput('Lower limit'), '20', 'lower limit');
+  await waitCheck(async () => Math.round((await cfgOf()).rangeLowLimit) === 20, 'values range lower limit 20', 5000, async () => (await cfgOf()).rangeLowLimit);
+  await shot(page, 'partials-vc-slider-props');
+
+  /* ---- one widget: colours, font family / size / bold / italic ---- */
+  await selectWidget(page, W.a1);
+  await setColorInput(page, q('[data-vc-color="background"] input[type="color"]'), '#123456');
+  await waitCheck(async () => (await api.widget(W.a1)).style.backgroundColor === '#123456', 'background colour #123456');
+  await setColorInput(page, q('[data-vc-color="foreground"] input[type="color"]'), '#fedcba');
+  await waitCheck(async () => (await api.widget(W.a1)).style.foregroundColor === '#fedcba', 'foreground colour #fedcba');
+  await typeInto(page, q('[data-vc-font-family] input'), 'Arial', 'font family');
+  await waitCheck(async () => (await api.widget(W.a1)).style.font.family === 'Arial', 'font family Arial', 5000, async () => (await api.widget(W.a1)).style.font);
+  await typeInto(page, q('[data-vc-font-size] input'), '18', 'font size');
+  await waitCheck(async () => (await api.widget(W.a1)).style.font.pointSize === 18, 'font size 18 pt', 5000, async () => (await api.widget(W.a1)).style.font);
+  await clickFn(page, q('[data-vc-font-bold] button'), 'Bold');
+  await waitCheck(async () => (await api.widget(W.a1)).style.font.bold === true, 'Bold');
+  await clickFn(page, q('[data-vc-font-italic] button'), 'Italic');
+  await waitCheck(async () => { const f = (await api.widget(W.a1)).style.font; return f.italic === true && f.bold === true && f.family === 'Arial' && f.pointSize === 18; }, 'Italic (bold, family and size kept)', 5000, async () => (await api.widget(W.a1)).style.font);
+  const cssOf = () => page.eval(`(function(){ const el = [...document.querySelectorAll('[data-vc-widget="${W.a1}"] *')].find(e => e.children.length === 0 && e.textContent.trim() === 'A1'); if (!el) return null; const s = getComputedStyle(el); return { color: s.color, weight: s.fontWeight, style: s.fontStyle, family: s.fontFamily, size: s.fontSize }; })()`);
+  await waitCheck(async () => { const css = await cssOf(); return !!css && css.color === 'rgb(254, 220, 186)' && Number(css.weight) >= 700 && css.style === 'italic' && /Arial/.test(css.family) && css.size === '24px'; },
+    'the body renders the colours and the font (18 pt = 24 px, bold, italic, Arial)', 5000, cssOf);
+
+  /* ---- align right / bottom, distribute vertically, bulk colours + font ---- */
+  await selectWidget(page, W.a1);
+  await selectWidget(page, W.a2, true);
+  await selectWidget(page, W.a3, true);
+  await page.waitFor(`document.querySelectorAll('[data-vc-selected]').length === 3`, 5000);
+  const g = async (id) => (await api.widget(id)).geometry;
+  const g1 = await g(W.a1);
+  await clickFn(page, q('[data-vc-tool="align-right"]'), 'align right');
+  await waitCheck(async () => { const [b, c] = [await g(W.a2), await g(W.a3)]; return b.x + b.width === g1.x + g1.width && c.x + c.width === g1.x + g1.width; }, 'Align right: every right edge on the first selected widget\'s (' + (g1.x + g1.width) + ')', 5000, async () => [await g(W.a2), await g(W.a3)]);
+  await clickFn(page, q('[data-vc-tool="align-bottom"]'), 'align bottom');
+  await waitCheck(async () => { const [b, c] = [await g(W.a2), await g(W.a3)]; return b.y + b.height === g1.y + g1.height && c.y + c.height === g1.y + g1.height; }, 'Align bottom: every bottom edge on the first selected widget\'s', 5000, async () => [await g(W.a2), await g(W.a3)]);
+  /* spread them vertically again, then distribute */
+  await api.structural('vc.widget.reposition', { widgets: [{ widgetId: W.a1, geometry: Object.assign({}, await g(W.a1), { y: 480 }) }, { widgetId: W.a2, geometry: Object.assign({}, await g(W.a2), { y: 520 }) }, { widgetId: W.a3, geometry: Object.assign({}, await g(W.a3), { y: 700 }) }] }).catch(e => console.log('  info reposition: ' + e.message));
+  await sleep(600);
+  const before = [await g(W.a1), await g(W.a2), await g(W.a3)];
+  await clickFn(page, q('[data-vc-tool="distribute-y"]'), 'distribute vertically');
+  await waitCheck(async () => { const [a, b, c] = [await g(W.a1), await g(W.a2), await g(W.a3)]; const gap1 = b.y - (a.y + a.height), gap2 = c.y - (b.y + b.height); return Math.abs(gap1 - gap2) <= 1 && b.y !== before[1].y; },
+    'Distribute vertically: equal gaps between the three widgets', 5000, async () => [await g(W.a1), await g(W.a2), await g(W.a3)].map(x => [x.y, x.height]));
+  api.events.length = 0;
+  await setColorInput(page, q('[data-vc-color="background"] input[type="color"]'), '#224466');
+  await waitCheck(async () => (await Promise.all([W.a1, W.a2, W.a3].map(id => api.widget(id)))).every(w => w.style.backgroundColor === '#224466'), 'bulk background colour on the 3-widget selection');
+  check(api.events.some(e => e.topic === 'vc.widget.bulkUpdated'), '...through one vc.widget.bulkStyle (vc.widget.bulkUpdated)');
+  await setColorInput(page, q('[data-vc-color="foreground"] input[type="color"]'), '#ffff00');
+  await waitCheck(async () => (await Promise.all([W.a1, W.a2, W.a3].map(id => api.widget(id)))).every(w => w.style.foregroundColor === '#ffff00'), 'bulk foreground colour');
+  await clickFn(page, q('[data-vc-font-italic] button'), 'bulk italic');
+  /* the checkbox shows the first selected widget (A1, italic already): one click switches the whole selection off */
+  await waitCheck(async () => (await Promise.all([W.a1, W.a2, W.a3].map(id => api.widget(id)))).every(w => w.style.font.italic === false), 'bulk font: Italic applied to the whole selection at once', 5000, async () => (await Promise.all([W.a1, W.a2, W.a3].map(id => api.widget(id)))).map(w => w.style.font));
+  await shot(page, 'partials-vc-style');
 }
 
 /* ---------------------------------------------------------------- the run */
