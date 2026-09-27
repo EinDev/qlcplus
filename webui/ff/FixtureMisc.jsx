@@ -207,17 +207,17 @@
     const save = () => {
       const n = name.trim();
       if (!n) { setMsg('The modifier name cannot be empty.'); return Promise.reject(); }
-      return FF.mutate(qlc, 'fixtures.modifiers.save', { name: n, points }).then(r => { setCurrent(r.name); setDirty(false); setMsg('Saved "' + r.name + '".'); return r.name; })
+      return qlc.call('fixtures.modifiers.save', { name: n, points }).then(r => { setCurrent(r.name); setDirty(false); setMsg('Saved "' + r.name + '".'); return r.name; })
         .catch(e => { setMsg((e && e.message) || 'Could not save'); throw e; });
     };
     const rename = () => {
       const n = name.trim();
       if (!current || !n || n === current) return;
-      FF.mutate(qlc, 'fixtures.modifiers.rename', { name: current, newName: n }).then(() => { setCurrent(n); setMsg('Renamed to "' + n + '".'); }).catch(e => setMsg((e && e.message) || 'Could not rename'));
+      qlc.call('fixtures.modifiers.rename', { name: current, newName: n }).then(() => { setCurrent(n); setMsg('Renamed to "' + n + '".'); }).catch(e => setMsg((e && e.message) || 'Could not rename'));
     };
     const remove = () => {
       setConfirmDelete(false);
-      FF.mutate(qlc, 'fixtures.modifiers.delete', { name: current }).then(r => { setMsg('Deleted' + (r.detachedFixtureIds && r.detachedFixtureIds.length ? ' (detached from ' + r.detachedFixtureIds.length + ' fixture(s))' : '') + '.'); load(''); })
+      qlc.call('fixtures.modifiers.delete', { name: current }).then(r => { setMsg('Deleted' + (r.detachedFixtureIds && r.detachedFixtureIds.length ? ' (detached from ' + r.detachedFixtureIds.length + ' fixture(s))' : '') + '.'); load(''); })
         .catch(e => setMsg((e && e.message) || 'Could not delete'));
     };
     const buttons = onApply ? ['Cancel', 'Apply to channel'] : ['Close'];
@@ -280,7 +280,7 @@
     if (!root) {
       const style = document.createElement('style');
       style.id = 'qlc-print-style';
-      style.textContent = '#qlc-print-root{display:none}@media print{body>*:not(#qlc-print-root){display:none!important}#qlc-print-root{display:block!important;color:#000;background:#fff;font-family:Roboto,Arial,sans-serif;font-size:11pt}'
+      style.textContent = '#qlc-print-root{display:none}@media print{html,body{background:#fff!important}body>*:not(#qlc-print-root){display:none!important}#qlc-print-root{display:block!important;color:#000;background:#fff;font-family:Roboto,Arial,sans-serif;font-size:11pt}'
         + '#qlc-print-root table{border-collapse:collapse;width:100%}#qlc-print-root th,#qlc-print-root td{border:1px solid #888;padding:3px 5px;text-align:left;vertical-align:middle}'
         + '#qlc-print-root th{background:#eee}#qlc-print-root h1{font-size:16pt;margin:0 0 8px}#qlc-print-root h2{font-size:13pt;margin:12px 0 6px}.dip{display:inline-flex;gap:2px}.dip i{display:inline-block;width:9px;height:14px;border:1px solid #333;position:relative}.dip i.on:after{content:"";position:absolute;left:1px;right:1px;top:1px;height:5px;background:#333}.dip i:not(.on):after{content:"";position:absolute;left:1px;right:1px;bottom:1px;height:5px;background:#333}}';
       document.head.appendChild(style);
@@ -392,7 +392,7 @@
         + '<h2>Summary</h2><table><tr><th>DMX channels used</th><td>' + used + ' / 512</td></tr><tr><th>Total weight</th><td>' + weight.toFixed(2) + ' kg</td></tr><tr><th>Estimated power consumption</th><td>' + power + ' W' + (fuzzy ? ' (+ ' + fuzzy + ' fixtures without data)' : '') + '</td></tr></table>');
     };
     const colToggle = (k, label) => (
-      <label key={k} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+      <label key={k} data-uni-col={k} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
         <CustomCheckBox checked={cols[k]} size={16} onToggled={v => setCols(c => Object.assign({}, c, { [k]: v }))} />
         <RobotoText label={label} fontSize={12} height={18} />
       </label>

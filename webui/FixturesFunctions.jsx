@@ -232,7 +232,7 @@ function FixtureDetail({ node, qlc, universes, fixtures }) {
   (detail && detail.channelList || []).forEach(ch => { groups[ch.group] = (groups[ch.group] || 0) + 1; });
   const universeModel = (universes || []).map(u => ({ mLabel: u.name, mValue: u.id }));
   return (
-    <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: 12, display: 'grid', gridTemplateColumns: 'minmax(260px, 340px) minmax(0, 1fr)', gap: 12, alignContent: 'start' }}>
+    <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: 12, display: 'grid', gridTemplateColumns: 'minmax(380px, 1fr) minmax(470px, 1.3fr)', gap: 12, alignContent: 'start' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         <RobotoText label="Addressing" fontBold fontSize={14} />
         <Row label="Universe">
