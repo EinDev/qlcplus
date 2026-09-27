@@ -37,7 +37,10 @@
 #include "sequence.h"
 #include "efx.h"
 #include "collection.h"
-#include "script.h"
+// scriptwrapper.h, not script.h: on a qmlui build the engine DLL compiles the
+// JavaScript scriptv4 Script, and instantiateFunction()'s `new Script(doc)`
+// must allocate that class' size, not the legacy line-command Script's.
+#include "scriptwrapper.h"
 #include "rgbmatrix.h"
 #include "show.h"
 #include "audio.h"
