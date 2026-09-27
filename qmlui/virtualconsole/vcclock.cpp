@@ -562,15 +562,10 @@ bool VCClock::loadXML(QXmlStreamReader &root)
         {
             int msTime = 0;
 
-            if (attrs.hasAttribute(KXMLQLCVCClockTime))
+            if (attrs.hasAttribute(KXMLQLCVCClockHours) || attrs.hasAttribute(KXMLQLCVCClockMinutes) ||
+                attrs.hasAttribute(KXMLQLCVCClockSeconds))
             {
-                QTime tTime = QTime::fromString(attrs.value(KXMLQLCVCClockTime).toString(), "HH:mm:ss");
-                // setTargetTime() takes milliseconds, like the LEGACY branch below computes.
-                // An empty/invalid Time (written by the old seconds-vs-ms save bug) stays 0.
-                msTime = tTime.isValid() ? tTime.msecsSinceStartOfDay() : 0;
-            }
-            else // LEGACY
-            {
+                // Hours/Minutes/Seconds: what saveXML() writes (and the QLC+ 4 UI reads/writes).
                 int h = 0, m = 0, s = 0;
                 if (attrs.hasAttribute(KXMLQLCVCClockHours))
                     h = attrs.value(KXMLQLCVCClockHours).toString().toInt();
@@ -580,6 +575,16 @@ bool VCClock::loadXML(QXmlStreamReader &root)
                     s = attrs.value(KXMLQLCVCClockSeconds).toString().toInt();
 
                 msTime = (h * 60 * 60 * 1000) + (m * 60 * 1000) + (s * 1000);
+            }
+            else if (attrs.hasAttribute(KXMLQLCVCClockTime))
+            {
+                // Files written by earlier QLC+ 5 builds: their saveXML() split the millisecond
+                // target into HH:mm:ss as if it were seconds, so the total seconds here ARE the
+                // milliseconds - keep reading it that way so those shows load unchanged. (Targets
+                // over 86.4 s overflowed QTime and were saved as an empty Time="": nothing to
+                // recover, they load as 0.)
+                QTime tTime = QTime::fromString(attrs.value(KXMLQLCVCClockTime).toString(), "HH:mm:ss");
+                msTime = tTime.isValid() ? tTime.msecsSinceStartOfDay() / 1000 : 0;
             }
             setTargetTime(msTime);
         }
@@ -632,17 +637,14 @@ bool VCClock::saveXML(QXmlStreamWriter *doc) const
     if (type == Countdown)
     {
         // targetTime() is in milliseconds (VCClockProperties.qml sets timeValue * 1000 and the
-        // runtime counts down in ms); the XML attribute is HH:mm:ss, so convert to seconds first -
-        // treating the ms value as seconds overflowed QTime and wrote an empty Time="".
-        QTime tTime;
+        // runtime counts down in ms). Written as Hours/Minutes/Seconds - unambiguous, readable by
+        // the QLC+ 4 UI too - instead of the old Time="HH:mm:ss", which stored the milliseconds as
+        // if they were seconds and overflowed (Time="") for any countdown over 86.4 s. loadXML()
+        // still reads that old attribute the way it was written.
         int tt = targetTime() / 1000;
-        int hh = (tt / 3600);
-        tt -= (hh * 3600);
-        int mm = (tt / 60);
-        tt -= (mm * 60);
-        tTime.setHMS(hh, mm, tt);
-
-        doc->writeAttribute(KXMLQLCVCClockTime, tTime.toString());
+        doc->writeAttribute(KXMLQLCVCClockHours, QString::number(tt / 3600));
+        doc->writeAttribute(KXMLQLCVCClockMinutes, QString::number((tt % 3600) / 60));
+        doc->writeAttribute(KXMLQLCVCClockSeconds, QString::number(tt % 60));
     }
 
     saveXMLCommon(doc);
