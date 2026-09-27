@@ -23,6 +23,7 @@
 #include "fakevchost.h"
 
 const QStringList FakeVcHost::ContainerWidgetTypes = { QStringLiteral("Frame"), QStringLiteral("SoloFrame") };
+const QStringList FakeVcHost::PresetWidgetTypes = { QStringLiteral("Speed"), QStringLiteral("XYPad"), QStringLiteral("Animation") };
 const int FakeVcHost::FakeCueListStepCount = 3;
 
 FakeVcHost::FakeVcHost(QObject *parent)
@@ -133,6 +134,9 @@ void FakeVcHost::appendLiveStateToJson(const VcWidgetState &w, QJsonObject &obj)
         obj.insert(QStringLiteral("playbackIndex"), w.playbackIndex);
         obj.insert(QStringLiteral("running"), w.running);
         obj.insert(QStringLiteral("paused"), w.paused);
+        obj.insert(QStringLiteral("sideFaderLevel"), w.sideFaderLevel);
+        obj.insert(QStringLiteral("nextStepIndex"), -1);
+        obj.insert(QStringLiteral("primaryTop"), true);
     }
     else if (t == QStringLiteral("XYPad"))
     {
@@ -142,6 +146,8 @@ void FakeVcHost::appendLiveStateToJson(const VcWidgetState &w, QJsonObject &obj)
     else if (t == QStringLiteral("Speed"))
     {
         obj.insert(QStringLiteral("ms"), w.speedMs);
+        obj.insert(QStringLiteral("factor"), w.factor);
+        obj.insert(QStringLiteral("tapTimeValue"), w.tapTimeValue);
     }
     else if (ContainerWidgetTypes.contains(t))
     {
@@ -161,7 +167,11 @@ int FakeVcHost::frameTotalPages(const VcWidgetState &w)
 QJsonObject FakeVcHost::widgetDetailToJson(const VcWidgetState &w) const
 {
     QJsonObject obj = widgetSummaryToJson(w);
-    obj.insert(QStringLiteral("typeConfig"), w.typeConfig);
+    QJsonObject typeConfig = w.typeConfig;
+    // Like App's speedDialConfigToJson(): the preset list rides along read-only inside typeConfig.
+    if (PresetWidgetTypes.contains(w.widgetType))
+        typeConfig.insert(QStringLiteral("presets"), w.presets);
+    obj.insert(QStringLiteral("typeConfig"), typeConfig);
     obj.insert(QStringLiteral("inputSources"), QJsonArray());
     obj.insert(QStringLiteral("keySequences"), QJsonArray());
     obj.insert(QStringLiteral("externalControls"), QJsonArray());
@@ -719,7 +729,15 @@ bool FakeVcHost::vcSpeedDialTap(quint32 id, QString *error)
         if (interval < 1)
             interval = 1;
         w.lastTapMs = now;
-        return vcSpeedDialSetValue(id, interval, error);
+        bool ok = vcSpeedDialSetValue(id, interval, error);
+        // VCSpeedDial::tap(): tapTimeValue follows the computed interval and notifies on change.
+        if (interval != w.tapTimeValue)
+        {
+            w.tapTimeValue = interval;
+            if (m_liveListener != nullptr)
+                m_liveListener->vcSpeedDialTapChanged(id, interval, w.speedMs);
+        }
+        return ok;
     }
     w.lastTapMs = now;
     return true;
@@ -794,4 +812,185 @@ void FakeVcHost::simulateCueListAdvance(quint32 id, int playbackIndex)
     it.value().running = true;
     it.value().paused = false;
     notifyCueListPlayback(it.value());
+}
+
+/*****************************************************************************
+ * Cue list side fader / speed dial extras
+ *****************************************************************************/
+
+bool FakeVcHost::vcCueListSetSideFaderLevel(quint32 id, int level, QString *error)
+{
+    auto it = m_widgets.find(id);
+    if (it == m_widgets.end())
+        return false;
+    VcWidgetState &w = it.value();
+
+    // Mirrors App: the fader is hidden in None mode, confined to 0..100 in Crossfade mode.
+    QString mode = w.typeConfig.value(QStringLiteral("sideFaderMode")).toString(QStringLiteral("None"));
+    if (mode == QStringLiteral("None"))
+    {
+        if (error) *error = QStringLiteral("Side fader mode is None");
+        return false;
+    }
+    if (mode == QStringLiteral("Crossfade"))
+        level = qMin(level, 100);
+
+    if (level != w.sideFaderLevel)
+    {
+        w.sideFaderLevel = level;
+        if (m_liveListener != nullptr)
+            m_liveListener->vcCueListSideFaderChanged(id, level, -1, true);
+    }
+    return true;
+}
+
+bool FakeVcHost::vcSpeedDialSetFactor(quint32 id, const QString &factor, QString *error)
+{
+    Q_UNUSED(error)
+    auto it = m_widgets.find(id);
+    if (it == m_widgets.end())
+        return false;
+    VcWidgetState &w = it.value();
+
+    if (factor != w.factor)
+    {
+        w.factor = factor;
+        if (m_liveListener != nullptr)
+            m_liveListener->vcSpeedDialFactorChanged(id, factor);
+    }
+    return true;
+}
+
+bool FakeVcHost::vcSpeedDialApply(quint32 id, QString *error)
+{
+    Q_UNUSED(error)
+    // VCSpeedDial::applyFunctionsTime() only touches the attached Functions - nothing observable here.
+    return m_widgets.contains(id);
+}
+
+bool FakeVcHost::vcSpeedDialResetTap(quint32 id, QString *error)
+{
+    Q_UNUSED(error)
+    auto it = m_widgets.find(id);
+    if (it == m_widgets.end())
+        return false;
+    VcWidgetState &w = it.value();
+
+    w.lastTapMs = 0;
+    if (w.tapTimeValue != 0)
+    {
+        w.tapTimeValue = 0;
+        if (m_liveListener != nullptr)
+            m_liveListener->vcSpeedDialTapChanged(id, 0, w.speedMs);
+    }
+    return true;
+}
+
+/*****************************************************************************
+ * Widget presets
+ *****************************************************************************/
+
+bool FakeVcHost::vcWidgetSupportsPresets(quint32 id) const
+{
+    auto it = m_widgets.constFind(id);
+    return it != m_widgets.constEnd() && PresetWidgetTypes.contains(it.value().widgetType);
+}
+
+QJsonArray FakeVcHost::vcWidgetPresets(quint32 id) const
+{
+    auto it = m_widgets.constFind(id);
+    return it != m_widgets.constEnd() ? it.value().presets : QJsonArray();
+}
+
+int FakeVcHost::vcWidgetPresetAdd(quint32 id, const QJsonObject &preset, QString *error)
+{
+    auto it = m_widgets.find(id);
+    if (it == m_widgets.end())
+        return -1;
+    VcWidgetState &w = it.value();
+
+    QJsonObject stored = preset;
+    if (w.widgetType == QStringLiteral("Speed"))
+    {
+        // VcSpeedDialPresetData: name + valueMs, both required - same checks as App.
+        if (preset.value(QStringLiteral("name")).isString() == false || preset.value(QStringLiteral("name")).toString().isEmpty())
+        {
+            if (error) *error = QStringLiteral("preset.name must be a non-empty string");
+            return -1;
+        }
+        if (preset.value(QStringLiteral("valueMs")).isDouble() == false || preset.value(QStringLiteral("valueMs")).toInt() < 0)
+        {
+            if (error) *error = QStringLiteral("preset.valueMs must be a non-negative integer");
+            return -1;
+        }
+        stored = QJsonObject();
+        stored.insert(QStringLiteral("name"), preset.value(QStringLiteral("name")));
+        stored.insert(QStringLiteral("valueMs"), preset.value(QStringLiteral("valueMs")).toInt());
+    }
+
+    int presetId = w.nextPresetId++;
+    stored.insert(QStringLiteral("presetId"), presetId);
+    w.presets.append(stored);
+    return presetId;
+}
+
+bool FakeVcHost::vcWidgetPresetRemove(quint32 id, int presetId, QString *error)
+{
+    Q_UNUSED(error)
+    auto it = m_widgets.find(id);
+    if (it == m_widgets.end())
+        return false;
+    QJsonArray &presets = it.value().presets;
+    for (int i = 0; i < presets.size(); i++)
+    {
+        if (presets.at(i).toObject().value(QStringLiteral("presetId")).toInt(-1) == presetId)
+        {
+            presets.removeAt(i);
+            return true;
+        }
+    }
+    return false;
+}
+
+bool FakeVcHost::vcWidgetPresetApply(quint32 id, int presetId, QString *error)
+{
+    auto it = m_widgets.find(id);
+    if (it == m_widgets.end())
+        return false;
+    VcWidgetState &w = it.value();
+
+    for (const QJsonValue &v : w.presets)
+    {
+        QJsonObject p = v.toObject();
+        if (p.value(QStringLiteral("presetId")).toInt(-1) != presetId)
+            continue;
+        // Speed: the preset button's `speedObj.currentTime = preset.value`; the others have no
+        // observable effect in this fake.
+        if (w.widgetType == QStringLiteral("Speed"))
+            return vcSpeedDialSetValue(id, p.value(QStringLiteral("valueMs")).toInt(), error);
+        return true;
+    }
+    return false;
+}
+
+bool FakeVcHost::vcSpeedDialPresetUpdate(quint32 id, int presetId, const QJsonObject &patch, QString *error)
+{
+    Q_UNUSED(error)
+    auto it = m_widgets.find(id);
+    if (it == m_widgets.end())
+        return false;
+    QJsonArray &presets = it.value().presets;
+    for (int i = 0; i < presets.size(); i++)
+    {
+        QJsonObject p = presets.at(i).toObject();
+        if (p.value(QStringLiteral("presetId")).toInt(-1) != presetId)
+            continue;
+        if (patch.contains(QStringLiteral("name")))
+            p.insert(QStringLiteral("name"), patch.value(QStringLiteral("name")));
+        if (patch.contains(QStringLiteral("valueMs")))
+            p.insert(QStringLiteral("valueMs"), patch.value(QStringLiteral("valueMs")).toInt());
+        presets.replace(i, p);
+        return true;
+    }
+    return false;
 }

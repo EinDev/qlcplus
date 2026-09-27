@@ -86,6 +86,18 @@ public:
     bool vcFrameGotoPage(quint32 id, int page, QString *error) override;
     QJsonObject vcFrameSnapshot(quint32 id) const override;
 
+    // --- Cue list side fader / speed dial extras / widget presets ---
+    bool vcCueListSetSideFaderLevel(quint32 id, int level, QString *error) override;
+    bool vcSpeedDialSetFactor(quint32 id, const QString &factor, QString *error) override;
+    bool vcSpeedDialApply(quint32 id, QString *error) override;
+    bool vcSpeedDialResetTap(quint32 id, QString *error) override;
+    bool vcWidgetSupportsPresets(quint32 id) const override;
+    QJsonArray vcWidgetPresets(quint32 id) const override;
+    int vcWidgetPresetAdd(quint32 id, const QJsonObject &preset, QString *error) override;
+    bool vcWidgetPresetRemove(quint32 id, int presetId, QString *error) override;
+    bool vcWidgetPresetApply(quint32 id, int presetId, QString *error) override;
+    bool vcSpeedDialPresetUpdate(quint32 id, int presetId, const QJsonObject &patch, QString *error) override;
+
     /** Every fake CueList pretends its Chaser has exactly this many steps (named "Step 1".."Step N"),
      *  so index-range validation in the domain has something real to check against. */
     static const int FakeCueListStepCount;
@@ -134,7 +146,14 @@ private:
         int speedMs = 0;                                  // Speed
         qint64 lastTapMs = 0;                             // Speed: tap-tempo bookkeeping
         int currentPage = 0;                              // Frame/SoloFrame
+        int sideFaderLevel = 100;                         // CueList (VCCueList's default)
+        QString factor = QStringLiteral("One");           // Speed: VcSpeedDialMultiplier wire string
+        int tapTimeValue = 0;                             // Speed: last tap interval in ms, 0 = none
+        QJsonArray presets;                               // Speed/XYPad/Animation: Vc<Type>Preset entries
+        int nextPresetId = 16;                            // first id VCSpeedDial/VCXYPad assign
     };
+
+    static const QStringList PresetWidgetTypes; // Speed, XYPad, Animation
 
     static const QStringList ContainerWidgetTypes; // Frame, SoloFrame
 
