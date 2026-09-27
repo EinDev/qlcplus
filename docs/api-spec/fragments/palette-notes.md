@@ -141,3 +141,17 @@ the repo owner's general "prefer fewer, more general methods" steer in
   `palette.created` / `palette.updated` and accepted (partially) by `palette.create` / `palette.update`.
   `value` is a number for the numeric types and a `#rrggbb` string for Color, exactly as
   QLCPalette::loadXML() reads FanValue. Unknown type / layout names are INVALID_PARAMS.
+
+## Fixed 2026-09-27: Gobo values persist, Pan / Tilt are degrees
+
+- **Engine**: `QLCPalette::saveXML()` wrote no `Value` for a Gobo palette and `loadXML()` had no Gobo
+  case, so a Gobo palette lost its value on every save / reload (the API happily created one). Both
+  now treat it as one integer, the wheel's DMX value that `valuesFromFixtures()` writes;
+  `engine/test/qlcpalette` round-trips every palette type (`saveLoadEveryType`). Note that applying a
+  Gobo palette to a fixture still produces nothing: `QLCFixtureHead::cacheChannels()` never maps the
+  Gobo group (the existing `fixturesGobo` XFAIL) - separate, not changed.
+- **Values are unchanged on the wire, the web UI now reads them right**: Pan / Tilt / PanTilt values
+  are DEGREES (`Fixture::positionToValues`: `dmx16 = deg * 65535 / focusPanMax|focusTiltMax`, 360 / 270
+  when the definition says 0). The web palette editor offered them as 0-255 and "apply to selection"
+  wrote them as DMX; it now edits degrees up to the selected fixtures' range and converts per fixture
+  with that fixture's own range (clamped - the engine would wrap past it).

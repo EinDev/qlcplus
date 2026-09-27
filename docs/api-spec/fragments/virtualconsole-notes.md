@@ -401,6 +401,39 @@ and `vc.audioTriggers.setBarConfig`. `qmlui/app_apivcconfig_live.cpp` serves / a
   colour, timer and preset gestures, and Tardis::enqueueAction() calls Doc::setModified() - a
   structural call right after a live one CONFLICTs once (clients retry with the handed-back revision).
 
+## Page size, widget background image and z-order - implemented (2026-09-27)
+
+`controlapi/src/domains/apivcpagestyledomain.cpp` (a third class on the ApiVcHost seam; host side in
+`qmlui/app_apivcpage.cpp`), web UI in `webui/vc/vc-props-style.jsx`, driver
+`webui/tools/e2e/vc-show-leftovers.js`.
+
+- **NEW `vc.page.setSize`** `{index, width, height, baseRevision}` (§4a): the VCPage's geometry,
+  what VCPageProperties.qml's Width / Height spin boxes write, saved in the page's `WindowState`.
+  1..100000 (the spin boxes' range) or `INVALID_PARAMS`; the same size again is acknowledged without
+  a revision bump. Broadcast on the existing `vc.page.updated` (full `VcPage`), and every `VcPage`
+  (vc.page.list, the event) now carries `width` / `height`. `ApiVcHost::vcSetPageSize()` is new.
+- **`style.backgroundImage` is validated** on `vc.widget.create`, `vc.widget.update` and
+  `vc.widget.bulkStyle`, before anything is applied: null / empty clears it; a `file:` URL without a
+  host is reduced to its path (VCWidget::setBackgroundImage() does the same); UNC and device paths
+  (`\\server\share`, `//server/share`, `\\?\`, `\\.\`), `file:` URLs with a host, any other URL
+  scheme and relative paths are `INVALID_PARAMS`. The crash / security audit found UNC paths
+  accepted: the desktop renders the image with QML's Image, so a remote client could make the QLC+
+  host open (and authenticate against) an arbitrary SMB share. A mapped network drive letter
+  cannot be told apart from a local disk without a file system query and is not refused.
+- **NEW `vc.widget.getBackgroundImage`** `{widgetId}` (read): the image as a `data:` URL. Chosen over
+  an HTTP route on WebServer because it can only ever read the one file a widget references (no path
+  parameter at all - nothing to traverse), rides the same authenticated session as every other
+  call, and keeps VC knowledge out of the static file server. Guard rails: the stored path is
+  re-checked (a loaded project may carry a UNC path), local files only, <= 8 MB, and the first bytes
+  must be PNG / JPEG / GIF / BMP / WebP / SVG (SVG is only ever used as an `<img>` / CSS background
+  in the browser, where scripts do not run). A missing / unreadable / oversized / non-image file is
+  still `ok` with `dataUrl: null` and a `reason`, so a client can show why. Costs: base64 overhead
+  and no HTTP caching - the web UI caches per path for the page's lifetime.
+- **z-order** needed no server change: `zIndex` (0..1000 in the Qt spin box) was already in
+  `vc.widget.update`. The web UI adds raise / lower (+-1) and to front / to back (one above the
+  highest / below the lowest sibling, floor 0) next to the spin box; the QML panel has only the spin
+  box. Stacking is among siblings (same parent) in both front ends.
+
 ## Cross-domain touch points (things this fragment deliberately does NOT redefine)
 
 - **Grand Master / Blackout**: `io.yaml` already owns

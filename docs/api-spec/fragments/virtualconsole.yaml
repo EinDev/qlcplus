@@ -303,7 +303,7 @@ messages:
       - type
       - topic
       - data
-      description: 'Broadcast after vc.page.setPin (added 2026-09-27): a page''s hasPin flag is
+      description: 'Broadcast after vc.page.setPin and vc.page.setSize (added 2026-09-27): a page''s hasPin flag is
         document state every client renders (the lock on the page tab, whether to prompt before
         showing the page), and nothing else reported it - vc.page.list is not re-read on its own.
         Carries the page''s full VcPage snapshot. The PIN itself is never sent.
@@ -4221,6 +4221,142 @@ messages:
               type: integer
             presetId:
               type: integer
+  VcPageSetSizeRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.page.setSize
+        params:
+          type: object
+          required:
+          - index
+          - width
+          - height
+          - baseRevision
+          description: 'Added 2026-09-27. The page''s own size - VCPageProperties.qml''s Width / Height spin
+            boxes, a VCPage IS-A VCFrame whose geometry is QRect(0, 0, width, height), saved in its
+            WindowState. Integers in 1..100000 (the spin boxes'' range), anything else is INVALID_PARAMS;
+            an unknown index is NOT_FOUND. The same size again is acknowledged without a revision bump
+            or event. Broadcasts vc.page.updated.
+
+            '
+          properties:
+            index:
+              type: integer
+            width:
+              type: integer
+              minimum: 1
+              maximum: 100000
+            height:
+              type: integer
+              minimum: 1
+              maximum: 100000
+            baseRevision:
+              type: integer
+  VcPageSetSizeResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcDocRevisionOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcWidgetGetBackgroundImageRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: vc.widget.getBackgroundImage
+        params:
+          type: object
+          required:
+          - widgetId
+          description: 'Added 2026-09-27, read-only. The image file the widget''s style.backgroundImage
+            references on the QLC+ host, as a data: URL - a browser cannot open a host path. Only that
+            one file is ever read (the method takes no path), only when it is a local file (UNC /
+            network paths are refused even when a loaded project carries one), at most 8 MB, and only
+            when its first bytes are PNG, JPEG, GIF, BMP, WebP or SVG. When the image cannot be
+            returned the response is still ok, with dataUrl null and a human-readable reason.
+            Deliberately a WebSocket method rather than an HTTP route on the web server: same
+            session as every other call, and the static file server needs no VC knowledge.
+
+            '
+          properties:
+            widgetId:
+              type: string
+  VcWidgetGetBackgroundImageResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/VcWidgetGetBackgroundImageOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  VcWidgetGetBackgroundImageOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - widgetId
+          - path
+          - mimeType
+          - dataUrl
+          properties:
+            widgetId:
+              type: string
+            path:
+              type:
+              - string
+              - 'null'
+              description: style.backgroundImage, null when the widget has none.
+            mimeType:
+              type:
+              - string
+              - 'null'
+              enum:
+              - image/png
+              - image/jpeg
+              - image/gif
+              - image/bmp
+              - image/webp
+              - image/svg+xml
+              - null
+            dataUrl:
+              type:
+              - string
+              - 'null'
+              description: data:<mimeType>;base64,<file content>, null when there is no image or it
+                cannot be returned.
+            reason:
+              type: string
+              description: Why dataUrl is null although path is set (file not found, not readable,
+                larger than 8 MB, not a supported image, refused path).
 schemas:
   VcWidgetType:
     type: string
@@ -4284,7 +4420,11 @@ schemas:
         type:
         - string
         - 'null'
-        description: Path/resource or null for none.
+        description: 'Absolute path of an image file on the QLC+ host, or null for none. On
+          vc.widget.create / update / bulkStyle a file: URL without a host is reduced to its path;
+          UNC and device paths (\\server\share, //server/share, \\?\, \\.\), file: URLs with a host,
+          other URL schemes and relative paths are INVALID_PARAMS (added 2026-09-27). A browser
+          renders it through vc.widget.getBackgroundImage.'
       foregroundColor:
         type:
         - string
@@ -4594,6 +4734,12 @@ schemas:
       hasPin:
         type: boolean
         description: Whether a protection PIN is set - the PIN value itself is never returned.
+      width:
+        type: integer
+        description: Added 2026-09-27. The page's size in px (VCPageProperties.qml, default 1920x1080),
+          set with vc.page.setSize.
+      height:
+        type: integer
   VcButtonConfig:
     type: object
     description: VCButton document-state config.
@@ -6286,3 +6432,27 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/vcWidgetPresetAddResponse'
+  sendVcPageSetSize:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcPageSetSizeRequest'
+  receiveVcPageSetSizeResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcPageSetSizeResponse'
+  sendVcWidgetGetBackgroundImage:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetGetBackgroundImageRequest'
+  receiveVcWidgetGetBackgroundImageResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcWidgetGetBackgroundImageResponse'

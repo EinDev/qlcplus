@@ -297,9 +297,10 @@ registered; behaviour notes and the few additive deviations:
 - **Play from the cursor** is `functions.start` with the new optional
   `startTime` (functions-core.yaml); see its notes.
 - Not implemented (no method in the fragment, desktop-only today): the
-  preview-at-cursor scrub mode (`Show::setScrubMode`/`requestSeek`), the
-  stretch-resize mode, track Spout output size, the legacy beat-pseudo-count
-  conversion (ADR 0001), waveform/beat-grid data for Audio items.
+  stretch-resize mode, the legacy beat-pseudo-count conversion (ADR 0001),
+  waveform/beat-grid data for Audio items. (The preview-at-cursor scrub mode
+  and the track Spout output size landed later, see "Show preview and track
+  Spout size" below.)
 - Edits made through the API reach a desktop Show Manager that has the same
   Show open only through the engine (a running Show reschedules; the QML
   view refreshes its duration via `scheduleChanged` but does not re-render
@@ -345,3 +346,46 @@ registered; behaviour notes and the few additive deviations:
   (no persisted marker - re-saving the project with this build stops the flagging for good).
 - Converted / dismissed Shows are remembered by ApiToolsDomain until the Doc is cleared or loaded
   again, so a reconnecting client is not asked twice. Tests: `controlapi/test/apitoolsdomain`.
+## Implemented 2026-09-27: Show preview and track Spout size
+
+`controlapi/src/domains/apishowpreviewdomain.cpp` (tests in `controlapi/test/apishowdomain/`), the
+new `ApiShowHost` (`controlapi/src/apishowhost.h`, implemented by qmlui's App in
+`qmlui/app_apivcpage.cpp`), web UI in `webui/ShowManager.jsx`, driver
+`webui/tools/e2e/vc-show-leftovers.js`.
+
+- **NEW `functions.show.preview`** `{showId, time}` / **`functions.show.endPreview`**
+  `{showId, play?}` (§4b, no baseRevision) and the event **`functions.show.previewChanged`**
+  `{functionId, previewing, time}` (not gated: start / end only). They drive the engine's existing
+  scrub mode (docs/agent-reports/2026-09-15-show-scrub-preview-design.md): `Show::setScrubMode()` and
+  `Show::requestSeek()` are atomics the ShowRunner reads on the MasterTimer thread, so the domain
+  never touches the runner. Same state machine as `ShowManager::previewAt`: stopped -> rebuild the
+  schedule, scrub mode on, `start()` at the cursor with the ControlApi parent; previewing -> seek;
+  paused -> hand over (scrub on, seek, unpause); playing -> `INVALID_STATE`; still stopping (running
+  with the stop flag set, one tick) -> `INVALID_STATE`, retry. `endPreview` play:true leaves scrub
+  mode (the Show plays on from the cursor, the Audio it skipped starts at its offset), play:false
+  stops it. A preview ended by anyone else (functions.stop, the desktop, the VC, stopAllFunctions)
+  is reported with `originClientId: null` from `Function::stopped`. `typeDetail.previewing` =
+  `Show::isScrubMode()` - it also reports a preview the desktop Show Manager started. Real DMX
+  output, like the desktop preview; Audio stays silent; no document change (no revision bump).
+- Interplay with the desktop: an API preview of the Show the desktop Show Manager has open is not
+  reflected in its buttons (ShowManager keeps its own `isPreviewing`); its play / stop still work on
+  the engine and end the API preview. Both front ends can seek the same frozen Show.
+- **NEW `functions.show.track.setSpoutSize`** `{showId, trackId, width, height, baseRevision}` (§4a)
+  and **`functions.show.track.spoutSizeChanged`** `{showId, trackId, spoutSize, spout, docRevision}`:
+  `Track::spoutSize` (saved as the track's `SpoutSize="w,h"`), 0x0 unsets, 1..16384 otherwise
+  (PopupTrackSpoutSize.qml's range). Like `ShowManager::setTrackSpoutSize`, an unchanged size is
+  still handed to the host (the live sender may differ after a "keep"); the host
+  (`ApiShowHost::showTrackSpoutSizeChanged`) goes through `ShowManager::applyTrackSpoutSize` when the
+  desktop shows that Show (header refresh + sender resize), else resizes the sender directly. Not
+  undoable (API edits skip Tardis).
+- **Every `FunctionsShowTrack` carries `spout`** (`FunctionsShowTrackSpout`: fixedSize, outputSize,
+  clips, mismatch) when the track holds Spout-mode Videos or a fixed size - the data behind
+  TrackDelegate.qml's label and PopupSpoutSizeMismatch.qml. `outputSize` is the host's live sender
+  size (`VideoProvider::trackSpoutOutputSize`), the fixed size without a host. The mismatch prompt
+  itself is client-side: the web UI checks the dropped clip against `outputSize` after an add /
+  move / paste, like `ShowManager::checkSpoutSizeMismatch` (no prompt while the track has no size
+  yet - the first clip sets it).
+- Found while testing: Spout sender names are derived from the track NAME only
+  (`Video::spoutSenderNameForTrack`), and `VideoProvider::trackForSpoutSender()` returns the first
+  Show's track of that name - with several Shows using "Track 2" (SF3 has many) a reloaded project
+  sizes the sender from the wrong track's fixed size. Pre-existing, desktop-side; not changed here.

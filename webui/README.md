@@ -63,7 +63,7 @@ default until "Use server default" is pressed.
 | `misc/shortcuts.jsx`, `misc/tools-misc.jsx` | App-level tools mounted through `window.QLCAppOverlays` / `QLCToolbarItems` / `QLCMenuItems`: the rebindable shortcut registry `window.QLCShortcuts` + Keyboard Shortcuts editor + key-cast toast; DMX dump dialog, DMX Address tool, UI Settings (`window.QLCUISettingsDialog`), legacy Show timing dialog, .qxf import. |
 | `InputOutput.jsx` | Universe table: rename, passthrough, monitor, add / remove (last universe only), input / output (several per universe) / feedback / profile pickers over `io.plugin.list` + `io.patch.*`, per-output pause / blackout, blackout; right panel with plugins (rescan / configure), input profiles, Grand Master, audio devices. |
 | `io/io-shared.jsx`, `io/PatchProperties.jsx`, `io/InputProfileEditor.jsx`, `io/GrandMasterPanel.jsx`, `io/AudioDevices.jsx` | The I/O screen's sub-components: shared row / field helpers, the per-patch plugin parameter dialog (`io.patch.setParameters`, `io.plugin.configure/rescan`), the input profile editor with channel detection (`io.inputProfile.*`), Grand Master level + modes, host audio device pickers (`io.audio.*`). |
-| `ShowManager.jsx` | Show Manager (Ctrl+5): show picker / create / rename, tracks (add, rename, mute, solo, move, delete), the timeline with time or BPM markers, zoom and grid, items (drag across time and tracks, resize, lock, colour, copy / paste, delete, function picker adding at the cursor), alignment and timing panel, ripple insert / cut, transport with the playhead cursor. Registers `window.QLCScreens.show`. |
+| `ShowManager.jsx` | Show Manager (Ctrl+5): show picker / create / rename, tracks (add, rename, mute, solo, move, delete), the timeline with time or BPM markers, zoom and grid, items (drag across time and tracks, resize, lock, colour, copy / paste, delete, function picker adding at the cursor), alignment and timing panel, ripple insert / cut, transport with the playhead cursor, preview at the cursor, track Spout output size. Registers `window.QLCScreens.show`. |
 | `data.js` | Mock workspace used while offline. |
 | `_ds_bundle.js`, `styles.css`, `tokens/` | The compiled QLC+ design-system components and their CSS tokens. |
 | `assets/icons/`, `assets/fonts/` | SVG icons (the qmlui icon set) and Roboto Condensed / Roboto Mono / Font Awesome. |
@@ -312,9 +312,23 @@ and a second tab checked for the pushed event:
   stop; copy / paste at the cursor; delete with the confirmation; all read back through
   `functions.get` and the saved `.qxw`. Ripple cut, align start / end to cursor and the typed
   start / end / duration fields use the same `item.resize` / `item.move` / `rippleCutTime` calls
-  but were not driven by the script. Not in the web UI: the preview-at-cursor scrub mode, the
-  stretch-function resize mode, track Spout output size, the legacy timing conversion dialog,
-  waveforms / beat markers inside items.
+  but were not driven by the script. Not in the web UI: the stretch-function resize mode, the
+  legacy timing conversion dialog, waveforms / beat markers inside items.
+
+- **VC / Show Manager leftovers** (2026-09-27, driver `tools/e2e/vc-show-leftovers.js` against a
+  `vcshow` sandbox on ports 9310/9311): Virtual Console page Width / Height (properties panel with
+  nothing selected, `vc.page.setSize`; the page area is drawn at its size), widget background
+  image (host file picked with the server file browser, rendered over the widget colour from
+  `vc.widget.getBackgroundImage`'s data URL; UNC / network paths refused by the server) and
+  Z-Index with raise / lower / to front / to back (siblings stack by it). Show Manager preview at
+  the cursor (eye toggle, on by default): clicking / dragging the cursor while stopped or paused
+  outputs the Show at that time (`functions.show.preview`, DMX checked with
+  `io.dmx.universe.get`), play continues from there, stop ends it and keeps the cursor, leaving
+  the screen ends it; track Spout label, "Set Spout output size" dialog (clip sizes, custom,
+  unset) and the size-mismatch prompt after placing a Spout clip. Palettes: Pan / Tilt values in
+  degrees up to the selected fixtures' range, applied with each fixture's own range; a Gobo
+  palette keeps its value through save / reopen. Input channel editor: sensitivity range per type
+  (10..100 slider / knob, 1..20 encoder).
 
 - **Fixture Editor** (2026-09-27, `FixtureEditor.jsx` + `fixtureeditor/*.jsx`, Ctrl+6, over
   `fixturedefs.*`; driver `tools/e2e/fixture-editor.js` against a `fixdefs` sandbox on ports

@@ -4233,6 +4233,260 @@ messages:
         id: { type: string }
         ok: { const: true }
         result: { type: object }
+  FunctionsShowPreviewRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.show.preview
+        params:
+          type: object
+          required:
+          - showId
+          - time
+          description: 'Added 2026-09-27, runtime (no baseRevision). Preview the Show at the cursor while
+            it is stopped or paused - the desktop Show Manager''s preview-at-cursor (ShowManager::previewAt,
+            engine Show::setScrubMode / requestSeek). A stopped Show is started frozen at $time (fixtures
+            and video follow the cursor, Audio stays silent, nothing advances); a previewing Show seeks
+            to $time (seeks posted between two MasterTimer ticks coalesce); a paused Show is handed
+            over to the frozen state at $time. A playing Show is INVALID_STATE, and so is one that is
+            still stopping (retry). Broadcasts functions.show.previewChanged when a preview starts
+            (not on every seek). Outputs real DMX, like previewing a Function in the Function Manager.
+
+            '
+          properties:
+            showId:
+              type: string
+            time:
+              type: integer
+              minimum: 0
+              description: Cursor position in ms (a Beats Show's stored pseudo-ms, like startTime).
+  FunctionsShowPreviewResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsShowPreviewOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsShowPreviewOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - previewing
+          - time
+          properties:
+            previewing:
+              const: true
+            time:
+              type: integer
+  FunctionsShowEndPreviewRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.show.endPreview
+        params:
+          type: object
+          required:
+          - showId
+          description: 'Added 2026-09-27, runtime. Ends a preview: play=true leaves the frozen state so the
+            Show plays on from the cursor (ShowManager::playShow while previewing; the Audio the preview
+            skipped starts at its offset), play=false (default) stops the Show (the client keeps its
+            cursor). A no-op (previewing false, playing false) when the Show is not previewing.
+            Broadcasts functions.show.previewChanged.
+
+            '
+          properties:
+            showId:
+              type: string
+            play:
+              type: boolean
+              default: false
+  FunctionsShowEndPreviewResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsShowEndPreviewOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsShowEndPreviewOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - previewing
+          - playing
+          properties:
+            previewing:
+              const: false
+            playing:
+              type: boolean
+              description: True when play=true took the Show from the preview into playback.
+  FunctionsShowPreviewChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      description: 'Added 2026-09-27, not subscribe-gated (a start / end, not per seek). Sent when
+        functions.show.preview starts a preview and when it ends - by functions.show.endPreview, or
+        because the Show was stopped by anything else (functions.stop, the desktop, the Virtual
+        Console; originClientId null then).
+
+        '
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.show.previewChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - functionId
+          - previewing
+          - time
+          properties:
+            functionId:
+              type: string
+            previewing:
+              type: boolean
+            time:
+              type: integer
+  FunctionsShowTrackSetSpoutSizeRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: functions.show.track.setSpoutSize
+        params:
+          type: object
+          required:
+          - showId
+          - trackId
+          - width
+          - height
+          - baseRevision
+          description: 'Added 2026-09-27. Fixes the size of the shared Spout sender every Spout-mode Video
+            on the track publishes into (Track::spoutSize, saved as the track''s SpoutSize attribute) -
+            ShowManager::setTrackSpoutSize / PopupTrackSpoutSize.qml. width = height = 0 unsets it (the
+            first clip decides at the next load); otherwise both in 1..16384. The desktop app also
+            resizes the live sender (every receiver re-initializes the source); the Spout sender itself
+            is Windows-desktop-only. Broadcasts functions.show.track.spoutSizeChanged (not when the size
+            was already set - that is acknowledged without a revision bump).
+
+            '
+          properties:
+            showId:
+              type: string
+            trackId:
+              type: string
+            width:
+              type: integer
+              minimum: 0
+              maximum: 16384
+            height:
+              type: integer
+              minimum: 0
+              maximum: 16384
+            baseRevision:
+              type: integer
+  FunctionsShowTrackSetSpoutSizeResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/FunctionsShowTrackSetMuteOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  FunctionsShowTrackSpoutSizeChangedEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      properties:
+        type:
+          const: event
+        topic:
+          const: functions.show.track.spoutSizeChanged
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - showId
+          - trackId
+          - spoutSize
+          - docRevision
+          properties:
+            showId:
+              type: string
+            trackId:
+              type: string
+            spoutSize:
+              oneOf:
+              - $ref: '#/components/schemas/FunctionsShowSpoutSize'
+              - type: 'null'
+              description: The track's fixed size, null when unset.
+            spout:
+              $ref: '#/components/schemas/FunctionsShowTrackSpout'
+            docRevision:
+              type: integer
 schemas:
   FunctionsRgbMatrixAlgorithmType:
     type: string
@@ -4471,6 +4725,10 @@ schemas:
         type: array
         items:
           $ref: '#/components/schemas/FunctionsShowItem'
+      spout:
+        $ref: '#/components/schemas/FunctionsShowTrackSpout'
+        description: Added 2026-09-27; absent on a track without Spout-mode Videos and without a fixed
+          size.
   FunctionsAudioConfig:
     type: object
     required:
@@ -4697,6 +4955,10 @@ schemas:
         type: integer
         description: Read-only, Show::totalDuration() in ms - the end of the last item on any track (an
           item with duration 0 counts with its function's own totalDuration).
+      previewing:
+        type: boolean
+        description: Added 2026-09-27, runtime. The Show runs frozen at a cursor (functions.show.preview,
+          or the desktop Show Manager's own preview) - Show::isScrubMode().
       docRevision:
         type: integer
   FunctionsAudioDetail:
@@ -4830,6 +5092,67 @@ schemas:
         description: Present for status missing - the path that could not be found
       docRevision:
         type: integer
+  FunctionsShowSpoutSize:
+    type: object
+    required:
+    - width
+    - height
+    properties:
+      width:
+        type: integer
+      height:
+        type: integer
+  FunctionsShowTrackSpout:
+    type: object
+    description: 'Added 2026-09-27. The track''s shared Spout output (TrackDelegate.qml''s label,
+      ShowManager::trackSpoutInfo): present on a track that holds Spout-mode Videos or a fixed size.
+      mismatch is true when some clip with a known size differs from outputSize - what
+      PopupSpoutSizeMismatch.qml asks about when such a clip is placed.
+
+      '
+    required:
+    - fixedSize
+    - outputSize
+    - clips
+    - mismatch
+    properties:
+      fixedSize:
+        oneOf:
+        - $ref: '#/components/schemas/FunctionsShowSpoutSize'
+        - type: 'null'
+        description: Track::spoutSize, null when not fixed.
+      outputSize:
+        oneOf:
+        - $ref: '#/components/schemas/FunctionsShowSpoutSize'
+        - type: 'null'
+        description: What the sender outputs - the fixed size, otherwise the live sender's size as the
+          desktop app reports it (created by the first clip); null when there is no sender yet or no
+          desktop host (headless).
+      clips:
+        type: array
+        description: The track's Spout-mode Videos in start-time order; size = the Video's own
+          spoutSize, else its resolution, 0x0 while unknown.
+        items:
+          type: object
+          required:
+          - itemId
+          - functionId
+          - name
+          - width
+          - height
+          properties:
+            itemId:
+              type: string
+            functionId:
+              type: string
+            name:
+              type: string
+            width:
+              type: integer
+            height:
+              type: integer
+      mismatch:
+        type: boolean
 operations:
   sendFunctionsRgbMatrixListAlgorithms:
     action: send
@@ -5582,38 +5905,62 @@ operations:
     messages:
     - $ref: '#/channels/qlcplus/messages/functionsRgbmatrixSaveToSequenceResponse'
   sendFunctionsShowLegacyTimingGet:
+  sendFunctionsShowPreview:
     action: send
     channel:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/functionsShowLegacyTimingGetRequest'
   receiveFunctionsShowLegacyTimingGetResponse:
+    - $ref: '#/channels/qlcplus/messages/functionsShowPreviewRequest'
+  receiveFunctionsShowPreviewResponse:
     action: receive
     channel:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/functionsShowLegacyTimingGetResponse'
   sendFunctionsShowLegacyTimingConvert:
+    - $ref: '#/channels/qlcplus/messages/functionsShowPreviewResponse'
+  sendFunctionsShowEndPreview:
     action: send
     channel:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/functionsShowLegacyTimingConvertRequest'
   receiveFunctionsShowLegacyTimingConvertResponse:
+    - $ref: '#/channels/qlcplus/messages/functionsShowEndPreviewRequest'
+  receiveFunctionsShowEndPreviewResponse:
     action: receive
     channel:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/functionsShowLegacyTimingConvertResponse'
   sendFunctionsShowLegacyTimingDismiss:
+    - $ref: '#/channels/qlcplus/messages/functionsShowEndPreviewResponse'
+  receiveFunctionsShowPreviewChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowPreviewChangedEvent'
+  sendFunctionsShowTrackSetSpoutSize:
     action: send
     channel:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/functionsShowLegacyTimingDismissRequest'
   receiveFunctionsShowLegacyTimingDismissResponse:
+    - $ref: '#/channels/qlcplus/messages/functionsShowTrackSetSpoutSizeRequest'
+  receiveFunctionsShowTrackSetSpoutSizeResponse:
     action: receive
     channel:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/functionsShowLegacyTimingDismissResponse'
+    - $ref: '#/channels/qlcplus/messages/functionsShowTrackSetSpoutSizeResponse'
+  receiveFunctionsShowTrackSpoutSizeChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/functionsShowTrackSpoutSizeChangedEvent'
