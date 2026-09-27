@@ -42,7 +42,12 @@
 #include "spoutsender.h"
 #endif
 
-QFile logFile;
+// Heap-allocated and deliberately never deleted, for the same reason as
+// g_logWriter below: the message handler can still write to it after main()
+// has returned (static destructors, plugin DLL unload), when a file-scope
+// QFile would already have been destroyed. Every write is flushed, so
+// leaking it loses nothing; the OS closes the handle at process exit.
+QFile *g_logFile = nullptr;
 
 // qInstallMessageHandler only accepts a plain (captureless) function pointer,
 // so this has to be a file-scope global rather than captured. The handler
@@ -50,17 +55,26 @@ QFile logFile;
 // therefore blocking) file/stderr I/O happens on AsyncLogWriter's own
 // background thread instead, so a busy debug session can't stall the
 // calling (often UI/render) thread. Only constructed when -d is passed.
+//
+// Never deleted: the handler stays installed until the process exits, and
+// destructors that run after main()'s event loop (App -> Doc ->
+// IOPluginCache -> plugins, QApplication, static objects) and threads that
+// are still winding down all log through it. Deleting the writer while the
+// handler still points at it was a use-after-free on exit. Instead it is
+// shut down (queue drained, worker joined) once App is gone, after which it
+// writes every further message synchronously - see LogWriterShutdown in
+// main().
 AsyncLogWriter *g_logWriter = nullptr;
 
 void writeLogMessage(const QString &msg)
 {
     QByteArray localMsg = msg.toLocal8Bit();
 
-    if (logFile.isOpen())
+    if (g_logFile != nullptr && g_logFile->isOpen())
     {
-        logFile.write(localMsg);
-        logFile.write((char *)"\n");
-        logFile.flush();
+        g_logFile->write(localMsg);
+        g_logFile->write((char *)"\n");
+        g_logFile->flush();
     }
 
     fprintf(stderr, "%s\n", localMsg.constData());
@@ -234,8 +248,8 @@ int main(int argc, char *argv[])
     if (parser.isSet(logOption))
     {
         QString logFilename = QDir::homePath() + QDir::separator() + "QLC+.log";
-        logFile.setFileName(logFilename);
-        if (!logFile.open(QIODevice::Append))
+        g_logFile = new QFile(logFilename);
+        if (!g_logFile->open(QIODevice::Append))
             qWarning("Warning: Unable to open log file.");
     }
 
@@ -244,9 +258,16 @@ int main(int argc, char *argv[])
     {
         g_logWriter = new AsyncLogWriter(writeLogMessage);
         qInstallMessageHandler(
-            [](QtMsgType, const QMessageLogContext &, const QString &msg) {
-                if (g_logWriter)
-                    g_logWriter->enqueue(msg);
+            [](QtMsgType type, const QMessageLogContext &, const QString &msg) {
+                if (g_logWriter == nullptr)
+                    return;
+                // Qt aborts the process right after a fatal message (and the
+                // crash handler's dialog blocks before that), so don't leave
+                // it - or anything queued before it - sitting in the async
+                // queue: drain, then write it synchronously.
+                if (type == QtFatalMsg)
+                    g_logWriter->shutdown();
+                g_logWriter->enqueue(msg);
         });
     }
 
@@ -254,6 +275,22 @@ int main(int argc, char *argv[])
     // handler above on purpose: it wraps whatever message handler is current
     // and chains every message to it, only adding the report on QtFatalMsg.
     CrashHandler::install();
+
+    // Declared before App (and FreezeWatchdog) on purpose: locals are
+    // destroyed in reverse order, so this runs right after ~App() - after
+    // Doc, the I/O plugins and their threads have been torn down and have
+    // logged their goodbyes into the async queue. It drains that queue and
+    // stops the worker; from then on the writer logs synchronously, which
+    // covers ~QApplication and anything later. The writer itself is never
+    // deleted (see g_logWriter).
+    struct LogWriterShutdown
+    {
+        ~LogWriterShutdown()
+        {
+            if (g_logWriter != nullptr)
+                g_logWriter->shutdown();
+        }
+    } logWriterShutdown;
 
     // language settings
     QString locale = parser.value(localeOption);
@@ -418,7 +455,7 @@ int main(int argc, char *argv[])
 #endif
 #endif
 
-    int result = app.exec();
-    delete g_logWriter; // destructor drains the queue and joins the thread
-    return result;
+    // No log writer cleanup here: App is still alive at this point and its
+    // teardown logs (see LogWriterShutdown above)
+    return app.exec();
 }

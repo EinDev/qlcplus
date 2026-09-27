@@ -44,16 +44,39 @@ public:
      *  messages were enqueued. */
     explicit AsyncLogWriter(std::function<void(const QString &)> sink);
 
-    /** Signals the worker to stop once its queue is drained, and joins it.
-     *  Every message enqueued before this call is guaranteed to reach the
-     *  sink before the destructor returns. */
+    /** Calls shutdown(). Every message enqueued before this call is
+     *  guaranteed to reach the sink before the destructor returns.
+     *
+     *  Note: destroying the writer does not make a pointer to it safe to use
+     *  afterwards. A process-wide message handler that forwards to a writer
+     *  must keep the writer alive for as long as the handler is installed -
+     *  call shutdown() instead of deleting it (see qmlui/main.cpp). */
     ~AsyncLogWriter();
 
     AsyncLogWriter(const AsyncLogWriter &) = delete;
     AsyncLogWriter &operator=(const AsyncLogWriter &) = delete;
 
-    /** Queue $msg for delivery to the sink. Safe to call from any thread. */
+    /** Queue $msg for delivery to the sink. Safe to call from any thread, at
+     *  any time before the destructor runs - including after, and
+     *  concurrently with, shutdown(): once the worker thread has stopped,
+     *  $msg is handed to the sink synchronously on the calling thread
+     *  instead, so nothing logged late (e.g. from destructors during
+     *  application teardown) is lost. */
     void enqueue(const QString &msg);
+
+    /** Stops the background worker once its queue is drained, and joins it.
+     *  Idempotent and safe to call from any thread; called from the worker
+     *  itself (a sink that logs a fatal message) it only requests the stop
+     *  and returns without joining.
+     *  Messages enqueued while the worker is still draining are still
+     *  delivered by it, in order; messages enqueued after it has stopped go
+     *  straight to the sink (see enqueue()), so they always come after
+     *  everything that was queued before. */
+    void shutdown();
+
+    /** True once the worker thread has drained its queue and exited, i.e.
+     *  every further enqueue() is delivered synchronously. */
+    bool isStopped();
 
 private:
     void workerLoop();
@@ -62,8 +85,17 @@ private:
     std::mutex m_mutex;
     std::condition_variable m_cv;
     std::queue<QString> m_queue;
+    /** Cleared by shutdown(): the worker exits once the queue is empty */
     bool m_running;
+    /** Set by the worker, under m_mutex, as it exits with an empty queue */
+    bool m_stopped;
+    /** Serializes shutdown() callers around the join */
+    std::mutex m_joinMutex;
+    /** Serializes synchronous (post-shutdown) sink calls across threads */
+    std::mutex m_syncSinkMutex;
     std::thread m_thread;
+    /** m_thread's id, cached once: m_thread itself is modified by join() */
+    std::thread::id m_workerId;
 };
 
 #endif // ASYNCLOGWRITER_H
