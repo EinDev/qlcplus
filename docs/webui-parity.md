@@ -55,7 +55,7 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | Save project as (server-side path) | ActionsMenu.qml | live | - |
 | Import fixtures / functions from another project | ActionsMenu.qml, popup/PopupImportProject.qml, importmanager.cpp | missing | spec+S+U; nothing in the spec for project import |
 | Collect media into project (fork asset store) | ActionsMenu.qml, MainView.qml | missing | spec+S+U; only functions.media.reload is specced and registered |
-| Reload changed media | ActionsMenu.qml, MainView.qml | missing | U; functions.media.reload is registered per function, so a loop over Audio / Video functions works; the "changed on disk" detection shown in the QML result toast may need a spec addition |
+| Reload changed media | ActionsMenu.qml, MainView.qml | partial | U; per-function Reload button wired to functions.media.reload (not browser-verified); no bulk action or changed-on-disk list yet |
 | Remove unused media | ActionsMenu.qml, MainView.qml | missing | spec+S+U |
 | Undo / Redo (with history labels) | ActionsMenu.qml | live | - |
 | Blackout toggle (Ctrl+B) | MainView.qml | live | - |
@@ -164,11 +164,11 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | RGB Matrix editor: fixture group, algorithm, colours, blend / control mode, speed, preview | fixturesfunctions/RGBMatrixEditor.qml, fixturesfunctions/RGBMatrixPreview.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/rgbmatrix.js; Beats tempo preview approximated at 500 ms |
 | RGB Matrix editor: script algorithm properties, text / image / animation parameters, font | fixturesfunctions/RGBMatrixEditor.qml | partial | U; list/range script properties, text, font family and text animation live (sandbox 2026-09-27); Image parameters, font size/bold/italic, offsets, float/string properties implemented + server-tested, not exercised in the browser; image path / font are server-side text fields |
 | RGB Matrix editor: save this matrix to a Sequence | fixturesfunctions/RGBMatrixEditor.qml | missing | spec+S+U |
-| Script editor: edit source, syntax check, insert command at cursor, fixture / function trees | fixturesfunctions/ScriptEditor.qml | missing | S: functions.script.setSource, functions.script.validate, functions.script.listCommands, functions.script.appendLine |
-| Audio editor: file, output device, volume, fade in / out, looped / single shot, mute, file info | fixturesfunctions/AudioEditor.qml | missing | S: functions.audio.setSource, functions.audio.setDevice, functions.audio.setVolume, functions.audio.setDuration, functions.audio.listCapabilities; file path is server-side |
-| Audio editor: detect BPM, replace file (fork media store) | fixturesfunctions/AudioEditor.qml | missing | spec+S+U |
-| Video editor: file / URL, output screen, windowed / fullscreen, geometry, rotation, layer, looped, mute | fixturesfunctions/VideoEditor.qml, fixturesfunctions/VideoContext.qml | missing | S: functions.video.setSource, functions.video.setScreenTarget, functions.video.setGeometry, functions.video.setRotation, functions.video.setLayer, functions.video.listCapabilities |
-| Video editor: Spout output mode, sender name / size, replace file (fork) | fixturesfunctions/VideoEditor.qml | missing | spec+S+U; the Spout window itself is desktop-only, its configuration is document state |
+| Script editor: edit source, syntax check, insert command at cursor, fixture / function trees | fixturesfunctions/ScriptEditor.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/media.js; the QML side trees are replaced by function / fixture ID pickers |
+| Audio editor: file, output device, volume, fade in / out, looped / single shot, mute, file info | fixturesfunctions/AudioEditor.qml | live | - ; sandbox 2026-09-27; mute is read-only (no API setter); media info needs the decoder plugins (absent in the sandbox) |
+| Audio editor: detect BPM, replace file (fork media store) | fixturesfunctions/AudioEditor.qml | partial | spec+S+U for Detect BPM (no method); Replace file live (sandbox 2026-09-27, media store copy + origin recorded) |
+| Video editor: file / URL, output screen, windowed / fullscreen, geometry, rotation, layer, looped, mute | fixturesfunctions/VideoEditor.qml, fixturesfunctions/VideoContext.qml | live | - ; sandbox 2026-09-27; volume / mute read-only (no API setter) |
+| Video editor: Spout output mode, sender name / size, replace file (fork) | fixturesfunctions/VideoEditor.qml | partial | spec+S+U for sender name / size (read-only); Spout selectable via outputMode and Replace file live (sandbox 2026-09-27) |
 | Show function: edit on the timeline | fixturesfunctions/FunctionManager.qml | missing | S: functions.show.*; see Show Manager section |
 | Adjust a running function's intensity attribute | FunctionDelegate.qml (via the VC "Adjust" slider mode), functions.adjustAttribute | missing | S: functions.adjustAttribute |
 | Show Wizard (stage wizard: show type, fixture roles, venue, effects, controller, generate) | fixturesfunctions/RightPanel.qml, stagewizard/ShowWizard.qml, stagewizard/WizardStep1ShowType.qml ... WizardStep6Summary.qml | missing | spec+S+U; the generator runs in the desktop process |
@@ -376,7 +376,7 @@ duplicate a feature row above say so.
 | Custom feedback | popup/PopupCustomFeedback.qml | missing | S: vc.widget.inputSource.set, io.inputProfile.save |
 | DMX channel dump | popup/PopupDMXDump.qml | partial | U for the target Scene, spec+S+U for the filters |
 | Disclaimer | popup/PopupDisclaimer.qml | n/a | - ; desktop first-run notice |
-| Folder browser (server-side file picker) | popup/PopupFolderBrowser.qml | partial | U; the web UI takes a typed server path plus recent files, no directory listing (spec+S+U if a real browser is wanted) |
+| Folder browser (server-side file picker) | popup/PopupFolderBrowser.qml | live | - ; sandbox 2026-09-27 as window.ServerFileBrowser over core.fs.list, used by the Audio / Video editors; the Open-project dialog still takes a typed path plus recent files |
 | Import from project | popup/PopupImportProject.qml | missing | spec+S+U |
 | Input channel editor | popup/PopupInputChannelEditor.qml | missing | S: io.inputProfile.save |
 | Enter a number (select every Nth) | popup/PopupInputNumber.qml | missing | U |
@@ -425,8 +425,8 @@ the total is larger than the number of distinct actions). Recompute after editin
 
 | Status | Rows |
 | --- | --- |
-| live | 87 |
-| partial | 23 |
-| missing | 182 |
+| live | 95 |
+| partial | 26 |
+| missing | 171 |
 | n/a | 22 |
 | total | 314 |
