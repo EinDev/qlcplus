@@ -317,7 +317,8 @@ public:
     bool startApiServer(quint16 port);
 
     /** Start the web UI's HTTP server on $port (0 = OS-assigned), serving
-     *  $root (empty = the installed WEBUIDIR). The page is told the port the
+     *  $root (empty = the root set by an earlier call, else the installed
+     *  WEBUIDIR). The page is told the port the
      *  API server actually listens on, so start that first. No-op returning
      *  true when it is already listening. Logs the outcome. */
     bool startWebUiServer(quint16 port, const QString &root = QString());

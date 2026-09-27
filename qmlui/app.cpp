@@ -1203,8 +1203,13 @@ bool App::startWebUiServer(quint16 port, const QString &root)
 
     // Default root: the installed WebUI directory, resolved the same way
     // every other data directory is (Meshes, Gobos, ...) - next to the
-    // executable on Windows/macOS, the share/ data dir on Linux.
-    m_webServer->setRootDirectory(root.isEmpty() ? QLCFile::systemDirectory(WEBUIDIR).path() : root);
+    // executable on Windows/macOS, the share/ data dir on Linux. A root set
+    // by an earlier, failed start (--webui-root, then the port was taken) is
+    // kept when openWebUi() retries without one.
+    if (root.isEmpty() == false)
+        m_webServer->setRootDirectory(root);
+    else if (m_webServer->rootDirectory().isEmpty())
+        m_webServer->setRootDirectory(QLCFile::systemDirectory(WEBUIDIR).path());
 
     // Tell the UI the port the API *actually* listens on (after listen(),
     // so an OS-assigned/fallback port is what it reads), not the flag value
