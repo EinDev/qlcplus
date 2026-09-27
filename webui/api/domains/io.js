@@ -59,6 +59,13 @@
               not enumerable as a literal method; use self.subscribe(['io.dmx.universe.'+id+'.changed'])
               then self.on(that topic string, fn). */
           get: function (universeId) { return self.call('io.dmx.universe.get', { universeId: universeId }); }
+        },
+        channel: {
+          /** params: {universeId, channel (0-511)}. SimpleDesk.qml's channel value debug as data:
+              fixture, pre/post-GM value, this API's Simple Desk override, every GenericFader
+              driving the channel (owning Function + what started it, or the desktop tool /
+              API desk / unidentified source) and the last recorded write. Read-only. */
+          inspect: function (params) { return self.call('io.dmx.channel.inspect', params); }
         }
       },
 
@@ -166,12 +173,13 @@
       },
 
       simpleDesk: {
-        /** params: {baseRevision, nonZeroOnly, targetSceneId?, name?, channelGroups?}.
+        /** params: {baseRevision, nonZeroOnly, targetSceneId?, name?, channelGroups?, fixtureIds?}.
             Unlike every other io.simpleDesk.* method, this IS a §4a structural mutation: bakes
             Simple Desk's currently-held live values into a saved Scene Function
             (SimpleDesk::dumpDmxChannels). targetSceneId: existing Scene id to merge into, omit/
             null to create a new one (named by `name`). channelGroups: QLCChannel::Group names to
-            include, omit/empty = all. -> {sceneId, docRevision}. No bespoke event — reported via
+            include, omit/empty = all. fixtureIds: only these fixtures, omit/empty = all (unknown id
+            -> NOT_FOUND). -> {sceneId, docRevision}. No bespoke event — reported via
             functions.created/functions.updated instead (see io-notes.md). */
         dump: function (params) { return self.call('io.simpleDesk.dump', params); },
         /** universeId: integer (0-based). -> {universeId, channels: [{address, universeId,

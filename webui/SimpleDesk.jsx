@@ -81,10 +81,6 @@ function SimpleDesk() {
   const [cmdNote, setCmdNote] = React.useState({ text: '', error: false });
   const [history, setHistory] = React.useState([]);
   const [selFixture, setSelFixture] = React.useState(null);
-  const [dumpOpen, setDumpOpen] = React.useState(false);
-  const [dumpName, setDumpName] = React.useState('');
-  const [dumpNonZero, setDumpNonZero] = React.useState(true);
-  const [dumpNote, setDumpNote] = React.useState('');
   const [debugCh, setDebugCh] = React.useState(null);
   const parser = React.useRef(null);
   if (!parser.current) parser.current = new window.QLCKeypadParser();   // one parser per desk: it remembers the last channel list
@@ -201,13 +197,8 @@ function SimpleDesk() {
         setCmdNote({ text: 'Keypad command failed: ' + (e.message || e.code || 'request failed'), error: true });
       });
   };
-  const dump = () => {
-    if (!live) { setDumpOpen(false); return; }
-    setDumpNote('');
-    qlc.call('io.simpleDesk.dump', { baseRevision: qlc.docRevision(), name: dumpName || undefined, nonZeroOnly: dumpNonZero, channelGroups: [] })
-      .then(r => { setDumpOpen(false); setDumpName(''); setCmdNote({ text: 'Scene ' + (r && r.sceneId != null ? r.sceneId + ' ' : '') + 'created from the DMX dump', error: false }); })
-      .catch(e => setDumpNote('Cannot dump: ' + (e.message || e.code || 'request failed')));
-  };
+  /* The shared DMX dump dialog (misc/tools-misc.jsx, PopupDMXDump.qml), preset with the fixture picked in the list. */
+  const dump = () => { if (live) window.dispatchEvent(new CustomEvent('qlc-open-dmx-dump', { detail: { fixtureIds: selFixture != null ? [String(selFixture)] : [] } })); };
   const selectFixture = (f) => {
     setSelFixture(f.id);
     const el = stripsRef.current && stripsRef.current.querySelector('[data-channel="' + f.address + '"]');
@@ -249,7 +240,7 @@ function SimpleDesk() {
         <IconButton imgSource={D.icon('network')} size={26}
           tooltip={live ? 'Refresh values from the desk' : 'Not connected'} disabled={!live}
           onClick={() => { const c = qlc.client(); if (c) c.getUniverseValues(universeId).catch(() => {}); }} />
-        <IconButton imgSource={D.icon('dmxdump')} size={26} disabled={!live} onClick={() => setDumpOpen(true)}
+        <IconButton imgSource={D.icon('dmxdump')} size={26} disabled={!live} onClick={dump}
           tooltip={live ? 'Dump DMX values to a scene' : 'Dump to scene — connect first'} />
         <DMXPercentageButton dmxMode={dmx} onClick={() => setDmx(!dmx)} height={26} />
       </ViewToolbar>
@@ -306,26 +297,7 @@ function SimpleDesk() {
         </div>
       </div>
 
-      <CustomPopupDialog open={dumpOpen} title="Dump DMX values to a scene" width={380}
-        standardButtons={['Cancel', 'Dump']} onClicked={(b) => { if (b === 'Dump') dump(); else { setDumpOpen(false); setDumpNote(''); } }} onClose={() => setDumpOpen(false)}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <RobotoText label="Scene name" fontSize={14} style={{ width: 90 }} />
-            <span style={{ flex: 1, height: 26, display: 'flex', alignItems: 'center', background: 'var(--bg-control)', border: '1px solid var(--spin-border)', borderRadius: 'var(--radius-spin)', padding: '0 5px' }}>
-              <CustomTextInput text={dumpName} editing autoFocus placeholder="New Scene" width="100%" height={22} onTextConfirmed={setDumpName}
-                onInput={(e) => setDumpName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') dump(); }} />
-            </span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <CustomCheckBox checked={dumpNonZero} onToggled={setDumpNonZero} />
-            <RobotoText label="Only non-zero channels" fontSize={14} />
-          </div>
-          <RobotoText label="Creates a Scene from the current DMX output of every universe (io.simpleDesk.dump). The desktop's channel-group filter is not available here: all channel groups are dumped." fontSize={12} labelColor="var(--fg-medium)" wrapText height="auto" />
-          {dumpNote ? <RobotoText label={dumpNote} fontSize={12} labelColor="var(--override-red)" wrapText height="auto" /> : null}
-        </div>
-      </CustomPopupDialog>
-
-      <CustomPopupDialog open={debugCh !== null} title="Channel value debug" width={420} standardButtons={['Ok']}
+      <CustomPopupDialog open={debugCh !== null} title="Channel value debug" width={560} standardButtons={['Ok']}
         onClicked={() => setDebugCh(null)} onClose={() => setDebugCh(null)}>
         {debugInfo ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontFamily: 'var(--font-mono)' }}>
@@ -335,7 +307,8 @@ function SimpleDesk() {
               labelColor={debugInfo.overridden ? 'var(--override-red)' : 'var(--fg-main)'} />
             <RobotoText label={'Fixture: ' + (debugInfo.fixture ? debugInfo.fixture.name + ' (channel ' + (debugCh - debugInfo.fixture.address + 1) + ' of ' + debugInfo.fixture.channels + ')' : 'none patched here')} fontSize={14} height={22} />
             {debugInfo.name ? <RobotoText label={'Channel: ' + debugInfo.name} fontSize={14} height={22} /> : null}
-            <RobotoText label="Not available in the web UI: the engine's full value trace (fader stack, pre/post Grand Master, last writer) is produced by the desktop app only." fontSize={12} labelColor="var(--fg-medium)" wrapText height="auto" />
+            {live && window.QLCChannelInspect ? <div style={{ marginTop: 6, fontFamily: 'var(--font-roboto)' }}>{React.createElement(window.QLCChannelInspect, { qlc, universeId, channel: debugCh })}</div>
+              : <RobotoText label="Connect to see the engine's value trace (fader stack, pre/post Grand Master, last writer)." fontSize={12} labelColor="var(--fg-medium)" wrapText height="auto" />}
           </div>
         ) : null}
       </CustomPopupDialog>

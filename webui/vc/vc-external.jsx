@@ -559,7 +559,11 @@ function VCKeyBindings() {
       held.current[e.code || norm] = hits;
       hits.forEach(h => trigger(h.w, h.controlId, true));
       const names = hits.map(h => ((h.w.style && h.w.style.caption) || h.w.widgetType) + ': ' + ((h.w.externalControls || []).find(x => Number(x.controlId) === h.controlId) || { name: 'control ' + h.controlId }).name);
-      setCast({ keys: text, what: Array.from(new Set(names)).join(', ') });
+      const what = Array.from(new Set(names)).join(', ');
+      /* The app-wide key-cast toast (misc/shortcuts.jsx, FeedbackToast.qml's role) shows VC bindings
+         and App shortcuts alike; this strip is only the fallback when that file is not loaded. */
+      if (window.QLCKeyCast) { window.QLCKeyCast.show(text, what, { source: 'vc' }); return; }
+      setCast({ keys: text, what });
       clearTimeout(castTimer.current);
       castTimer.current = setTimeout(() => setCast(null), 1600);
     };

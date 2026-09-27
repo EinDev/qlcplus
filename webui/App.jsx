@@ -38,7 +38,12 @@ const CONTEXTS = ['fx', 'vc', 'sd', 'io'];
    - window.QLCToolbarItems = [Component, ...]  rendered right of the mode button; props: { qlc }.
    - window.QLCMenuItems = [fn, ...]  each fn({ qlc, project, online, setDialog, setCtx }) returns an
        array of ActionsMenu items (or '-'), appended before "About".
-   - window.QLCUISettingsDialog = Component  props { open, onClose, qlc }; enables the gear button. */
+   - window.QLCUISettingsDialog = Component  props { open, onClose, qlc }; enables the gear button
+       (also opened by window.dispatchEvent(new CustomEvent('qlc-open-ui-settings'))).
+   - window.QLCAppOverlays = [Component, ...]  mounted at the window root; props { qlc, project, online,
+       setCtx }. For dialogs opened from menu / toolbar items or shortcuts (misc/tools-misc.jsx) and the
+       key-cast toast (misc/shortcuts.jsx).
+   App-level shortcuts go through window.QLCShortcuts (misc/shortcuts.jsx), rebindable by the user. */
 function registeredScreens() {
   const r = window.QLCScreens || {};
   return Object.keys(r).map(k => r[k]).filter(s => s && s.component).sort((a, b) => (a.order || 0) - (b.order || 0));
@@ -146,9 +151,11 @@ function useBpm(qlc) {
   const onError = (e) => { if (e && e.code === 'INVALID_STATE') setBpm(s => Object.assign({}, s, { error: 'Tempo owned by ' + ((e.details && e.details.generator) || s.generator || 'another source'), generator: (e.details && e.details.generator) || s.generator })); };
   const set = React.useCallback((v) => { if (qlc.online) qlc.call('core.bpm.set', { bpm: Math.max(0, Math.min(1000, Math.round(v))) }).catch(onError); }, [qlc.online]);
   const tap = React.useCallback(() => { if (qlc.online && bpm.supported !== false) qlc.call('core.bpm.tap', {}).catch(onError); }, [qlc.online, bpm.supported]);
+  /* BeatGeneratorsPanel.qml: the source of the beat (core.bpm.set {generator}); core.bpm.changed confirms it. */
+  const setGenerator = React.useCallback((g) => { if (qlc.online) qlc.call('core.bpm.set', { generator: g }).catch(e => setBpm(s => Object.assign({}, s, { error: (e && e.message) || 'Cannot switch the beat source' }))); }, [qlc.online]);
   /* "plugin"/"audio" generators own the tempo: the API may only read it. */
   const owned = bpm.generator === 'plugin' || bpm.generator === 'audio';
-  return Object.assign({}, bpm, { beat, set, tap, owned });
+  return Object.assign({}, bpm, { beat, set, tap, setGenerator, owned });
 }
 
 /**
@@ -217,17 +224,32 @@ function BpmControl({ bpmState, disabled }) {
         style={{ height: '100%', padding: '0 6px', background: open ? 'var(--bg-light)' : 'transparent', border: 'none', color: 'var(--fg-main)', cursor: disabled ? 'default' : 'pointer',
           font: '400 var(--text-size-default) var(--font-roboto)', whiteSpace: 'nowrap' }}>{label}</button>
       {open ? (
-        <span style={{ position: 'fixed', top: box.top, left: box.left, zIndex: 400, display: 'flex', flexDirection: 'column', gap: 6, padding: 8, width: 200, background: 'var(--bg-medium)', border: 'var(--border-dialog)' }}>
-          <RobotoText label={'Beat generator: ' + (bpmState.generator || 'unknown')} fontSize="var(--text-size-menubar)" labelColor="var(--fg-light)" wrapText height="auto" />
+        <span style={{ position: 'fixed', top: box.top, left: box.left, zIndex: 400, display: 'flex', flexDirection: 'column', gap: 6, padding: 8, width: 230, background: 'var(--bg-medium)', border: 'var(--border-dialog)' }}>
+          <RobotoText label="Beat generator" fontSize="var(--text-size-menubar)" labelColor="var(--fg-light)" wrapText height="auto" />
+          {/* BeatGeneratorsPanel.qml: one entry per source; the plugin / audio entries follow the beat of a
+              beat-capable input patched on the QLC+ machine (MIDI clock, OS2L...) or its audio input. */}
+          <span data-role="beat-generators" style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            {[['disabled', 'Disabled'], ['internal', 'Internal generator'], ['plugin', 'Input plugin (MIDI clock, OS2L…)'], ['audio', 'Audio input']].map(([g, text]) => {
+              const on = bpmState.generator === g;
+              return (
+                <button key={g} type="button" data-generator={g} disabled={bpmState.supported === false} onClick={() => { if (!on) bpmState.setGenerator(g); }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, height: 24, padding: '0 6px', border: 'none', cursor: 'pointer', textAlign: 'left',
+                    background: on ? 'var(--highlight)' : 'var(--bg-strong)', color: 'var(--fg-main)', font: '400 var(--text-size-menubar) var(--font-roboto)' }}>
+                  <span style={{ width: 10, height: 10, borderRadius: 5, flex: 'none', border: '1px solid var(--fg-light)', background: on ? 'var(--check-lime)' : 'transparent' }} />
+                  {text}
+                </button>
+              );
+            })}
+          </span>
           {bpmState.owned || bpmState.error ? (
-            <RobotoText label={bpmState.error || 'Tempo owned by ' + bpmState.generator + ' — set the generator to internal in the desktop app to edit it here'}
+            <RobotoText label={bpmState.error || 'Tempo detected from the ' + bpmState.generator + ' source — pick "Internal generator" to set or tap it here'}
               fontSize="var(--text-size-menubar)" labelColor="var(--selection)" wrapText height="auto" />
           ) : null}
           <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
             <CustomSpinBox value={draft} from={0} to={1000} width={80} height={26} disabled={locked} onValueModified={setDraft} onKeyDown={(e) => { if (e.key === 'Enter' && !locked) { bpmState.set(draft); setOpen(false); } }} />
             <GenericButton label="Set" width={60} height={26} fontSize="var(--text-size-menubar)" onClick={() => { bpmState.set(draft); setOpen(false); }} disabled={locked} />
           </span>
-          <ShortcutHint keys="Space" placement="corner">
+          <ShortcutHint keys={window.QLCShortcuts ? window.QLCShortcuts.hint('app.tapTempo') : 'Space'} placement="corner">
             <GenericButton label="TAP" width="100%" height={34} fontSize="var(--text-size-default)" disabled={locked}
               bgColor="var(--keypad-enter)" hoverColor="var(--keypad-enter-hover)" pressedColor="var(--keypad-enter-pressed)"
               onPointerDown={(e) => { e.preventDefault(); if (!locked) bpmState.tap(); }} />
@@ -240,9 +262,9 @@ function BpmControl({ bpmState, disabled }) {
 }
 
 /** MainView.qml stopAllButton: red octagon, "STOP", the running-function count badge. */
-function StopAllButton({ count, disabled, onClick, tooltip }) {
+function StopAllButton({ count, disabled, onClick, tooltip, keys = 'Ctrl .' }) {
   return (
-    <ShortcutHint keys="Ctrl ." placement="corner">
+    <ShortcutHint keys={keys} placement="corner">
       <span style={{ position: 'relative', display: 'inline-flex', flex: 'none' }}>
         {/* fa_octagon is not in the free Font Awesome face the web UI ships, so the octagon is an inline SVG in the same red. */}
         <IconButton bgColor="transparent" borderWidth={0} disabled={disabled} onClick={onClick} tooltip={tooltip} style={{ opacity: disabled ? .45 : 1 }} />
@@ -286,10 +308,12 @@ function ActionsMenu({ open, onClose, anchor, items }) {
   );
 }
 
-/** Recent-files list + a path field: core.project.open {source:'path'}. */
-function OpenDialog({ open, qlc, onClose, onOpen }) {
+/** Recent-files list + a path field: core.project.open {source:'path'}; or a .qxw from this computer
+    (core.project.open {source:'upload'}, also by dropping the file on the window). */
+function OpenDialog({ open, qlc, onClose, onOpen, onUpload }) {
   const [recent, setRecent] = React.useState([]);
   const [path, setPath] = React.useState('');
+  const fileRef = React.useRef(null);
   React.useEffect(() => {
     if (!open) return;
     setPath('');
@@ -314,6 +338,12 @@ function OpenDialog({ open, qlc, onClose, onOpen }) {
         <span style={{ display: 'flex', alignItems: 'center', height: 26, background: 'var(--bg-control)', border: '1px solid var(--spin-border)', borderRadius: 'var(--radius-spin)', padding: '0 5px' }}>
           <CustomTextInput text={path} editing width="100%" height={22} placeholder="D:\shows\show.qxw" onChange={(e) => setPath(e.target.value)} onTextConfirmed={setPath}
             onKeyDown={(e) => { if (e.key === 'Enter') { const p = e.target.value.trim(); if (p) onOpen(p); } }} style={{ fontSize: 'var(--text-size-small)' }} />
+        </span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <GenericButton label="Open a file from this computer…" width={230} height={26} fontSize="var(--text-size-menubar)" onClick={() => fileRef.current && fileRef.current.click()} data-role="open-upload" />
+          <RobotoText label="or drop a .qxw project (or a .qxf fixture) on the window" fontSize="var(--text-size-menubar)" labelColor="var(--fg-light)" height="auto" wrapText />
+          <input ref={fileRef} type="file" accept=".qxw" style={{ display: 'none' }} data-role="open-upload-file"
+            onChange={(e) => { const f = e.target.files && e.target.files[0]; e.target.value = ''; if (f) onUpload(f); }} />
         </span>
       </div>
     </CustomPopupDialog>
@@ -381,28 +411,91 @@ function App() {
     }).catch(fail('Open file'));
   });
   const saveAs = (path) => { setDialog(null); qlc.call('core.project.saveAs', { target: 'serverPath', path }).catch(fail('Save project as')); };
+  /* A .qxw from this computer: core.project.open {source:'upload'}. The project has no path on the
+     QLC+ machine afterwards, so the next Save asks for one (Save As). */
+  const uploadProject = (file) => guarded('Open file', () => {
+    setDialog(null);
+    if (!qlc.online || !window.QLCReadFileBase64) return;
+    window.QLCReadFileBase64(file)
+      .then(b64 => qlc.call('core.project.open', { source: 'upload', fileName: file.name, contentBase64: b64 }))
+      .catch(fail('Open ' + file.name));
+  });
+  /* MainView.qml's "Drop a project or fixture file" area: the whole window. */
+  const [dropping, setDropping] = React.useState(false);
+  const isFileDrag = (e) => !!e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], 'Files') !== -1;
+  const onDragOver = (e) => { if (!isFileDrag(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = qlc.online ? 'copy' : 'none'; if (!dropping) setDropping(true); };
+  const onDragLeave = (e) => { if (e.currentTarget === e.target || !e.currentTarget.contains(e.relatedTarget)) setDropping(false); };
+  const onDrop = (e) => {
+    if (!isFileDrag(e)) return;
+    e.preventDefault();
+    setDropping(false);
+    const file = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (!file || !qlc.online) return;
+    const ext = file.name.toLowerCase().split('.').pop();
+    if (ext === 'qxw') uploadProject(file);
+    else if (ext === 'qxf') window.dispatchEvent(new CustomEvent('qlc-import-fixture-file', { detail: { file } }));
+    else setDialog({ kind: 'message', title: 'Drop a file', text: '"' + file.name + '" is neither a QLC+ project (.qxw) nor a fixture definition (.qxf).' });
+  };
 
+  /* App-level shortcuts: table-driven through window.QLCShortcuts (misc/shortcuts.jsx, rebindable in
+     the Keyboard shortcuts editor); a key-cast toast shows each one that fires. */
+  const SC = window.QLCShortcuts && window.QLCShortcuts.useShortcuts ? window.QLCShortcuts.useShortcuts() : null;
+  registeredScreens().forEach(s => { if (SC) SC.ensureScreenAction(s); });
+  const keysOf = (id, fallback) => (SC ? SC.hint(id) : fallback);
+  const clicked = (id, fn) => (...a) => { if (SC) SC.clickHint(id); return fn(...a); };
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    else if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {});
+  };
+  const actions = {
+    'context.switchFixturesAndFunctions': () => setCtx('fx'),
+    'context.switchVirtualConsole': () => setCtx('vc'),
+    'context.switchSimpleDesk': () => setCtx('sd'),
+    'context.switchIOManager': () => setCtx('io'),
+    'context.switchShowManager': () => { if (window.QLCScreens && window.QLCScreens.show) setCtx('show'); },
+    'app.save': save,
+    'app.saveProjectAs': () => { if (qlc.online) setDialog({ kind: 'saveAs' }); },
+    'app.openProject': () => { if (qlc.online) setDialog({ kind: 'open' }); },
+    'app.newProject': () => { if (qlc.online) newProject(); },
+    'app.undo': history.undo,
+    'app.redo': history.redo,
+    'app.redoAlt': history.redo,
+    'io.blackoutToggle': toggleBlackout,
+    'app.panic': stopAll,
+    'app.dmxDump': () => { if (qlc.online) window.dispatchEvent(new CustomEvent('qlc-open-dmx-dump')); },
+    'app.toggleFullscreen': toggleFullscreen,
+    'app.tapTempo': bpm.tap
+  };
+  const actionsRef = React.useRef(actions);
+  actionsRef.current = actions;
   React.useEffect(() => {
     const k = (e) => {
-      /* Space = tap tempo, unless a button (VC button, any <button>) has focus and Space is its press. */
-      const ae = document.activeElement;
-      const onButton = !!ae && (ae.tagName === 'BUTTON' || ae.getAttribute('role') === 'button');
-      if (e.key === ' ' && !e.ctrlKey && !isTyping() && !onButton && qlc.online && bpm.supported && !bpm.owned) { e.preventDefault(); bpm.tap(); return; }
-      if (!e.ctrlKey) return;
-      const map = { '1': 'fx', '2': 'vc', '3': 'sd', '4': 'io' };
-      registeredScreens().forEach(s => { if (s.hotkey) map[String(s.hotkey)] = s.id; });
-      if (map[e.key]) { e.preventDefault(); setCtx(map[e.key]); }
-      const key = e.key.toLowerCase();
-      if (key === 'b') { e.preventDefault(); toggleBlackout(); }
-      else if (key === 's' && !isTyping()) { e.preventDefault(); if (e.shiftKey) setDialog({ kind: 'saveAs' }); else save(); }
-      else if (key === 'o' && !isTyping()) { e.preventDefault(); if (qlc.online) setDialog({ kind: 'open' }); }
-      else if (key === '.') { e.preventDefault(); stopAll(); }
-      else if (key === 'z' && !isTyping()) { e.preventDefault(); if (e.shiftKey) history.redo(); else history.undo(); }
-      else if (key === 'y' && !isTyping()) { e.preventDefault(); history.redo(); }
+      if (!window.QLCShortcuts) return;
+      const id = window.QLCShortcuts.match(e, isTyping());
+      if (!id) return;
+      if (id === 'app.tapTempo') {
+        /* Space = tap tempo, unless a button (VC button, any <button>) has focus and Space is its press. */
+        const ae = document.activeElement;
+        const onButton = !!ae && (ae.tagName === 'BUTTON' || ae.getAttribute('role') === 'button');
+        if (onButton || !qlc.online || !bpm.supported || bpm.owned) return;
+      }
+      let run = actionsRef.current[id];
+      if (!run && id.indexOf('context.switch.') === 0) { const sid = id.slice('context.switch.'.length); run = () => setCtx(sid); }
+      if (!run) return;
+      e.preventDefault();
+      if (e.repeat && id !== 'app.tapTempo') return;
+      run();
+      window.QLCShortcuts.cast(id);
     };
     window.addEventListener('keydown', k);
     return () => window.removeEventListener('keydown', k);
-  }, [toggleBlackout, save, stopAll, history.undo, history.redo, bpm.tap, bpm.supported, qlc.online]);
+  }, [qlc.online, bpm.supported, bpm.owned]);
+  /* The Actions-menu "UI Settings" entry (misc/tools-misc.jsx) opens the same dialog as the gear. */
+  React.useEffect(() => {
+    const open = () => setUiSettings(true);
+    window.addEventListener('qlc-open-ui-settings', open);
+    return () => window.removeEventListener('qlc-open-ui-settings', open);
+  }, []);
 
   const screens = registeredScreens();
   const registered = screens.find(s => s.id === ctx);
@@ -438,45 +531,46 @@ function App() {
   ];
 
   return (
-    <ShortcutOverlay active={!!held} heldKey="Ctrl" legend="held — release to dismiss">
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', minHeight: 0, background: 'var(--bg-medium)', position: 'relative' }}>
+    <ShortcutOverlay active={!!held && (!SC || SC.hintsEnabled())} heldKey="Ctrl" legend="held — release to dismiss">
+      <div onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}
+        style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh / var(--ui-zoom, 1))', minHeight: 0, background: 'var(--bg-medium)', position: 'relative' }}>
         <ViewToolbar variant="main">
           <img src={D.icon('qlcplus')} alt="QLC+" style={{ width: 30, height: 30, marginLeft: 4, cursor: 'pointer', flex: 'none' }} onClick={() => setAbout(true)} />
           <span ref={menuAnchor} style={{ display: 'inline-flex', flex: 'none' }}>
             <IconButton faSource="fa_bars" faColor="var(--fg-main)" bgColor="transparent" borderWidth={0} checked={menu} tooltip="Actions menu" onClick={() => setMenu(!menu)} />
             <ActionsMenu open={menu} onClose={() => setMenu(false)} anchor={menuAnchor} items={menuItems} />
           </span>
-          {entry('fx', 'fixture', 'Fixtures & Functions', 'Ctrl 1')}
-          {entry('vc', 'virtualconsole', 'Virtual Console', 'Ctrl 2')}
-          {entry('sd', 'simpledesk', 'Simple Desk', 'Ctrl 3')}
-          {showScreen ? entry('show', showScreen.icon || 'showmanager', showScreen.label || 'Show Manager', showScreen.keys)
+          {entry('fx', 'fixture', 'Fixtures & Functions', keysOf('context.switchFixturesAndFunctions', 'Ctrl 1'))}
+          {entry('vc', 'virtualconsole', 'Virtual Console', keysOf('context.switchVirtualConsole', 'Ctrl 2'))}
+          {entry('sd', 'simpledesk', 'Simple Desk', keysOf('context.switchSimpleDesk', 'Ctrl 3'))}
+          {showScreen ? entry('show', showScreen.icon || 'showmanager', showScreen.label || 'Show Manager', keysOf('context.switchShowManager', showScreen.keys))
             : <MenuBarEntry imgSource={D.icon('showmanager')} entryText="Show Manager" disabled title="Show Manager — not available in the web UI yet" style={{ opacity: .5, cursor: 'default' }} />}
-          {entry('io', 'inputoutput', 'Input / Output', 'Ctrl 4')}
-          {screens.filter(s => s.id !== 'show').map(s => <React.Fragment key={s.id}>{entry(s.id, s.icon, s.label, s.keys)}</React.Fragment>)}
+          {entry('io', 'inputoutput', 'Input / Output', keysOf('context.switchIOManager', 'Ctrl 4'))}
+          {screens.filter(s => s.id !== 'show').map(s => <React.Fragment key={s.id}>{entry(s.id, s.icon, s.label, keysOf('context.switch.' + s.id, s.keys))}</React.Fragment>)}
           <ToolbarSpacer />
           <ConnectionBar />
           <span style={{ width: 1, alignSelf: 'stretch', margin: '6px 2px', background: 'var(--border-color-dark)' }} />
           <span style={{ flex: '0 1 170px', minWidth: 0, overflow: 'hidden' }} title={project && project.filePath ? project.filePath : ''}>
             <CustomTextInput text={fileName} width="100%" align="right" color="var(--fg-light)" />
           </span>
-          <ShortcutHint keys="Ctrl S" placement="corner">
-            <IconButton imgSource={D.icon('filesave')} disabled={!online} onClick={save}
+          <ShortcutHint keys={keysOf('app.save', 'Ctrl S')} placement="corner">
+            <IconButton imgSource={D.icon('filesave')} disabled={!online} onClick={clicked('app.save', save)}
               tooltip={online ? 'Save project' : 'Save project — connect first'} />
           </ShortcutHint>
-          <ShortcutHint keys="Ctrl Z" placement="corner">
-            <IconButton imgSource={D.icon('undo')} disabled={!online || history.supported === false || !history.canUndo} onClick={history.undo} tooltip={undoTip} />
+          <ShortcutHint keys={keysOf('app.undo', 'Ctrl Z')} placement="corner">
+            <IconButton imgSource={D.icon('undo')} disabled={!online || history.supported === false || !history.canUndo} onClick={clicked('app.undo', history.undo)} tooltip={undoTip} />
           </ShortcutHint>
-          <ShortcutHint keys="Ctrl Y" placement="corner">
-            <IconButton imgSource={D.icon('redo')} disabled={!online || history.supported === false || !history.canRedo} onClick={history.redo} tooltip={redoTip} />
+          <ShortcutHint keys={keysOf('app.redoAlt', 'Ctrl Y')} placement="corner">
+            <IconButton imgSource={D.icon('redo')} disabled={!online || history.supported === false || !history.canRedo} onClick={clicked('app.redoAlt', history.redo)} tooltip={redoTip} />
           </ShortcutHint>
           <span style={{ width: 1, alignSelf: 'stretch', margin: '6px 2px', background: 'var(--border-color-dark)' }} />
           <BpmControl bpmState={bpm} disabled={!online} />
           <BeatIndicator beat={bpm.beat} bpm={bpm.bpm} supported={bpm.supported} />
-          <ShortcutHint keys="Ctrl B" placement="corner">
-            <IconButton imgSource={D.icon('blackout')} checked={blackout} onClick={toggleBlackout}
+          <ShortcutHint keys={keysOf('io.blackoutToggle', 'Ctrl B')} placement="corner">
+            <IconButton imgSource={D.icon('blackout')} checked={blackout} onClick={clicked('io.blackoutToggle', toggleBlackout)}
               tooltip={online ? 'Blackout' : 'Blackout (local preview only)'} />
           </ShortcutHint>
-          <StopAllButton count={runningCount} disabled={!online || stopAllUnsupported} onClick={stopAll}
+          <StopAllButton count={runningCount} disabled={!online || stopAllUnsupported} onClick={clicked('app.panic', stopAll)} keys={keysOf('app.panic', 'Ctrl .')}
             tooltip={!online ? 'Stop all the running functions — connect first' : stopAllUnsupported ? 'Stop all the running functions — not available on this server' : 'Stop all the running functions' + (runningCount != null ? ' (' + runningCount + ' running)' : '')} />
           <GenericButton label={mode ? (mode === 'operate' ? 'Operate' : 'Design') : 'Mode'} width={72} height={26}
             fontSize="var(--text-size-menubar)" disabled={!mode} onClick={toggleMode}
@@ -486,6 +580,15 @@ function App() {
           <IconButton faSource="fa_gear" tooltip={UISettingsDialog ? 'UI Settings' : 'UI Settings — not available in the web UI'} disabled={!UISettingsDialog} onClick={() => setUiSettings(true)} />
         </ViewToolbar>
         {UISettingsDialog ? <UISettingsDialog open={uiSettings} onClose={() => setUiSettings(false)} qlc={qlc} /> : null}
+        {/* extension point: window.QLCAppOverlays = [Component({qlc, project, online, setCtx})], mounted at the window root
+            (dialogs opened from menu items / toolbar items / shortcuts, the key-cast toast) */}
+        {(window.QLCAppOverlays || []).map((C, i) => <C key={'ov' + i} qlc={qlc} project={project} online={online} setCtx={setCtx} />)}
+        {dropping ? (
+          <div data-role="drop-zone" style={{ position: 'absolute', inset: 8, zIndex: 300, pointerEvents: 'none', display: 'grid', placeItems: 'center',
+            border: '3px dashed var(--active-drop-area)', background: 'var(--dim-screen)' }}>
+            <RobotoText label={online ? 'Drop a project (.qxw) or fixture (.qxf) file' : 'Connect first to open a dropped file'} fontSize={24} height="auto" />
+          </div>
+        ) : null}
 
         <div style={{ position: 'relative', flex: 1, minHeight: 0 }}>
           <Screen />
@@ -496,7 +599,7 @@ function App() {
           ) : null}
         </div>
 
-        <OpenDialog open={!!dialog && dialog.kind === 'open'} qlc={qlc} onClose={() => setDialog(null)} onOpen={openProject} />
+        <OpenDialog open={!!dialog && dialog.kind === 'open'} qlc={qlc} onClose={() => setDialog(null)} onOpen={openProject} onUpload={uploadProject} />
         <SaveAsDialog open={!!dialog && dialog.kind === 'saveAs'} initialPath={project ? project.filePath || '' : ''} onClose={() => setDialog(null)} onSave={saveAs} />
         <CustomPopupDialog open={!!dialog && dialog.kind === 'confirm'} title="Your project has changes" width={420}
           message={'The current project has unsaved changes. Discard them and continue with "' + (dialog && dialog.label) + '"?'}

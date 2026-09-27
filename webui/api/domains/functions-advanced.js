@@ -186,6 +186,20 @@
 
       show: {
         /**
+         * ADR 0001 legacy beat-pseudo-count timelines. get: {showId?, bpm?} -> {creatorVersion,
+         * source: 'file'|'upload'|'none', shows: [{id, name, bpm, beatsDivision, itemCount}],
+         * preview?: [{name, oldStart, newStart, oldDuration, newDuration}]}.
+         * convert: {showId, bpm, baseRevision} -> {docRevision, itemsChanged} (functions.updated).
+         * dismiss: {showId} -> {} ("already correct", until the next project load).
+         * @see docs/api-spec/fragments/functions-advanced.yaml (method: functions.show.legacyTiming.*)
+         */
+        legacyTiming: {
+          get: function (params) { return self.call('functions.show.legacyTiming.get', params || {}); },
+          convert: function (params) { return self.call('functions.show.legacyTiming.convert', params); },
+          dismiss: function (params) { return self.call('functions.show.legacyTiming.dismiss', params); }
+        },
+
+        /**
          * Removes $length ms at $cursorTime, pulling/shrinking every item covering or after that
          * point on every track. Broadcasts functions.show.itemsChanged (RFC 6902 patch against
          * tracks[].items).

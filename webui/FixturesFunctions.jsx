@@ -458,6 +458,9 @@ function FixturesFunctions() {
   const allNodes = React.useMemo(() => flatten(fixturesRoot.concat(functionsRoot), []), [fixturesRoot, functionsRoot]);
   const selectedNodes = selected.map(id => allNodes.find(n => n.id === id)).filter(Boolean);
   const selectedFixtureIds = selectedNodes.filter(n => n.kind === 'fixture').map(n => n.fixtureId);
+  /* The current fixture selection, for the main-toolbar DMX dump (misc/tools-misc.jsx: "Dump the selected fixture channels"). */
+  window.QLCSelectedFixtureIds = selectedFixtureIds.map(String);
+  React.useEffect(() => () => { window.QLCSelectedFixtureIds = []; }, []);
   const selectedFunctionIds = selectedNodes.filter(n => n.kind === 'function').map(n => n.functionId);
   /* Select fixtures in the tree (from an editor or a group); an open function editor stays open. */
   const selectFixtures = (ids) => {
