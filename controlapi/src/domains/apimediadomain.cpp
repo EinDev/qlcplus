@@ -360,10 +360,21 @@ void ApiMediaDomain::registerScriptMethods()
             return;
 
         Script *script = static_cast<Script *>(function);
-        // appendData() does not bump the revision on its own (on scriptv4 it
-        // also runs the legacy-syntax converter on the line)
-        script->appendData(params.value(QStringLiteral("line")).toString());
+        QString line = params.value(QStringLiteral("line")).toString();
+#ifdef QMLUI
+        // Verbatim append. scriptv4's appendData() is the loader's legacy
+        // "keyword:value" -> JavaScript converter and mangles a JavaScript
+        // line, so the body is rewritten through setData() instead - which
+        // also bumps the revision itself, like setSource above.
+        QString source = script->data();
+        if (source.isEmpty() == false && source.endsWith(QLatin1Char('\n')) == false)
+            source.append(QLatin1Char('\n'));
+        script->setData(source + line + QLatin1Char('\n'));
+#else
+        // appendData() does not bump the revision on its own
+        script->appendData(line);
         doc->setModified();
+#endif
 
         session->send(ApiEnvelope::buildOkResponse(id, docRevisionResult(doc)));
 
@@ -495,10 +506,14 @@ void ApiMediaDomain::registerAudioMethods()
         Audio *audio = static_cast<Audio *>(function);
         quint32 ms = quint32(v.toDouble());
         // Both: the persisted Speed/Duration and the playback length the
-        // renderer stops at (Audio::setSourceFileName sets the pair too)
+        // renderer stops at (Audio::setSourceFileName sets the pair too).
+        // Function::setDuration() emits changed() -> one revision bump - but
+        // only when the value differs; setTotalDuration() never does.
+        bool bumped = audio->duration() != ms;
         audio->setDuration(ms);
         audio->setTotalDuration(ms);
-        doc->setModified();
+        if (bumped == false)
+            doc->setModified();
 
         session->send(ApiEnvelope::buildOkResponse(id, docRevisionResult(doc)));
 

@@ -37,7 +37,8 @@ class Script;
  *
  * All setters are §4a structural edits (baseRevision-gated, bump
  * docRevision, broadcast the matching functions.<type>.<prop>Changed event,
- * ungated). The list*/validate methods are plain queries.
+ * ungated). The listCommands/listCapabilities/validate methods are plain
+ * queries.
  *
  * Script on a qmlui build is the JavaScript scriptv4 (see
  * engine/src/scriptwrapper.h) - the keyword catalog, the syntax checker
