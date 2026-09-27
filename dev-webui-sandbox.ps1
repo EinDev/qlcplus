@@ -19,7 +19,9 @@
 .PARAMETER WebUiRoot   Directory served as the web UI (a worktree's webui\ folder).
 .PARAMETER ApiPort     WebSocket Control API port (must not be 9010).
 .PARAMETER WebUiPort   HTTP port for the web UI (must not be 9011).
-.PARAMETER Project     .qxw to load (default: the SF3 test scene). Copied + patch-stripped into the sandbox.
+.PARAMETER Project     .qxw to load. Copied + patch-stripped into the sandbox. Default: the test scene from
+                       $env:QLC_TEST_PROJECT, else "testProject" in the git-ignored dev-local.json at the
+                       repo root (see dev-local.example.json). Machine paths never go into the repo.
 .PARAMETER Stop        Only kill this sandbox's process (qlc-<Name>.exe) and exit.
 .PARAMETER NoLaunch    Prepare the sandbox but don't start it.
 .PARAMETER UserFixtureDir  Redirect the user fixture-definition folder (QLCPLUS_USER_FIXTURE_DIR) for the
@@ -40,7 +42,7 @@ param(
     [string]$WebUiRoot = "",
     [int]$ApiPort = 0,
     [int]$WebUiPort = 0,
-    [string]$Project = "<shows-dir>\SF3.qxw",
+    [string]$Project = "",
     [switch]$Stop,
     [switch]$NoLaunch,
     [string]$UserFixtureDir = "",
@@ -65,6 +67,14 @@ if (-not $BuildDir -or -not $WebUiRoot -or $ApiPort -eq 0 -or $WebUiPort -eq 0) 
 }
 if ($ApiPort -eq 9010 -or $WebUiPort -eq 9011 -or $ApiPort -eq 9011 -or $WebUiPort -eq 9010) {
     throw "Ports 9010/9011 belong to the live instance - pick others"
+}
+if (-not $Project) { $Project = $env:QLC_TEST_PROJECT }
+if (-not $Project) {
+    $localCfg = Join-Path $PSScriptRoot "dev-local.json"
+    if (Test-Path $localCfg) { $Project = (Get-Content $localCfg -Raw | ConvertFrom-Json).testProject }
+}
+if (-not $Project) {
+    throw "No test project: pass -Project, set QLC_TEST_PROJECT, or copy dev-local.example.json to dev-local.json and fill in testProject"
 }
 $BuildDir = (Resolve-Path $BuildDir).Path
 $WebUiRoot = (Resolve-Path $WebUiRoot).Path

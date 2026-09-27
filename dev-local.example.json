@@ -1,0 +1,4 @@
+{
+  "_comment": "Copy to dev-local.json (git-ignored) and fill in machine-specific paths. Read by dev-webui-sandbox.ps1 and webui/tools/e2e/media.js; QLC_TEST_PROJECT overrides testProject.",
+  "testProject": "C:\\path\\to\\your\\test-scene.qxw"
+}

@@ -1,7 +1,7 @@
 /**
  * io domain — qlc.io.*
  * Generated from docs/api-spec/fragments/io.yaml (+ io-notes.md) in the QLC+ fork repo
- * (<repo> — read-only source, actively being implemented server-side
+ * (this repository — read-only source, actively being implemented server-side
  * right now, so treat every shape below as "true as of this reading," re-verify if it looks stale).
  * Thin pass-through wrappers only: this.call(method, params) / this.send(method, params).
  * No field remapping — params/result shapes here are exactly the spec's, using its own field

@@ -76,3 +76,6 @@ __pycache__/
 
 # web UI coverage tooling (dev-webui-coverage.ps1)
 webui/tools/coverage/node_modules/
+
+# machine-specific dev paths (see dev-local.example.json)
+/dev-local.json

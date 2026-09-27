@@ -1,6 +1,6 @@
 # Show Manager: live rescheduling of a playing Show - design
 
-Read-only investigation, 2026-09-15. All paths under `<repo>\`.
+Read-only investigation, 2026-09-15. All paths are relative to the repository root.
 
 Bug: while a Show plays, timeline edits (resize/move/add/delete clip, mute track, undo/redo) never reach the running `ShowRunner`. Root cause: the runner is a one-shot snapshot taken at `Show::preRun` and never re-read.
 

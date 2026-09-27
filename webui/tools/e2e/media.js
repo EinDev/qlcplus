@@ -22,7 +22,16 @@ fs.mkdirSync(OUT, { recursive: true });
 const SCRIPT_ID = '16', AUDIO_ID = '3', VIDEO_ID = '116';
 const SCRIPT_NAME = 'New Script 16', AUDIO_NAME = 'RzgSTjFyjEM.mp3', VIDEO_NAME = 'testStream.mp4';
 const SANDBOX_DIR = 'C:\\qlcsandbox\\media';
-const ASSET_DIR = '<shows-dir>/SF3.qxw.assets/335e235f3c78';
+// The test scene's asset store sits next to it (<project>.qxw.assets). Its path comes from
+// QLC_TEST_PROJECT or "testProject" in the git-ignored dev-local.json at the repo root, the same
+// source dev-webui-sandbox.ps1 uses, so no machine path is written into the repo.
+function testProject() {
+  if (process.env.QLC_TEST_PROJECT) return process.env.QLC_TEST_PROJECT;
+  try { return JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', '..', 'dev-local.json'), 'utf8')).testProject || ''; }
+  catch (e) { return ''; }
+}
+const ASSET_ROOT = testProject() ? (testProject() + '.assets').replace(/\\/g, '/') : '';
+const ASSET_DIR = ASSET_ROOT ? ASSET_ROOT + '/335e235f3c78' : '';
 
 let failures = 0;
 function check(cond, what) { if (cond) console.log('  ok   ' + what); else { failures++; console.log('  FAIL ' + what); } }
@@ -199,7 +208,7 @@ async function shot(page, name) { const f = path.join(OUT, name + '.png'); await
     const probe = await api.call('core.fs.list', { path: ASSET_DIR, extensions: caps.extensions }).catch(() => null);
     if (!probe || !probe.entries.some(e => e.name === AUDIO_NAME)) {
       // fall back to any audio file the browser can find under the SF3 assets
-      const root = await api.call('core.fs.list', { path: '<shows-dir>/SF3.qxw.assets' }).catch(() => ({ entries: [] }));
+      const root = ASSET_ROOT ? await api.call('core.fs.list', { path: ASSET_ROOT }).catch(() => ({ entries: [] })) : { entries: [] };
       for (const sub of root.entries.filter(e => e.isDir)) {
         const l = await api.call('core.fs.list', { path: sub.path, extensions: caps.extensions }).catch(() => ({ entries: [] }));
         if (l.entries.length) { pickDir = sub.path; pickName = l.entries[0].name; break; }

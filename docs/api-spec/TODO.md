@@ -181,7 +181,7 @@ bite:
       `functions-core-notes.md`.
 - [ ] **2.5 Undo/redo for API-driven edits.** Explicitly out of scope for
       the `io.*` vertical slice. The implementation plan
-      (`C:\Users\<user>\.claude\plans\magical-chasing-pnueli.md`) already
+      (a local planning note, not in the repo) already
       reasoned through *why not* to route through Tardis (it's a
       qmlui-only singleton coupled to `QQuickView`, and doesn't perform
       mutations, only records already-applied ones) and suggested a

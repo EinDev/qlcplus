@@ -78,7 +78,8 @@ param(
 $ErrorActionPreference = "Stop"
 
 $RepoRoot      = $PSScriptRoot
-$RepoRootMsys  = "<repo>"   # same path, msys2 form; adjust if the repo ever moves
+# Same path in MSYS2 form (D:\a\b -> /d/a/b), derived so no machine path lives in the repo.
+$RepoRootMsys  = "/" + $RepoRoot.Substring(0, 1).ToLower() + ($RepoRoot.Substring(2) -replace '\\', '/')
 $Bash          = "C:\msys64\usr\bin\bash.exe"
 $MingwBin      = "C:\msys64\mingw64\bin"
 $Gcov          = "C:/msys64/mingw64/bin/gcov.exe"
