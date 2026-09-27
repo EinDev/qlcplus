@@ -320,6 +320,53 @@ public:
     /** vc.speedDial.preset.update - applies whichever of "name" / "valueMs" are present in $patch to
      *  the Speed widget's preset $presetId (already known to exist). */
     virtual bool vcSpeedDialPresetUpdate(quint32 id, int presetId, const QJsonObject &patch, QString *error) = 0;
+    /*********************************************************************
+     * Widgets - layout / configuration slice (ApiVcLayoutDomain,
+     * controlapi/src/domains/apivclayoutdomain.cpp)
+     *
+     * Same assumptions as above: the domain has already verified the widget exists and has the
+     * matching wire type; every id in a list is known. Structural (§4a) methods do NOT bump Doc
+     * themselves - the domain calls Doc::setModified() and broadcasts after a true return.
+     *********************************************************************/
+
+    /** vc.frame.setPin - VCFrame::setPIN() with vc.page.setPin's semantics: $newPin is already
+     *  validated (empty or exactly 4 digits); returns false without changing anything when a PIN is
+     *  set and $currentPin doesn't match it. */
+    virtual bool vcFrameSetPin(quint32 id, const QString &currentPin, const QString &newPin) = 0;
+
+    /** vc.frame.validatePin - stateless check, true when the frame has no PIN or $pin matches. */
+    virtual bool vcFrameValidatePin(quint32 id, const QString &pin) const = 0;
+
+    /** vc.frame.cloneFirstPage - VCFrame::cloneFirstPage(). Returns false with *$error set when the
+     *  frame has a single page (the engine silently no-ops then). Fills $createdIds with the wire
+     *  ids of every widget the clone created. */
+    virtual bool vcFrameCloneFirstPage(quint32 id, QJsonArray &createdIds, QString *error) = 0;
+
+    /** vc.slider.setLevelChannels - bulk replace of VCSlider's Level-mode channel list; each entry
+     *  is {fixtureId (already validated to exist), channel (already validated < fixture channels)}. */
+    virtual bool vcSliderSetLevelChannels(quint32 id, const QList<QPair<quint32, quint32> > &channels, QString *error) = 0;
+
+    /** vc.slider.flash - VCSlider::flashFunction($on). Returns false (INVALID_STATE) when the slider
+     *  is not in Adjust mode with a controlled Function and adjustFlashEnabled. */
+    virtual bool vcSliderFlash(quint32 id, bool on, QString *error) = 0;
+
+    /** vc.widget.createFromFunctions - VCFrame::addFunctions(): one Button (hint "button"), one
+     *  Adjust-mode Slider ("adjustSlider") per Function, or one Cue List ("cueList", every id already
+     *  validated to be a Chaser). $functionIds have already been validated to exist. Returns the
+     *  new widgets' ids (empty with *$error set on failure). */
+    virtual QList<quint32> vcCreateWidgetsFromFunctions(int page, quint32 parentId, const QList<quint32> &functionIds,
+                                                        QPointF position, const QString &widgetHint, QString *error) = 0;
+
+    /** vc.widget.createMatrix - VCFrame::addWidgetMatrix(): a container Frame (or SoloFrame when
+     *  $soloFrame) holding $columns x $rows Buttons ($matrixType "Button") or Sliders ("Slider"), each
+     *  $widgetSize big. Returns every new id, the container first. */
+    virtual QList<quint32> vcCreateWidgetMatrix(int page, quint32 parentId, const QString &matrixType, QPointF position,
+                                                int columns, int rows, int widgetWidth, int widgetHeight,
+                                                bool soloFrame, QString *error) = 0;
+
+    /** vc.widget.usage - VirtualConsole::usageList($functionId): every widget id referencing that
+     *  Function (Button's functionID, Slider's controlledFunction, Cue List's chaser, Clock schedules). */
+    virtual QList<quint32> vcWidgetsUsingFunction(quint32 functionId) const = 0;
 };
 
 #endif

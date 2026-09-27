@@ -118,8 +118,20 @@ and a second tab checked for the pushed event:
   set / tap; multipage frame next / previous (the frame page flip bumps docRevision - the event
   carries the new one); Grand Master. Design-mode editing: add page / rename / delete, add widgets
   from the palette, move, resize, caption, attach function, Flash action, copy / paste, delete,
-  all persisted (reload shows the same layout). Widget *configuration* beyond Button, Slider,
-  Cue List and Speed dial is still view-only (server `vc.widget.setConfig` covers those types).
+  all persisted (reload shows the same layout). Widget configuration (2026-09-27, verified with
+  `webui/tools/e2e/vc-layout.js` against a sandbox): the complete Frame / Solo Frame panel
+  (header, enable button, collapse, multipage with page count / loop / page labels / "clone first
+  page", solo mixing and exclude-monitored, PIN setup) and the complete Button (attached function
+  with a Usage popup, pressure behaviour, startup intensity, stop-all fade, flash priority flags)
+  and Slider panels (display style, mode, function control with attribute picker and flash
+  button, Level-mode channel picker over the fixture list, click & go type, monitoring, value
+  range, catch-up, grand master modes); a Label has no settings beyond its style. PIN-protected
+  pages and frames ask for the PIN (unlocked per browser session). Edit-mode layout tools: align
+  left / right / top / bottom to the first selected widget, distribute horizontally / vertically
+  (3+ widgets in one frame), style a multi-selection in one `vc.widget.bulkStyle`, "Add widgets
+  from functions" (a button, adjust slider or cue list per picked function), "Create a widget
+  matrix" (buttons or sliders in a new frame / solo frame) and the Usage popup. XY Pad,
+  Animation, Audio Triggers and Clock configuration is still view-only.
 - **Cue List + Speed dial** (`webui/vc/vc-props-cue.jsx`, added 2026-09-27, verified against a
   `vccue` sandbox on ports 9170/9171 by `webui/tools/e2e/vc-cue.js`): cue list properties (attach /
   detach a Chaser or Sequence, Play/Pause+Stop vs Play/Stop+Pause layout, next/previous behaviour,

@@ -55,7 +55,7 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | Save project as (server-side path) | ActionsMenu.qml | live | - |
 | Import fixtures / functions from another project | ActionsMenu.qml, popup/PopupImportProject.qml, importmanager.cpp | missing | spec+S+U; nothing in the spec for project import |
 | Collect media into project (fork asset store) | ActionsMenu.qml, MainView.qml | missing | spec+S+U; only functions.media.reload is specced and registered |
-| Reload changed media | ActionsMenu.qml, MainView.qml | missing | U; functions.media.reload is registered per function, so a loop over Audio / Video functions works; the "changed on disk" detection shown in the QML result toast may need a spec addition |
+| Reload changed media | ActionsMenu.qml, MainView.qml | partial | U; per-function Reload button wired to functions.media.reload (not browser-verified); no bulk action or changed-on-disk list yet |
 | Remove unused media | ActionsMenu.qml, MainView.qml | missing | spec+S+U |
 | Undo / Redo (with history labels) | ActionsMenu.qml | live | - |
 | Blackout toggle (Ctrl+B) | MainView.qml | live | - |
@@ -164,11 +164,11 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | RGB Matrix editor: fixture group, algorithm, colours, blend / control mode, speed, preview | fixturesfunctions/RGBMatrixEditor.qml, fixturesfunctions/RGBMatrixPreview.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/rgbmatrix.js; Beats tempo preview approximated at 500 ms |
 | RGB Matrix editor: script algorithm properties, text / image / animation parameters, font | fixturesfunctions/RGBMatrixEditor.qml | partial | U; list/range script properties, text, font family and text animation live (sandbox 2026-09-27); Image parameters, font size/bold/italic, offsets, float/string properties implemented + server-tested, not exercised in the browser; image path / font are server-side text fields |
 | RGB Matrix editor: save this matrix to a Sequence | fixturesfunctions/RGBMatrixEditor.qml | missing | spec+S+U |
-| Script editor: edit source, syntax check, insert command at cursor, fixture / function trees | fixturesfunctions/ScriptEditor.qml | missing | S: functions.script.setSource, functions.script.validate, functions.script.listCommands, functions.script.appendLine |
-| Audio editor: file, output device, volume, fade in / out, looped / single shot, mute, file info | fixturesfunctions/AudioEditor.qml | missing | S: functions.audio.setSource, functions.audio.setDevice, functions.audio.setVolume, functions.audio.setDuration, functions.audio.listCapabilities; file path is server-side |
-| Audio editor: detect BPM, replace file (fork media store) | fixturesfunctions/AudioEditor.qml | missing | spec+S+U |
-| Video editor: file / URL, output screen, windowed / fullscreen, geometry, rotation, layer, looped, mute | fixturesfunctions/VideoEditor.qml, fixturesfunctions/VideoContext.qml | missing | S: functions.video.setSource, functions.video.setScreenTarget, functions.video.setGeometry, functions.video.setRotation, functions.video.setLayer, functions.video.listCapabilities |
-| Video editor: Spout output mode, sender name / size, replace file (fork) | fixturesfunctions/VideoEditor.qml | missing | spec+S+U; the Spout window itself is desktop-only, its configuration is document state |
+| Script editor: edit source, syntax check, insert command at cursor, fixture / function trees | fixturesfunctions/ScriptEditor.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/media.js; the QML side trees are replaced by function / fixture ID pickers |
+| Audio editor: file, output device, volume, fade in / out, looped / single shot, mute, file info | fixturesfunctions/AudioEditor.qml | live | - ; sandbox 2026-09-27; mute is read-only (no API setter); media info needs the decoder plugins (absent in the sandbox) |
+| Audio editor: detect BPM, replace file (fork media store) | fixturesfunctions/AudioEditor.qml | partial | spec+S+U for Detect BPM (no method); Replace file live (sandbox 2026-09-27, media store copy + origin recorded) |
+| Video editor: file / URL, output screen, windowed / fullscreen, geometry, rotation, layer, looped, mute | fixturesfunctions/VideoEditor.qml, fixturesfunctions/VideoContext.qml | live | - ; sandbox 2026-09-27; volume / mute read-only (no API setter) |
+| Video editor: Spout output mode, sender name / size, replace file (fork) | fixturesfunctions/VideoEditor.qml | partial | spec+S+U for sender name / size (read-only); Spout selectable via outputMode and Replace file live (sandbox 2026-09-27) |
 | Show function: edit on the timeline | fixturesfunctions/FunctionManager.qml | missing | S: functions.show.*; see Show Manager section |
 | Adjust a running function's intensity attribute | FunctionDelegate.qml (via the VC "Adjust" slider mode), functions.adjustAttribute | missing | S: functions.adjustAttribute |
 | Show Wizard (stage wizard: show type, fixture roles, venue, effects, controller, generate) | fixturesfunctions/RightPanel.qml, stagewizard/ShowWizard.qml, stagewizard/WizardStep1ShowType.qml ... WizardStep6Summary.qml | missing | spec+S+U; the generator runs in the desktop process |
@@ -198,15 +198,15 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | Qt UI action | Where in qmlui (file) | Web UI status | Blocker / notes |
 | --- | --- | --- | --- |
 | See pages and switch page | virtualconsole/VirtualConsole.qml | live | - |
-| Enter a page PIN when the page is protected | popup/PopupPINRequest.qml, virtualconsole/VirtualConsole.qml | missing | U; vc.page.validatePin is registered, VirtualConsole.jsx never calls it (only shows "PIN protected in the desktop app") |
-| Enter a frame PIN when a frame is protected | virtualconsole/VCFrameItem.qml, popup/PopupPINRequest.qml | missing | S: vc.frame.validatePin |
+| Enter a page PIN when the page is protected | popup/PopupPINRequest.qml, virtualconsole/VirtualConsole.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/vc-layout.js; lock glyph on the tab via vc.page.updated, prompt on switch |
+| Enter a frame PIN when a frame is protected | virtualconsole/VCFrameItem.qml, popup/PopupPINRequest.qml | live | - ; sandbox 2026-09-27; wrong PIN refused, correct PIN unlocks (the QML only checks page PINs, the web UI also locks frames) |
 | See widgets at their geometry, nesting, captions, colours, fonts | virtualconsole/VCPageArea.qml, virtualconsole/VCWidgetItem.qml | live | - |
 | Button: press, toggle, flash, state colouring | virtualconsole/VCButtonItem.qml | live | - |
-| Button: Blackout and Stop-all action buttons | virtualconsole/VCButtonItem.qml | partial | U; same vc.button.press path, but the README only verified Toggle and Flash |
-| Button: adjust function intensity on press (startup intensity) | virtualconsole/VCButtonItem.qml | partial | U; engine-side once configured, configuration row is in the editing section |
+| Button: Blackout and Stop-all action buttons | virtualconsole/VCButtonItem.qml | live | - ; sandbox 2026-09-27 (configured and pressed through the same vc.button.press path) |
+| Button: adjust function intensity on press (startup intensity) | virtualconsole/VCButtonItem.qml | live | - ; sandbox 2026-09-27; Enable + 50% configured, XML <Intensity>50 |
 | Slider / Knob: move, value pushed to every client | virtualconsole/VCSliderItem.qml, QLCPlusFader.qml, QLCPlusKnob.qml | live | - |
-| Slider: flash button ("Flash the controlled Function") | virtualconsole/VCSliderItem.qml | missing | S: vc.slider.flash |
-| Slider: monitor channel levels display | virtualconsole/VCSliderItem.qml | missing | S: vc.slider.monitorValueChanged (event) |
+| Slider: flash button ("Flash the controlled Function") | virtualconsole/VCSliderItem.qml | live | - ; sandbox 2026-09-27 via vc.slider.flash + Show flash button config |
+| Slider: monitor channel levels display | virtualconsole/VCSliderItem.qml | partial | U; monitor mode configurable and on/off exercised (sandbox 2026-09-27); the live monitorValueChanged feed is not shown in the widget body yet |
 | Cue list: play / pause / stop / next / previous / jump to step, current step highlighted | virtualconsole/VCCueListItem.qml | live | - |
 | Cue list: side fader (crossfade / steps) | virtualconsole/VCCueListItem.qml | missing | S: vc.cueList.setSideFaderLevel, vc.cueList.sideFaderChanged |
 | XY pad: move the position | virtualconsole/VCXYPadItem.qml | live | - |
@@ -215,7 +215,7 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | Speed dial: set time, tap | virtualconsole/VCSpeedDialItem.qml | live | - |
 | Speed dial: plus / minus buttons, multiplier factors, apply, reset tap, preset buttons | virtualconsole/VCSpeedDialItem.qml, virtualconsole/VCSpeedDialPresets.qml | missing | S: vc.speedDial.apply, vc.speedDial.setFactor, vc.speedDial.resetTap, vc.speedDial.preset.update, vc.speedDial.factorChanged; note the UI also calls vc.speedDial.setCurrentTime, which is in neither spec nor server |
 | Frame / Solo frame: multipage next / previous | virtualconsole/VCFrameItem.qml | live | - |
-| Frame: enable / disable, expand / collapse | virtualconsole/VCFrameItem.qml | missing | S: vc.widget.setConfig for Frame (isCollapsed); the runtime enable / disable state is not specced (spec+S+U) |
+| Frame: enable / disable, expand / collapse | virtualconsole/VCFrameItem.qml | partial | U; enable button + header configured and exercised (sandbox 2026-09-27); Collapsed toggle server-tested only |
 | Frame: page shortcuts by keyboard | virtualconsole/VCFrameProperties.qml | missing | S: vc.widget.keySequence.set; see editing section |
 | Label | virtualconsole/VCLabelItem.qml | live | - |
 | Clock: clock / stopwatch / countdown display, play / pause, reset, enable schedule | virtualconsole/VCClockItem.qml | missing | S: vc.clock.playPause, vc.clock.reset, vc.clock.timeChanged; view-only body |
@@ -232,34 +232,34 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | Toggle widget edit mode | virtualconsole/VCRightPanel.qml | live | - ; Design mode |
 | Page: add (left / right), rename, delete | virtualconsole/VCPageProperties.qml | live | - ; left / right placement not checked |
 | Page: width / height | virtualconsole/VCPageProperties.qml | missing | spec+S+U; vc.page.* carries no size |
-| Page: set / change PIN | virtualconsole/VCPageProperties.qml, popup/PopupPINSetup.qml | missing | U; vc.page.setPin is registered, not called |
+| Page: set / change PIN | virtualconsole/VCPageProperties.qml, popup/PopupPINSetup.qml | live | - ; sandbox 2026-09-27 via vc.page.setPin (+ new vc.page.updated event) |
 | Add widget from the palette (Frame, Solo Frame, Button, Slider, Knob, Cue List, Speed, XY Pad, Animation, Label, Audio Triggers, Clock) | virtualconsole/WidgetsList.qml, virtualconsole/WidgetDragItem.qml | live | - ; click-to-place instead of drag |
-| Add a Button matrix / Slider matrix (rows, columns, frame type) | virtualconsole/WidgetsList.qml, virtualconsole/VirtualConsole.qml ("Widget matrix setup") | missing | S: vc.widget.createMatrix |
-| Create widgets by dropping functions on the page | virtualconsole/VCPageArea.qml, virtualconsole/VCRightPanel.qml (Function Manager panel) | missing | S: vc.widget.createFromFunctions; workaround is add widget + attach function |
+| Add a Button matrix / Slider matrix (rows, columns, frame type) | virtualconsole/WidgetsList.qml, virtualconsole/VirtualConsole.qml ("Widget matrix setup") | live | - ; sandbox 2026-09-27 (3x3 button matrix through the dialog; slider / solo-frame variants server-tested) |
+| Create widgets by dropping functions on the page | virtualconsole/VCPageArea.qml, virtualconsole/VCRightPanel.qml (Function Manager panel) | live | - ; sandbox 2026-09-27 as an "Add widgets from functions" dialog over vc.widget.createFromFunctions (3 scenes -> 3 buttons); adjust-slider / cue-list hints server-tested |
 | Move / resize widgets, snapping toggle | virtualconsole/VCWidgetItem.qml, virtualconsole/VirtualConsole.qml | live | - |
 | Copy / cut / paste / delete widgets | virtualconsole/VCRightPanel.qml | live | - ; cut is copy + delete |
 | Widget caption | virtualconsole/VCWidgetProperties.qml | live | - |
 | Widget foreground / background colour, font, bold | virtualconsole/VCWidgetProperties.qml | partial | U; controls present in vc-edit.jsx, not in the README verified list |
 | Widget background image | virtualconsole/VCWidgetProperties.qml | missing | U; VcWidgetStyle has backgroundImage (server-side path) |
 | Widget z-index | virtualconsole/VCWidgetProperties.qml | missing | U; VcWidgetStyle has zIndex |
-| Align selected widgets left / right / top / bottom | virtualconsole/VCWidgetProperties.qml | missing | S: vc.widget.align |
-| Distribute selected widgets horizontally / vertically | virtualconsole/VCWidgetProperties.qml | missing | S: vc.widget.distribute |
-| Bulk style on a multi-selection (caption, colours, font) | virtualconsole/VCWidgetProperties.qml | missing | S: vc.widget.bulkStyle |
+| Align selected widgets left / right / top / bottom | virtualconsole/VCWidgetProperties.qml | partial | U; top / left exercised (sandbox 2026-09-27), right / bottom server-tested only; selection must share one parent (INVALID_PARAMS otherwise, by design) |
+| Distribute selected widgets horizontally / vertically | virtualconsole/VCWidgetProperties.qml | partial | U; horizontal exercised (sandbox 2026-09-27), vertical server-tested only |
+| Bulk style on a multi-selection (caption, colours, font) | virtualconsole/VCWidgetProperties.qml | partial | U; caption exercised via one vc.widget.bulkStyle (sandbox 2026-09-27); colours / font server-tested only |
 | Widget presets (save / apply / remove a style preset) | virtualconsole/VCWidgetProperties.qml | missing | S: vc.widget.preset.add, vc.widget.preset.apply, vc.widget.preset.remove |
 | External controls: add / remove an input source, auto-detect, manual selection | ExternalControls.qml, ExternalControlDelegate.qml, popup/PopupManualInputSource.qml | missing | S: vc.widget.inputSource.set, vc.widget.inputSource.remove, vc.widget.inputDetect.start, vc.widget.inputDetect.stop |
 | External controls: custom feedback values / colours per input source | popup/PopupCustomFeedback.qml | missing | S: vc.widget.inputSource.set (carries feedback fields) |
 | External controls: add / remove a keyboard combination, auto-detect | ExternalControls.qml, KeyboardSequenceDelegate.qml | missing | S: vc.widget.keySequence.set, vc.widget.keySequence.remove |
 | Button properties: attached function, pressure behaviour (Toggle / Flash / Blackout / Stop all) | virtualconsole/VCButtonProperties.qml | live | - |
-| Button properties: flash override priority / force LTP, stop-all fade out, adjust function intensity | virtualconsole/VCButtonProperties.qml | missing | U; VcButtonConfig has flashOverrides, flashForceLTP, stopAllFadeOutTime, startupIntensityEnabled, startupIntensity |
-| Slider properties: display style (DMX / percent, normal / inverted, slider / knob), mode (Level / Adjust / Submaster / Grand Master), value limits | virtualconsole/VCSliderProperties.qml | partial | U; controls present in vc-edit.jsx and vc.widget.setConfig covers Slider, only caption / attach / Flash were live-verified |
-| Slider properties: Level mode channel list (add / remove, all / intensity / RGB / gobo groups) | virtualconsole/VCSliderProperties.qml | missing | S: vc.slider.setLevelChannels |
-| Slider properties: monitor channel levels, catch up with external input | virtualconsole/VCSliderProperties.qml | missing | U; VcSliderConfig has monitorEnabled and catchValues |
-| Slider properties: click & go button type | virtualconsole/VCSliderProperties.qml | missing | spec+S+U; not in VcSliderConfig |
-| Slider properties: Function Control (Adjust) mode - attached function and attribute | virtualconsole/VCSliderProperties.qml | missing | spec+S+U; VcSliderConfig has no functionID / attribute |
-| Slider properties: Grand Master mode (value / channel mode) | virtualconsole/VCSliderProperties.qml | missing | S: io.grandMaster.setMode |
-| Slider properties: show flash button | virtualconsole/VCSliderProperties.qml | missing | spec+S+U; not in VcSliderConfig |
+| Button properties: flash override priority / force LTP, stop-all fade out, adjust function intensity | virtualconsole/VCButtonProperties.qml | live | - ; sandbox 2026-09-27, every VcButtonConfig field exercised |
+| Slider properties: display style (DMX / percent, normal / inverted, slider / knob), mode (Level / Adjust / Submaster / Grand Master), value limits | virtualconsole/VCSliderProperties.qml | partial | U; Level and Adjust modes exercised (sandbox 2026-09-27); Submaster / Grand Master, knob / percent / inverted radios and range limits server-tested only |
+| Slider properties: Level mode channel list (add / remove, all / intensity / RGB / gobo groups) | virtualconsole/VCSliderProperties.qml | live | - ; sandbox 2026-09-27; channel picker over fixtures.list (expand fixture, tick channels), vc.slider.setLevelChannels; group shortcuts (all / intensity / RGB / gobo) not offered |
+| Slider properties: monitor channel levels, catch up with external input | virtualconsole/VCSliderProperties.qml | live | - ; sandbox 2026-09-27 (Monitor on/off/on, catch-up) |
+| Slider properties: click & go button type | virtualconsole/VCSliderProperties.qml | partial | U; type combobox implemented (server-tested); no colour / preset picker UI for it |
+| Slider properties: Function Control (Adjust) mode - attached function and attribute | virtualconsole/VCSliderProperties.qml | live | - ; sandbox 2026-09-27 (function picker + attribute + Show flash button) |
+| Slider properties: Grand Master mode (value / channel mode) | virtualconsole/VCSliderProperties.qml | partial | U; GM modes in VcSliderConfig, server-tested only; io.grandMaster.setMode is another slice |
+| Slider properties: show flash button | virtualconsole/VCSliderProperties.qml | live | - ; sandbox 2026-09-27 |
 | Cue list properties: attached chaser, next / previous behaviour, playback layout, side fader mode | virtualconsole/VCCueListProperties.qml | missing | S: vc.widget.setConfig for CueList (VcCueListConfig is specced) |
-| Frame properties: header, enable button, pages (count, labels, loop, clone first page), shortcut names, solo options | virtualconsole/VCFrameProperties.qml | missing | S: vc.widget.setConfig for Frame / SoloFrame, vc.frame.cloneFirstPage, vc.frame.setPin |
+| Frame properties: header, enable button, pages (count, labels, loop, clone first page), shortcut names, solo options | virtualconsole/VCFrameProperties.qml | live | - ; sandbox 2026-09-27; pages 3, label, circular scrolling, enable button, header, clone first page, solo exclude-monitored + mixing; Collapsed server-tested only |
 | XY pad properties: fixtures / heads (add, remove, pan-tilt range, reverse), axis ranges, inverted Y, floor control, display units | virtualconsole/VCXYPadProperties.qml | missing | S: vc.widget.setConfig for XYPad, vc.xyPad.fixture.add, vc.xyPad.fixture.remove, vc.xyPad.setHeadsRange |
 | XY pad properties: presets (create from position, drop Scene / EFX / fixture group, rename, reorder, remove) | virtualconsole/VCXYPadPresets.qml | missing | S: vc.xyPad.preset.move, vc.xyPad.preset.rename (add / remove not specced: spec+S+U) |
 | Speed dial properties: functions list, multipliers, dial time range, visibility of parts, tap controls BPM, reset on change | virtualconsole/VCSpeedDialProperties.qml | missing | S: vc.widget.setConfig for Speed (VcSpeedDialConfig is specced) |
@@ -268,7 +268,7 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | Animation properties: attached function, visibility, instant changes, presets list (colour / text / algorithm presets) | virtualconsole/VCAnimationProperties.qml, virtualconsole/VCAnimationPresets.qml, popup/PopupAnimationPreset.qml | missing | S: vc.widget.setConfig for Animation, vc.animation.preset.move (preset add / remove not specced: spec+S+U) |
 | Audio triggers properties: number of bars, per-bar type (DMX / function / widget), thresholds, targets | virtualconsole/VCAudioTriggersProperties.qml | missing | S: vc.widget.setConfig for AudioTriggers, vc.audioTriggers.setBarConfig |
 | Label properties (caption / style only) | virtualconsole/VCLabelItem.qml | live | - ; generic caption / style rows |
-| Widget usage (functions referenced by a widget) | virtualconsole/VCWidgetProperties.qml, UsageList.qml | missing | S: vc.widget.usage |
+| Widget usage (functions referenced by a widget) | virtualconsole/VCWidgetProperties.qml, UsageList.qml | live | - ; sandbox 2026-09-27, Usage popup over vc.widget.usage |
 | Function Manager side panel inside the VC (browse functions to attach) | virtualconsole/VCRightPanel.qml | live | - ; the FunctionPicker in the properties panel |
 
 ## Simple Desk
@@ -376,7 +376,7 @@ duplicate a feature row above say so.
 | Custom feedback | popup/PopupCustomFeedback.qml | missing | S: vc.widget.inputSource.set, io.inputProfile.save |
 | DMX channel dump | popup/PopupDMXDump.qml | partial | U for the target Scene, spec+S+U for the filters |
 | Disclaimer | popup/PopupDisclaimer.qml | n/a | - ; desktop first-run notice |
-| Folder browser (server-side file picker) | popup/PopupFolderBrowser.qml | partial | U; the web UI takes a typed server path plus recent files, no directory listing (spec+S+U if a real browser is wanted) |
+| Folder browser (server-side file picker) | popup/PopupFolderBrowser.qml | live | - ; sandbox 2026-09-27 as window.ServerFileBrowser over core.fs.list, used by the Audio / Video editors; the Open-project dialog still takes a typed path plus recent files |
 | Import from project | popup/PopupImportProject.qml | missing | spec+S+U |
 | Input channel editor | popup/PopupInputChannelEditor.qml | missing | S: io.inputProfile.save |
 | Enter a number (select every Nth) | popup/PopupInputNumber.qml | missing | U |
@@ -386,8 +386,8 @@ duplicate a feature row above say so.
 | Network client setup | popup/PopupNetworkClient.qml | n/a | - ; the web UI is the remote |
 | Client access request | popup/PopupNetworkConnect.qml | n/a | - ; host session |
 | Network server setup | popup/PopupNetworkServer.qml | n/a | - ; host process settings |
-| Page / frame PIN request | popup/PopupPINRequest.qml | missing | U for pages (vc.page.validatePin registered); S: vc.frame.validatePin for frames |
-| PIN setup | popup/PopupPINSetup.qml | missing | U for pages (vc.page.setPin registered); S: vc.frame.setPin for frames |
+| Page / frame PIN request | popup/PopupPINRequest.qml | live | - ; sandbox 2026-09-27 |
+| PIN setup | popup/PopupPINSetup.qml | live | - ; sandbox 2026-09-27 (frame via dialog, page via vc.page.setPin) |
 | Rename items with numbering | popup/PopupRenameItems.qml | missing | U |
 | Spout size mismatch | popup/PopupSpoutSizeMismatch.qml | missing | spec+S+U; duplicate of the track Spout row |
 | Track Spout output size | popup/PopupTrackSpoutSize.qml | missing | spec+S+U; duplicate of the track Spout row |
@@ -425,8 +425,8 @@ the total is larger than the number of distinct actions). Recompute after editin
 
 | Status | Rows |
 | --- | --- |
-| live | 87 |
-| partial | 23 |
-| missing | 182 |
+| live | 112 |
+| partial | 31 |
+| missing | 149 |
 | n/a | 22 |
 | total | 314 |

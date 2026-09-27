@@ -19,6 +19,7 @@
 #include <QJsonArray>
 #include <QJsonValue>
 #include <QSet>
+#include <algorithm>
 
 #include "fakevchost.h"
 
@@ -171,6 +172,8 @@ QJsonObject FakeVcHost::widgetDetailToJson(const VcWidgetState &w) const
     // Like App's speedDialConfigToJson(): the preset list rides along read-only inside typeConfig.
     if (PresetWidgetTypes.contains(w.widgetType))
         typeConfig.insert(QStringLiteral("presets"), w.presets);
+    if (ContainerWidgetTypes.contains(w.widgetType))
+        typeConfig.insert(QStringLiteral("hasPin"), w.framePin.isEmpty() == false); // read-only, like App's frameConfigToJson()
     obj.insert(QStringLiteral("typeConfig"), typeConfig);
     obj.insert(QStringLiteral("inputSources"), QJsonArray());
     obj.insert(QStringLiteral("keySequences"), QJsonArray());
@@ -373,16 +376,23 @@ quint32 FakeVcHost::vcCreateWidget(const QString &widgetType, int page, quint32 
 {
     Q_UNUSED(error)
 
+    quint32 id = addWidget(widgetType, page, parentId, geometryFromJson(geometry), QString(), typeConfig);
+    if (style.isEmpty() == false)
+        applyStyleFromJson(m_widgets[id], style);
+    return id;
+}
+
+quint32 FakeVcHost::addWidget(const QString &widgetType, int page, quint32 parentId, const QRectF &geometry,
+                              const QString &caption, const QJsonObject &typeConfig)
+{
     VcWidgetState w;
     w.id = m_nextWidgetId++;
     w.widgetType = widgetType;
     w.page = page;
     w.parentId = parentId;
-    w.geometry = geometryFromJson(geometry);
-    if (style.isEmpty() == false)
-        applyStyleFromJson(w, style);
+    w.geometry = geometry;
+    w.caption = caption;
     w.typeConfig = typeConfig;
-
     m_widgets.insert(w.id, w);
     return w.id;
 }
@@ -777,6 +787,196 @@ QJsonObject FakeVcHost::vcFrameSnapshot(quint32 id) const
     obj.insert(QStringLiteral("currentPage"), w.currentPage);
     obj.insert(QStringLiteral("multipage"), w.typeConfig.value(QStringLiteral("multiPageMode")).toBool(false));
     return obj;
+}
+
+/*****************************************************************************
+ * Widgets - layout / configuration slice (ApiVcLayoutDomain)
+ *****************************************************************************/
+
+bool FakeVcHost::vcFrameSetPin(quint32 id, const QString &currentPin, const QString &newPin)
+{
+    auto it = m_widgets.find(id);
+    if (it == m_widgets.end())
+        return false;
+    VcWidgetState &w = it.value();
+    if (w.framePin.isEmpty() == false && w.framePin != currentPin)
+        return false;
+    w.framePin = newPin;
+    return true;
+}
+
+bool FakeVcHost::vcFrameValidatePin(quint32 id, const QString &pin) const
+{
+    auto it = m_widgets.constFind(id);
+    if (it == m_widgets.constEnd())
+        return false;
+    return it.value().framePin.isEmpty() || it.value().framePin == pin;
+}
+
+bool FakeVcHost::vcFrameCloneFirstPage(quint32 id, QJsonArray &createdIds, QString *error)
+{
+    auto it = m_widgets.constFind(id);
+    if (it == m_widgets.constEnd())
+        return false;
+    const VcWidgetState frame = it.value();
+    int pages = frameTotalPages(frame);
+    if (pages < 2)
+    {
+        if (error) *error = QStringLiteral("Frame has a single page - nothing to clone onto");
+        return false;
+    }
+
+    // The fake has no per-child frame page, so "page 0's children" is simply every direct child.
+    QList<VcWidgetState> children;
+    for (auto c = m_widgets.constBegin(); c != m_widgets.constEnd(); ++c)
+    {
+        if (c.value().parentId == id)
+            children.append(c.value());
+    }
+    for (int pg = 1; pg < pages; pg++)
+    {
+        for (const VcWidgetState &child : children)
+        {
+            quint32 newId = addWidget(child.widgetType, child.page, id, child.geometry, child.caption, child.typeConfig);
+            createdIds.append(QString::number(newId));
+        }
+    }
+    return true;
+}
+
+bool FakeVcHost::vcSliderSetLevelChannels(quint32 id, const QList<QPair<quint32, quint32> > &channels, QString *error)
+{
+    Q_UNUSED(error)
+    auto it = m_widgets.find(id);
+    if (it == m_widgets.end())
+        return false;
+
+    QJsonArray arr;
+    for (const auto &ch : channels)
+    {
+        QJsonObject entry;
+        entry.insert(QStringLiteral("fixtureId"), QString::number(ch.first));
+        entry.insert(QStringLiteral("channel"), int(ch.second));
+        arr.append(entry);
+    }
+    it.value().typeConfig.insert(QStringLiteral("levelChannels"), arr);
+    return true;
+}
+
+bool FakeVcHost::vcSliderFlash(quint32 id, bool on, QString *error)
+{
+    auto it = m_widgets.find(id);
+    if (it == m_widgets.end())
+        return false;
+    VcWidgetState &w = it.value();
+
+    if (w.typeConfig.value(QStringLiteral("sliderMode")).toString() != QStringLiteral("Adjust") ||
+        w.typeConfig.value(QStringLiteral("adjustFlashEnabled")).toBool() == false)
+    {
+        if (error) *error = QStringLiteral("Slider is not in Adjust mode with the flash button enabled");
+        return false;
+    }
+    if (w.typeConfig.value(QStringLiteral("controlledFunction")).toString().isEmpty())
+    {
+        if (error) *error = QStringLiteral("No function controlled by slider");
+        return false;
+    }
+    w.flashing = on;
+    return true;
+}
+
+QList<quint32> FakeVcHost::vcCreateWidgetsFromFunctions(int page, quint32 parentId, const QList<quint32> &functionIds,
+                                                        QPointF position, const QString &widgetHint, QString *error)
+{
+    Q_UNUSED(error)
+    QList<quint32> created;
+
+    if (widgetHint == QStringLiteral("cueList"))
+    {
+        // VCFrame::addFunctions() with Ctrl creates one Cue List per Chaser; the domain validated
+        // every id is a Chaser, so mirror the engine: one per function.
+        qreal x = position.x();
+        for (quint32 fid : functionIds)
+        {
+            QJsonObject cfg;
+            cfg.insert(QStringLiteral("chaserID"), QString::number(fid));
+            created.append(addWidget(QStringLiteral("CueList"), page, parentId, QRectF(x, position.y(), 300, 200),
+                                     QStringLiteral("Function %1").arg(fid), cfg));
+            x += 300;
+        }
+        return created;
+    }
+
+    bool slider = widgetHint == QStringLiteral("adjustSlider");
+    qreal x = position.x();
+    for (quint32 fid : functionIds)
+    {
+        QJsonObject cfg;
+        QString type;
+        QRectF geom;
+        if (slider)
+        {
+            type = QStringLiteral("Slider");
+            cfg.insert(QStringLiteral("sliderMode"), QStringLiteral("Adjust"));
+            cfg.insert(QStringLiteral("controlledFunction"), QString::number(fid));
+            geom = QRectF(x, position.y(), 57, 151);
+        }
+        else
+        {
+            type = QStringLiteral("Button");
+            cfg.insert(QStringLiteral("functionID"), QString::number(fid));
+            cfg.insert(QStringLiteral("actionType"), QStringLiteral("Toggle"));
+            geom = QRectF(x, position.y(), 64, 64);
+        }
+        created.append(addWidget(type, page, parentId, geom, QStringLiteral("Function %1").arg(fid), cfg));
+        x += geom.width();
+    }
+    return created;
+}
+
+QList<quint32> FakeVcHost::vcCreateWidgetMatrix(int page, quint32 parentId, const QString &matrixType, QPointF position,
+                                                int columns, int rows, int widgetWidth, int widgetHeight,
+                                                bool soloFrame, QString *error)
+{
+    Q_UNUSED(error)
+    QList<quint32> created;
+
+    QRectF frameGeom(position.x(), position.y(), columns * widgetWidth + 8, rows * widgetHeight + 8);
+    QJsonObject frameCfg;
+    frameCfg.insert(QStringLiteral("showHeader"), false);
+    quint32 frameId = addWidget(soloFrame ? QStringLiteral("SoloFrame") : QStringLiteral("Frame"), page, parentId,
+                                frameGeom, QString(), frameCfg);
+    created.append(frameId);
+
+    QString childType = matrixType == QStringLiteral("Button") ? QStringLiteral("Button") : QStringLiteral("Slider");
+    for (int row = 0; row < rows; row++)
+    {
+        for (int col = 0; col < columns; col++)
+        {
+            created.append(addWidget(childType, page, frameId,
+                                     QRectF(4 + col * widgetWidth, 4 + row * widgetHeight, widgetWidth, widgetHeight),
+                                     QString(), QJsonObject()));
+        }
+    }
+    return created;
+}
+
+QList<quint32> FakeVcHost::vcWidgetsUsingFunction(quint32 functionId) const
+{
+    QString fid = QString::number(functionId);
+    QList<quint32> ids;
+    for (auto it = m_widgets.constBegin(); it != m_widgets.constEnd(); ++it)
+    {
+        const VcWidgetState &w = it.value();
+        // Same references VirtualConsole::usageList() checks: Button functionID, Slider
+        // controlledFunction, CueList chaserID (Clock schedules are not modelled by the fake).
+        if ((w.widgetType == QStringLiteral("Button") && w.typeConfig.value(QStringLiteral("functionID")).toString() == fid) ||
+            (w.widgetType == QStringLiteral("Slider") && w.typeConfig.value(QStringLiteral("controlledFunction")).toString() == fid) ||
+            (w.widgetType == QStringLiteral("CueList") && w.typeConfig.value(QStringLiteral("chaserID")).toString() == fid))
+            ids.append(w.id);
+    }
+    std::sort(ids.begin(), ids.end());
+    return ids;
 }
 
 /*****************************************************************************

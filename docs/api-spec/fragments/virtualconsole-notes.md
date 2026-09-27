@@ -192,6 +192,83 @@ the SF3 project. Spec changes made alongside, all additive:
 - Not covered by the headless `FakeVcHost` tests: the App-side config
   validation (enum spellings, Chaser existence) - that part was exercised
   in the sandbox only.
+## Layout / configuration slice - implemented (2026-09-27)
+
+`controlapi/src/domains/apivclayoutdomain.cpp` (a second class next to ApiVcDomain,
+same ApiVcHost seam) registers `vc.frame.setPin` / `vc.frame.validatePin` /
+`vc.frame.cloneFirstPage`, `vc.slider.setLevelChannels` / `vc.slider.flash`,
+`vc.widget.align` / `vc.widget.distribute` / `vc.widget.bulkStyle`,
+`vc.widget.createFromFunctions` / `vc.widget.createMatrix` and `vc.widget.usage`;
+`qmlui/app_apivcconfig_layout.cpp` implements `VcFrameConfig` / `VcSoloFrameConfig`
+in full, `qmlui/app_apivchost.cpp` the full `VcSliderConfig` (`VcButtonConfig` was
+already complete) and the host side of the new methods. Everything was exercised
+in a browser against a sandbox by `webui/tools/e2e/vc-layout.js`. Implementation
+facts and deviations:
+
+- **`vc.page.setPin` now broadcasts `vc.page.updated`** (new `VcPageUpdatedEvent`,
+  `{page: VcPage, docRevision}`). A page's `hasPin` is what every client draws on
+  the page tab and checks before showing the page, and nothing reported it - a
+  second browser kept a stale `vc.page.list` and never prompted. The PIN itself
+  is never broadcast. `vc.frame.setPin` reports the same way through
+  `vc.widget.configChanged` (the frame's `typeConfig.hasPin` flips); so do
+  `vc.slider.setLevelChannels` and `vc.frame.cloneFirstPage` (the latter on
+  `vc.widget.bulkUpdated`, frame first, then every copy - they are new widgets).
+- **The bulk creators broadcast on `vc.widget.bulkUpdated`, not `vc.widget.created`**,
+  exactly as `VcWidgetCreatedEvent`'s description already said (the coordinator's
+  slice brief said `created`; the spec won). Their `widgetIds` come from a
+  before/after diff of the widget map, because `VCFrame::addFunctions()` /
+  `addWidgetMatrix()` return void; the container frame is first in the list.
+  Both apply the VC's snapping to `position` like a drag would. `createMatrix`
+  validates `matrixSize` 1..100 per axis and `widgetSize` 1..1000 px
+  (PopupCreateMatrix.qml's ranges); `createFromFunctions` refuses unknown
+  function ids (`NOT_FOUND`) and, for `cueList`, anything that is not a Chaser
+  (`INVALID_PARAMS`) up front, because the engine silently skips them.
+- **`vc.widget.align` / `distribute` require one common parent** (`INVALID_PARAMS`
+  otherwise): `VcGeometry` is parent-relative, so "align to a widget in another
+  frame" has no page-space meaning - `VirtualConsole::setWidgetsAlignment()`'s
+  own comment calls its cross-frame behaviour "ignorant". The reference widget
+  never moves, sizes never change, `hcenter` / `vcenter` are implemented (the
+  QML tool only offers the four edges), and the geometry math runs in the domain
+  over `vcWidgetSnapshot()` + `vcRepositionWidgets()` - the QML helpers work on
+  the on-screen selection, not on ids.
+- **`vc.widget.usage`** is `VirtualConsole::usageList()` minus its `<None>`
+  placeholder: Button `functionID`, Slider `controlledFunction`, Cue List
+  `chaserID`, Clock schedules. Speed dial / animation references are not
+  covered by the engine helper either - reported as-is, not widened. Returns
+  full `VcWidgetDetail` entries (a superset of the `VcWidgetSummary` the spec
+  lists). An unknown function id is not an error (empty list).
+- **`vc.slider.flash`** is `INVALID_STATE` unless the slider is in Adjust mode
+  with `adjustFlashEnabled` and a controlled Function (the on-screen button
+  only exists then; the engine silently returns otherwise); disabled widgets
+  are refused like every other live method.
+- **`VcSliderConfig` cascade**: `VCSlider::setSliderMode()` resets both range
+  limits and the attribute, `setControlledFunction()` switches to Adjust, so a
+  patch is applied sliderMode -> controlledFunction -> controlledAttribute ->
+  everything else -> range limits last, whatever the key order. In Adjust mode
+  the limits are confined to the attribute's min..max (VCSliderProperties.qml
+  binds the spin boxes to `attributeMinValue/MaxValue`), in every other mode
+  they must be 0..255. `controlledAttribute` is validated against the Function
+  the slider will control after the patch. `cngPrimaryColor` / `cngSecondaryColor`
+  go through the single `setClickAndGoColors()` setter (the missing one keeps
+  its value), which also moves the fader to 128 and writes DMX - the same side
+  effect the Click & Go popup has. `levelChannels` inside `setConfig` is
+  validated like `vc.slider.setLevelChannels` (fixture exists, channel index
+  within it). A freshly created VCSlider starts in **Adjust** mode with
+  `controlledAttribute: -1`.
+- **`VcFrameConfig`**: `pageLabels` is a partial list (only the listed pages
+  are renamed), validated against the page count the same patch leaves behind;
+  the snapshot always carries exactly `totalPagesNumber` entries, filling
+  never-renamed pages with the engine's own "Page N" wording (the label map is
+  only populated once multipage was enabled). Shrinking `totalPagesNumber`
+  below `currentPage` also moves the current page (the engine would otherwise
+  hide every child with no page to show them on). `hasPin` is read-only in the
+  patch (`INVALID_PARAMS`), `soloframeMixing` / `excludeMonitoredFunctions` are
+  refused on a plain Frame. A Label accepts only an empty patch.
+- **PIN unlocks are client-side and per browser session**: `vc.frame.validatePin`
+  / `vc.page.validatePin` are stateless (`VCFrame::validatePIN()` would unlock
+  the frame for every client), the web UI keeps its own unlocked set. Note the
+  QML UI never checks a *frame's* PIN on screen at all (only pages prompt);
+  the web UI does lock a PIN-protected frame behind a prompt.
 
 ## Cross-domain touch points (things this fragment deliberately does NOT redefine)
 

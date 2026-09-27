@@ -24,13 +24,12 @@
  * substantial, self-contained slice of VC-facing code with its own small set of local JSON<->engine
  * conversion helpers.
  *
- * Scope note: vcSetWidgetConfig()/widgetTypeConfigToJson() below only understand VCButton and
- * VCSlider - the two widget types this project's own show file (SF3.qxw) actually uses through the
- * control API today. Every other widget type's type-specific config (VCXYPad, VCLabel, VCCueList,
- * VCAnimation, VCAudioTriggers, VCSpeedDial, VCClock, VCFrame's own multipage/PIN settings) is left
- * for a future pass, same spirit as ApiVcDomain's own header comment about deliberately-unregistered
- * vc.* methods - vcSetWidgetConfig() reports an explicit "not yet supported" error for them rather
- * than silently accepting and discarding the request.
+ * Scope note: vcSetWidgetConfig()/widgetTypeConfigToJson() below implement the full VcButtonConfig
+ * and VcSliderConfig schemas themselves; every other widget type's type-specific config lives in
+ * app_apivcconfig_{layout,cue,live}.cpp (see app_apivcconfig.h) - a type whose slice has not landed
+ * yet reports an explicit "not yet supported" error rather than silently accepting and discarding
+ * the request. The "layout / configuration slice" section at the very bottom holds the host side of
+ * ApiVcLayoutDomain (frame PIN / clone, slider level channels / flash, the bulk creators, usage).
  *
  * Live interaction (the "Widgets - live interaction" section at the bottom) is a separate, wider
  * slice: it drives VCButton/VCSlider/VCCueList/VCXYPad/VCSpeedDial/VCFrame exactly the way their QML
@@ -50,11 +49,13 @@
 #include <QPointF>
 #include <QPointer>
 #include <QSet>
+#include <algorithm>
 
 #include "app.h"
 #include "app_apivcconfig.h"
 #include "chaser.h"
 #include "chaserstep.h"
+#include "fixture.h"
 #include "function.h"
 #include "virtualconsole/virtualconsole.h"
 #include "virtualconsole/vcpage.h"
@@ -271,18 +272,68 @@ QJsonObject buttonConfigToJson(VCButton *b)
 }
 
 // --- VcSliderConfig ---
-// Scoped to the base fields only - levelChannels/controlledFunction/controlledAttribute/
-// adjustFlashEnabled/clickAndGoType/cngPrimaryColor/cngSecondaryColor/grandMasterValueMode/
-// grandMasterChannelMode/monitorEnabled are left for a future pass (several already have, or the
-// spec notes deserve, their own dedicated messages - see VcSliderConfig's own description in
-// docs/api-spec/fragments/virtualconsole.yaml).
+// The full VcSliderConfig schema (docs/api-spec/fragments/virtualconsole.yaml). Order matters when
+// several keys arrive in one patch, because VCSlider's setters cascade: setSliderMode() resets both
+// range limits to 0..255 and the controlled attribute to Intensity, and setControlledFunction()
+// switches the slider to Adjust mode (resetting again) - so the patch is applied as sliderMode ->
+// controlledFunction -> controlledAttribute -> everything else -> range limits last, whatever
+// order the JSON object's keys are in.
 
-bool applySliderConfig(VCSlider *s, const QJsonObject &patch, QString *error)
+bool parseLevelChannels(Doc *doc, const QJsonValue &value, QList<QPair<quint32, quint32> > &out, QString *error)
+{
+    if (value.isArray() == false)
+    {
+        if (error) *error = QStringLiteral("levelChannels must be an array of {fixtureId, channel}");
+        return false;
+    }
+    for (const QJsonValue &v : value.toArray())
+    {
+        QJsonObject entry = v.toObject();
+        bool ok = false;
+        quint32 fixtureId = entry.value(QStringLiteral("fixtureId")).toString().toUInt(&ok);
+        Fixture *fixture = ok ? doc->fixture(fixtureId) : nullptr;
+        if (fixture == nullptr)
+        {
+            if (error) *error = QStringLiteral("levelChannels: no such fixture '%1'").arg(entry.value(QStringLiteral("fixtureId")).toString());
+            return false;
+        }
+        QJsonValue chValue = entry.value(QStringLiteral("channel"));
+        if (chValue.isDouble() == false || chValue.toDouble() < 0 || chValue.toDouble() >= fixture->channels())
+        {
+            if (error) *error = QStringLiteral("levelChannels: fixture %1 has no channel %2").arg(fixtureId).arg(chValue.toDouble());
+            return false;
+        }
+        out.append(qMakePair(fixtureId, quint32(chValue.toInt())));
+    }
+    return true;
+}
+
+void replaceLevelChannels(VCSlider *s, const QList<QPair<quint32, quint32> > &channels)
+{
+    s->clearLevelChannels();
+    for (const auto &ch : channels)
+        s->addLevelChannel(ch.first, ch.second);
+}
+
+bool applySliderConfig(VCSlider *s, Doc *doc, const QJsonObject &patch, QString *error)
 {
     static const QSet<QString> knownKeys = {
         QStringLiteral("widgetStyle"), QStringLiteral("valueDisplayStyle"), QStringLiteral("invertedAppearance"),
         QStringLiteral("sliderMode"), QStringLiteral("catchValues"), QStringLiteral("rangeLowLimit"),
-        QStringLiteral("rangeHighLimit")
+        QStringLiteral("rangeHighLimit"), QStringLiteral("monitorEnabled"), QStringLiteral("levelChannels"),
+        QStringLiteral("controlledFunction"), QStringLiteral("controlledAttribute"), QStringLiteral("adjustFlashEnabled"),
+        QStringLiteral("clickAndGoType"), QStringLiteral("cngPrimaryColor"), QStringLiteral("cngSecondaryColor"),
+        QStringLiteral("grandMasterValueMode"), QStringLiteral("grandMasterChannelMode")
+    };
+    static const QHash<QString, VCSlider::ClickAndGoType> cngTypes = {
+        { QStringLiteral("None"), VCSlider::CnGNone }, { QStringLiteral("Colors"), VCSlider::CnGColors },
+        { QStringLiteral("Preset"), VCSlider::CnGPreset }
+    };
+    static const QHash<QString, GrandMaster::ValueMode> gmValueModes = {
+        { QStringLiteral("Limit"), GrandMaster::Limit }, { QStringLiteral("Reduce"), GrandMaster::Reduce }
+    };
+    static const QHash<QString, GrandMaster::ChannelMode> gmChannelModes = {
+        { QStringLiteral("Intensity"), GrandMaster::Intensity }, { QStringLiteral("AllChannels"), GrandMaster::AllChannels }
     };
     static const QHash<QString, VCSlider::SliderWidgetStyle> widgetStyles = {
         { QStringLiteral("Slider"), VCSlider::WSlider }, { QStringLiteral("Knob"), VCSlider::WKnob }
@@ -300,63 +351,149 @@ bool applySliderConfig(VCSlider *s, const QJsonObject &patch, QString *error)
         if (knownKeys.contains(it.key()) == false)
         {
             if (error)
-                *error = QStringLiteral("Unknown or not-yet-supported VcSliderConfig key '%1'").arg(it.key());
+                *error = QStringLiteral("Unknown VcSliderConfig key '%1'").arg(it.key());
             return false;
         }
     }
 
-    if (patch.contains(QStringLiteral("widgetStyle")))
-    {
-        QString v = patch.value(QStringLiteral("widgetStyle")).toString();
-        if (widgetStyles.contains(v) == false)
-        {
-            if (error) *error = QStringLiteral("Invalid widgetStyle '%1'").arg(v);
-            return false;
-        }
-        s->setWidgetStyle(widgetStyles.value(v));
-    }
-    if (patch.contains(QStringLiteral("valueDisplayStyle")))
-    {
-        QString v = patch.value(QStringLiteral("valueDisplayStyle")).toString();
-        if (displayStyles.contains(v) == false)
-        {
-            if (error) *error = QStringLiteral("Invalid valueDisplayStyle '%1'").arg(v);
-            return false;
-        }
-        s->setValueDisplayStyle(displayStyles.value(v));
-    }
-    if (patch.contains(QStringLiteral("invertedAppearance")))
-        s->setInvertedAppearance(patch.value(QStringLiteral("invertedAppearance")).toBool());
-    if (patch.contains(QStringLiteral("sliderMode")))
-    {
-        QString v = patch.value(QStringLiteral("sliderMode")).toString();
-        if (sliderModes.contains(v) == false)
-        {
-            if (error) *error = QStringLiteral("Invalid sliderMode '%1'").arg(v);
-            return false;
-        }
-        s->setSliderMode(sliderModes.value(v));
-    }
-    if (patch.contains(QStringLiteral("catchValues")))
-        s->setCatchValues(patch.value(QStringLiteral("catchValues")).toBool());
-    // The limits are DMX values: the on-screen editor's spin boxes confine them to 0..255, and
-    // vcSliderSetValue() below rounds them to int (undefined behaviour for something like 1e300),
-    // so refuse anything the UI itself could not have produced instead of storing it.
-    for (const QString &key : { QStringLiteral("rangeLowLimit"), QStringLiteral("rangeHighLimit") })
+    // ---- validate everything first (all-or-nothing) ----
+    auto enumCheck = [&](const QString &key, const auto &table) -> bool
     {
         if (patch.contains(key) == false)
-            continue;
-        QJsonValue v = patch.value(key);
-        if (v.isDouble() == false || v.toDouble() < 0.0 || v.toDouble() > 255.0)
+            return true;
+        QString v = patch.value(key).toString();
+        if (table.contains(v))
+            return true;
+        if (error) *error = QStringLiteral("Invalid %1 '%2'").arg(key, v);
+        return false;
+    };
+    if (!enumCheck(QStringLiteral("widgetStyle"), widgetStyles) || !enumCheck(QStringLiteral("valueDisplayStyle"), displayStyles) ||
+        !enumCheck(QStringLiteral("sliderMode"), sliderModes) || !enumCheck(QStringLiteral("clickAndGoType"), cngTypes) ||
+        !enumCheck(QStringLiteral("grandMasterValueMode"), gmValueModes) || !enumCheck(QStringLiteral("grandMasterChannelMode"), gmChannelModes))
+        return false;
+
+    QList<QPair<quint32, quint32> > levelChannels;
+    if (patch.contains(QStringLiteral("levelChannels")) &&
+        parseLevelChannels(doc, patch.value(QStringLiteral("levelChannels")), levelChannels, error) == false)
+        return false;
+
+    // The controlled Function: a Function id string, or Function::invalidId() ("4294967295") to detach.
+    bool hasControlledFunction = patch.contains(QStringLiteral("controlledFunction"));
+    quint32 controlledFunction = Function::invalidId();
+    if (hasControlledFunction)
+    {
+        bool ok = false;
+        controlledFunction = patch.value(QStringLiteral("controlledFunction")).toString().toUInt(&ok);
+        if (ok == false || (controlledFunction != Function::invalidId() && doc->function(controlledFunction) == nullptr))
         {
-            if (error) *error = QStringLiteral("%1 must be a number 0..255").arg(key);
+            if (error) *error = QStringLiteral("controlledFunction: no such function");
             return false;
         }
     }
-    if (patch.contains(QStringLiteral("rangeLowLimit")))
-        s->setRangeLowLimit(patch.value(QStringLiteral("rangeLowLimit")).toDouble());
-    if (patch.contains(QStringLiteral("rangeHighLimit")))
-        s->setRangeHighLimit(patch.value(QStringLiteral("rangeHighLimit")).toDouble());
+    // The attribute is validated against the Function the slider will control AFTER this patch.
+    Function *targetFunction = doc->function(hasControlledFunction ? controlledFunction : s->controlledFunction());
+    if (patch.contains(QStringLiteral("controlledAttribute")))
+    {
+        QJsonValue v = patch.value(QStringLiteral("controlledAttribute"));
+        int count = targetFunction != nullptr ? targetFunction->attributes().count() : 0;
+        if (v.isDouble() == false || v.toDouble() < 0 || v.toDouble() >= count)
+        {
+            if (error) *error = targetFunction == nullptr ? QStringLiteral("controlledAttribute requires a controlled function")
+                                                          : QStringLiteral("controlledAttribute must be 0..%1").arg(count - 1);
+            return false;
+        }
+    }
+    for (const QString &key : { QStringLiteral("cngPrimaryColor"), QStringLiteral("cngSecondaryColor") })
+    {
+        if (patch.contains(key) && QColor::isValidColorName(patch.value(key).toString()) == false)
+        {
+            if (error) *error = QStringLiteral("%1 must be a colour name or #rrggbb").arg(key);
+            return false;
+        }
+    }
+    // Range limits: Level mode's are DMX values (the editor's spin boxes confine them to 0..255);
+    // Adjust mode's follow the controlled attribute's own min..max (VCSliderProperties.qml binds the
+    // spin boxes to attributeMinValue/attributeMaxValue), which the engine only knows once the mode
+    // and attribute are applied - so that part of the check runs after the mode switch below.
+    for (const QString &key : { QStringLiteral("rangeLowLimit"), QStringLiteral("rangeHighLimit") })
+    {
+        if (patch.contains(key) && patch.value(key).isDouble() == false)
+        {
+            if (error) *error = QStringLiteral("%1 must be a number").arg(key);
+            return false;
+        }
+    }
+    QString requestedMode = patch.contains(QStringLiteral("sliderMode")) ? patch.value(QStringLiteral("sliderMode")).toString() : QString();
+    bool willBeAdjust = requestedMode.isEmpty() ? s->sliderMode() == VCSlider::Adjust : requestedMode == QStringLiteral("Adjust");
+    if (hasControlledFunction && controlledFunction != Function::invalidId())
+        willBeAdjust = true; // setControlledFunction() switches to Adjust on its own
+    if (willBeAdjust == false)
+    {
+        for (const QString &key : { QStringLiteral("rangeLowLimit"), QStringLiteral("rangeHighLimit") })
+        {
+            if (patch.contains(key) && (patch.value(key).toDouble() < 0.0 || patch.value(key).toDouble() > 255.0))
+            {
+                if (error) *error = QStringLiteral("%1 must be a number 0..255").arg(key);
+                return false;
+            }
+        }
+    }
+
+    // ---- apply, in cascade order ----
+    if (patch.contains(QStringLiteral("sliderMode")))
+        s->setSliderMode(sliderModes.value(requestedMode));
+    if (hasControlledFunction)
+        s->setControlledFunction(controlledFunction);
+    if (patch.contains(QStringLiteral("controlledAttribute")))
+        s->setControlledAttribute(patch.value(QStringLiteral("controlledAttribute")).toInt());
+
+    if (patch.contains(QStringLiteral("widgetStyle")))
+        s->setWidgetStyle(widgetStyles.value(patch.value(QStringLiteral("widgetStyle")).toString()));
+    if (patch.contains(QStringLiteral("valueDisplayStyle")))
+        s->setValueDisplayStyle(displayStyles.value(patch.value(QStringLiteral("valueDisplayStyle")).toString()));
+    if (patch.contains(QStringLiteral("invertedAppearance")))
+        s->setInvertedAppearance(patch.value(QStringLiteral("invertedAppearance")).toBool());
+    if (patch.contains(QStringLiteral("catchValues")))
+        s->setCatchValues(patch.value(QStringLiteral("catchValues")).toBool());
+    if (patch.contains(QStringLiteral("monitorEnabled")))
+        s->setMonitorEnabled(patch.value(QStringLiteral("monitorEnabled")).toBool());
+    if (patch.contains(QStringLiteral("levelChannels")))
+        replaceLevelChannels(s, levelChannels);
+    if (patch.contains(QStringLiteral("adjustFlashEnabled")))
+        s->setAdjustFlashEnabled(patch.value(QStringLiteral("adjustFlashEnabled")).toBool());
+    if (patch.contains(QStringLiteral("clickAndGoType")))
+        s->setClickAndGoType(cngTypes.value(patch.value(QStringLiteral("clickAndGoType")).toString()));
+    if (patch.contains(QStringLiteral("cngPrimaryColor")) || patch.contains(QStringLiteral("cngSecondaryColor")))
+    {
+        // VCSlider only has a combined setter (the on-screen colour tool sets both at once); it also
+        // moves the fader to 128 and writes DMX, exactly as the Click & Go popup does.
+        QColor primary = patch.contains(QStringLiteral("cngPrimaryColor")) ? QColor(patch.value(QStringLiteral("cngPrimaryColor")).toString()) : s->cngPrimaryColor();
+        QColor secondary = patch.contains(QStringLiteral("cngSecondaryColor")) ? QColor(patch.value(QStringLiteral("cngSecondaryColor")).toString()) : s->cngSecondaryColor();
+        s->setClickAndGoColors(primary, secondary);
+    }
+    if (patch.contains(QStringLiteral("grandMasterValueMode")))
+        s->setGrandMasterValueMode(gmValueModes.value(patch.value(QStringLiteral("grandMasterValueMode")).toString()));
+    if (patch.contains(QStringLiteral("grandMasterChannelMode")))
+        s->setGrandMasterChannelMode(gmChannelModes.value(patch.value(QStringLiteral("grandMasterChannelMode")).toString()));
+
+    // Range limits last (setSliderMode() above would have reset them). In Adjust mode the bounds are
+    // the attribute's; anything outside is confined rather than rejected, since the mode switch this
+    // very patch may have asked for is already applied at this point.
+    if (s->sliderMode() == VCSlider::Adjust)
+    {
+        qreal lo = s->attributeMinValue(), hi = s->attributeMaxValue();
+        if (patch.contains(QStringLiteral("rangeLowLimit")))
+            s->setRangeLowLimit(qBound(lo, patch.value(QStringLiteral("rangeLowLimit")).toDouble(), hi));
+        if (patch.contains(QStringLiteral("rangeHighLimit")))
+            s->setRangeHighLimit(qBound(lo, patch.value(QStringLiteral("rangeHighLimit")).toDouble(), hi));
+    }
+    else
+    {
+        if (patch.contains(QStringLiteral("rangeLowLimit")))
+            s->setRangeLowLimit(patch.value(QStringLiteral("rangeLowLimit")).toDouble());
+        if (patch.contains(QStringLiteral("rangeHighLimit")))
+            s->setRangeHighLimit(patch.value(QStringLiteral("rangeHighLimit")).toDouble());
+    }
 
     return true;
 }
@@ -376,6 +513,30 @@ QJsonObject sliderConfigToJson(VCSlider *s)
     obj.insert(QStringLiteral("catchValues"), s->catchValues());
     obj.insert(QStringLiteral("rangeLowLimit"), s->rangeLowLimit());
     obj.insert(QStringLiteral("rangeHighLimit"), s->rangeHighLimit());
+
+    // Level mode
+    obj.insert(QStringLiteral("monitorEnabled"), s->monitorEnabled());
+    QJsonArray channels;
+    for (const SceneValue &scv : s->levelChannels())
+    {
+        QJsonObject ch;
+        ch.insert(QStringLiteral("fixtureId"), QString::number(scv.fxi));
+        ch.insert(QStringLiteral("channel"), int(scv.channel));
+        channels.append(ch);
+    }
+    obj.insert(QStringLiteral("levelChannels"), channels);
+    obj.insert(QStringLiteral("clickAndGoType"), VCSlider::clickAndGoTypeToString(s->clickAndGoType()));
+    obj.insert(QStringLiteral("cngPrimaryColor"), s->cngPrimaryColor().name());
+    obj.insert(QStringLiteral("cngSecondaryColor"), s->cngSecondaryColor().name());
+
+    // Adjust mode
+    obj.insert(QStringLiteral("controlledFunction"), QString::number(s->controlledFunction()));
+    obj.insert(QStringLiteral("controlledAttribute"), s->controlledAttribute());
+    obj.insert(QStringLiteral("adjustFlashEnabled"), s->adjustFlashEnabled());
+
+    // Grand Master mode
+    obj.insert(QStringLiteral("grandMasterValueMode"), s->grandMasterValueMode() == GrandMaster::Reduce ? QStringLiteral("Reduce") : QStringLiteral("Limit"));
+    obj.insert(QStringLiteral("grandMasterChannelMode"), s->grandMasterChannelMode() == GrandMaster::AllChannels ? QStringLiteral("AllChannels") : QStringLiteral("Intensity"));
     return obj;
 }
 
@@ -884,7 +1045,7 @@ bool App::vcSetWidgetConfig(quint32 id, const QJsonObject &configPatch, QString 
     switch (w->type())
     {
         case VCWidget::ButtonWidget:        return applyButtonConfig(qobject_cast<VCButton *>(w), configPatch, error);
-        case VCWidget::SliderWidget:        return applySliderConfig(qobject_cast<VCSlider *>(w), configPatch, error);
+        case VCWidget::SliderWidget:        return applySliderConfig(qobject_cast<VCSlider *>(w), m_doc, configPatch, error);
         case VCWidget::FrameWidget:
         case VCWidget::SoloFrameWidget:     return ApiVcConfig::applyFrameConfig(w, configPatch, error);
         case VCWidget::LabelWidget:         return ApiVcConfig::applyLabelConfig(w, configPatch, error);
@@ -1287,4 +1448,199 @@ QJsonObject App::vcFrameSnapshot(quint32 id) const
     obj.insert(QStringLiteral("currentPage"), f->currentPage());
     obj.insert(QStringLiteral("multipage"), f->multiPageMode());
     return obj;
+}
+
+/*****************************************************************************
+ * Widgets - layout / configuration slice (ApiVcLayoutDomain)
+ *****************************************************************************/
+
+bool App::vcFrameSetPin(quint32 id, const QString &currentPin, const QString &newPin)
+{
+    VCFrame *f = qobject_cast<VCFrame *>(vcFindWidget(id));
+    if (f == nullptr)
+        return false;
+
+    // Same check VirtualConsole::setPagePIN() applies to a page: an existing PIN must be
+    // confirmed before it can be changed or cleared. Digits only (validated by the domain), so
+    // toInt() is the engine's own int representation of the PIN.
+    if (f->PIN() != 0)
+    {
+        bool ok = false;
+        int current = currentPin.toInt(&ok);
+        if (ok == false || current != f->PIN())
+            return false;
+    }
+
+    f->setPIN(newPin.isEmpty() ? 0 : newPin.toInt());
+    return true;
+}
+
+bool App::vcFrameValidatePin(quint32 id, const QString &pin) const
+{
+    VCFrame *f = qobject_cast<VCFrame *>(vcFindWidget(id));
+    if (f == nullptr)
+        return false;
+    // Stateless, like vcValidatePagePin(): VCFrame::validatePIN() would unlock the frame for every
+    // client at once, the spec promises a per-session unlock (kept client-side).
+    return f->PIN() == 0 || f->PIN() == pin.toInt();
+}
+
+bool App::vcFrameCloneFirstPage(quint32 id, QJsonArray &createdIds, QString *error)
+{
+    VCFrame *f = qobject_cast<VCFrame *>(vcFindWidget(id));
+    if (f == nullptr)
+    {
+        if (error) *error = QStringLiteral("No such widget");
+        return false;
+    }
+    if (f->totalPagesNumber() < 2)
+    {
+        // VCFrame::cloneFirstPage() silently returns in this case - say so instead.
+        if (error) *error = QStringLiteral("Frame has a single page - nothing to clone onto");
+        return false;
+    }
+
+    QList<quint32> beforeList = vcWidgetIds();
+    QSet<quint32> before(beforeList.begin(), beforeList.end());
+    f->cloneFirstPage();
+    QList<quint32> after = vcWidgetIds();
+    std::sort(after.begin(), after.end());
+    for (quint32 wid : after)
+    {
+        if (before.contains(wid) == false)
+            createdIds.append(QString::number(wid));
+    }
+    return true;
+}
+
+bool App::vcSliderSetLevelChannels(quint32 id, const QList<QPair<quint32, quint32> > &channels, QString *error)
+{
+    VCSlider *s = qobject_cast<VCSlider *>(vcFindWidget(id));
+    if (s == nullptr)
+    {
+        if (error) *error = QStringLiteral("No such widget");
+        return false;
+    }
+    replaceLevelChannels(s, channels);
+    return true;
+}
+
+bool App::vcSliderFlash(quint32 id, bool on, QString *error)
+{
+    VCSlider *s = qobject_cast<VCSlider *>(vcFindWidget(id));
+    if (s == nullptr)
+    {
+        if (error) *error = QStringLiteral("No such widget");
+        return false;
+    }
+    // VCSliderItem.qml only shows the flash button in Adjust mode with adjustFlashEnabled; the
+    // engine's flashFunction() itself silently returns without a controlled Function.
+    if (s->sliderMode() != VCSlider::Adjust || s->adjustFlashEnabled() == false)
+    {
+        if (error) *error = QStringLiteral("Slider is not in Adjust mode with the flash button enabled");
+        return false;
+    }
+    if (m_doc->function(s->controlledFunction()) == nullptr)
+    {
+        if (error) *error = QStringLiteral("No function controlled by slider");
+        return false;
+    }
+    s->flashFunction(on);
+    return true;
+}
+
+// Shared tail of the two bulk creators: resolve the target container exactly like vcCreateWidget(),
+// run $create, and report every widget id that appeared in the meantime (VCFrame::addFunctions()/
+// addWidgetMatrix() return void, so the before/after difference is the only way to learn the ids).
+template <typename Creator>
+static QList<quint32> vcBulkCreate(App *app, VirtualConsole *vc, int page, quint32 parentId, VCWidget *parentWidget,
+                                    QString *error, Creator create)
+{
+    VCFrame *targetFrame = nullptr;
+    if (parentId == ApiVcHost::InvalidWidgetId)
+        targetFrame = vc->page(page);
+    else
+        targetFrame = qobject_cast<VCFrame *>(parentWidget);
+
+    if (targetFrame == nullptr)
+    {
+        if (error) *error = QStringLiteral("Unable to resolve target container");
+        return QList<quint32>();
+    }
+
+    QList<quint32> beforeList = app->vcWidgetIds();
+    QSet<quint32> before(beforeList.begin(), beforeList.end());
+
+    create(targetFrame, targetFrame->renderItem());
+
+    QList<quint32> after = app->vcWidgetIds();
+    std::sort(after.begin(), after.end());
+    QList<quint32> created;
+    for (quint32 wid : after)
+    {
+        if (before.contains(wid) == false)
+            created.append(wid);
+    }
+    return created;
+}
+
+QList<quint32> App::vcCreateWidgetsFromFunctions(int page, quint32 parentId, const QList<quint32> &functionIds,
+                                                 QPointF position, const QString &widgetHint, QString *error)
+{
+    // VCFrame::addFunctions() picks the widget type from the drag's keyboard modifiers
+    // (VCFrameItem.qml's drop handler): Shift = Adjust slider, Ctrl = cue list, none = button.
+    int modifiers = Qt::NoModifier;
+    if (widgetHint == QStringLiteral("adjustSlider"))
+        modifiers = Qt::ShiftModifier;
+    else if (widgetHint == QStringLiteral("cueList"))
+        modifiers = Qt::ControlModifier;
+
+    QVariantList ids;
+    for (quint32 fid : functionIds)
+        ids.append(QVariant(fid));
+
+    QList<quint32> created = vcBulkCreate(this, m_virtualConsole, page, parentId, vcFindWidget(parentId), error,
+        [&](VCFrame *frame, QQuickItem *parentItem)
+        {
+            frame->addFunctions(parentItem, ids, position.toPoint(), modifiers);
+        });
+    if (created.isEmpty() && error && error->isEmpty())
+        *error = QStringLiteral("No widget was created");
+    return created;
+}
+
+QList<quint32> App::vcCreateWidgetMatrix(int page, quint32 parentId, const QString &matrixType, QPointF position,
+                                         int columns, int rows, int widgetWidth, int widgetHeight,
+                                         bool soloFrame, QString *error)
+{
+    // VCFrame::addWidgetMatrix() only knows the literal "buttonmatrix" (VirtualConsole.qml's
+    // PopupCreateMatrix passes it for buttons) - anything else means sliders.
+    QString engineType = matrixType == QStringLiteral("Button") ? QStringLiteral("buttonmatrix") : QStringLiteral("slidermatrix");
+
+    QList<quint32> created = vcBulkCreate(this, m_virtualConsole, page, parentId, vcFindWidget(parentId), error,
+        [&](VCFrame *frame, QQuickItem *parentItem)
+        {
+            frame->addWidgetMatrix(parentItem, engineType, position.toPoint(), QSize(columns, rows),
+                                   QSize(widgetWidth, widgetHeight), soloFrame);
+        });
+    if (created.isEmpty() && error && error->isEmpty())
+        *error = QStringLiteral("No widget was created");
+    return created;
+}
+
+QList<quint32> App::vcWidgetsUsingFunction(quint32 functionId) const
+{
+    QList<quint32> ids;
+    for (const QVariant &v : m_virtualConsole->usageList(functionId))
+    {
+        QVariantMap m = v.toMap();
+        // usageList() appends a single {"label": "<None>"} placeholder (no classRef) when nothing
+        // references the Function - skip it.
+        VCWidget *w = m.value(QStringLiteral("classRef")).value<VCWidget *>();
+        if (w == nullptr || qobject_cast<VCPage *>(w) != nullptr)
+            continue;
+        ids.append(w->id());
+    }
+    std::sort(ids.begin(), ids.end());
+    return ids;
 }
