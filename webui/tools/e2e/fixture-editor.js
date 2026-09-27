@@ -249,6 +249,108 @@ async function dialogButton(page, text) { await clickEl(page, new Function('cons
     check(/Gobo \[40 - 59\] Gobo 3 \(1\)/.test(await textOf(page, '[data-fe="aliases-tab"]')), 'Aliases tab lists "Gobo [40 - 59] Gobo 3 (1)"');
     await shot(page, 'fe-aliases');
 
+    /* ================= 5b. the remaining channel / capability / alias / mode controls ================= */
+    console.log('Channel preset add + remove, preset / role / colour, capability presets, auto colours');
+    const chan = (name) => sessionOf(sid).then(r => r.definition.channels.find(c => c.name === name));
+    await tab(page, 'channels');
+    await pickCombo(page, '[data-fe="add-channel-preset"]', 'Intensity Dimmer');
+    await clickEl(page, '[data-fe="add-channel"]');
+    check(await waitUntil(async () => (await sessionOf(sid)).definition.channels.some(c => c.preset === 'IntensityDimmer')), 'add from the preset combo: an IntensityDimmer channel');
+    const dimName = (await sessionOf(sid)).definition.channels.find(c => c.preset === 'IntensityDimmer').name;
+    await clickEl(page, '[data-channel-name="' + dimName + '"]');
+    await clickEl(page, '[data-fe="remove-channels"]');
+    check(await waitUntil(async () => (await sessionOf(sid)).definition.channels.length === 5), 'remove channel: back to 5 channels');
+    /* Red 1: preset -> Custom unlocks type / role / colour */
+    await clickEl(page, '[data-channel-name="Red 1"]');
+    await pickCombo(page, '[data-fe="channel-preset"]', 'Custom');
+    check(await waitUntil(async () => (await chan('Red 1')).preset === 'Custom'), 'Red 1 preset set to Custom');
+    await clickEl(page, '[data-fe="role-lsb"]');
+    check(await waitUntil(async () => (await chan('Red 1')).controlByte === 'LSB'), 'role Fine (LSB)');
+    await clickEl(page, '[data-fe="role-msb"]');
+    check(await waitUntil(async () => (await chan('Red 1')).controlByte === 'MSB'), 'role Coarse (MSB) again');
+    await pickCombo(page, '[data-fe="channel-colour"]', 'Amber');
+    check(await waitUntil(async () => (await chan('Red 1')).colour === 'Amber'), 'colour Amber');
+    await pickCombo(page, '[data-fe="channel-colour"]', 'Red');
+    await pickCombo(page, '[data-fe="channel-preset"]', 'Intensity Red');
+    check(await waitUntil(async () => { const c = await chan('Red 1'); return c.preset === 'IntensityRed' && c.colour === 'Red' && c.capabilities.length === 1; }), 'preset Intensity Red restored (capability regenerated)');
+    /* Gobo: "+" capability, then value / range / picture presets */
+    await clickEl(page, '[data-channel-name="Gobo"]');
+    await clickEl(page, '[data-fe="add-capability"]');
+    check(await waitUntil(async () => { const c = (await gobo()).capabilities; return c.length === 4 && c[3].min === 60 && c[3].max === 255; }), '"+" added a capability on the next free range 60-255');
+    await clickEl(page, '[data-cap-index="3"] [data-fe="cap-name"]');
+    await pickCombo(page, '[data-fe="cap-preset"]', 'Strobe Frequency');
+    await typeInto(page, '[data-fe="cap-value1"]', '5');
+    check(await waitUntil(async () => { const c = (await gobo()).capabilities[3]; return c.preset === 'StrobeFrequency' && Number(c.resources[0]) === 5; }), 'Strobe Frequency with 5 Hz');
+    await pickCombo(page, '[data-fe="cap-preset"]', 'Strobe Freq Range');
+    await typeInto(page, '[data-fe="cap-value1"]', '2');
+    await typeInto(page, '[data-fe="cap-value2"]', '20');
+    check(await waitUntil(async () => { const c = (await gobo()).capabilities[3]; return c.preset === 'StrobeFreqRange' && Number(c.resources[0]) === 2 && Number(c.resources[1]) === 20; }), 'Strobe Freq Range 2 - 20 Hz');
+    await pickCombo(page, '[data-fe="cap-preset"]', 'Gobo Macro');
+    await typeInto(page, '[data-fe="cap-picture"]', 'Gobos/Others/gobo00001.svg');
+    check(await waitUntil(async () => { const c = (await gobo()).capabilities[3]; return c.preset === 'GoboMacro' && /gobo00001\.svg$/.test(String(c.resources[0])); }), 'Gobo Macro with a picture path');
+    await clickEl(page, '[data-fe="remove-capability"]');
+    check(await waitUntil(async () => (await gobo()).capabilities.length === 3), 'capability removed again');
+    /* automatic colour assignment on a Colour channel */
+    await pickCombo(page, '[data-fe="add-channel-preset"]', 'Custom');
+    await clickEl(page, '[data-fe="add-channel"]');
+    await waitUntil(async () => (await sessionOf(sid)).definition.channels.length === 6);
+    const wheel = (await sessionOf(sid)).definition.channels[5];
+    await typeInto(page, '[data-fe="channel-name"]', 'Wheel');
+    await pickCombo(page, '[data-fe="channel-group"]', 'Colour');
+    await typeInto(page, '[data-cap-index="0"] [data-fe="cap-max"]', '127');
+    await typeInto(page, '[data-cap-index="0"] [data-fe="cap-name"]', 'red');
+    await clickEl(page, '[data-fe="add-capability"]');
+    await waitUntil(async () => (await chan('Wheel')).capabilities.length === 2);
+    await typeInto(page, '[data-cap-index="1"] [data-fe="cap-name"]', 'blue');
+    await waitUntil(async () => (await chan('Wheel')).capabilities[1].name === 'blue');
+    await clickEl(page, '[data-fe="auto-colours"]');
+    check(await waitUntil(async () => { const c = (await chan('Wheel')).capabilities; return c[0].preset === 'ColorMacro' && /^#ff0000$/i.test(c[0].resources[0]) && c[1].preset === 'ColorMacro' && /^#0000ff$/i.test(c[1].resources[0]) && c[0].name === 'Red'; }),
+      'Auto colours: red / blue became ColorMacro #ff0000 / #0000ff and were title-cased');
+    await clickEl(page, '[data-channel-name="Wheel"]');
+    await clickEl(page, '[data-fe="remove-channels"]');
+    check(await waitUntil(async () => !(await sessionOf(sid)).definition.channels.some(c => c.channelId === wheel.channelId)), 'Wheel channel removed again');
+
+    console.log('Alias: apply to all modes, mode change, remove; mode / emitter removal; global <-> override');
+    await tab(page, 'modes');
+    await clickEl(page, '[data-fe="add-mode"]');
+    await waitUntil(async () => (await sessionOf(sid)).definition.modes.length === 2);
+    await typeInto(page, '[data-fe="mode-name"]', 'Compact');
+    await waitUntil(async () => (await sessionOf(sid)).definition.modes.some(m => m.name === 'Compact'));
+    await pickCombo(page, '[data-fe="mode-add-pick"]', 'Gobo');
+    await clickEl(page, '[data-fe="mode-add-channel"]');
+    const compact = async () => (await sessionOf(sid)).definition.modes.find(m => m.name === 'Compact');
+    check(await waitUntil(async () => (await compact()).channels.length === 1), 'second mode "Compact" with the Gobo channel (picker + Add)');
+    await tab(page, 'channels');
+    await clickEl(page, '[data-channel-name="Gobo"]');
+    await clickEl(page, '[data-cap-index="2"] [data-fe="cap-name"]');
+    await clickEl(page, '[data-fe="alias-apply-all"]');
+    check(await waitUntil(async () => (await gobo()).capabilities[2].aliases.length === 2 && (await gobo()).capabilities[2].aliases[1].targetMode === 'Compact'), 'Apply to all modes added the Compact alias');
+    await pickCombo(page, '[data-alias-index="1"] [data-fe="alias-target"]', 'Blue 1');
+    check(await waitUntil(async () => (await gobo()).capabilities[2].aliases[1].targetChannel === 'Blue 1'), 'second alias retargeted to Blue 1');
+    await pickCombo(page, '[data-alias-index="1"] [data-fe="alias-mode"]', 'Standard');
+    check(await waitUntil(async () => (await gobo()).capabilities[2].aliases[1].targetMode === 'Standard'), 'alias mode changed to Standard');
+    await clickEl(page, '[data-alias-index="1"] [data-fe="alias-remove"]');
+    check(await waitUntil(async () => { const a = (await gobo()).capabilities[2].aliases; return a.length === 1 && a[0].targetMode === 'Standard' && a[0].targetChannel === 'White 1'; }), 'alias removed; the first one is untouched');
+    await tab(page, 'modes');
+    await clickEl(page, '[data-mode-name="Compact"]');
+    await clickEl(page, '[data-fe="remove-mode"]');
+    check(await waitUntil(async () => (await sessionOf(sid)).definition.modes.length === 1), 'mode Compact removed');
+    await clickEl(page, '[data-mode-name="Standard"]');
+    await clickEl(page, '[data-slot-channel="Gobo"] [data-fe="slot-check"]');
+    await clickEl(page, '[data-fe="mode-create-head"]');
+    check(await waitUntil(async () => (await modeOf()).heads.length === 3), 'third emitter (Gobo)');
+    await clickEl(page, '[data-head-index="2"] [data-fe="head-check"]');
+    await clickEl(page, '[data-fe="mode-remove-heads"]');
+    check(await waitUntil(async () => (await modeOf()).heads.length === 2), 'emitter removed: 2 left');
+    await clickEl(page, '[data-fe="mode-phy-global"]');
+    check(await waitUntil(async () => (await modeOf()).useGlobalPhysical === true), '"Use global settings" drops the override');
+    await clickEl(page, '[data-fe="mode-phy-override"]');
+    await waitUntil(async () => (await modeOf()).useGlobalPhysical === false);
+    await typeInto(page, '[data-fe="mode-editor"] [data-fe="phy-powerConsumption"]', '150');
+    await typeInto(page, '[data-fe="mode-editor"] [data-fe="phy-weight"]', '6.5');
+    check(await waitUntil(async () => { const m = await modeOf(); return m.physical && m.physical.powerConsumption === 150 && Math.abs(m.physical.weight - 6.5) < 1e-6; }), 'override set again: 150 W, 6.5 kg');
+    check((await sessionOf(sid)).definition.channels.map(c => c.name).join(',') === 'Red 1,Green 1,Blue 1,White 1,Gobo', 'channel pool is back to the five channels');
+
     /* ================= 6. Global physical ================= */
     console.log('Physical');
     await tab(page, 'physical');
@@ -387,18 +489,46 @@ async function dialogButton(page, text) { await clickEl(page, new Function('cons
     check(await waitUntil(async () => (await api.call('fixturedefs.list', { manufacturer: FORK_MAN })).entries.some(e => e.model === FORK_MODEL && !e.isUser)), 'the bundled ' + FORK_MODEL + ' is back in the library (system)');
     await api.call('fixturedefs.session.close', { sessionId: forkSid });
 
-    /* ================= 13. delete the E2E definition ================= */
-    console.log('Delete E2E / Web Spot');
+    /* ================= 13. someone else saves first -> overwrite prompt; close -> Save ================= */
+    console.log('Overwrite prompt + close with Save');
+    const e2eEntry = async () => (await api.call('fixturedefs.list', { manufacturer: MAN })).entries.find(e => e.model === MODEL);
     await waitUntil(() => page.eval('!!document.querySelector("[data-session-label=\\"E2E - Web Spot\\"]")'));
     await clickEl(page, '[data-session-label="E2E - Web Spot"] > button');
-    await clickEl(page, '[data-fe="tb-delete"]');
+    await waitUntil(() => exists(page, '[data-fe="general-tab"]'));
+    const other = await api.call('fixturedefs.session.open', { manufacturer: MAN, model: MODEL });
+    await api.call('fixturedefs.session.update', { sessionId: other.sessionId, baseRevision: 0, author: 'other client' });
+    await api.call('fixturedefs.save', { sessionId: other.sessionId, baseRevision: other.baseRevision });
+    await api.call('fixturedefs.session.close', { sessionId: other.sessionId });
+    check((await e2eEntry()).author === 'other client', 'a second client saved the definition in between');
+    await typeInto(page, '[data-fe="general-author"]', 'overwrite from UI');
+    await clickEl(page, '[data-fe="tb-save"]');
+    check(await waitUntil(() => page.eval('document.body.textContent.indexOf("Someone saved this definition since you opened it") !== -1')), 'Save asks before overwriting the newer library copy');
+    await dialogButton(page, 'Overwrite');
+    check(await waitUntil(async () => (await e2eEntry()).author === 'overwrite from UI'), 'Overwrite saved this session over it');
+    await typeInto(page, '[data-fe="general-author"]', 'saved on close');
+    await waitUntil(async () => (await sessionOf(sid)).isModified === true);
+    await clickEl(page, '[data-session-label="E2E - Web Spot"] [data-fe="session-close"]');
+    check(await waitUntil(() => page.eval('Array.from(document.querySelectorAll("button")).some(b => b.textContent.trim() === "Discard")')), 'closing the modified session asks first');
+    await dialogButton(page, 'Save');
+    check(await waitUntil(async () => (await e2eEntry()).author === 'saved on close'), 'Save in the close prompt saved the edit');
+    check(await waitUntil(async () => !(await findSession(MAN, MODEL))), '... and closed the session');
+
+    /* ================= 14. delete the E2E definition from the Open picker ================= */
+    console.log('Delete E2E / Web Spot from the Open picker');
+    await clickEl(page, '[data-fe="tb-open"]');
+    await page.waitFor('!!document.querySelector("[data-fe=\\"open-dialog\\"]")', 5000);
+    await typeInto(page, '[data-fe="open-search"]', 'E2E', 'none');
+    await clickEl(page, '[data-manufacturer="E2E"]');
+    await waitUntil(() => exists(page, '[data-model="Web Spot"]'));
+    await clickEl(page, '[data-model="Web Spot"]');
+    await dialogButton(page, 'Delete'); /* the picker's own Delete button (the last "Delete" in the page) */
+    check(await waitUntil(() => page.eval('document.body.textContent.indexOf("Delete the user definition E2E - Web Spot?") !== -1')), 'Delete in the picker asks for confirmation');
     await dialogButton(page, 'Delete');
     check(await waitUntil(async () => (await api.call('fixturedefs.list', { manufacturer: MAN })).entries.length === 0), 'fixturedefs.list({manufacturer:"E2E"}) is empty after Delete');
     check(await waitUntil(() => !fs.existsSync(e2eFile)), 'E2E-Web-Spot.qxf removed from the sandbox user folder');
     check(api.events.some(e => e.topic === 'fixturedefs.deleted' && e.data.manufacturer === MAN), 'fixturedefs.deleted broadcast');
-    await clickEl(page, '[data-session-label="E2E - Web Spot"] [data-fe="session-close"]');
-    await sleep(300);
-    if (await page.eval('Array.from(document.querySelectorAll("button")).some(b => b.textContent.trim() === "Discard")')) await dialogButton(page, 'Discard');
+    check(await waitUntil(async () => (await exists(page, '[data-fe="open-dialog"]')) && !(await exists(page, '[data-model="Web Spot"]'))), 'back in the picker, Web Spot is gone from the list');
+    await dialogButton(page, 'Cancel');
 
     /* ================= 14. entry point from the Add Fixtures dialog ================= */
     console.log('Entry point: Fixtures & Functions -> Add Fixtures -> Edit this definition');

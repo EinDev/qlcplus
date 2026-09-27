@@ -209,8 +209,9 @@ and a second tab checked for the pushed event:
   picture (the capability takes the path of a picture on the QLC+ machine), the desktop's free
   "Save as <path>" (definitions always land in the user fixture folder as
   `<Manufacturer>-<Model>.qxf`, which is where QLC+ looks for them) and Avolites D4 import.
-  Exercised by the driver: everything above except automatic colour assignment, "apply to all
-  modes", drag-reordering (up / down was driven) and the overwrite prompt.
+  Exercised by the driver: everything above except drag-reordering of mode channels (the up /
+  down arrows were driven; the drag uses native HTML5 drag-and-drop, which the headless driver
+  does not synthesise) and Ctrl+S (the toolbar Save was driven).
 
 Still not available in the web UI: the 2D / 3D / DMX monitor views, fixture-address
 remap, UI settings, audio sample rate / channels / buffer size and the input

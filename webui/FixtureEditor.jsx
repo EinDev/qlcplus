@@ -177,7 +177,13 @@
 
     /* Ctrl+S on this screen saves the definition, not the project (capture phase, before App's handler). */
     React.useEffect(() => {
-      const k = (e) => { if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 's') { e.preventDefault(); e.stopPropagation(); const cur = FE.activeSession(); if (cur) save(cur); } };
+      const k = (e) => {
+        if (!((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 's')) return;
+        e.preventDefault(); e.stopPropagation();
+        /* text fields commit on blur: commit the one being typed in first (it queues ahead of the save) */
+        if (document.activeElement && document.activeElement.tagName === 'INPUT') document.activeElement.blur();
+        const cur = FE.activeSession(); if (cur) save(cur);
+      };
       window.addEventListener('keydown', k, true);
       return () => window.removeEventListener('keydown', k, true);
     });

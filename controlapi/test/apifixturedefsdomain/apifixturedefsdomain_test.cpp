@@ -1246,10 +1246,10 @@ void ApiFixtureDefsDomain_Test::deleteUserCopyRestoresBundledDefinition()
     // On Windows/macOS that directory is applicationDirPath-relative, i.e. in the
     // build tree; skip where it is an install prefix we must not write into.
     QDir sysDir = QLCFixtureDefCache::systemDefinitionDirectory();
-    QDir().mkpath(sysDir.absoluteFilePath(QStringLiteral("Bundled_Co")));
     const QString mapPath = sysDir.absoluteFilePath(QStringLiteral("FixturesMap.xml"));
     if (QFile::exists(mapPath))
         QSKIP("the system fixture directory already has a FixturesMap.xml; not overwriting it");
+    QDir().mkpath(sysDir.absoluteFilePath(QStringLiteral("Bundled_Co")));
     QFile map(mapPath);
     if (map.open(QIODevice::WriteOnly | QIODevice::Text) == false)
         QSKIP("system fixture directory is not writable here");

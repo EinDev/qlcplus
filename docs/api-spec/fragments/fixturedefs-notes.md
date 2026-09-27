@@ -172,8 +172,7 @@ Server: `controlapi/src/domains/apifixturedefsdomain.{h,cpp}`; tests:
 read-only/system errors and a create -> edit everything -> validate -> save
 -> reopen -> export -> delete round trip); client wrapper
 `webui/api/domains/fixturedefs.js` (`qlc.fixtureDefs.*`). The editor screen
-is a follow-up slice - every "Fixture Editor" row of `docs/webui-parity.md`
-is `partial: server only` until it lands.
+landed the same day - see "Implemented 2026-09-27: the web UI" below.
 
 Decisions made while implementing, all of them visible to a client:
 
