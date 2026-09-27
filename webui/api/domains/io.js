@@ -50,7 +50,10 @@
         /** fields: any of {inputSampleRate (8000|11025|22050|32000|44100|48000), inputChannels (1|2),
             outputBufferMs (10..1000)} - PopupAudioConfiguration.qml. Host setting, no baseRevision.
             -> ack; broadcasts io.audio.configChanged (all three values). listDevices carries them too. */
-        setConfig: function (fields) { return self.call('io.audio.setConfig', fields || {}); }
+        setConfig: function (fields) { return self.call('io.audio.setConfig', fields || {}); },
+        /** The input level check (PopupAudioConfiguration.qml): while enabled this client receives
+            io.audio.inputLevel {level 0..32767} ~20/s. -> {capturing}. Ends on disconnect. */
+        setInputPreview: function (enabled) { return self.call('io.audio.inputPreview.set', { enabled: !!enabled }); }
       },
 
       dmx: {
@@ -273,6 +276,7 @@
     'io.inputProfile.learn.signal',  // delivered only to the client that started the learn session
     'io.audio.deviceChanged',
     'io.audio.configChanged',
+    'io.audio.inputLevel',           // delivered only to clients with io.audio.inputPreview.set on
     'io.grandMaster.changed',
     'io.blackout.changed',
     'io.simpleDesk.channelChanged',

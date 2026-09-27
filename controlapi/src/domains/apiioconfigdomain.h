@@ -21,7 +21,11 @@
 #include <QObject>
 #include <QPointer>
 #include <QString>
+#include <QList>
+#include <QSharedPointer>
+#include <QElapsedTimer>
 
+class AudioCapture;
 class ApiIoDomain;
 class ApiServer;
 class ApiSession;
@@ -42,8 +46,10 @@ class QLCInputProfile;
  *    learn.signal event delivered ONLY to the client that started the
  *    session (io-notes.md flagged the broadcast form as a UX problem)
  *  - io.grandMaster.setMode, io.universe.setMonitor
- *  - io.audio.listDevices / setDevice (the host's own audio devices, the
- *    same QSettings keys qmlui's InputOutputManager writes)
+ *  - io.audio.listDevices / setDevice / setConfig (the host's own audio
+ *    devices and format, the same QSettings keys qmlui's InputOutputManager
+ *    writes) and io.audio.inputPreview.set (+ io.audio.inputLevel, sent only
+ *    to the previewing clients)
  *
  * Engine-only (engine/src + engine/audio/src), no qmlui dependency - the
  * input profile editor is reimplemented on top of QLCInputProfile directly
@@ -76,6 +82,24 @@ private slots:
     void slotInputValueChanged(quint32 universe, quint32 channel, uchar value, const QString &key);
     /** The learning client went away: stop listening. */
     void slotLearnSessionDisconnected(ApiSession *session);
+
+    /** AudioCapture::dataProcessed while an input level preview is on ->
+     *  io.audio.inputLevel to the previewing clients (throttled). */
+    void slotAudioPreviewData(double *spectrumBands, int size, double maxMagnitude, quint32 power);
+    /** A previewing client went away. */
+    void slotPreviewSessionDisconnected(ApiSession *session);
+
+private:
+    /** io.audio.inputPreview.set: the input level check of PopupAudioConfiguration.qml
+     *  (InputOutputManager::enableAudioInputPreview), shared by every client that asked. */
+    void attachAudioPreview();
+    void detachAudioPreview();
+    /** The input device / format changed (the capture was destroyed): re-open the preview. */
+    void restartAudioPreview();
+
+    QList<QPointer<ApiSession>> m_previewSessions;
+    QSharedPointer<AudioCapture> m_previewCapture;
+    QElapsedTimer m_previewThrottle;
 
 private:
     Doc *m_doc;

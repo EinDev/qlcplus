@@ -9,12 +9,42 @@
  */
 (function () {
   'use strict';
-  const { RobotoText, CustomComboBox, CustomSpinBox, IconTextEntry } = window.PatchDesignSystem_5432c9;
+  const { RobotoText, CustomComboBox, CustomSpinBox, IconTextEntry, IconButton } = window.PatchDesignSystem_5432c9;
   const { Row, isUnknownMethod, errorText, NOTE } = window.IOShared;
 
   /* PopupAudioConfiguration.qml's choices. */
   const SAMPLE_RATES = [8000, 11025, 22050, 32000, 44100, 48000].map(r => ({ mLabel: r + ' Hz', mValue: r }));
   const CHANNELS = [{ mLabel: 'Mono', mValue: 1 }, { mLabel: 'Stereo', mValue: 2 }];
+
+  /** PopupAudioConfiguration.qml's "Signal level" check: the QLC+ host's audio input level (0..0x7FFF)
+      while the preview runs (io.audio.inputPreview.set + io.audio.inputLevel, this client only). */
+  function InputLevel({ qlc, onStatus }) {
+    const [on, setOn] = React.useState(false);
+    const [level, setLevel] = React.useState(0);
+    const onRef = React.useRef(false);
+    React.useEffect(() => {
+      const off = qlc.subscribeTo('io.audio.inputLevel', (d) => { if (onRef.current && d) setLevel(Number(d.level) || 0); });
+      /* leaving the screen ends this client's preview (the host stops capturing when nobody previews) */
+      return () => { off(); if (onRef.current) qlc.call('io.audio.inputPreview.set', { enabled: false }).catch(() => {}); };
+    }, []);
+    const toggle = () => {
+      const next = !on;
+      qlc.call('io.audio.inputPreview.set', { enabled: next })
+        .then(() => { onRef.current = next; setOn(next); if (!next) setLevel(0); },
+          e => onStatus && onStatus('Audio input level check failed: ' + errorText(e), true));
+    };
+    const frac = Math.min(1, level / 32767);
+    return (
+      <Row label="Signal level" width={96} title="Start / stop the audio input signal level check on the QLC+ host">
+        <IconButton faSource={on ? 'fa_stop' : 'fa_play'} faColor="var(--fg-main)" size={24} checked={on} onClick={toggle} data-role="audio-level-toggle"
+          tooltip={on ? 'Stop the audio input signal level check' : 'Start the audio input signal level check'} />
+        <div data-role="audio-level" data-level={level} style={{ flex: 1, height: 22, borderRadius: 3, background: 'var(--bg-light)', border: '1px solid var(--bg-strong)', position: 'relative', overflow: 'hidden' }}>
+          <div style={{ position: 'absolute', left: 2, top: 2, bottom: 2, width: 'calc((100% - 4px) * ' + frac + ')', borderRadius: 2,
+            background: 'linear-gradient(to right, green 0%, yellow 70%, red 100%)', backgroundSize: frac > 0 ? (100 / frac) + '% 100%' : '100% 100%' }} />
+        </div>
+      </Row>
+    );
+  }
 
   function AudioDevices({ qlc, onStatus }) {
     const D = window.QLCData;
@@ -75,6 +105,7 @@
               onValueChanged={v => { if (Number(v) !== d.inputChannels) setConfig({ inputChannels: Number(v) }, 'Audio input channels'); }} data-role="audio-channels" />
           </Row>
         ) : null}
+        {!qlc.isUnsupported('io.audio.inputPreview.set') && hasConfig ? <InputLevel qlc={qlc} onStatus={onStatus} /> : null}
         <Row label="Output" width={96} title="Audio output for Audio functions on the QLC+ host">
           <CustomComboBox width="100%" height={24} currValue={d.outputDevice} model={model(d.outputs)} disabled={setOff} onValueChanged={v => { if (v !== d.outputDevice) set('output', v); }} data-role="audio-output" />
         </Row>

@@ -2306,6 +2306,91 @@ messages:
               type: integer
             outputBufferMs:
               type: integer
+  IoAudioInputPreviewSetRequest:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - method
+      - params
+      properties:
+        type:
+          const: request
+        id:
+          type: string
+        method:
+          const: io.audio.inputPreview.set
+        params:
+          type: object
+          required:
+          - enabled
+          description: 'PopupAudioConfiguration.qml''s "Signal level" check (InputOutputManager::enableAudioInputPreview):
+            while at least one client has it on, the QLC+ host''s audio input capture runs and every
+            previewing client receives io.audio.inputLevel. Per client, live, no baseRevision; the client''s
+            disconnect ends its preview. A device / format change (io.audio.setDevice / setConfig) re-opens
+            the running preview on the new input.
+
+            '
+          properties:
+            enabled:
+              type: boolean
+  IoAudioInputPreviewSetResponse:
+    payload:
+      oneOf:
+      - $ref: '#/components/messages/IoAudioInputPreviewSetOkResponse/payload'
+      - $ref: '#/components/messages/ErrorResponse/payload'
+  IoAudioInputPreviewSetOkResponse:
+    payload:
+      type: object
+      required:
+      - type
+      - id
+      - ok
+      - result
+      properties:
+        type:
+          const: response
+        id:
+          type: string
+        ok:
+          const: true
+        result:
+          type: object
+          required:
+          - capturing
+          properties:
+            capturing:
+              type: boolean
+              description: The host has an audio input capture running for the preview (some client has it on)
+  IoAudioInputLevelEvent:
+    payload:
+      type: object
+      required:
+      - type
+      - topic
+      - data
+      description: The host's audio input signal power while this client's io.audio.inputPreview is on,
+        about 20 per second. Sent only to the previewing clients (no subscribe needed, never broadcast).
+      properties:
+        type:
+          const: event
+        topic:
+          const: io.audio.inputLevel
+        originClientId:
+          type:
+          - string
+          - 'null'
+        data:
+          type: object
+          required:
+          - level
+          properties:
+            level:
+              type: integer
+              minimum: 0
+              maximum: 32767
+              description: AudioCapture's signal power, 0..0x7FFF (the desktop's level bar scale)
   IoAudioSetDeviceRequest:
     payload:
       type: object
@@ -3494,6 +3579,24 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/ioAudioConfigChangedEvent'
+  sendIoAudioInputPreviewSet:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/ioAudioInputPreviewSetRequest'
+  receiveIoAudioInputPreviewSetResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/ioAudioInputPreviewSetResponse'
+  receiveIoAudioInputLevel:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/ioAudioInputLevelEvent'
   sendIoDmxChannelInspect:
     action: send
     channel:

@@ -927,6 +927,24 @@ void ApiIoConfigDomain_Test::audioSetConfigWritesSettingsAndBroadcasts()
     QCOMPARE(settings.value(QStringLiteral("audio/outputBufferMs")).toInt(), 250);
 }
 
+void ApiIoConfigDomain_Test::audioInputPreviewValidatesAndStops()
+{
+    // Only the paths that do not open the host's sound card: turning the preview on needs a real
+    // audio input (covered end to end by webui/tools/e2e/partials-vc.js).
+    hello(m_client);
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("io.audio.inputPreview.set"), QJsonObject());
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("INVALID_PARAMS"));
+    QJsonObject params;
+    params.insert(QStringLiteral("enabled"), QStringLiteral("yes"));
+    reply = sendAndWaitForReply(QStringLiteral("io.audio.inputPreview.set"), params);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("INVALID_PARAMS"));
+
+    params.insert(QStringLiteral("enabled"), false);
+    reply = sendAndWaitForReply(QStringLiteral("io.audio.inputPreview.set"), params);
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(reply.value(QStringLiteral("result")).toObject().value(QStringLiteral("capturing")).toBool(), false);
+}
+
 /*********************************************************************
  * io.simpleDesk.sendKeypadCommand (ApiIoDomain)
  *********************************************************************/

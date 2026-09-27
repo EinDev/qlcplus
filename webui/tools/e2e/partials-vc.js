@@ -301,7 +301,34 @@ async function ioSection(browser, api) {
     const ini = path.join(SANDBOX, 'Settings', 'qlcplus', 'Q Light Controller Plus.ini');
     const iniText = fs.existsSync(ini) ? fs.readFileSync(ini, 'utf8') : '';
     check(/samplerate=48000/.test(iniText) && /channels=2/.test(iniText) && /outputBufferMs=250/.test(iniText), 'written to the sandbox\'s own settings file (QLCPLUS_SETTINGS_DIR), not the registry', iniText.slice(0, 200));
+    /* device selection: also a settings write, safe now that it lands in the sandbox's own file */
+    const devIn = audio0.inputs.find(d => d.privateName !== '__qlcplusdefault__');
+    if (devIn) {
+      await pickCombo(page, q('[data-role="audio-input"]'), devIn.name, 'audio input device');
+      await waitCheck(async () => (await api.call('io.audio.listDevices')).inputDevice === devIn.privateName, 'Input device combo -> "' + devIn.name + '" (io.audio.listDevices)');
+      check(/input=/.test(fs.readFileSync(ini, 'utf8')), 'the device choice is in the sandbox settings file too');
+    }
+    if (devIn) await api.call('io.audio.setDevice', { direction: 'input', privateName: '__qlcplusdefault__' });
+    /* input level check: the host's capture level, only while this client previews */
+    await clickFn(page, q('[data-role="audio-level-toggle"]'), 'start the level check');
+    const levels = [];
+    const t0 = Date.now();
+    while (Date.now() - t0 < 3000) { levels.push(Number(await page.eval(`(document.querySelector('[data-role="audio-level"]') || {}).getAttribute ? document.querySelector('[data-role="audio-level"]').getAttribute('data-level') : -1`))); await sleep(150); }
+    const other = new Api(API, 'partials bystander');
+    await other.connect();
+    await sleep(800);
+    check(!other.events.some(e => e.topic === 'io.audio.inputLevel'), 'io.audio.inputLevel is not sent to a client that does not preview');
+    const pv = await other.call('io.audio.inputPreview.set', { enabled: true });
+    await sleep(1500);
+    const got = other.events.filter(e => e.topic === 'io.audio.inputLevel');
+    check(pv.capturing === true && got.length >= 5, 'a previewing client receives io.audio.inputLevel from the host capture (' + got.length + ' in 1.5 s, capturing ' + pv.capturing + ')');
+    other.close();
+    const maxLevel = Math.max.apply(null, levels);
+    console.log('  info level samples over 3 s: max ' + maxLevel + ', ' + levels.filter(l => l > 0).length + '/' + levels.length + ' non-zero');
+    check(levels.every(l => l >= 0 && l <= 32767), 'level check running: the meter shows the host\'s input level (0..32767)');
     await shot(page, 'partials-io-audio');
+    await clickFn(page, q('[data-role="audio-level-toggle"]'), 'stop the level check');
+    await waitCheck(() => page.eval(`document.querySelector('[data-role="audio-level"]').getAttribute('data-level') === '0'`), 'stopping the check resets the meter');
     await api.call('io.audio.setConfig', { inputSampleRate: 44100, inputChannels: 1, outputBufferMs: 100 });
     await waitCheck(() => page.eval(`/44100 Hz/.test((document.querySelector('[data-role="audio-samplerate"]') || {}).textContent || '')`), 'another client\'s io.audio.setConfig shows up (io.audio.configChanged)');
     check(page.consoleErrors.length === 0, 'I/O: no console errors', page.consoleErrors);

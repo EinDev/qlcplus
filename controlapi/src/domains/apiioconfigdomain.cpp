@@ -439,6 +439,8 @@ ApiIoConfigDomain::ApiIoConfigDomain(Doc *doc, ApiServer *server, ApiIoDomain *i
 ApiIoConfigDomain::~ApiIoConfigDomain()
 {
     stopLearning();
+    m_previewSessions.clear();
+    detachAudioPreview();
 }
 
 void ApiIoConfigDomain::registerMethods()
@@ -939,6 +941,66 @@ void ApiIoConfigDomain::stopLearning()
     m_learnProfileName.clear();
 }
 
+void ApiIoConfigDomain::attachAudioPreview()
+{
+    if (m_previewCapture.isNull() == false)
+        return;
+    m_previewCapture = m_doc->audioInputCapture();
+    if (m_previewCapture.isNull())
+        return;
+    // AudioCapture lives in the engine's audio library: string-based connect (see CLAUDE.md), and
+    // dataProcessed comes from the capture thread, so this is a queued connection.
+    connect(m_previewCapture.data(), SIGNAL(dataProcessed(double*,int,double,quint32)),
+            this, SLOT(slotAudioPreviewData(double*,int,double,quint32)));
+    m_previewCapture->registerBandsNumber(FREQ_SUBBANDS_DEFAULT_NUMBER);
+    m_previewThrottle.invalidate();
+}
+
+void ApiIoConfigDomain::detachAudioPreview()
+{
+    if (m_previewCapture.isNull())
+        return;
+    m_previewCapture->unregisterBandsNumber(FREQ_SUBBANDS_DEFAULT_NUMBER);
+    disconnect(m_previewCapture.data(), SIGNAL(dataProcessed(double*,int,double,quint32)),
+               this, SLOT(slotAudioPreviewData(double*,int,double,quint32)));
+    m_previewCapture.clear();
+}
+
+void ApiIoConfigDomain::restartAudioPreview()
+{
+    const bool running = m_previewCapture.isNull() == false;
+    detachAudioPreview();
+    m_doc->destroyAudioCapture();
+    if (running)
+        attachAudioPreview();
+}
+
+void ApiIoConfigDomain::slotAudioPreviewData(double *spectrumBands, int size, double maxMagnitude, quint32 power)
+{
+    Q_UNUSED(spectrumBands)
+    Q_UNUSED(size)
+    Q_UNUSED(maxMagnitude)
+    if (m_previewThrottle.isValid() && m_previewThrottle.elapsed() < 50)
+        return;
+    m_previewThrottle.restart();
+
+    QJsonObject data;
+    data.insert(QStringLiteral("level"), int(qMin(power, quint32(0x7FFF))));
+    for (const QPointer<ApiSession> &s : m_previewSessions)
+    {
+        if (s.isNull() == false)
+            s->send(ApiEnvelope::buildEvent(QStringLiteral("io.audio.inputLevel"), data, QString()));
+    }
+}
+
+void ApiIoConfigDomain::slotPreviewSessionDisconnected(ApiSession *session)
+{
+    m_previewSessions.removeAll(session);
+    m_previewSessions.removeAll(QPointer<ApiSession>());
+    if (m_previewSessions.isEmpty())
+        detachAudioPreview();
+}
+
 void ApiIoConfigDomain::slotLearnSessionDisconnected(ApiSession *session)
 {
     if (m_learnSession == session)
@@ -1133,11 +1195,45 @@ void ApiIoConfigDomain::registerAudioMethods()
             changed = true;
         settings.sync();
         if (inputChanged)
-            doc->destroyAudioCapture();
+            restartAudioPreview(); // Doc::destroyAudioCapture(), re-opening a running preview
 
         session->send(ApiEnvelope::buildOkResponse(id, QJsonObject()));
         if (inputChanged || changed)
             m_server->broadcast(QStringLiteral("io.audio.configChanged"), audioConfigToJson(), session->clientId(), false);
+    });
+
+    // io.audio.inputPreview.set {enabled} -> {}
+    // PopupAudioConfiguration.qml's "Signal level" check (InputOutputManager::enableAudioInputPreview):
+    // while at least one client has it on, the host's audio input runs and every previewing client
+    // gets io.audio.inputLevel (~20/s). Per client; a disconnect ends that client's preview.
+    dispatcher->registerMethod(QStringLiteral("io.audio.inputPreview.set"), [this](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        QJsonValue enabled = params.value(QStringLiteral("enabled"));
+        if (enabled.isBool() == false)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams,
+                QStringLiteral("enabled (boolean) is required")));
+            return;
+        }
+        m_previewSessions.removeAll(QPointer<ApiSession>());
+        const bool had = m_previewSessions.contains(session);
+        if (enabled.toBool() && had == false)
+        {
+            m_previewSessions.append(session);
+            connect(session, &ApiSession::disconnected, this, &ApiIoConfigDomain::slotPreviewSessionDisconnected, Qt::UniqueConnection);
+        }
+        else if (enabled.toBool() == false && had)
+        {
+            m_previewSessions.removeAll(session);
+        }
+        if (m_previewSessions.isEmpty())
+            detachAudioPreview();
+        else
+            attachAudioPreview();
+
+        QJsonObject result;
+        result.insert(QStringLiteral("capturing"), m_previewCapture.isNull() == false);
+        session->send(ApiEnvelope::buildOkResponse(id, result));
     });
 
     // io.audio.setDevice {direction: input|output, privateName} -> {}
@@ -1178,7 +1274,7 @@ void ApiIoConfigDomain::registerAudioMethods()
         else
             settings.setValue(QLatin1String(key), privateName);
         if (isInput)
-            doc->destroyAudioCapture();
+            restartAudioPreview(); // Doc::destroyAudioCapture(), re-opening a running preview
 
         session->send(ApiEnvelope::buildOkResponse(id, QJsonObject()));
 
