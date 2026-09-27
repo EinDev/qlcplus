@@ -154,6 +154,13 @@ public:
     Q_INVOKABLE void selectBarForEditing(int index);
     QVariantList barsInfo() const;
 
+    /** Read access to one bar's full configuration (thresholds in their native 0..255, the DMX
+     *  channel list), for external inspectors such as the control API; nullptr when out of range */
+    const AudioBar *barAt(int index) const
+    {
+        return index >= 0 && index < m_spectrumBars.count() ? &m_spectrumBars.at(index) : nullptr;
+    }
+
     Q_INVOKABLE void setBarType(BarType type);
     Q_INVOKABLE void setBarThresholds(uchar minThr, uchar maxThr);
     Q_INVOKABLE void setBarFunction(quint32 functionId);

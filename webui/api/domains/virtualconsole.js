@@ -576,6 +576,7 @@
     'vc.speedDial.tapChanged',
     'vc.animation.faderLevelChanged',
     'vc.animation.activePresetChanged',
+    'vc.animation.styleChanged',           // live colour / algorithm change {algorithmIndex, colors}
     'vc.audioTriggers.captureEnabledChanged',
     'vc.audioTriggers.levelsChanged'       // subscribe-gated: audio-capture rate, fastest stream here
   ];

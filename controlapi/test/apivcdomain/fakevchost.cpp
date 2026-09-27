@@ -156,6 +156,30 @@ void FakeVcHost::appendLiveStateToJson(const VcWidgetState &w, QJsonObject &obj)
         obj.insert(QStringLiteral("pages"), frameTotalPages(w));
         obj.insert(QStringLiteral("multipage"), w.typeConfig.value(QStringLiteral("multiPageMode")).toBool(false));
     }
+    else if (t == QStringLiteral("Clock"))
+    {
+        obj.insert(QStringLiteral("currentTime"), w.clockTime);
+        obj.insert(QStringLiteral("running"), w.clockRunning);
+    }
+    else if (t == QStringLiteral("Animation"))
+    {
+        obj.insert(QStringLiteral("faderLevel"), w.faderLevel);
+        obj.insert(QStringLiteral("activePresetId"), -1);
+    }
+    else if (t == QStringLiteral("AudioTriggers"))
+    {
+        obj.insert(QStringLiteral("captureEnabled"), w.captureEnabled);
+        obj.insert(QStringLiteral("levels"), QJsonArray());
+    }
+    if (t == QStringLiteral("XYPad"))
+    {
+        QJsonObject floor;
+        floor.insert(QStringLiteral("x"), w.floorX);
+        floor.insert(QStringLiteral("y"), w.floorY);
+        floor.insert(QStringLiteral("z"), w.floorZ);
+        obj.insert(QStringLiteral("floorPosition"), floor);
+        obj.insert(QStringLiteral("activePresetId"), -1);
+    }
 }
 
 int FakeVcHost::frameTotalPages(const VcWidgetState &w)
@@ -174,6 +198,17 @@ QJsonObject FakeVcHost::widgetDetailToJson(const VcWidgetState &w) const
         typeConfig.insert(QStringLiteral("presets"), w.presets);
     if (ContainerWidgetTypes.contains(w.widgetType))
         typeConfig.insert(QStringLiteral("hasPin"), w.framePin.isEmpty() == false); // read-only, like App's frameConfigToJson()
+    // Read-only sub-resource lists of the XY Pad / Clock / AudioTriggers slice, like App's
+    // xyPadConfigToJson() / clockConfigToJson() / audioTriggersConfigToJson().
+    if (w.widgetType == QStringLiteral("XYPad"))
+        typeConfig.insert(QStringLiteral("fixtures"), w.xyFixtures);
+    else if (w.widgetType == QStringLiteral("Clock"))
+        typeConfig.insert(QStringLiteral("schedules"), w.schedules);
+    else if (w.widgetType == QStringLiteral("AudioTriggers"))
+    {
+        typeConfig.insert(QStringLiteral("bars"), w.bars);
+        typeConfig.insert(QStringLiteral("barsNumber"), w.bars.size());
+    }
     obj.insert(QStringLiteral("typeConfig"), typeConfig);
     obj.insert(QStringLiteral("inputSources"), w.inputSources);
     obj.insert(QStringLiteral("keySequences"), w.keySequences);
@@ -393,6 +428,20 @@ quint32 FakeVcHost::addWidget(const QString &widgetType, int page, quint32 paren
     w.geometry = geometry;
     w.caption = caption;
     w.typeConfig = typeConfig;
+    if (widgetType == QStringLiteral("AudioTriggers"))
+    {
+        // VCAudioTriggers starts with the volume bar plus AudioCapture's default band count; four
+        // bars are plenty for index validation.
+        for (int i = 0; i < 4; i++)
+        {
+            QJsonObject bar;
+            bar.insert(QStringLiteral("index"), i);
+            bar.insert(QStringLiteral("type"), QStringLiteral("None"));
+            bar.insert(QStringLiteral("minThreshold"), 51);
+            bar.insert(QStringLiteral("maxThreshold"), 204);
+            w.bars.append(bar);
+        }
+    }
     m_widgets.insert(w.id, w);
     return w.id;
 }
@@ -1193,6 +1242,424 @@ bool FakeVcHost::vcSpeedDialPresetUpdate(quint32 id, int presetId, const QJsonOb
         return true;
     }
     return false;
+}
+
+/*****************************************************************************
+ * XY Pad fixtures / presets / floor, Clock, Animation, Audio Triggers (ApiVcLiveDomain)
+ *****************************************************************************/
+
+void FakeVcHost::vcSetLiveListenerExt(ApiVcLiveListenerExt *listener)
+{
+    m_liveListenerExt = listener;
+}
+
+bool FakeVcHost::vcXyPadSetFloorPosition(quint32 id, double x, double y, double z, QString *error)
+{
+    auto it = m_widgets.find(id);
+    if (it == m_widgets.end())
+        return false;
+    VcWidgetState &w = it.value();
+    if (w.typeConfig.value(QStringLiteral("floorControl")).toBool(false) == false)
+    {
+        if (error) *error = QStringLiteral("Floor control is off on this pad");
+        return false;
+    }
+    if (x != w.floorX || y != w.floorY || z != w.floorZ)
+    {
+        w.floorX = x; w.floorY = y; w.floorZ = z;
+        if (m_liveListenerExt != nullptr)
+            m_liveListenerExt->vcXyPadFloorPositionChanged(id, x, y, z);
+    }
+    return true;
+}
+
+bool FakeVcHost::vcXyPadAddFixtures(quint32 id, XyPadAddKind kind, quint32 refId, int headIndex, int *addedPresetId, QString *error)
+{
+    auto it = m_widgets.find(id);
+    if (it == m_widgets.end())
+        return false;
+    VcWidgetState &w = it.value();
+    if (addedPresetId != nullptr)
+        *addedPresetId = -1;
+
+    QJsonObject entry;
+    entry.insert(QStringLiteral("enabled"), true);
+    entry.insert(QStringLiteral("units"), QStringLiteral("%"));
+    QJsonObject range;
+    range.insert(QStringLiteral("min"), 0); range.insert(QStringLiteral("max"), 100);
+    range.insert(QStringLiteral("reverse"), false); range.insert(QStringLiteral("maxValue"), 100);
+    entry.insert(QStringLiteral("xRange"), range);
+    entry.insert(QStringLiteral("yRange"), range);
+    switch (kind)
+    {
+        case XyPadAddGroup:
+        {
+            entry.insert(QStringLiteral("fixtureGroupId"), QString::number(refId));
+            entry.insert(QStringLiteral("name"), QStringLiteral("Group %1").arg(refId));
+            // VCXYPad::addGroup() also creates a fixture-group preset for the dropped group.
+            QJsonObject preset;
+            preset.insert(QStringLiteral("presetId"), w.nextPresetId);
+            preset.insert(QStringLiteral("presetType"), QStringLiteral("fixtureGroup"));
+            preset.insert(QStringLiteral("fixtureGroupId"), QString::number(refId));
+            preset.insert(QStringLiteral("name"), QStringLiteral("Group %1").arg(refId));
+            w.presets.append(preset);
+            if (addedPresetId != nullptr)
+                *addedPresetId = w.nextPresetId;
+            w.nextPresetId++;
+        }
+        break;
+        case XyPadAddHead:
+            entry.insert(QStringLiteral("fixtureId"), QString::number(refId));
+            entry.insert(QStringLiteral("headIndex"), headIndex);
+            entry.insert(QStringLiteral("name"), QStringLiteral("Fixture %1 [%2]").arg(refId).arg(headIndex));
+        break;
+        case XyPadAddUniverse:
+            // One stand-in fixture for the whole universe.
+            entry.insert(QStringLiteral("fixtureId"), QString::number(refId * 1000));
+            entry.insert(QStringLiteral("headIndex"), 0);
+            entry.insert(QStringLiteral("name"), QStringLiteral("Universe %1").arg(refId + 1));
+        break;
+        case XyPadAddFixture:
+        default:
+            entry.insert(QStringLiteral("fixtureId"), QString::number(refId));
+            entry.insert(QStringLiteral("headIndex"), 0);
+            entry.insert(QStringLiteral("name"), QStringLiteral("Fixture %1").arg(refId));
+        break;
+    }
+    // Like the engine: a head already on the pad is not added twice.
+    for (const QJsonValue &v : w.xyFixtures)
+    {
+        QJsonObject e = v.toObject();
+        if (e.value(QStringLiteral("fixtureGroupId")) == entry.value(QStringLiteral("fixtureGroupId")) &&
+            e.value(QStringLiteral("fixtureId")) == entry.value(QStringLiteral("fixtureId")) &&
+            e.value(QStringLiteral("headIndex")) == entry.value(QStringLiteral("headIndex")))
+        {
+            if (error) *error = QStringLiteral("Already on this pad");
+            return false;
+        }
+    }
+    w.xyFixtures.append(entry);
+    return true;
+}
+
+static bool fakeXyEntryMatches(const QJsonObject &entry, const QJsonObject &wanted)
+{
+    if (wanted.contains(QStringLiteral("fixtureGroupId")))
+        return entry.value(QStringLiteral("fixtureGroupId")).toString() == wanted.value(QStringLiteral("fixtureGroupId")).toString();
+    return entry.contains(QStringLiteral("fixtureGroupId")) == false &&
+           entry.value(QStringLiteral("fixtureId")).toString() == wanted.value(QStringLiteral("fixtureId")).toString() &&
+           entry.value(QStringLiteral("headIndex")).toInt() == wanted.value(QStringLiteral("headIndex")).toInt(0);
+}
+
+bool FakeVcHost::vcXyPadRemoveHeads(quint32 id, const QJsonArray &heads, QString *error)
+{
+    auto it = m_widgets.find(id);
+    if (it == m_widgets.end())
+        return false;
+    VcWidgetState &w = it.value();
+    bool removed = false;
+    for (const QJsonValue &hv : heads)
+    {
+        for (int i = 0; i < w.xyFixtures.size(); i++)
+        {
+            if (fakeXyEntryMatches(w.xyFixtures.at(i).toObject(), hv.toObject()))
+            {
+                w.xyFixtures.removeAt(i);
+                removed = true;
+                break;
+            }
+        }
+    }
+    if (removed == false && error != nullptr)
+        *error = QStringLiteral("None of the given heads is on this pad");
+    return removed;
+}
+
+bool FakeVcHost::vcXyPadSetHeadsRange(quint32 id, const QJsonArray &heads, int xMin, int xMax, bool xReverse,
+                                      int yMin, int yMax, bool yReverse, QString *error)
+{
+    auto it = m_widgets.find(id);
+    if (it == m_widgets.end())
+        return false;
+    VcWidgetState &w = it.value();
+    bool applied = false;
+    for (const QJsonValue &hv : heads)
+    {
+        for (int i = 0; i < w.xyFixtures.size(); i++)
+        {
+            QJsonObject entry = w.xyFixtures.at(i).toObject();
+            if (fakeXyEntryMatches(entry, hv.toObject()) == false)
+                continue;
+            QJsonObject xr, yr;
+            xr.insert(QStringLiteral("min"), xMin); xr.insert(QStringLiteral("max"), xMax);
+            xr.insert(QStringLiteral("reverse"), xReverse); xr.insert(QStringLiteral("maxValue"), 100);
+            yr.insert(QStringLiteral("min"), yMin); yr.insert(QStringLiteral("max"), yMax);
+            yr.insert(QStringLiteral("reverse"), yReverse); yr.insert(QStringLiteral("maxValue"), 100);
+            entry.insert(QStringLiteral("xRange"), xr);
+            entry.insert(QStringLiteral("yRange"), yr);
+            w.xyFixtures.replace(i, entry);
+            applied = true;
+            break;
+        }
+    }
+    if (applied == false && error != nullptr)
+        *error = QStringLiteral("None of the given heads is on this pad");
+    return applied;
+}
+
+int FakeVcHost::vcWidgetPresetMove(quint32 id, int presetId, bool up, QString *error)
+{
+    Q_UNUSED(error)
+    auto it = m_widgets.find(id);
+    if (it == m_widgets.end())
+        return -1;
+    QJsonArray &presets = it.value().presets;
+    for (int i = 0; i < presets.size(); i++)
+    {
+        if (presets.at(i).toObject().value(QStringLiteral("presetId")).toInt(-1) != presetId)
+            continue;
+        int other = up ? i - 1 : i + 1;
+        if (other < 0 || other >= presets.size())
+            return presetId;
+        // VCXYPad/VCAnimation::movePresetUp/Down swap the two presets' ids: the moved preset takes
+        // its neighbour's id and the list order (sorted by id) follows.
+        QJsonObject a = presets.at(i).toObject(), b = presets.at(other).toObject();
+        int otherId = b.value(QStringLiteral("presetId")).toInt();
+        a.insert(QStringLiteral("presetId"), otherId);
+        b.insert(QStringLiteral("presetId"), presetId);
+        presets.replace(i, b);
+        presets.replace(other, a);
+        return otherId;
+    }
+    return -1;
+}
+
+bool FakeVcHost::vcXyPadRenamePreset(quint32 id, int presetId, const QString &name, QString *error)
+{
+    Q_UNUSED(error)
+    auto it = m_widgets.find(id);
+    if (it == m_widgets.end())
+        return false;
+    QJsonArray &presets = it.value().presets;
+    for (int i = 0; i < presets.size(); i++)
+    {
+        QJsonObject p = presets.at(i).toObject();
+        if (p.value(QStringLiteral("presetId")).toInt(-1) != presetId)
+            continue;
+        p.insert(QStringLiteral("name"), name);
+        presets.replace(i, p);
+        return true;
+    }
+    return false;
+}
+
+bool FakeVcHost::vcClockPlayPause(quint32 id, QString *error)
+{
+    auto it = m_widgets.find(id);
+    if (it == m_widgets.end())
+        return false;
+    VcWidgetState &w = it.value();
+    QString type = w.typeConfig.value(QStringLiteral("clockType")).toString(QStringLiteral("Clock"));
+    if (type == QStringLiteral("Clock"))
+    {
+        if (error) *error = QStringLiteral("A Clock-type widget has no timer to start");
+        return false;
+    }
+    if (type == QStringLiteral("Countdown") && w.clockTime <= 0)
+    {
+        if (error) *error = QStringLiteral("The countdown has reached 0");
+        return false;
+    }
+    w.clockRunning = !w.clockRunning;
+    if (m_liveListenerExt != nullptr)
+        m_liveListenerExt->vcClockTimeChanged(id, w.clockTime, w.clockRunning);
+    return true;
+}
+
+bool FakeVcHost::vcClockReset(quint32 id, QString *error)
+{
+    auto it = m_widgets.find(id);
+    if (it == m_widgets.end())
+        return false;
+    VcWidgetState &w = it.value();
+    QString type = w.typeConfig.value(QStringLiteral("clockType")).toString(QStringLiteral("Clock"));
+    if (type == QStringLiteral("Clock"))
+    {
+        if (error) *error = QStringLiteral("A Clock-type widget has no timer to reset");
+        return false;
+    }
+    w.clockRunning = false;
+    w.clockTime = type == QStringLiteral("Countdown") ? w.typeConfig.value(QStringLiteral("targetTime")).toInt(0) : 0;
+    if (m_liveListenerExt != nullptr)
+        m_liveListenerExt->vcClockTimeChanged(id, w.clockTime, false);
+    return true;
+}
+
+bool FakeVcHost::vcClockAddSchedules(quint32 id, const QList<quint32> &functionIds, QString *error)
+{
+    Q_UNUSED(error)
+    auto it = m_widgets.find(id);
+    if (it == m_widgets.end())
+        return false;
+    VcWidgetState &w = it.value();
+    for (quint32 fid : functionIds)
+    {
+        QJsonObject sch;
+        sch.insert(QStringLiteral("index"), w.schedules.size());
+        sch.insert(QStringLiteral("functionID"), QString::number(fid));
+        sch.insert(QStringLiteral("startTime"), 0);
+        sch.insert(QStringLiteral("stopTime"), -1);
+        sch.insert(QStringLiteral("weekFlags"), 0);
+        w.schedules.append(sch);
+    }
+    return functionIds.isEmpty() == false;
+}
+
+bool FakeVcHost::vcClockUpdateSchedule(quint32 id, int index, const QJsonObject &patch, QString *error)
+{
+    Q_UNUSED(error)
+    auto it = m_widgets.find(id);
+    if (it == m_widgets.end())
+        return false;
+    QJsonArray &schedules = it.value().schedules;
+    if (index < 0 || index >= schedules.size())
+        return false;
+    QJsonObject sch = schedules.at(index).toObject();
+    for (const QString &key : { QStringLiteral("startTime"), QStringLiteral("stopTime"), QStringLiteral("weekFlags") })
+    {
+        if (patch.contains(key))
+            sch.insert(key, patch.value(key).toInt());
+    }
+    schedules.replace(index, sch);
+    return true;
+}
+
+bool FakeVcHost::vcClockRemoveSchedule(quint32 id, int index, QString *error)
+{
+    Q_UNUSED(error)
+    auto it = m_widgets.find(id);
+    if (it == m_widgets.end())
+        return false;
+    QJsonArray &schedules = it.value().schedules;
+    if (index < 0 || index >= schedules.size())
+        return false;
+    schedules.removeAt(index);
+    for (int i = 0; i < schedules.size(); i++)
+    {
+        QJsonObject sch = schedules.at(i).toObject();
+        sch.insert(QStringLiteral("index"), i);
+        schedules.replace(i, sch);
+    }
+    return true;
+}
+
+bool FakeVcHost::vcAnimationSetFaderLevel(quint32 id, int level, QString *error)
+{
+    auto it = m_widgets.find(id);
+    if (it == m_widgets.end())
+        return false;
+    VcWidgetState &w = it.value();
+    // Like VCAnimation::setFaderLevel(): nothing happens without an attached RGB Matrix.
+    QString fid = w.typeConfig.value(QStringLiteral("functionID")).toString();
+    if (fid.isEmpty() || fid == QStringLiteral("4294967295"))
+    {
+        if (error) *error = QStringLiteral("No RGB Matrix is attached to this Animation widget");
+        return false;
+    }
+    if (level != w.faderLevel)
+    {
+        w.faderLevel = level;
+        if (m_liveListenerExt != nullptr)
+            m_liveListenerExt->vcAnimationFaderLevelChanged(id, level);
+    }
+    return true;
+}
+
+bool FakeVcHost::vcAnimationSetPresetKnobValue(quint32 id, int presetId, int value, QString *error)
+{
+    auto it = m_widgets.find(id);
+    if (it == m_widgets.end())
+        return false;
+    for (const QJsonValue &v : it.value().presets)
+    {
+        QJsonObject p = v.toObject();
+        if (p.value(QStringLiteral("presetId")).toInt(-1) != presetId)
+            continue;
+        if (p.value(QStringLiteral("presetType")).toString() != QStringLiteral("colorKnobs"))
+        {
+            if (error) *error = QStringLiteral("Preset %1 is not a colour knob").arg(presetId);
+            return false;
+        }
+        if (m_liveListenerExt != nullptr)
+            m_liveListenerExt->vcAnimationActivePresetChanged(id, -1, presetId, value);
+        return true;
+    }
+    return false;
+}
+
+bool FakeVcHost::vcAudioTriggersSetCaptureEnabled(quint32 id, bool enabled, QString *error)
+{
+    Q_UNUSED(error)
+    auto it = m_widgets.find(id);
+    if (it == m_widgets.end())
+        return false;
+    VcWidgetState &w = it.value();
+    if (enabled != w.captureEnabled)
+    {
+        w.captureEnabled = enabled;
+        if (m_liveListenerExt != nullptr)
+            m_liveListenerExt->vcAudioTriggersCaptureEnabledChanged(id, enabled);
+    }
+    return true;
+}
+
+bool FakeVcHost::vcAudioTriggersSetBarConfig(quint32 id, int index, const QJsonObject &patch, QString *error)
+{
+    Q_UNUSED(error)
+    auto it = m_widgets.find(id);
+    if (it == m_widgets.end())
+        return false;
+    QJsonArray &bars = it.value().bars;
+    if (index < 0 || index >= bars.size())
+        return false;
+    QJsonObject bar = bars.at(index).toObject();
+    if (patch.contains(QStringLiteral("type")) && patch.value(QStringLiteral("type")).toString() != bar.value(QStringLiteral("type")).toString())
+    {
+        // Like VCAudioTriggers::setBarType(): a type change resets the bar.
+        QJsonObject fresh;
+        fresh.insert(QStringLiteral("index"), index);
+        fresh.insert(QStringLiteral("type"), patch.value(QStringLiteral("type")).toString());
+        fresh.insert(QStringLiteral("minThreshold"), 51);
+        fresh.insert(QStringLiteral("maxThreshold"), 204);
+        bar = fresh;
+    }
+    for (const QString &key : { QStringLiteral("minThreshold"), QStringLiteral("maxThreshold"), QStringLiteral("functionId"),
+                                QStringLiteral("triggeredWidgetId"), QStringLiteral("dmxChannels") })
+    {
+        if (patch.contains(key))
+            bar.insert(key, patch.value(key));
+    }
+    bars.replace(index, bar);
+    return true;
+}
+
+void FakeVcHost::simulateClockTick(quint32 id, int currentTime, bool running)
+{
+    auto it = m_widgets.find(id);
+    if (it == m_widgets.end())
+        return;
+    it.value().clockTime = currentTime;
+    it.value().clockRunning = running;
+    if (m_liveListenerExt != nullptr)
+        m_liveListenerExt->vcClockTimeChanged(id, currentTime, running);
+}
+
+void FakeVcHost::simulateAudioLevels(quint32 id, const QList<int> &levels)
+{
+    if (m_widgets.contains(id) == false)
+        return;
+    if (m_liveListenerExt != nullptr)
+        m_liveListenerExt->vcAudioTriggersLevelsChanged(id, levels);
 }
 
 /*****************************************************************************

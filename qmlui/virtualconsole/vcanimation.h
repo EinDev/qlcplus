@@ -256,6 +256,10 @@ public:
     /** Get the current knob value (0..255) for a color-knob preset */
     Q_INVOKABLE int presetKnobValue(quint8 presetId) const;
 
+    /** The preset objects in display order, for external inspectors (the control API's
+     *  VcAnimationPreset shaping needs the script properties presetsList() omits) */
+    QList<VCAnimationPreset *> presetObjects() const { return controls(); }
+
 signals:
     void presetsListChanged();
     void activePresetIdChanged();

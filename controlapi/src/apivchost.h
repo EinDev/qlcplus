@@ -25,6 +25,7 @@
 #include <QPointF>
 #include <QRectF>
 #include <QString>
+#include <QStringList>
 #include <QtGlobal>
 #include <limits>
 
@@ -369,6 +370,89 @@ public:
     virtual QList<quint32> vcWidgetsUsingFunction(quint32 functionId) const = 0;
 
     /*********************************************************************
+     * XY Pad / Clock / Animation / Audio Triggers slice (ApiVcLiveDomain,
+     * controlapi/src/domains/apivclivedomain.cpp)
+     *
+     * Same caller contract as above: the widget exists and has the matching wire type ("XYPad",
+     * "Clock", "Animation", "AudioTriggers"); ids inside a request (fixtures, groups, functions,
+     * widgets, preset ids, schedule/bar indexes) have already been validated by the domain against
+     * the Doc and the widget's own snapshot. Structural (§4a) methods do NOT bump Doc themselves -
+     * the domain calls Doc::setModified() and broadcasts after a true return. Live changes are
+     * reported through the ApiVcLiveListenerExt registered with vcSetLiveListenerExt().
+     *********************************************************************/
+
+    /** Registers the receiver of the live-state changes of this slice (nullptr detaches). Owned by
+     *  the caller, exactly like vcSetLiveListener(). */
+    virtual void vcSetLiveListenerExt(class ApiVcLiveListenerExt *listener) = 0;
+
+    /** vc.xyPad.setFloorPosition - VCXYPad::setFloorPosition($x, $y, $z), metres (X/Z on the stage
+     *  floor, Y the height). Returns false (INVALID_STATE) while floorControl is off. */
+    virtual bool vcXyPadSetFloorPosition(quint32 id, double x, double y, double z, QString *error) = 0;
+
+    enum XyPadAddKind { XyPadAddFixture, XyPadAddHead, XyPadAddGroup, XyPadAddUniverse };
+
+    /** vc.xyPad.fixture.add - VCXYPad::addFixture() (every Pan/Tilt head of fixture $refId),
+     *  addHead($refId, $headIndex), addGroup() (FixtureGroup $refId, which also creates a
+     *  fixture-group preset - its id is returned in *$addedPresetId, -1 otherwise) or, for a
+     *  universe, addFixture() of every fixture patched on universe $refId. Returns false with
+     *  *$error set when nothing was added (no Pan/Tilt channel, already on the pad). */
+    virtual bool vcXyPadAddFixtures(quint32 id, XyPadAddKind kind, quint32 refId, int headIndex,
+                                    int *addedPresetId, QString *error) = 0;
+
+    /** vc.xyPad.fixture.remove - VCXYPad::removeHeads() of the entries named by $heads: each is
+     *  {fixtureId, headIndex} or {fixtureGroupId} (wire strings). Unknown entries are skipped. */
+    virtual bool vcXyPadRemoveHeads(quint32 id, const QJsonArray &heads, QString *error) = 0;
+
+    /** vc.xyPad.setHeadsRange - VCXYPad::setHeadsRange() on the entries named by $heads (same shape
+     *  as vcXyPadRemoveHeads); the six range values are in the units of the pad's current
+     *  displayMode (percent, degrees or DMX), like the on-screen dialog. */
+    virtual bool vcXyPadSetHeadsRange(quint32 id, const QJsonArray &heads, int xMin, int xMax, bool xReverse,
+                                      int yMin, int yMax, bool yReverse, QString *error) = 0;
+
+    /** vc.xyPad.preset.move / vc.animation.preset.move - movePresetUp()/movePresetDown(). The engine
+     *  swaps the two presets' ids, so the moved preset is reachable under a NEW id afterwards - that
+     *  id is returned (unchanged when the preset was already first/last). */
+    virtual int vcWidgetPresetMove(quint32 id, int presetId, bool up, QString *error) = 0;
+
+    /** vc.xyPad.preset.rename - VCXYPad::setPresetName(). */
+    virtual bool vcXyPadRenamePreset(quint32 id, int presetId, const QString &name, QString *error) = 0;
+
+    /** vc.clock.playPause - VCClock::playPauseTimer(). Returns false (INVALID_STATE) for a Clock-type
+     *  widget or a Countdown that already reached 0 (both engine no-ops). */
+    virtual bool vcClockPlayPause(quint32 id, QString *error) = 0;
+
+    /** vc.clock.reset - VCClock::resetTimer(). Returns false for a Clock-type widget. */
+    virtual bool vcClockReset(quint32 id, QString *error) = 0;
+
+    /** vc.clock.schedule.add - VCClock::addSchedules(): one schedule per Function id (all validated to
+     *  exist by the caller), default start 00:00:00, no stop time, every day, no repeat. */
+    virtual bool vcClockAddSchedules(quint32 id, const QList<quint32> &functionIds, QString *error) = 0;
+
+    /** vc.clock.schedule.update - applies whichever of startTime / stopTime / weekFlags are in $patch
+     *  (already range-checked) to the schedule at $index (already checked to exist). */
+    virtual bool vcClockUpdateSchedule(quint32 id, int index, const QJsonObject &patch, QString *error) = 0;
+
+    /** vc.clock.schedule.remove - VCClock::removeSchedule($index) ($index already checked to exist). */
+    virtual bool vcClockRemoveSchedule(quint32 id, int index, QString *error) = 0;
+
+    /** vc.animation.setFaderLevel - VCAnimation::setFaderLevel($level 0..255). Returns false
+     *  (INVALID_STATE) when no RGB Matrix is attached - the engine silently ignores the level then. */
+    virtual bool vcAnimationSetFaderLevel(quint32 id, int level, QString *error) = 0;
+
+    /** vc.animation.setPresetKnobValue - VCAnimation::setPresetKnobValue($presetId, $value 0..255).
+     *  Returns false when $presetId (known to exist) is not a knob preset. */
+    virtual bool vcAnimationSetPresetKnobValue(quint32 id, int presetId, int value, QString *error) = 0;
+
+    /** vc.audioTriggers.setCaptureEnabled - VCAudioTriggers::setCaptureEnabled(). */
+    virtual bool vcAudioTriggersSetCaptureEnabled(quint32 id, bool enabled, QString *error) = 0;
+
+    /** vc.audioTriggers.setBarConfig - partial update of bar $index (checked to exist): $patch may
+     *  carry type, minThreshold, maxThreshold (0..255), functionId, triggeredWidgetId, dmxChannels
+     *  (all validated by the caller). Changing the type resets the other fields first, exactly like
+     *  VCAudioTriggers::setBarType() does on screen. */
+    virtual bool vcAudioTriggersSetBarConfig(quint32 id, int index, const QJsonObject &patch, QString *error) = 0;
+
+    /*********************************************************************
      * External controls slice (ApiVcInputDomain, controlapi/src/domains/apivcinputdomain.cpp):
      * input sources (MIDI/OSC/DMX/... controller mapping), keyboard sequences and the external
      * control table of a widget. The domain validates controlId against vcWidgetExternalControls()
@@ -419,6 +503,32 @@ public:
     /** vc.widget.keySequence.remove - VirtualConsole::deleteKeySequence() with the control id the
      *  sequence is currently bound to. Returns false when the widget has no such sequence (NOT_FOUND). */
     virtual bool vcWidgetKeySequenceRemove(quint32 id, const QString &keySequence, QString *error) = 0;
+};
+
+/**
+ * Receiver for the live (§4b) state changes of the XY Pad / Clock / Animation / Audio Triggers slice -
+ * the second half of ApiVcLiveListener, kept apart so ApiVcLiveDomain (controlapi/src/domains/
+ * apivclivedomain.cpp) can receive them without ApiVcDomain having to grow. Same threading contract:
+ * every callback happens on the host's GUI thread, for a change from ANY source (API request, the
+ * QML UI, external input, a timer tick, the audio capture thread's data).
+ *  - $currentTime is VCClock::currentTime(): seconds since midnight for a Clock, elapsed / remaining
+ *    milliseconds for a Stopwatch / Countdown
+ *  - $levels are VCAudioTriggers::audioLevels(), 0..255 per bar (index 0 = volume)
+ *  - $colors are the animation's 5 colour slots as "#rrggbb" strings ("" = no override)
+ */
+class ApiVcLiveListenerExt
+{
+public:
+    virtual ~ApiVcLiveListenerExt() {}
+
+    virtual void vcXyPadFloorPositionChanged(quint32 widgetId, double x, double y, double z) = 0;
+    virtual void vcXyPadActivePresetChanged(quint32 widgetId, int presetId) = 0;
+    virtual void vcClockTimeChanged(quint32 widgetId, int currentTime, bool running) = 0;
+    virtual void vcAnimationFaderLevelChanged(quint32 widgetId, int level) = 0;
+    virtual void vcAnimationActivePresetChanged(quint32 widgetId, int presetId, int knobPresetId, int knobValue) = 0;
+    virtual void vcAnimationStyleChanged(quint32 widgetId, int algorithmIndex, const QStringList &colors) = 0;
+    virtual void vcAudioTriggersCaptureEnabledChanged(quint32 widgetId, bool enabled) = 0;
+    virtual void vcAudioTriggersLevelsChanged(quint32 widgetId, const QList<int> &levels) = 0;
 };
 
 #endif

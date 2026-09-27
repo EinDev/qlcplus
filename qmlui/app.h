@@ -624,6 +624,27 @@ public:
     bool vcWidgetInputSourceRemove(quint32 id, quint32 controlId, quint32 universe, quint32 channel, QString *error) override;
     bool vcWidgetKeySequenceSet(quint32 id, quint32 controlId, const QString &keySequence, QString *error) override;
     bool vcWidgetKeySequenceRemove(quint32 id, const QString &keySequence, QString *error) override;
+    // XY Pad fixtures / presets / floor, Clock, Animation and Audio Triggers (vc.xyPad.*, vc.clock.*,
+    // vc.animation.*, vc.audioTriggers.*) - implemented in app_apivchost_live.cpp; the typeConfig /
+    // preset shaping lives in app_apivcconfig_live.cpp. See apivchost.h for each method's contract.
+    void vcSetLiveListenerExt(ApiVcLiveListenerExt *listener) override;
+    bool vcXyPadSetFloorPosition(quint32 id, double x, double y, double z, QString *error) override;
+    bool vcXyPadAddFixtures(quint32 id, XyPadAddKind kind, quint32 refId, int headIndex,
+                            int *addedPresetId, QString *error) override;
+    bool vcXyPadRemoveHeads(quint32 id, const QJsonArray &heads, QString *error) override;
+    bool vcXyPadSetHeadsRange(quint32 id, const QJsonArray &heads, int xMin, int xMax, bool xReverse,
+                              int yMin, int yMax, bool yReverse, QString *error) override;
+    int vcWidgetPresetMove(quint32 id, int presetId, bool up, QString *error) override;
+    bool vcXyPadRenamePreset(quint32 id, int presetId, const QString &name, QString *error) override;
+    bool vcClockPlayPause(quint32 id, QString *error) override;
+    bool vcClockReset(quint32 id, QString *error) override;
+    bool vcClockAddSchedules(quint32 id, const QList<quint32> &functionIds, QString *error) override;
+    bool vcClockUpdateSchedule(quint32 id, int index, const QJsonObject &patch, QString *error) override;
+    bool vcClockRemoveSchedule(quint32 id, int index, QString *error) override;
+    bool vcAnimationSetFaderLevel(quint32 id, int level, QString *error) override;
+    bool vcAnimationSetPresetKnobValue(quint32 id, int presetId, int value, QString *error) override;
+    bool vcAudioTriggersSetCaptureEnabled(quint32 id, bool enabled, QString *error) override;
+    bool vcAudioTriggersSetBarConfig(quint32 id, int index, const QJsonObject &patch, QString *error) override;
 
 protected slots:
     /** VirtualConsole::widgetRegistered() - hooks the per-type live-state signals of every widget
@@ -641,5 +662,13 @@ private:
     /** The control API's live-event receiver (ApiVcDomain), or nullptr while none is attached. Not
      *  owned. */
     ApiVcLiveListener *m_vcLiveListener = nullptr;
+
+    /** Hooks the XY Pad / Clock / Animation / Audio Triggers live signals of $widget to relays feeding
+     *  m_vcLiveListenerExt - called from slotVcWidgetRegistered() after the ApiVcLiveListener relays
+     *  (app_apivchost_live.cpp). */
+    void vcConnectLiveRelaysExt(VCWidget *widget);
+
+    /** The control API's receiver for that slice's live events (ApiVcLiveDomain), or nullptr. Not owned. */
+    ApiVcLiveListenerExt *m_vcLiveListenerExt = nullptr;
 };
 #endif // APP_H

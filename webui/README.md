@@ -133,8 +133,21 @@ and a second tab checked for the pushed event:
   left / right / top / bottom to the first selected widget, distribute horizontally / vertically
   (3+ widgets in one frame), style a multi-selection in one `vc.widget.bulkStyle`, "Add widgets
   from functions" (a button, adjust slider or cue list per picked function), "Create a widget
-  matrix" (buttons or sliders in a new frame / solo frame) and the Usage popup. XY Pad,
-  Animation, Audio Triggers and Clock configuration is still view-only.
+  matrix" (buttons or sliders in a new frame / solo frame) and the Usage popup.
+- **XY Pad, Clock, Animation, Audio Triggers** (`webui/vc/vc-props-live.jsx`, added 2026-09-27,
+  verified against a `vclive` sandbox on ports 9180/9181 by `webui/tools/e2e/vc-live.js`): XY pad
+  fixtures (fixture / single head / fixture group / universe picker, per-head Pan/Tilt range and
+  reverse in degrees, % or DMX), Pan/Tilt window, inverted Y, floor control (stage-grid pad plus a
+  height fader), presets (position from the cursor, Scene/EFX function, fixture group or head;
+  rename, reorder, remove, apply from the body) - the pad drives real DMX; clock type, countdown
+  target and schedules (function, start / stop time, weekdays, repeat) with the day-time spin boxes,
+  play / pause / reset, a live countdown (`vc.clock.timeChanged`) and the local wall clock;
+  animation RGB Matrix, visibility, instant changes, colour swatches, algorithm combo, colour /
+  R-G-B knob / text / script-algorithm presets (with the script's parameters), fader and preset
+  buttons / knobs in the body; audio triggers bar count, volume, per-bar type (DMX with the channel
+  picker, Function, VC widget) and thresholds, capture toggle and the live bars meter
+  (`vc.audioTriggers.levelsChanged`; capture runs on the QLC+ host). Opening the page on
+  `http://[::1]:<port>/` now works (the connection split IPv6 literals at their first colon).
 - **External controls + key bindings** (`webui/vc/vc-external.jsx`, added 2026-09-27, verified
   against a `vcinput` sandbox on ports 9220/9221 by `webui/tools/e2e/vc-input.js`): every widget's
   property panel has an "External controls" section (ExternalControls.qml): input sources picked

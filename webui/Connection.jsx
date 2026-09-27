@@ -81,10 +81,12 @@ function QLCConnectionProvider({ children }) {
     if (!window.QLCPlusAPI) { push('error', 'qlcplus-api.js not loaded'); return; }
     if (clientRef.current) clientRef.current.disconnect();
 
-    /* A "host:port" typed straight into the host field still wins over the port field. */
-    const parts = raw.split(':');
-    const targetHost = parts[0];
-    const targetPort = parts[1] ? Number(parts[1]) : (Number(p) || FALLBACK_PORT);
+    /* A "host:port" typed straight into the host field still wins over the port field. A bracketed
+       IPv6 literal ("[::1]", the page's own hostname when it was opened on IPv6 loopback) keeps its
+       colons: only a single trailing ":digits" is a port. */
+    const m = /^(\[[^\]]+\]|[^:]+)(?::(\d+))?$/.exec(raw);
+    const targetHost = m ? m[1] : raw;
+    const targetPort = m && m[2] ? Number(m[2]) : (Number(p) || FALLBACK_PORT);
     const label = targetHost + ':' + targetPort;
 
     if (remember) {
