@@ -107,7 +107,7 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | Invert selection in group(s) | MainView.qml, popup/PopupInvertGroupSelection.qml | missing | U |
 | Rename items with numbering (start number, digits) | popup/PopupRenameItems.qml | missing | U; loop over fixtures.update / functions.rename |
 | Fixture remap (drag new fixtures, map channels, clone, apply and save) | fixturesfunctions/FixtureRemap.qml, fixturesfunctions/RemapRowDelegate.qml | missing | S: fixtures.remap.apply, fixtures.remap.suggestChannelMap; button present, disabled |
-| Create / edit a fixture definition (opens the Fixture Editor) | fixturesfunctions/FixtureBrowser.qml | missing | S: fixturedefs.*; see Fixture Editor section |
+| Create / edit a fixture definition (opens the Fixture Editor) | fixturesfunctions/FixtureBrowser.qml | partial | U; server domain fixturedefs.* complete + 26 unit tests + socket smoke (2026-09-27); web editor screen not built yet |
 | Live tool: Intensity | fixturesfunctions/IntensityTool.qml, fixturesfunctions/LeftPanel.qml | live | - ; writes Simple Desk overrides at the fixture addresses |
 | Live tool: Colour (basic palette, full picker, typed hex, RGB / CMY / WAUV) | ColorTool.qml, ColorToolBasic.qml, ColorToolFull.qml, ColorToolPrimary.qml | live | - |
 | Live tool: Colour filters tab (named colour filter lists) | ColorToolFilters.qml | missing | U; filter definitions come from the engine's colour filter files, palette.* has no listing, so possibly spec+S+U |
@@ -338,22 +338,22 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 
 | Qt UI action | Where in qmlui (file) | Web UI status | Blocker / notes |
 | --- | --- | --- | --- |
-| Open the Fixture Editor window, back to QLC+ | fixtureeditor/FixtureEditor.qml, WindowLoader.qml | missing | S: fixturedefs.session.list, fixturedefs.session.open, fixturedefs.session.close |
-| New definition | fixtureeditor/FixtureEditor.qml | missing | S: fixturedefs.session.create |
-| Open an existing definition (user or system) | fixtureeditor/FixtureEditor.qml, popup/PopupFolderBrowser.qml | missing | S: fixturedefs.list, fixturedefs.get, fixturedefs.session.open, fixturedefs.session.forkToUser |
-| Save / save as | fixtureeditor/FixtureEditor.qml | missing | S: fixturedefs.save, fixturedefs.export |
-| General: manufacturer, model, type, author | fixtureeditor/EditorView.qml | missing | S: fixturedefs.session.update |
-| Channels: add / remove / edit (name, group, preset, default value, coarse / fine, colours) | fixtureeditor/EditorView.qml, fixtureeditor/ChannelEditor.qml | missing | S: fixturedefs.channel.add, fixturedefs.channel.update, fixturedefs.channel.remove |
-| Capabilities: add / remove / edit (range, description, preset, values, colours) | fixtureeditor/ChannelEditor.qml | missing | S: fixturedefs.channel.capability.add, fixturedefs.channel.capability.update, fixturedefs.channel.capability.remove |
+| Open the Fixture Editor window, back to QLC+ | fixtureeditor/FixtureEditor.qml, WindowLoader.qml | partial | U; server domain fixturedefs.* complete + 26 unit tests + socket smoke (2026-09-27); web editor screen not built yet |
+| New definition | fixtureeditor/FixtureEditor.qml | partial | U; server domain fixturedefs.* complete + 26 unit tests + socket smoke (2026-09-27); web editor screen not built yet |
+| Open an existing definition (user or system) | fixtureeditor/FixtureEditor.qml, popup/PopupFolderBrowser.qml | partial | U; server domain fixturedefs.* complete + 26 unit tests + socket smoke (2026-09-27); web editor screen not built yet |
+| Save / save as | fixtureeditor/FixtureEditor.qml | partial | U; server domain fixturedefs.* complete + 26 unit tests + socket smoke (2026-09-27); web editor screen not built yet |
+| General: manufacturer, model, type, author | fixtureeditor/EditorView.qml | partial | U; server domain fixturedefs.* complete + 26 unit tests + socket smoke (2026-09-27); web editor screen not built yet |
+| Channels: add / remove / edit (name, group, preset, default value, coarse / fine, colours) | fixtureeditor/EditorView.qml, fixtureeditor/ChannelEditor.qml | partial | U; server domain fixturedefs.* complete + 26 unit tests + socket smoke (2026-09-27); web editor screen not built yet |
+| Capabilities: add / remove / edit (range, description, preset, values, colours) | fixtureeditor/ChannelEditor.qml | partial | U; server domain fixturedefs.* complete + 26 unit tests + socket smoke (2026-09-27); web editor screen not built yet |
 | Capabilities: gobo picture | fixtureeditor/ChannelEditor.qml | missing | spec+S+U; picture upload from the browser |
-| Capabilities: automatic colour assignment | fixtureeditor/ChannelEditor.qml | missing | S: fixturedefs.channel.capability.autoPatchColors |
-| Channel / capability wizard | popup/PopupChannelWizard.qml | missing | spec+S+U |
-| Modes: add / remove / rename, channel list, per-mode physical override | fixtureeditor/EditorView.qml, fixtureeditor/ModeEditor.qml | missing | S: fixturedefs.mode.add, fixturedefs.mode.remove, fixturedefs.mode.rename, fixturedefs.mode.setChannels, fixturedefs.mode.setPhysical |
-| Modes: heads / emitters (create, remove, acts-on channels) | fixtureeditor/ModeEditor.qml | missing | S: fixturedefs.mode.head.add, fixturedefs.mode.head.remove |
-| Physical properties (bulb, dimensions, lens, focus, layout, electrical) | fixtureeditor/PhysicalProperties.qml | missing | S: fixturedefs.session.setPhysical |
-| Aliases (replace channel with another while a capability is active, apply to all modes) | fixtureeditor/AliasEditor.qml | missing | S: fixturedefs.channel.capability.alias.add, fixturedefs.channel.capability.alias.update, fixturedefs.channel.capability.alias.remove, fixturedefs.channel.capability.alias.applyToAllModes |
-| Import a definition file | fixtureeditor/FixtureEditor.qml | missing | S: fixturedefs.session.import; browser-side upload is spec+S+U |
-| Validation errors and warnings | fixtureeditor/EditorView.qml | missing | S: fixturedefs.session.validate |
+| Capabilities: automatic colour assignment | fixtureeditor/ChannelEditor.qml | partial | U; server domain fixturedefs.* complete + 26 unit tests + socket smoke (2026-09-27); web editor screen not built yet |
+| Channel / capability wizard | popup/PopupChannelWizard.qml | partial | U; fixturedefs.channel.wizard + fixturedefs.channel.capability.wizard specced + implemented (2026-09-27); web editor screen not built yet |
+| Modes: add / remove / rename, channel list, per-mode physical override | fixtureeditor/EditorView.qml, fixtureeditor/ModeEditor.qml | partial | U; server domain fixturedefs.* complete + 26 unit tests + socket smoke (2026-09-27); web editor screen not built yet |
+| Modes: heads / emitters (create, remove, acts-on channels) | fixtureeditor/ModeEditor.qml | partial | U; server domain fixturedefs.* complete + 26 unit tests + socket smoke (2026-09-27); web editor screen not built yet |
+| Physical properties (bulb, dimensions, lens, focus, layout, electrical) | fixtureeditor/PhysicalProperties.qml | partial | U; server domain fixturedefs.* complete + 26 unit tests + socket smoke (2026-09-27); web editor screen not built yet |
+| Aliases (replace channel with another while a capability is active, apply to all modes) | fixtureeditor/AliasEditor.qml | partial | U; server domain fixturedefs.* complete + 26 unit tests + socket smoke (2026-09-27); web editor screen not built yet |
+| Import a definition file | fixtureeditor/FixtureEditor.qml | partial | U; server domain fixturedefs.* complete + 26 unit tests + socket smoke (2026-09-27); web editor screen not built yet |
+| Validation errors and warnings | fixtureeditor/EditorView.qml | partial | U; server domain fixturedefs.* complete + 26 unit tests + socket smoke (2026-09-27); web editor screen not built yet |
 
 ## Popups & tools
 
@@ -426,7 +426,7 @@ the total is larger than the number of distinct actions). Recompute after editin
 | Status | Rows |
 | --- | --- |
 | live | 128 |
-| partial | 42 |
-| missing | 124 |
+| partial | 58 |
+| missing | 108 |
 | n/a | 20 |
 | total | 314 |
