@@ -1328,6 +1328,30 @@ FadeChannel *ApiIoDomain::simpleDeskFader(const QList<Universe *> &universes, qu
     return fader->getChannelFader(m_doc, universes[universeId], fixtureId, channel);
 }
 
+void ApiIoDomain::overrideChannels(const QList<QPair<quint32, uchar>> &entries, const QString &originClientId)
+{
+    if (entries.isEmpty())
+        return;
+
+    {
+        // Same locked-scope discipline as io.simpleDesk.setChannels (see its
+        // handler above): the data mutation and setChanged() share one scope.
+        QMutexLocker locker(&m_simpleDeskMutex);
+        for (const auto &entry : entries)
+            m_simpleDeskValues[entry.first] = entry.second;
+        setChanged(true);
+    }
+
+    for (const auto &entry : entries)
+    {
+        QJsonObject data;
+        data.insert(QStringLiteral("address"), int(entry.first));
+        data.insert(QStringLiteral("value"), int(entry.second));
+        data.insert(QStringLiteral("overridden"), true);
+        m_server->broadcast(QStringLiteral("io.simpleDesk.channelChanged"), data, originClientId, false);
+    }
+}
+
 void ApiIoDomain::writeDMX(MasterTimer *timer, QList<Universe *> universes)
 {
     Q_UNUSED(timer)

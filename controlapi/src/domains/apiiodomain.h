@@ -59,6 +59,13 @@ public:
     ApiIoDomain(Doc *doc, ApiServer *server, QObject *parent = nullptr);
     ~ApiIoDomain() override;
 
+    /** Programmatic io.simpleDesk.setChannels: holds every (absolute
+     *  address, value) pair as a live Simple Desk override and broadcasts
+     *  io.simpleDesk.channelChanged for each, attributed to originClientId.
+     *  Used by other domains that write live DMX through the same override
+     *  path a client would (ApiMonitorDomain's fixtures.monitor.aimAt). */
+    void overrideChannels(const QList<QPair<quint32, uchar>> &entries, const QString &originClientId);
+
     /** @reimp DMXSource - pushes every live-held Simple Desk value through
      *  this class's own per-universe GenericFader(s), mirroring
      *  qmlui/simpledesk.cpp's writeDMX() exactly (see its own comments for
