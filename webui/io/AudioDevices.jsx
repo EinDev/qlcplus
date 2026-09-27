@@ -36,7 +36,7 @@
     const frac = Math.min(1, level / 32767);
     return (
       <Row label="Signal level" width={96} title="Start / stop the audio input signal level check on the QLC+ host">
-        <IconButton faSource={on ? 'fa_stop' : 'fa_play'} faColor="var(--fg-main)" size={24} checked={on} onClick={toggle} data-role="audio-level-toggle"
+        <IconButton faSource={on ? '' /* stop */ : 'fa_play'} faColor="var(--fg-main)" size={24} checked={on} onClick={toggle} data-role="audio-level-toggle"
           tooltip={on ? 'Stop the audio input signal level check' : 'Start the audio input signal level check'} />
         <div data-role="audio-level" data-level={level} style={{ flex: 1, height: 22, borderRadius: 3, background: 'var(--bg-light)', border: '1px solid var(--bg-strong)', position: 'relative', overflow: 'hidden' }}>
           <div style={{ position: 'absolute', left: 2, top: 2, bottom: 2, width: 'calc((100% - 4px) * ' + frac + ')', borderRadius: 2,

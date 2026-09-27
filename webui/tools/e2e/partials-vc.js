@@ -224,6 +224,9 @@ async function ioSection(browser, api) {
     const outRow = (index, sel) => `document.querySelector('[data-universe="${U_OUT}"] [data-output="${index}"] ${sel}')`;
     await clickFn(page, outRow(0, '[data-role="output-pause"]'), 'pause output 1');
     await waitCheck(async () => (await get(U_OUT)).outputPatches[0].paused === true, 'pause button -> output 1 paused (io.universe.get)');
+    /* the held frame is the first one output after the pause (OutputPatch::dump): let a few universe
+       ticks (20 ms) pass before changing the value, or the new value can be the frozen one */
+    await sleep(200);
     await api.sd(U_OUT, CH, 90);
     await waitCheck(async () => (await api.dmx(U_OUT2))[CH] === 90, 'while output 1 is paused, output 2 still sends the new value 90 (universe 7)');
     await sleep(600);
