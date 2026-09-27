@@ -367,6 +367,58 @@ public:
     /** vc.widget.usage - VirtualConsole::usageList($functionId): every widget id referencing that
      *  Function (Button's functionID, Slider's controlledFunction, Cue List's chaser, Clock schedules). */
     virtual QList<quint32> vcWidgetsUsingFunction(quint32 functionId) const = 0;
+
+    /*********************************************************************
+     * External controls slice (ApiVcInputDomain, controlapi/src/domains/apivcinputdomain.cpp):
+     * input sources (MIDI/OSC/DMX/... controller mapping), keyboard sequences and the external
+     * control table of a widget. The domain validates controlId against vcWidgetExternalControls()
+     * and the key text with QKeySequence itself; the structural (§4a) methods below do NOT bump Doc
+     * - the domain calls Doc::setModified() and broadcasts after a true return. Auto-detection is
+     * implemented entirely in the domain (it listens to InputOutputMap::inputValueChanged and
+     * calls vcWidgetInputSourceSet() with what it hears), so no host method exists for it.
+     *********************************************************************/
+
+    /** VcWidgetDetail.externalControls: [{controlId, name, allowKeyboard}] in ascending id order
+     *  (VCWidget::externalControlIds()/externalControlName()/externalControlAllowsKeyboard()). Empty
+     *  for an unknown widget. */
+    virtual QJsonArray vcWidgetExternalControls(quint32 id) const = 0;
+
+    /** VcWidgetDetail.inputSources: one VcInputSource per QLCInputSource of the widget - controlId,
+     *  universe, channel (the composited page-in-upper-bits value), lowerValue, upperValue,
+     *  monitorValue, lowerChannel/upperChannel/monitorChannel (1-based, only when the source carries
+     *  an integer feedback extra param >= 0) plus the additive universeName / channelName /
+     *  supportsCustomFeedback / invalid fields the web UI displays. */
+    virtual QJsonArray vcWidgetInputSources(quint32 id) const = 0;
+
+    /** VcWidgetDetail.keySequences: [{keySequence (QKeySequence::PortableText), controlId}]. */
+    virtual QJsonArray vcWidgetKeySequences(quint32 id) const = 0;
+
+    /** vc.widget.inputSource.set - binds ($universe, $channel) to control $controlId (already
+     *  validated to be one of vcWidgetExternalControls()). A source is identified by its universe and
+     *  channel within a widget (VCWidget::inputSource(universe, channel)): when one already exists it
+     *  is re-targeted to $controlId and $feedback is applied, otherwise a new QLCInputSource is added
+     *  (VirtualConsole::createAndAddInputSource() semantics, input profile defaults applied first)
+     *  and mapped on every page. $feedback carries whichever of lowerValue / upperValue /
+     *  monitorValue (0..255) and lowerChannel / upperChannel / monitorChannel (1-based MIDI table
+     *  index, 0 = the input profile's routing) the request contained - absent keys keep their
+     *  current value. When $channel has no page bits and the widget sits on a multipage frame page
+     *  > 0, the widget's page is folded into the channel (what auto-detection does). */
+    virtual bool vcWidgetInputSourceSet(quint32 id, quint32 controlId, quint32 universe, quint32 channel,
+                                        const QJsonObject &feedback, QString *error) = 0;
+
+    /** vc.widget.inputSource.remove - VirtualConsole::deleteInputSource(). Returns false when no
+     *  source with that exact (controlId, universe, channel) exists on the widget (NOT_FOUND). */
+    virtual bool vcWidgetInputSourceRemove(quint32 id, quint32 controlId, quint32 universe, quint32 channel, QString *error) = 0;
+
+    /** vc.widget.keySequence.set - binds $keySequence (already validated, PortableText spelling) to
+     *  $controlId (already validated to allow a keyboard binding). A sequence already bound on this
+     *  widget is re-targeted: its old (sequence, controlId) pair is unmapped from every page first so
+     *  the widget never receives the key twice (VCPage::mapKeySequence() only dedupes identical pairs). */
+    virtual bool vcWidgetKeySequenceSet(quint32 id, quint32 controlId, const QString &keySequence, QString *error) = 0;
+
+    /** vc.widget.keySequence.remove - VirtualConsole::deleteKeySequence() with the control id the
+     *  sequence is currently bound to. Returns false when the widget has no such sequence (NOT_FOUND). */
+    virtual bool vcWidgetKeySequenceRemove(quint32 id, const QString &keySequence, QString *error) = 0;
 };
 
 #endif
