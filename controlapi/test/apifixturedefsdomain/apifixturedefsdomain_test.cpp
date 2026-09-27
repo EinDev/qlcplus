@@ -387,6 +387,47 @@ void ApiFixtureDefsDomain_Test::sessionListAndClose()
     QCOMPARE(callError(QStringLiteral("fixturedefs.session.close"), closeParams), QStringLiteral("NOT_FOUND"));
 }
 
+void ApiFixtureDefsDomain_Test::sessionGetReturnsSnapshot()
+{
+    hello();
+    QString sid = openSession(SysMan, SysModel).value(QStringLiteral("sessionId")).toString();
+
+    // Untouched: the snapshot equals what session.open answered, and reading is not a mutation.
+    QJsonObject sidOnly;
+    sidOnly.insert(QStringLiteral("sessionId"), sid);
+    QJsonObject snap = callOk(QStringLiteral("fixturedefs.session.get"), sidOnly);
+    QCOMPARE(snap.value(QStringLiteral("sessionId")).toString(), sid);
+    QCOMPARE(snap.value(QStringLiteral("sessionRevision")).toInt(), 0);
+    QCOMPARE(snap.value(QStringLiteral("isModified")).toBool(), false);
+    QCOMPARE(snap.value(QStringLiteral("isUser")).toBool(), false);
+    QCOMPARE(snap.value(QStringLiteral("baseRevision")).toInt(), 0);
+    QCOMPARE(snap.value(QStringLiteral("definition")).toObject().value(QStringLiteral("model")).toString(), SysModel);
+
+    // After an edit the snapshot carries the new state and revision.
+    QJsonObject p = params(sid, 0);
+    p.insert(QStringLiteral("model"), QStringLiteral("Renamed"));
+    callOk(QStringLiteral("fixturedefs.session.update"), p);
+    QJsonObject added = callOk(QStringLiteral("fixturedefs.channel.add"), params(sid, 1));
+    snap = callOk(QStringLiteral("fixturedefs.session.get"), sidOnly);
+    QCOMPARE(snap.value(QStringLiteral("sessionRevision")).toInt(), 2);
+    QCOMPARE(snap.value(QStringLiteral("isModified")).toBool(), true);
+    QJsonObject def = snap.value(QStringLiteral("definition")).toObject();
+    QCOMPARE(def.value(QStringLiteral("model")).toString(), QStringLiteral("Renamed"));
+    QCOMPARE(def.value(QStringLiteral("channels")).toArray().count(), 2);
+    bool sawNewChannel = false;
+    for (const QJsonValue &v : def.value(QStringLiteral("channels")).toArray())
+        if (v.toObject().value(QStringLiteral("channelId")).toString() == added.value(QStringLiteral("channelId")).toString())
+            sawNewChannel = true;
+    QVERIFY(sawNewChannel);
+    // A get never bumps the revision.
+    snap = callOk(QStringLiteral("fixturedefs.session.get"), sidOnly);
+    QCOMPARE(snap.value(QStringLiteral("sessionRevision")).toInt(), 2);
+
+    QJsonObject missing;
+    missing.insert(QStringLiteral("sessionId"), QStringLiteral("nope"));
+    QCOMPARE(callError(QStringLiteral("fixturedefs.session.get"), missing), QStringLiteral("NOT_FOUND"));
+}
+
 void ApiFixtureDefsDomain_Test::sessionUpdateBumpsRevisionAndConflicts()
 {
     QString clientId = hello();
@@ -1195,6 +1236,77 @@ void ApiFixtureDefsDomain_Test::deleteSystemIsReadOnly()
     QCOMPARE(callError(QStringLiteral("fixturedefs.delete"), p), QStringLiteral("CONFLICT"));
     p.insert(QStringLiteral("model"), QStringLiteral("Nope"));
     QCOMPARE(callError(QStringLiteral("fixturedefs.delete"), p), QStringLiteral("NOT_FOUND"));
+}
+
+void ApiFixtureDefsDomain_Test::deleteUserCopyRestoresBundledDefinition()
+{
+    // Stage a bundled definition the way an install ships one: a .qxf under the
+    // system fixture directory plus its FixturesMap.xml entry (manufacturer
+    // "Bundled Co" is stored as "Bundled_Co" in the map, like the real map does).
+    // On Windows/macOS that directory is applicationDirPath-relative, i.e. in the
+    // build tree; skip where it is an install prefix we must not write into.
+    QDir sysDir = QLCFixtureDefCache::systemDefinitionDirectory();
+    const QString mapPath = sysDir.absoluteFilePath(QStringLiteral("FixturesMap.xml"));
+    if (QFile::exists(mapPath))
+        QSKIP("the system fixture directory already has a FixturesMap.xml; not overwriting it");
+    QDir().mkpath(sysDir.absoluteFilePath(QStringLiteral("Bundled_Co")));
+    QFile map(mapPath);
+    if (map.open(QIODevice::WriteOnly | QIODevice::Text) == false)
+        QSKIP("system fixture directory is not writable here");
+    map.write("<?xml version='1.0' encoding='UTF-8'?>\n<!DOCTYPE FixturesMap>\n"
+              "<FixturesMap xmlns=\"http://www.qlcplus.org/FixturesMap\">\n"
+              " <M n=\"Bundled_Co\">\n  <F n=\"Bundled-Co-Lamp\" m=\"Lamp\"/>\n </M>\n</FixturesMap>\n");
+    map.close();
+    struct Cleanup { QDir dir; ~Cleanup() { QFile::remove(dir.absoluteFilePath(QStringLiteral("FixturesMap.xml")));
+                                            QDir(dir.absoluteFilePath(QStringLiteral("Bundled_Co"))).removeRecursively(); } } cleanup{ sysDir };
+
+    QLCFixtureDef *bundled = makeSystemDef();
+    bundled->setManufacturer(QStringLiteral("Bundled Co"));
+    bundled->setModel(QStringLiteral("Lamp"));
+    bundled->setAuthor(QStringLiteral("bundled author"));
+    const QString bundledPath = sysDir.absoluteFilePath(QStringLiteral("Bundled_Co/Bundled-Co-Lamp.qxf"));
+    QCOMPARE(bundled->saveXML(bundledPath), QFile::NoError);
+    delete bundled;
+    QVERIFY(m_doc->fixtureDefCache()->loadQXF(bundledPath, false));
+
+    hello();
+    // fork -> edit -> save: the user copy shadows the bundled definition
+    QString sid = openSession(QStringLiteral("Bundled Co"), QStringLiteral("Lamp")).value(QStringLiteral("sessionId")).toString();
+    callOk(QStringLiteral("fixturedefs.session.forkToUser"), params(sid, 0));
+    QJsonObject upd = params(sid, 1);
+    upd.insert(QStringLiteral("author"), QStringLiteral("user author"));
+    callOk(QStringLiteral("fixturedefs.session.update"), upd);
+    QJsonObject save;
+    save.insert(QStringLiteral("sessionId"), sid);
+    save.insert(QStringLiteral("baseRevision"), 0);
+    QCOMPARE(callOk(QStringLiteral("fixturedefs.save"), save).value(QStringLiteral("defRevision")).toInt(), 1);
+    QLCFixtureDef *cached = m_doc->fixtureDefCache()->fixtureDef(QStringLiteral("Bundled Co"), QStringLiteral("Lamp"));
+    QVERIFY(cached != nullptr);
+    QCOMPARE(cached->isUser(), true);
+    QCOMPARE(cached->author(), QStringLiteral("user author"));
+
+    // delete the user copy: the bundled definition is back in the library
+    QJsonObject del;
+    del.insert(QStringLiteral("manufacturer"), QStringLiteral("Bundled Co"));
+    del.insert(QStringLiteral("model"), QStringLiteral("Lamp"));
+    del.insert(QStringLiteral("baseRevision"), 1);
+    callOk(QStringLiteral("fixturedefs.delete"), del);
+    cached = m_doc->fixtureDefCache()->fixtureDef(QStringLiteral("Bundled Co"), QStringLiteral("Lamp"));
+    QVERIFY(cached != nullptr);
+    QCOMPARE(cached->isUser(), false);
+    QCOMPARE(cached->author(), QStringLiteral("bundled author"));
+    QVERIFY(QFile::exists(bundledPath));
+
+    QJsonObject filter;
+    filter.insert(QStringLiteral("manufacturer"), QStringLiteral("Bundled Co"));
+    QJsonArray entries = callOk(QStringLiteral("fixturedefs.list"), filter).value(QStringLiteral("entries")).toArray();
+    QCOMPARE(entries.count(), 1);
+    QCOMPARE(entries.first().toObject().value(QStringLiteral("isUser")).toBool(), false);
+    QCOMPARE(entries.first().toObject().value(QStringLiteral("defRevision")).toInt(), 2);
+
+    // a bundled definition itself still cannot be deleted
+    del.insert(QStringLiteral("baseRevision"), 2);
+    QCOMPARE(callError(QStringLiteral("fixturedefs.delete"), del), QStringLiteral("FIXTUREDEFS_SYSTEM_READONLY"));
 }
 
 void ApiFixtureDefsDomain_Test::deleteInUseIsRejected()

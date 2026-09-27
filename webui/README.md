@@ -219,11 +219,36 @@ and a second tab checked for the pushed event:
   stretch-function resize mode, track Spout output size, the legacy timing conversion dialog,
   waveforms / beat markers inside items.
 
+- **Fixture Editor** (2026-09-27, `FixtureEditor.jsx` + `fixtureeditor/*.jsx`, Ctrl+6, over
+  `fixturedefs.*`; driver `tools/e2e/fixture-editor.js` against a `fixdefs` sandbox on ports
+  9200/9201 started with `dev-webui-sandbox.ps1 -UserFixtureDir C:\qlcsandbox\fixdefs\UserFixtures`,
+  which keeps every saved / deleted `.qxf` out of the real `%UserProfile%\QLC+\Fixtures` - the
+  driver checks that folder is byte-for-byte untouched): one tab per open definition with the
+  modified marker and a Save / Discard / Cancel prompt on close, surviving a page reload
+  (`session.list` + the new `session.get`); New; Open from a manufacturer -> model picker with a
+  user / system badge (never the unfiltered `fixturedefs.list`); Save (into the host's user fixture
+  folder, `defRevision` handled, "someone else saved it" asks before overwriting); Save as user copy
+  for a bundled definition (`session.forkToUser`, with the read-only banner and the prompt when
+  saving a bundled one); Import (a `.qxf` uploaded from this computer) and Export (downloaded);
+  Delete a user definition (a bundled one it shadowed comes back); Validate. General (manufacturer,
+  model, author, type), Channels (add from a preset or Custom, remove, the channel wizard; name,
+  preset, type, colour, coarse / fine, default value; capabilities with inline range /
+  description, warnings, add / remove, the capability wizard, automatic colour assignment on
+  Colour channels, per-capability preset with its colours / values / picture path, the alias
+  editor with apply-to-all-modes), Modes (add / remove / rename, the slot list with drag or up /
+  down ordering, acts-on, emitters from ticked channels, global-or-override physical), Physical,
+  Aliases. Every session edit sends `baseRevision` and rebases on `CONFLICT`; a foreign edit from a
+  second client was checked. Opened from Fixtures & Functions too: Add Fixtures -> "New definition"
+  / "Edit this definition" (`window.QLCOpenFixtureEditor`). Not in the browser: uploading a gobo
+  picture (the capability takes the path of a picture on the QLC+ machine), the desktop's free
+  "Save as <path>" (definitions always land in the user fixture folder as
+  `<Manufacturer>-<Model>.qxf`, which is where QLC+ looks for them) and Avolites D4 import.
+  Exercised by the driver: everything above except drag-reordering of mode channels (the up /
+  down arrows were driven; the drag uses native HTML5 drag-and-drop, which the headless driver
+  does not synthesise) and Ctrl+S (the toolbar Save was driven).
+
 Still not available in the web UI: the 2D / 3D / DMX monitor views, fixture-address
-remap, the fixture editor (its whole backend is live as of 2026-09-27 - `fixturedefs.*` in
-`api/domains/fixturedefs.js`, every method implemented, unit-tested and smoke-checked over the
-socket against a `fixdefs` sandbox on ports 9200/9201 - but no screen uses it yet; that file's
-header comment is the starting point for the screen), UI settings, audio sample rate / channels / buffer size and the input
+remap, UI settings, audio sample rate / channels / buffer size and the input
 level check, the input signal indicator on a patch. Disconnected, every screen keeps
 working on its built-in mock data (`data.js`), clearly labelled as such.
 

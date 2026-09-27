@@ -338,6 +338,10 @@ channels:
         $ref: '#/components/messages/FixtureDefsSessionListRequest'
       fixtureDefsSessionListResponse:
         $ref: '#/components/messages/FixtureDefsSessionListResponse'
+      fixtureDefsSessionGetRequest:
+        $ref: '#/components/messages/FixtureDefsSessionGetRequest'
+      fixtureDefsSessionGetResponse:
+        $ref: '#/components/messages/FixtureDefsSessionGetResponse'
       fixtureDefsSessionForkToUserRequest:
         $ref: '#/components/messages/FixtureDefsSessionForkToUserRequest'
       fixtureDefsSessionUpdateRequest:
@@ -2337,6 +2341,18 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/fixtureDefsSessionListResponse'
+  sendFixtureDefsSessionGet:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/fixtureDefsSessionGetRequest'
+  receiveFixtureDefsSessionGetResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/fixtureDefsSessionGetResponse'
   sendFixtureDefsSessionValidate:
     action: send
     channel:
@@ -9106,6 +9122,75 @@ components:
                   type: array
                   items:
                     $ref: '#/components/schemas/FixtureDefsSessionInfo'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    FixtureDefsSessionGetRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: fixturedefs.session.get
+          params:
+            type: object
+            required:
+            - sessionId
+            description: 'Read-only snapshot of one open editing session: the same shape fixturedefs.session.open
+              answers, plus isModified. This is the read path for a client that only knows a sessionId
+              (typically from fixturedefs.session.list after a page reload) - session.list only carries
+              summaries and fixturedefs.export returns QXF, not JSON. Never bumps sessionRevision, never
+              broadcasts anything. Unknown sessionId is NOT_FOUND.'
+            properties:
+              sessionId:
+                type: string
+    FixtureDefsSessionGetResponse:
+      payload:
+        oneOf:
+        - type: object
+          required:
+          - type
+          - id
+          - ok
+          - result
+          properties:
+            type:
+              const: response
+            id:
+              type: string
+            ok:
+              const: true
+            result:
+              type: object
+              required:
+              - sessionId
+              - definition
+              - sessionRevision
+              - isUser
+              - baseRevision
+              - isModified
+              properties:
+                sessionId:
+                  type: string
+                definition:
+                  $ref: '#/components/schemas/FixtureDefsDefinition'
+                sessionRevision:
+                  type: integer
+                isUser:
+                  type: boolean
+                baseRevision:
+                  type:
+                  - integer
+                  - 'null'
+                isModified:
+                  type: boolean
+                  description: Same meaning as FixtureDefsSessionInfo.isModified.
         - $ref: '#/components/messages/ErrorResponse/payload'
     FixtureDefsSessionForkToUserRequest:
       payload:

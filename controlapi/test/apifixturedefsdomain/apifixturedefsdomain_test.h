@@ -49,6 +49,7 @@ private slots:
     void sessionCreateIsBlankUserSession();
     void sessionOpenClonesLibraryDefinition();
     void sessionListAndClose();
+    void sessionGetReturnsSnapshot();
     void sessionUpdateBumpsRevisionAndConflicts();
     void sessionSetPhysicalMergesPartially();
     void channelAddUpdateRemove();
@@ -65,6 +66,7 @@ private slots:
     void saveOnSystemSessionIsReadOnlyUntilForked();
     void deleteSystemIsReadOnly();
     void deleteInUseIsRejected();
+    void deleteUserCopyRestoresBundledDefinition();
     void importCreatesUserSession();
     void fullRoundTrip();
 

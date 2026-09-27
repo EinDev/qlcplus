@@ -341,6 +341,12 @@ function App() {
   const D = window.QLCData;
   const qlc = useQLC();
   const [ctx, setCtx] = React.useState(initialContext);
+  /* Other screens switch the context with window.dispatchEvent(new CustomEvent('qlc-set-context', { detail: id })). */
+  React.useEffect(() => {
+    const go = (e) => { const id = e && e.detail; if (CONTEXTS.indexOf(id) !== -1 || (window.QLCScreens && window.QLCScreens[id])) setCtx(id); };
+    window.addEventListener('qlc-set-context', go);
+    return () => window.removeEventListener('qlc-set-context', go);
+  }, []);
   const [about, setAbout] = React.useState(false);
   const [menu, setMenu] = React.useState(false);
   const [dialog, setDialog] = React.useState(null); // {kind:'open'|'saveAs'|'confirm'|'message', ...}

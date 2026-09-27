@@ -151,6 +151,13 @@
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
             <RobotoText label="Properties" fontBold fontSize={13} height={20} />
+            {/* FixtureBrowser.qml's "create a new fixture definition" / "edit the selected one"; the hook lives in FixtureEditor.jsx */}
+            {window.QLCOpenFixtureEditor ? (
+              <div style={{ display: 'flex', gap: 6 }}>
+                <GenericButton label="New definition" width={120} height={24} fontSize={12} onClick={() => { onClose(); window.QLCOpenFixtureEditor(); }} data-role="fixture-editor-new" />
+                <GenericButton label="Edit this definition" width={140} height={24} fontSize={12} disabled={isGeneric || !model} onClick={() => { onClose(); window.QLCOpenFixtureEditor(manufacturer, model); }} data-role="fixture-editor-edit" />
+              </div>
+            ) : null}
             {!isGeneric ? <FF.Row label="Type" width={70}>{modelInfo ? (modelInfo.fixtureType || modelInfo.type || '—') : '—'}</FF.Row> : null}
             {!isGeneric ? <FF.Row label="Mode" width={70}>
               <CustomComboBox width={200} currValue={mode} model={((modelInfo && modelInfo.modes) || []).map(m => ({ mLabel: m.name + ' (' + m.channelCount + ' ch)', mValue: m.name }))} onValueChanged={setMode} disabled={!modelInfo} />

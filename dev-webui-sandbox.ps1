@@ -22,6 +22,10 @@
 .PARAMETER Project     .qxw to load (default: the SF3 test scene). Copied + patch-stripped into the sandbox.
 .PARAMETER Stop        Only kill this sandbox's process (qlc-<Name>.exe) and exit.
 .PARAMETER NoLaunch    Prepare the sandbox but don't start it.
+.PARAMETER UserFixtureDir  Redirect the user fixture-definition folder (QLCPLUS_USER_FIXTURE_DIR) for the
+                       launched process only. Created on first use as a copy of %UserProfile%\QLC+\Fixtures,
+                       so the project's custom definitions still resolve while fixturedefs.save / delete /
+                       import never touch the real profile. Pass "" (default) to leave it unset.
 
 .EXAMPLE
   .\dev-webui-sandbox.ps1 -Name efx -BuildDir .\build -WebUiRoot .\webui -ApiPort 9120 -WebUiPort 9121
@@ -35,7 +39,8 @@ param(
     [int]$WebUiPort = 0,
     [string]$Project = "<shows-dir>\SF3.qxw",
     [switch]$Stop,
-    [switch]$NoLaunch
+    [switch]$NoLaunch,
+    [string]$UserFixtureDir = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -96,12 +101,28 @@ $args = @("-d", "-o", $projectCopy, "--api", "--api-port", $ApiPort, "--webui", 
 # dev-build-run.ps1 from this same shell would start the LIVE instance on the sandbox folder.
 $prevProfileDir = $env:QLCPLUS_USER_INPUTPROFILE_DIR
 $env:QLCPLUS_USER_INPUTPROFILE_DIR = Join-Path $dest "InputProfiles"
+# Same for fixture definitions (QLCFixtureDefCache::userDefinitionDirectory() honours this variable).
+$prevFixtureDir = $env:QLCPLUS_USER_FIXTURE_DIR
+if ($UserFixtureDir) {
+    if (-not (Test-Path $UserFixtureDir)) {
+        New-Item -ItemType Directory -Force $UserFixtureDir | Out-Null
+        $realFixtures = Join-Path $env:USERPROFILE "QLC+\Fixtures"
+        if (Test-Path $realFixtures) {
+            robocopy $realFixtures $UserFixtureDir /E /NFL /NDL /NJH /NJS /R:1 /W:1 | Out-Null
+            if ($LASTEXITCODE -ge 8) { throw "robocopy of $realFixtures failed with $LASTEXITCODE" }
+        }
+    }
+    $env:QLCPLUS_USER_FIXTURE_DIR = (Resolve-Path $UserFixtureDir).Path
+    Write-Host "User fixture definitions: $env:QLCPLUS_USER_FIXTURE_DIR"
+}
 try {
     $p = Start-Process -FilePath (Join-Path $dest $exeName) -ArgumentList $args -WorkingDirectory $dest `
         -RedirectStandardOutput $out -RedirectStandardError $err -PassThru
 } finally {
     if ($null -eq $prevProfileDir) { Remove-Item Env:\QLCPLUS_USER_INPUTPROFILE_DIR -ErrorAction SilentlyContinue }
     else { $env:QLCPLUS_USER_INPUTPROFILE_DIR = $prevProfileDir }
+    if ($null -eq $prevFixtureDir) { Remove-Item Env:\QLCPLUS_USER_FIXTURE_DIR -ErrorAction SilentlyContinue }
+    else { $env:QLCPLUS_USER_FIXTURE_DIR = $prevFixtureDir }
 }
 Write-Host "Started $exeName pid $($p.Id); log: $out / $err"
 
