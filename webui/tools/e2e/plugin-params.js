@@ -46,6 +46,7 @@ const STUB = 'I/O Plugin Stub';
 const U = 1;              // universe id the run patches ("Universe 2" of the test project)
 const OUT_LINE = 1;       // stub output line "2: Stub 2"
 const IN_LINE = 2;        // stub input line "3: Stub 3"
+const ENGINE_KEY = 'UniverseChannels'; // set by the engine itself on every output line (Universe::dumpOutput)
 
 /* ---------------------------------------------------------------- raw API client */
 class Api {
@@ -154,8 +155,8 @@ async function main() {
      (the stub keeps its per-universe map when a line is unpatched, so clear the keys first) */
   {
     const d = await get();
-    for (const p of d.outputPatches || []) if (p.pluginName === STUB && Object.keys(p.parameters || {}).length) {
-      const nul = {}; Object.keys(p.parameters).forEach(k => { nul[k] = null; });
+    for (const p of d.outputPatches || []) if (p.pluginName === STUB && Object.keys(p.parameters || {}).some(k => k !== ENGINE_KEY)) {
+      const nul = {}; Object.keys(p.parameters).filter(k => k !== ENGINE_KEY).forEach(k => { nul[k] = null; });
       await api.structural('io.patch.setParameters', { universeId: U, patchType: 'output', index: p.index, parameters: nul });
     }
     if (d.inputPatch && d.inputPatch.pluginName === STUB && Object.keys(d.inputPatch.parameters || {}).length) {
@@ -183,6 +184,8 @@ async function main() {
     await typeInto(page, inDlg('input[data-role="param-key"]'), key, 'parameter key');
     await typeInto(page, inDlg('input[data-role="param-value"]'), value, 'parameter value');
     await clickFn(page, inDlg('[data-role="param-add"]'), 'Set ' + key);
+    /* the add row empties once the server answered: what an operator waits for before the next one */
+    await page.waitFor(`(${inDlg('input[data-role="param-key"]')} || {}).value === ''`, 5000).catch(() => { throw new Error('the add row did not clear after Set ' + key); });
   };
   const editParam = (key, value) => typeInto(page, inDlg(`input[data-param="${key}"]`), value, 'edit ' + key);
 
@@ -203,6 +206,8 @@ async function main() {
     console.log('\n[output line parameters]');
     await openEditor('output', 'output properties');
     check(await page.eval(`/No parameters set/.test(${q(DLG)}.textContent)`), 'a fresh line shows "No parameters set"');
+    await waitCheck(() => page.eval(`(function(){ const e = ${inDlg('[data-engine-param="UniverseChannels"]')}; return !!e && /^[0-9]+$/.test(e.textContent.trim()) && !${inDlg('[data-remove-param="UniverseChannels"]')} && !${inDlg('[data-param="UniverseChannels"]')}; })()`),
+      'the engine-managed UniverseChannels is shown read-only (no field, no trash button)');
     check(await page.eval(`/I\\/O Plugin Stub/.test(${q(DLG)}.textContent) && /Output 1 patch properties/.test(document.body.textContent)`), 'the editor names the plugin and the patch');
     await addParam('outputIP', '10.20.30.40');
     await waitCheck(async () => (await outParams()).outputIP === '10.20.30.40', 'Set outputIP = "10.20.30.40" (string) reaches the line', 5000, outParams);
@@ -268,7 +273,7 @@ async function main() {
     console.log('\n[reopen the saved copy]');
     await api.structural('io.patch.setParameters', { universeId: U, patchType: 'output', index: 0, parameters: { outputIP: null, port: null, enabled: null } });
     await api.structural('io.patch.setParameters', { universeId: U, patchType: 'input', parameters: { inputUni: null } });
-    check(Object.keys(await outParams()).length === 0 && Object.keys(await inParams()).length === 0, 'live parameters cleared before the reopen');
+    check(Object.keys(await outParams()).filter(k => k !== ENGINE_KEY).length === 0 && Object.keys(await inParams()).length === 0, 'live parameters cleared before the reopen', [await outParams(), await inParams()]);
     await api.call('core.project.open', { source: 'path', path: out });
     await sleep(1500);
     await api.call('hello', { apiVersion: '1' }).then(r => { api.rev = r.docRevision; });
