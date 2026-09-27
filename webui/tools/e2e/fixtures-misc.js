@@ -7,11 +7,11 @@
  * against a sandbox started with a redirected modifiers folder:
  *
  *   .\dev-webui-sandbox.ps1 -Name fxmisc -BuildDir .\build -WebUiRoot .\webui -ApiPort 9250 -WebUiPort 9251 `
- *       -UserModifiersDir C:\qlcsandbox\fxmisc\ModifiersTemplates
+ *       -UserModifiersDir C:\qlcsandbox\fxmisc\UserModifiers
  *   node webui/tools/e2e/fixtures-misc.js
  *   env: QLC_API (ws://127.0.0.1:9250/), QLC_WEB (http://localhost:9251/), QLC_OUT (saveAs path,
  *        C:\qlcsandbox\fxmisc\out.qxw), QLC_SHOTS (screenshots, C:\qlcsandbox\fxmisc),
- *        QLC_MODDIR (the sandbox modifiers folder, C:\qlcsandbox\fxmisc\ModifiersTemplates)
+ *        QLC_MODDIR (the sandbox modifiers folder, C:\qlcsandbox\fxmisc\UserModifiers)
  *
  * Every gesture is read back over a second raw API connection (fixtures.get, fixtures.group.get,
  * fixtures.modifiers.list, io.dmx.universe.get) and the run ends with core.project.saveAs and a
@@ -26,7 +26,7 @@ const API = process.env.QLC_API || 'ws://127.0.0.1:9250/';
 const WEB = process.env.QLC_WEB || 'http://localhost:9251/';
 const OUT = process.env.QLC_OUT || 'C:\\qlcsandbox\\fxmisc\\out.qxw';
 const SHOTS = process.env.QLC_SHOTS || 'C:\\qlcsandbox\\fxmisc';
-const MODDIR = process.env.QLC_MODDIR || 'C:\\qlcsandbox\\fxmisc\\ModifiersTemplates';
+const MODDIR = process.env.QLC_MODDIR || 'C:\\qlcsandbox\\fxmisc\\UserModifiers';
 const REAL_MODDIR = path.join(os.homedir(), 'QLC+', 'ModifiersTemplates');
 
 /* ---------------------------------------------------------------- raw API client */
@@ -86,6 +86,8 @@ async function clickFn(page, fnBody, what, opts) {
   await sleep(150);
 }
 const clickSel = (page, sel, opts) => clickFn(page, q(sel), sel, opts);
+/** Fixture Tools section header (icon + text in one span). */
+const sectionHead = (text) => `[...document.querySelectorAll('span')].reverse().find(s => s.textContent.trim() === ${JSON.stringify(text)} && s.querySelector('img'))`;
 async function setInput(page, selectorFn, value) {
   await page.eval(`(function(){ const el = (${selectorFn}); el.focus();`
     + ' const proto = el.tagName === "SELECT" ? HTMLSelectElement.prototype : HTMLInputElement.prototype;'
@@ -133,6 +135,8 @@ async function main() {
   await api.connect();
   console.log('API connected, docRevision ' + api.rev);
   const get = (id) => api.call('fixtures.get', { fixtureId: String(id) });
+  /* templates left in the sandbox folder by an earlier run */
+  for (const n of ['E2E Curve', 'E2E Curve 2']) await soft(api.call('fixtures.modifiers.delete', { name: n }));
 
   /* ---- setup over the API: a multi-mode library fixture (no SF3 fixture type has two modes) */
   const universes = (await api.call('io.universe.list')).universes.sort((a, b) => a.id - b.id);
@@ -332,7 +336,7 @@ async function main() {
     await clickFn(page, `[...document.querySelectorAll('[title^="Fixture tools"]')].pop()`, 'Fixture tools panel');
     await selectInTree(page, 'E2E Panel - Row 1');
     const row1 = await get(panelIds[0]);
-    await clickFn(page, leafText('Color filters'), 'Color filters section');
+    await clickFn(page, sectionHead('Color filters'), 'Color filters section');
     await page.waitFor(`!!document.querySelector('[data-color-filter]')`, 8000);
     await setInput(page, `document.querySelector('[data-color-filter-search]')`, 'Gold');
     await clickSel(page, '[data-color-filter="Gold"]');
@@ -342,7 +346,7 @@ async function main() {
     await shot(page, 'color-filters');
 
     console.log('\n[fixture console]');
-    await clickFn(page, leafText('Channels', '[data-ff-tools], body'), 'Channels section');
+    await clickFn(page, sectionHead('Channels'), 'Channels section');
     await page.waitFor(`!!document.querySelector('[data-fx-console] [data-console-fader="0"]')`, 8000);
     await setInput(page, `document.querySelector('[data-console-fader="0"]')`, 200);
     await clickSel(page, '[data-console-multi]');

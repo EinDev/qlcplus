@@ -554,8 +554,9 @@
       const pos = {}; /* headKey -> 'x,y' */
       const at = {}; /* 'x,y' -> headKey */
       Object.keys(byPos).forEach(k => { const h = byPos[k]; const hk = h.fixtureId + ':' + h.headIndex; pos[hk] = k; at[k] = hk; });
+      const original = pts.map(p => at[p.x + ',' + p.y]); /* the heads to move, before any swap */
       pts.forEach((p, i) => {
-        const hk = at[p.x + ',' + p.y];
+        const hk = original[i];
         const cur = pos[hk], tgt = targets[i].x + ',' + targets[i].y;
         if (!hk || cur === tgt) return;
         const [ax, ay] = cur.split(',').map(Number);
@@ -596,7 +597,7 @@
       );
     }
     return (
-      <CustomPopupDialog open={open} title={'Fixture group layout — ' + group.name} width={Math.min(980, Math.max(640, W * cell + 300))} standardButtons={['Close']} onClicked={onClose} onClose={onClose}>
+      <CustomPopupDialog open={open} title={'Fixture group layout — ' + group.name} width={Math.min(1100, Math.max(860, W * cell + 320))} standardButtons={['Close']} onClicked={onClose} onClose={onClose}>
         <div data-grid-editor="1" style={{ display: 'flex', gap: 10 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
@@ -683,8 +684,8 @@
     return (
       <div data-color-filters="1" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          <CustomComboBox width={160} currValue={fileIndex} model={files.map((f, i) => ({ mLabel: f.name + (f.isUser ? ' (user)' : ''), mValue: i }))} onValueChanged={setFileIndex} />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Filter…" data-color-filter-search="1" style={Object.assign({ width: 110 }, inputStyle)} />
+          <CustomComboBox width={150} currValue={fileIndex} model={files.map((f, i) => ({ mLabel: f.name + (f.isUser ? ' (user)' : ''), mValue: i }))} onValueChanged={setFileIndex} />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Filter…" data-color-filter-search="1" style={Object.assign({ flex: 1, minWidth: 0 }, inputStyle)} />
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(92px, 1fr))', gap: 3, maxHeight: 220, overflow: 'auto' }}>
           {list.map(c => (
@@ -788,11 +789,11 @@
       <div data-single-axis={axis} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <img src={window.QLCData.icon(axis)} alt="" style={{ width: 18, height: 18 }} />
-          <RobotoText label={axis === 'pan' ? 'Pan' : 'Tilt'} fontSize={13} labelColor="var(--fg-light)" style={{ width: 36 }} />
-          <CustomSlider value={deg} from={0} to={maxDegrees} length={170} onMoved={d => onChange(Math.round((d / maxDegrees) * 65535))} />
-          <CustomSpinBox value={deg} from={0} to={maxDegrees} width={70} onValueModified={d => onChange(Math.round((d / maxDegrees) * 65535))} />
-          <RobotoText label="°" fontSize={13} />
+          <RobotoText label={(axis === 'pan' ? 'Pan' : 'Tilt') + ' only'} fontSize={13} labelColor="var(--fg-light)" style={{ width: 70 }} />
+          <CustomSpinBox value={deg} from={0} to={maxDegrees} width={80} onValueModified={d => onChange(Math.round((d / maxDegrees) * 65535))} />
+          <RobotoText label={'° of ' + maxDegrees + '°'} fontSize={13} labelColor="var(--fg-light)" />
         </div>
+        <CustomSlider value={deg} from={0} to={maxDegrees} length={250} onMoved={d => onChange(Math.round((d / maxDegrees) * 65535))} />
         <div style={{ display: 'flex', gap: 4 }}>
           {[0, 0.25, 0.5, 0.75, 1].map(fr => <GenericButton key={fr} label={Math.round(fr * maxDegrees) + '°'} width={48} height={22} onClick={() => onChange(Math.round(fr * 65535))} />)}
         </div>

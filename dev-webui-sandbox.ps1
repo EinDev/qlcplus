@@ -122,6 +122,11 @@ if ($UserFixtureDir) {
 # Same for channel modifier templates (QLCModifiersCache::userTemplateDirectory() honours this variable).
 $prevModifiersDir = $env:QLCPLUS_USER_MODIFIERS_DIR
 if ($UserModifiersDir) {
+    # <sandbox>\ModifiersTemplates is the SYSTEM template folder of the sandboxed app: templates
+    # saved there would come back as read-only system templates on the next start.
+    if ([IO.Path]::GetFullPath($UserModifiersDir).TrimEnd('\') -ieq (Join-Path $dest "ModifiersTemplates")) {
+        throw "-UserModifiersDir must not be $dest\ModifiersTemplates (the sandbox's system templates); use e.g. $dest\UserModifiers"
+    }
     if (-not (Test-Path $UserModifiersDir)) {
         New-Item -ItemType Directory -Force $UserModifiersDir | Out-Null
         $realModifiers = Join-Path $env:USERPROFILE "QLC+\ModifiersTemplates"

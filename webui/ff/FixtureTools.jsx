@@ -316,9 +316,9 @@
         {presetRows.length && !anyCaps && !capsPending ? (
           <div style={{ padding: '4px 10px 10px' }}><FF.Note text="Capability presets (gobo names, colour wheel slots, strobe ranges) are not available: the server has no fixtures.defs.getMode/getModel yet, so these channels only get plain 0–255 sliders." /></div>
         ) : null}
-        {FF.FixtureConsole && items.length ? (
+        {FF.FixtureConsole ? (
           <Section label="Channels" icon="sliders" open={false}>
-            <FF.FixtureConsole items={items} allFixtures={fixtures} writeFn={writeOne} />
+            {items.length ? <FF.FixtureConsole items={items} allFixtures={fixtures} writeFn={writeOne} /> : <RobotoText label="Loading…" fontSize={13} labelColor="var(--fg-medium)" />}
           </Section>
         ) : null}
         {items.length > 1 ? <div style={{ padding: '4px 10px 10px' }}><FF.Note text="With several fixtures selected, presets follow the first fixture's channel layout and are applied to every fixture that has a channel of the same kind." /></div> : null}
