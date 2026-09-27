@@ -135,6 +135,11 @@ public:
      */
     void broadcast(const QString &topic, const QJsonObject &data, const QString &originClientId, bool subscribeGated);
 
+signals:
+    /** A client's connection closed (tab closed, network dropped): domains
+     *  holding per-client runtime state (a Show preview) release it. */
+    void sessionDisconnected(const QString &clientId);
+
 private slots:
     void slotNewConnection();
     void slotSessionDisconnected(ApiSession *session);

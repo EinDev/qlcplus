@@ -20,7 +20,8 @@
 
 #include <QJsonObject>
 #include <QObject>
-#include <QSet>
+#include <QHash>
+#include <QString>
 
 class ApiDispatcher;
 class ApiShowHost;
@@ -43,7 +44,9 @@ class Doc;
  *   refused (INVALID_STATE). functions.show.endPreview {showId, play} either stops the preview or
  *   leaves scrub mode so the Show plays on from the cursor. functions.show.previewChanged
  *   {functionId, previewing, time} announces start / end (not every seek); a preview stopped by
- *   anyone else (functions.stop, the desktop, the VC) ends it too. Audio stays silent while
+ *   anyone else (functions.stop, the desktop, the VC) ends it too, and so does the disconnect of
+ *   the client that last moved it (a closed tab must not leave the Show frozen on the output,
+ *   ShowManager::enableContext(false) does the same on the desktop). Audio stays silent while
  *   frozen (ShowRunner skips it), fixtures and video follow the cursor, like the desktop.
  *
  * - Track Spout output size (§4a): functions.show.track.setSpoutSize {showId, trackId, width,
@@ -71,6 +74,9 @@ public:
 
 private slots:
     void slotShowStopped(quint32 id);
+    /** The client that last moved a preview disconnected (tab closed): end it, like leaving the
+     *  desktop Show Manager does - a frozen Show would otherwise hold its output indefinitely. */
+    void slotSessionDisconnected(const QString &clientId);
 
 private:
     void registerMethods(ApiDispatcher *d);
@@ -79,8 +85,9 @@ private:
 private:
     Doc *m_doc;
     ApiServer *m_server;
-    /** Shows this domain put into scrub mode and has not seen end yet */
-    QSet<quint32> m_previewing;
+    /** Shows this domain put into scrub mode and has not seen end yet -> the client that last
+     *  moved the preview (its disconnect ends it) */
+    QHash<quint32, QString> m_previewing;
 
     /** The host of the most recently constructed domain (cleared by its destructor), read by
      *  the static trackSpoutJson(), which ApiShowDomain's static serialisers call. */

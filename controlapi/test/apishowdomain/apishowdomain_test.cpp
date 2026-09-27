@@ -1091,6 +1091,42 @@ void ApiShowDomain_Test::previewEndsWhenStoppedElsewhere()
     QVERIFY(m_show->isRunning());
 }
 
+void ApiShowDomain_Test::previewEndsWhenItsClientDisconnects()
+{
+    // a second client (a browser tab) starts the preview, then goes away
+    QWebSocket *tab = new QWebSocket();
+    tab->open(QUrl(QStringLiteral("ws://127.0.0.1:%1/qlcplusapi").arg(m_apiServer->serverPort())));
+    QVERIFY(QTest::qWaitFor([tab]() { return tab->state() == QAbstractSocket::ConnectedState; }, 2000));
+    QSignalSpy tabSpy(tab, &QWebSocket::textMessageReceived);
+    tab->sendTextMessage(buildRequest(QStringLiteral("hello"), QJsonObject(), QStringLiteral("h")));
+    tab->sendTextMessage(buildRequest(QStringLiteral("functions.show.preview"), previewParams(m_show, 1000), QStringLiteral("p")));
+    QVERIFY(QTest::qWaitFor([&]() { return tabSpy.count() >= 2; }, 2000));
+    QVERIFY(QTest::qWaitFor([this]() { return m_show->isRunning() && m_scene->isRunning(); }, 2000));
+
+    // the main client only watches: the tab owns the preview
+    QSignalSpy spy(m_client, &QWebSocket::textMessageReceived);
+    tab->close();
+    delete tab;
+
+    QJsonObject ev = waitForEvent(spy, QStringLiteral("functions.show.previewChanged"),
+                                  [](const QJsonObject &d) { return d.value(QStringLiteral("previewing")).toBool() == false; });
+    QVERIFY2(ev.isEmpty() == false, "the preview must end when its client disconnects");
+    QVERIFY(ev.value(QStringLiteral("originClientId")).isNull());
+    QVERIFY(QTest::qWaitFor([this]() { return m_show->isRunning() == false && m_scene->isRunning() == false; }, 2000));
+    QVERIFY(m_show->isScrubMode() == false);
+
+    // a preview the remaining client owns survives someone else's disconnect
+    QVERIFY(sendAndWaitForReply(QStringLiteral("functions.show.preview"), previewParams(m_show, 1000)).value(QStringLiteral("ok")).toBool());
+    QVERIFY(QTest::qWaitFor([this]() { return m_show->isRunning(); }, 2000));
+    QWebSocket *other = new QWebSocket();
+    other->open(QUrl(QStringLiteral("ws://127.0.0.1:%1/qlcplusapi").arg(m_apiServer->serverPort())));
+    QVERIFY(QTest::qWaitFor([other]() { return other->state() == QAbstractSocket::ConnectedState; }, 2000));
+    other->close();
+    delete other;
+    QTest::qWait(300);
+    QVERIFY(m_show->isRunning() && m_show->isScrubMode());
+}
+
 void ApiShowDomain_Test::previewValidates()
 {
     QJsonObject reply = sendAndWaitForReply(QStringLiteral("functions.show.preview"), previewParams(m_show, -1));

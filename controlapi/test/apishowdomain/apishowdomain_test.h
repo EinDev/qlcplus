@@ -71,6 +71,7 @@ private slots:
     void previewStartsFrozenAndSeeks();
     void previewEndWithPlayPlaysOn();
     void previewEndsWhenStoppedElsewhere();
+    void previewEndsWhenItsClientDisconnects();
     void previewValidates();
     void trackSetSpoutSizeStoresAndBroadcasts();
     void trackSetSpoutSizeValidates();

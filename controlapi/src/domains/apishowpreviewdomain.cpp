@@ -104,6 +104,7 @@ ApiShowPreviewDomain::ApiShowPreviewDomain(Doc *doc, ApiServer *server, QObject 
     s_showHost = dynamic_cast<ApiShowHost *>(m_server->parent());
 
     registerMethods(m_server->dispatcher());
+    connect(m_server, &ApiServer::sessionDisconnected, this, &ApiShowPreviewDomain::slotSessionDisconnected);
 }
 
 ApiShowPreviewDomain::~ApiShowPreviewDomain()
@@ -193,9 +194,27 @@ void ApiShowPreviewDomain::broadcastPreview(Show *show, bool previewing, quint32
     m_server->broadcast(QStringLiteral("functions.show.previewChanged"), data, originClientId, false);
 }
 
+void ApiShowPreviewDomain::slotSessionDisconnected(const QString &clientId)
+{
+    const QList<quint32> ids = m_previewing.keys(clientId);
+    for (quint32 id : ids)
+    {
+        m_previewing.remove(id);
+        Function *f = m_doc->function(id);
+        if (f == nullptr || f->type() != Function::ShowType)
+            continue;
+        Show *show = static_cast<Show *>(f);
+        if (show->isScrubMode() == false)
+            continue;
+        quint32 time = quint32(show->elapsed());
+        show->stop(FunctionParent::master(FunctionParent::ControlApi));
+        broadcastPreview(show, false, time, QString());
+    }
+}
+
 void ApiShowPreviewDomain::slotShowStopped(quint32 id)
 {
-    if (m_previewing.remove(id) == false)
+    if (m_previewing.remove(id) == 0)
         return;
 
     Function *f = m_doc->function(id);
@@ -233,6 +252,9 @@ void ApiShowPreviewDomain::registerMethods(ApiDispatcher *d)
             // already frozen (by this or another front end): the runner
             // coalesces the seeks posted between two ticks
             show->requestSeek(position);
+            // the last client to move an API preview owns it (its disconnect ends it)
+            if (m_previewing.contains(show->id()))
+                m_previewing.insert(show->id(), session->clientId());
             session->send(ApiEnvelope::buildOkResponse(id, result));
             return;
         }
@@ -269,7 +291,7 @@ void ApiShowPreviewDomain::registerMethods(ApiDispatcher *d)
             show->start(doc->masterTimer(), FunctionParent::master(FunctionParent::ControlApi), position);
         }
 
-        m_previewing.insert(show->id());
+        m_previewing.insert(show->id(), session->clientId());
         // engine-DLL object: string-based connection (see apiiodomain.cpp)
         connect(show, SIGNAL(stopped(quint32)), this, SLOT(slotShowStopped(quint32)), Qt::UniqueConnection);
         session->send(ApiEnvelope::buildOkResponse(id, result));

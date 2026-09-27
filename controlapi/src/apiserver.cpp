@@ -145,6 +145,7 @@ void ApiServer::slotSessionDisconnected(ApiSession *session)
 {
     m_sessions.remove(session->clientId());
     session->deleteLater();
+    emit sessionDisconnected(session->clientId());
 }
 
 void ApiServer::broadcast(const QString &topic, const QJsonObject &data, const QString &originClientId, bool subscribeGated)
