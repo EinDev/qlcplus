@@ -56,7 +56,9 @@ function roundGeom(g) { return { x: Math.round(g.x * 100) / 100, y: Math.round(g
 /** CSS for a VcWidgetStyle font: pointSize -> px at 96 dpi (1pt = 1.333px). */
 function vcFontCss(style) {
   const f = (style && style.font) || {};
-  return { fontFamily: f.family ? '"' + f.family + '", var(--font-roboto)' : 'var(--font-roboto)', fontSize: Math.round((f.pointSize || 12) * 1.333),
+  /* pointSize is -1 for a pixel-sized font (the default widget font): pixelSize carries it then */
+  const px = f.pointSize > 0 ? Math.round(f.pointSize * 1.333) : f.pixelSize > 0 ? Math.round(f.pixelSize) : 16;
+  return { fontFamily: f.family ? '"' + f.family + '", var(--font-roboto)' : 'var(--font-roboto)', fontSize: px,
     fontWeight: f.bold ? 700 : 400, fontStyle: f.italic ? 'italic' : 'normal', textDecoration: f.underline ? 'underline' : 'none' };
 }
 

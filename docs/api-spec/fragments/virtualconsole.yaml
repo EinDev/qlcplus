@@ -4398,6 +4398,11 @@ schemas:
         type: string
       pointSize:
         type: number
+        description: QFont::pointSize(); -1 when the font is sized in pixels (the default widget font
+          is), then pixelSize carries the size. Writing pointSize switches the font to points.
+      pixelSize:
+        type: number
+        description: Read-only. QFont::pixelSize(), -1 when the font is sized in points.
       bold:
         type: boolean
       italic:

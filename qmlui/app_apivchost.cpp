@@ -186,6 +186,8 @@ QJsonObject widgetStyleToJson(VCWidget *w)
     QJsonObject fontObj;
     fontObj.insert(QStringLiteral("family"), font.family());
     fontObj.insert(QStringLiteral("pointSize"), font.pointSize());
+    // the default widget font is sized in pixels (pointSize() is then -1)
+    fontObj.insert(QStringLiteral("pixelSize"), font.pixelSize());
     fontObj.insert(QStringLiteral("bold"), font.bold());
     fontObj.insert(QStringLiteral("italic"), font.italic());
     fontObj.insert(QStringLiteral("underline"), font.underline());
