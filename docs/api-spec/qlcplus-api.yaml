@@ -30148,6 +30148,7 @@ components:
           type:
           - object
           - 'null'
+          description: null when the video renders at its natural / fullscreen size (Video::customGeometry().isNull())
           properties:
             x:
               type: integer
@@ -30170,8 +30171,10 @@ components:
           type: integer
         screen:
           type: integer
+          description: Index into functions.video.listCapabilities' screens
         fullscreen:
           type: boolean
+          description: outputMode == fullscreen (kept for the original request/event shapes)
         outputMode:
           type: string
           enum:
@@ -30200,7 +30203,7 @@ components:
           description: Read-only here (Video::muted()); no API setter yet
         resolution:
           type: object
-          description: Read-only, detected from the source
+          description: Read-only, detected from the source; absent until the host probed the file
           properties:
             width:
               type: integer
