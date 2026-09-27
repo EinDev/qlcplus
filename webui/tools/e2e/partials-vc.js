@@ -171,6 +171,8 @@ async function ioSection(browser, api) {
   const loop = plugins.find(p => p.name === 'Loopback');
   if (!check(!!loop && loop.outputLines.length >= 3 && loop.inputLines.length >= 3, 'the sandbox has the Loopback plugin (and only it)', plugins.map(p => p.name))) return {};
   check(plugins.length === 1, 'no other IO plugin is loaded', plugins.map(p => p.name));
+  /* a profile left by an interrupted earlier run */
+  try { const pl = await api.call('io.inputProfile.list'); if (pl.profiles.some(p => p.name === 'E2E Partials')) await api.call('io.inputProfile.delete', { name: 'E2E Partials', baseRevision: pl.profilesRevision }); } catch (e) { }
   /* a known start: the project's six universes, nothing patched on the ones this section uses */
   let list = (await api.call('io.universe.list')).universes;
   while (list.length > 6) { await api.structural('io.universe.delete', { universeId: list[list.length - 1].id }); list = (await api.call('io.universe.list')).universes; }
@@ -282,9 +284,27 @@ async function ioSection(browser, api) {
     await shot(page, 'partials-io-learn');
     await clickFn(page, q('[data-role="detect-toggle"]'), 'Stop detection');
     await sleep(300);
-    await clickFn(page, leaf('[data-role="profile-editor"]', 'Discard'), 'Discard').catch(async () => { await page.key('Escape'); });
+    /* a Button channel with its custom feedback values, saved with the learned one (then deleted) */
+    await clickFn(page, q('[data-role="channel-add"]'), 'Add channel');
+    await page.waitFor(`!!document.querySelector('[data-role="channel-editor"]')`, 5000);
+    await typeInto(page, q('[data-role="channel-editor"] [data-role="channel-number"] input') + ' || ' + q('[data-role="channel-editor"] input[data-role="channel-number"]'), '7', 'channel number');
+    await typeInto(page, `(${q('[data-role="channel-editor"]')}).querySelector('input[placeholder="e.g. Fader 1"]')`, 'Pad 7', 'channel name');
+    await typeInto(page, q('[data-role="channel-editor"] [data-role="lower-value"] input') + ' || ' + q('[data-role="channel-editor"] input[data-role="lower-value"]'), '5', 'feedback lower value');
+    await typeInto(page, q('[data-role="channel-editor"] [data-role="upper-value"] input') + ' || ' + q('[data-role="channel-editor"] input[data-role="upper-value"]'), '200', 'feedback upper value');
+    await clickFn(page, `[...document.querySelectorAll('button')].reverse().find(b => b.textContent.trim() === 'Ok')`, 'Ok');
+    await page.waitFor(`!!document.querySelector('[data-role="profile-editor"] [data-channel="6"]')`, 5000);
+    await typeInto(page, propInput('Manufacturer'), 'E2E', 'manufacturer');
+    await typeInto(page, propInput('Model'), 'Partials', 'model');
+    await clickFn(page, q('[data-role="profile-save"]'), 'Save');
+    const saved = await until(async () => (await api.call('io.inputProfile.get', { name: 'E2E Partials' })).profile, 'saved profile', 8000).catch(() => null);
+    const fbCh = saved && (saved.channels || []).find(c => c.number === 6);
+    check(!!fbCh && fbCh.type === 'Button' && fbCh.lowerValue === 5 && fbCh.upperValue === 200, 'input profile editor: a Button channel\'s custom feedback values (lower 5, upper 200) are saved in the .qxi', fbCh);
+    check(!!saved && (saved.channels || []).some(c => c.number === 41), '...next to the channel learned from the Loopback input');
+    await clickFn(page, `[...document.querySelectorAll('button')].reverse().find(b => b.textContent.trim() === 'Close' || b.textContent.trim() === 'Discard')`, 'Close').catch(async () => { await page.key('Escape'); });
     await sleep(400);
-    check(!(await page.eval(`!!document.querySelector('[data-role="profile-editor"]')`)), 'profile editor closed without saving');
+    check(!(await page.eval(`!!document.querySelector('[data-role="profile-editor"]')`)), 'profile editor closed');
+    const pl = await api.call('io.inputProfile.list');
+    if (saved) await api.call('io.inputProfile.delete', { name: 'E2E Partials', baseRevision: pl.profilesRevision }).catch(() => null);
 
     /* ---- plugin rescan / lines ---- */
     await clickFn(page, q('[data-plugin="Loopback"] [data-role="plugin-rescan"]'), 'Loopback rescan');
@@ -439,7 +459,7 @@ async function vcSection(browser, api, io) {
   console.log('  scratch page ' + (scratch + 1) + ': ' + JSON.stringify(W));
 
   const page = await browser.open(WEB + '?ctx=vc', { width: 1700, height: 1100 });
-  const ctx = { page, W, scratch, scene, matrix, chaserId, dimmer, mover, goboCh, rgb };
+  const ctx = { page, browser, W, scratch, scene, matrix, chaserId, dimmer, mover, goboCh, rgb };
   try {
     await page.waitFor(`document.querySelectorAll('[title^="Page "]').length >= ${scratch + 1}`, 30000);
     await clickFn(page, `[...document.querySelectorAll('[title^="Page "]')].find(e => e.title.startsWith('Page ${scratch + 1}'))`, 'scratch page tab');
@@ -521,8 +541,16 @@ async function vcExternal(api, ctx, io) {
   await waitCheck(async () => (await api.dmx(U_IN))[FB] === upperPicked, 'pressing the flash button sends its upper feedback value ' + upperPicked + ' out of the feedback line (read back on universe 5)', 5000, async () => (await api.dmx(U_IN))[FB]);
   await page.mouse('mouseReleased', r.x + r.w / 2, r.y + r.h / 2);
   await waitCheck(async () => (await api.dmx(U_IN))[FB] === 3, 'releasing it sends the lower value 3', 5000, async () => (await api.dmx(U_IN))[FB]);
-  /* feedback off: the same press sends nothing */
-  await api.structural('io.patch.remove', { universeId: U_IN, direction: 'feedback' });
+  /* feedback off through the I/O screen's feedback picker: the same press then sends nothing */
+  const iop = await ctx.browser.open(WEB + '?ctx=io', { width: 1600, height: 1100 });
+  await iop.waitFor(`!!document.querySelector('[data-universe="${U_IN}"] [data-role="feedback-picker"]')`, 30000);
+  await sleep(500);
+  await pickCombo(iop, `document.querySelector('[data-universe="${U_IN}"] [data-role="feedback-picker"]')`, 'None', 'feedback picker -> None');
+  await waitCheck(async () => !(await api.call('io.universe.get', { universeId: U_IN })).feedbackPatch, 'feedback picker "None" disables the feedback of universe 5 (io.patch.remove)');
+  check(iop.consoleErrors.length === 0, 'I/O page: no console errors', iop.consoleErrors);
+  await page.bringToFront();
+  await sleep(300);
+  await page.mouse('mouseMoved', r.x + r.w / 2, r.y + r.h / 2);
   await page.mouse('mousePressed', r.x + r.w / 2, r.y + r.h / 2);
   await sleep(700);
   check((await api.dmx(U_IN))[FB] === 3, 'with the feedback patch removed a press sends nothing to the line', (await api.dmx(U_IN))[FB]);
