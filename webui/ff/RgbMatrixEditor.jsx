@@ -21,7 +21,7 @@
 (function () {
   'use strict';
   const FF = window.FF;
-  const { RobotoText, IconButton, CustomSpinBox, CustomComboBox, CustomCheckBox, CustomTextInput } = window.PatchDesignSystem_5432c9;
+  const { RobotoText, IconButton, GenericButton, CustomSpinBox, CustomComboBox, CustomCheckBox, CustomTextInput } = window.PatchDesignSystem_5432c9;
 
   const inputStyle = { height: 24, boxSizing: 'border-box', background: 'var(--bg-stronger)', color: 'var(--fg-main)', border: 'var(--border-control)', fontFamily: 'var(--font-roboto)', fontSize: 14, padding: '0 6px' };
   const PREVIEW_PERIOD = 100;   /* ms between polls, 10 fps cap */
@@ -211,6 +211,7 @@
     const [groups, setGroups] = React.useState([]);
     const [heads, setHeads] = React.useState(null);
     const [propDefs, setPropDefs] = React.useState(null);
+    const [imagePick, setImagePick] = React.useState(false);
     const unsupported = qlc.isUnsupported('functions.rgbmatrix.setConfig') || qlc.isUnsupported('functions.rgbmatrix.getPreview');
 
     const loadGroups = () => qlc.call('fixtures.group.list').then(r => setGroups(r.groups || [])).catch(() => setGroups([]));
@@ -360,9 +361,13 @@
           {algorithm.type === 'image' ? <>
             <FF.Heading text="Image" style={{ marginTop: 6 }} />
             <FF.Row label="Image" width={90}>
-              <CommitText value={algorithm.imagePath || ''} width={340} placeholder="Path on the QLC+ machine (png, bmp, jpg, gif)" testId="image-path" onCommit={t => setAlgo({ imagePath: t })} />
+              <CommitText value={algorithm.imagePath || ''} width={280} placeholder="Path on the QLC+ machine (png, bmp, jpg, gif)" testId="image-path" onCommit={t => setAlgo({ imagePath: t })} />
+              <span data-rgb="image-browse"><GenericButton label="Browse…" width={70} height={24} disabled={!window.ServerFileBrowser} onClick={() => setImagePick(true)} /></span>
             </FF.Row>
-            <FF.Note text="The file is read by QLC+ itself, so this is a path on the machine running QLC+, not a browser upload." />
+            <FF.Note text="The file is read by QLC+ itself, so this is a path on the machine running QLC+ (Browse lists that machine's folders), not a browser upload." />
+            {window.ServerFileBrowser && imagePick ? <window.ServerFileBrowser open qlc={qlc} title="RGB matrix image"
+              filters={[window.ServerFileBrowser.filter('Pictures', ['*.png', '*.bmp', '*.jpg', '*.jpeg', '*.gif']), window.ServerFileBrowser.filter('All files', [])]}
+              onClose={() => setImagePick(false)} onPick={p => setAlgo({ imagePath: p })} /> : null}
             <FF.Row label="Animation" width={90}>
               <CustomComboBox width={170} height={24} currValue={algorithm.animationStyle || 'static'} model={comboModel(IMAGE_ANIMATIONS)} onValueChanged={v => { if (v !== algorithm.animationStyle) setAlgo({ animationStyle: v }); }} />
             </FF.Row>
