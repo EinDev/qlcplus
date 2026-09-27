@@ -13,7 +13,7 @@ yet. Every number in the "Baseline" section was measured. Anything marked **esti
    cycle, so the output freezes. Measured: a 143 ms `fixturedefs.list` call froze all 6 universes
    for 152 ms, and a 1.2 s call froze them for 1.23 s. An unfiltered cold `fixturedefs.list` blocks
    for 2-14 s, which is also what tripped the freeze watchdog today (see "Watchdog incident").
-   Every other handler SF3 uses on screen load finishes in under 25 ms.
+   Every other handler SF3 uses on screen load finishes in under 30 ms.
 2. **The Fixtures & Functions screen never stops rendering.** It sits in an endless React render
    loop at 100% of a browser core for as long as the tab is open (`FixturesFunctions.jsx:400-426`).
    If that browser runs on the show machine, it takes CPU from QLC+.
@@ -180,7 +180,7 @@ running, following the live DMX stream):
 | Blocking call | Handler time | DMX stream gap during it (baseline max) | Output-cycle gap, all 6 universes |
 |---|---|---|---|
 | `fixturedefs.list {manufacturer: Chauvet}`, cold, quiet machine | 143 ms | 152 ms (69 ms) | **152 ms**, same timestamp on u0-u5 |
-| same, machine under load | 1214 ms | 1258 ms (80 ms) | **1228 ms** |
+| same, Release binary, machine under load | 1214 ms | 1258 ms (80 ms) | **1228 ms** |
 | per-manufacturer cold loop (149 calls) | up to 1037 ms each | n/a | 1055, 713, 487, 338 ms... one gap per heavy call |
 
 - Background rate: with only measurement traffic, output-cycle gaps above 40 ms (two ticks at
@@ -195,7 +195,7 @@ running, following the live DMX stream):
 
 | Screen | Events/s received | KiB/s | Tab main thread busy x1 | x4 | DOM |
 |---|---|---|---|---|---|
-| sd (follows universe 1) | 16.7 (15 DMX deltas + beat) | 16.4 | **20%** | **99%**, 17 long tasks, max 108 ms | 8273 |
+| sd (follows one universe, the desk's default: id 0, shown as Universe 1) | 16.7 (15 DMX deltas + beat) | 16.4 | **20%** | **99%**, 17 long tasks, max 108 ms | 8273 |
 | vc | 1.8 (core.beat) | 0.1 | 1% | 3% | 325 |
 | show | 1.7 | 0.1 | 2% | not run | 3347 |
 | fx | 1.8 | 0.1 | **100%** (render loop) | 99% | 519 |
@@ -417,7 +417,7 @@ Verify: `page-load.js` (API calls/KiB columns); `multi-client.js` (fan-out lines
     under a new versioned topic so old clients keep working.
   - Skip building the diff in `slotUniverseWritten()` when no session subscribes to that universe.
   - Serialise each broadcast event once rather than once per session (`ApiServer::broadcast`).
-  - Keep VC live topics ungated; they are cheap (§7).
+  - Keep VC live topics ungated; they are cheap (§7). The other ungated live topics, unctions.status.changed (start/stop only) and core.beat (about 2/s), measured at about 1.8 events/s per tab in total (§6), so they need no gating.
 - Gain: about 855 → about 250 B per frame (**estimate**); about 75 → about 22 KiB/s for a client
   following all universes; server main-thread cost −0.4% idle and −1-2% with 5 clients (measured
   magnitudes, small).
