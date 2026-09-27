@@ -397,12 +397,14 @@ function FixturesFunctions() {
   const ActiveView = view !== 'list' ? (views.find(v => v.id === view) || {}).component : null;
 
   /* Live: one root per side; mock: the prototype's flat groups. */
-  const fixturesRoot = live && fixtureTree
+  /* Memoized: a fresh array on every render re-ran the cleanup effect below on every render, which
+     set state and rendered again - an endless loop that kept a browser core at 100%. */
+  const fixturesRoot = React.useMemo(() => live && fixtureTree
     ? [{ id: 'root-fixtures', kind: 'root', name: 'Fixtures', icon: D.icon('fixture'), children: fixtureTree.tree }]
-    : D.fixtures;
-  const functionsRoot = live && functionTree
+    : D.fixtures, [live, fixtureTree]);
+  const functionsRoot = React.useMemo(() => live && functionTree
     ? [{ id: 'root-functions', kind: 'root', name: 'Functions', icon: D.icon('functions'), children: functionTree.tree }]
-    : D.functions;
+    : D.functions, [live, functionTree]);
   const shownFixtures = React.useMemo(() => filterTree(fixturesRoot, search), [fixturesRoot, search]);
   const shownFunctions = React.useMemo(() => filterTree(functionsRoot, search), [functionsRoot, search]);
   /* While searching, every folder that survived the filter is shown open. */
@@ -417,7 +419,7 @@ function FixturesFunctions() {
     if (!live) return;
     const all = flatten(fixturesRoot.concat(functionsRoot), []);
     const ids = all.map(n => n.id);
-    setSelected(s => s.filter(id => ids.indexOf(id) !== -1));
+    setSelected(s => { const kept = s.filter(id => ids.indexOf(id) !== -1); return kept.length === s.length ? s : kept; });
     if (detail) {
       const fresh = all.find(n => n.id === detail.id);
       if (!fresh) setDetail(null);

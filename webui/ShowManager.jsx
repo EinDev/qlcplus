@@ -36,6 +36,7 @@
   const FF = window.FF;
 
   const TRACK_H = 60;        /* UISettings.mediumItemHeight */
+  const NO_TRACKS = [];
   const TRACK_W = 170;       /* UISettings.bigItemHeight * 1.6 */
   const HEADER_H = 30;       /* UISettings.iconSizeMedium */
   const BASE_TICK = 60;      /* px per ruler tick (18 * pixelDensity in the QML) */
@@ -231,7 +232,7 @@
     const td = (detail && detail.typeDetail) || {};
     const division = td.timeDivisionType || 'time';
     const bpm = td.timeDivisionBPM || 120;
-    const tracks = td.tracks || [];
+    const tracks = td.tracks || NO_TRACKS;   /* stable empty list: a fresh [] re-ran itemsById's effect on every render */
     const total = Number(td.totalDuration) || 0;
     const tick = tickPx(division, timeScale), tMs = tickMs(division, timeScale, bpm);
     const msToPx = React.useCallback(ms => tMs > 0 ? ms * tick / tMs : 0, [tick, tMs]);
@@ -252,7 +253,7 @@
     React.useEffect(() => { setTimeScale(division === 'time' ? 5 : 1); }, [division]);
     React.useEffect(() => { if (!notice) return undefined; const t = setTimeout(() => setNotice(''), 6000); return () => clearTimeout(t); }, [notice]);
     /* items that disappeared (deleted elsewhere) leave the selection */
-    React.useEffect(() => { setSelection(s => s.filter(id => itemsById.has(String(id)))); }, [itemsById]);
+    React.useEffect(() => { setSelection(s => { const kept = s.filter(id => itemsById.has(String(id))); return kept.length === s.length ? s : kept; }); }, [itemsById]);
 
     usePlayhead(qlc, showId, t => setCursorState(t));
 
