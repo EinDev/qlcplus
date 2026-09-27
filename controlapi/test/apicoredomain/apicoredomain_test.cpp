@@ -596,7 +596,8 @@ void ApiCoreDomain_Test::projectOpenPathRejectsBadFilesWithoutClearing()
     auto writeFile = [&](const QString &name, const QByteArray &content)
     {
         QFile f(dir.filePath(name));
-        f.open(QIODevice::WriteOnly);
+        if (f.open(QIODevice::WriteOnly) == false)
+            return QString();
         f.write(content);
         f.close();
         return f.fileName();
