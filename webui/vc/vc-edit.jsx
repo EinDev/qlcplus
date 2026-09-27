@@ -173,12 +173,16 @@ function FunctionPicker({ functions, currentId, onPick, onDetach }) {
   );
 }
 
-/** Small styled text box (the Label field's look) committing on Enter / blur. */
+/** Small styled text box (the Label field's look) committing on Enter / blur - once per change:
+    CustomTextInput confirms on Enter AND on the blur that follows, and a second identical structural
+    call would only race the next edit for the docRevision. */
 function TextField({ value, onCommit, placeholder, width = '100%' }) {
+  const committed = React.useRef(value || '');
+  React.useEffect(() => { committed.current = value || ''; }, [value]);
   return (
     <span style={{ flex: 1, display: 'flex', alignItems: 'center', height: 26, background: 'var(--bg-control)', border: '1px solid var(--spin-border)', borderRadius: 'var(--radius-spin)', padding: '0 5px', width }}>
       <CustomTextInput key={value || ''} text={value || ''} editing width="100%" height={22} placeholder={placeholder}
-        onTextConfirmed={(t) => { if (t !== (value || '')) onCommit(t); }} style={{ fontSize: 'var(--text-size-small)' }} />
+        onTextConfirmed={(t) => { if (t !== committed.current) { committed.current = t; onCommit(t); } }} style={{ fontSize: 'var(--text-size-small)' }} />
     </span>
   );
 }
@@ -438,8 +442,10 @@ function VCSliderConfigSections({ w, cfg, functions, setConfig, setLevelChannels
 function VCWidgetProperties({ widgets, functions }) {
   const vc = useVC();
   const e = vc.editApi;
-  const [open, setOpen] = React.useState({ basic: true, geometry: true, fn: true, action: true, intensity: true, stopall: true, flash: true, display: true, mode: true, control: true, level: true, range: false, input: false, gm: true });
-  const toggle = (k) => setOpen(o => Object.assign({}, o, { [k]: !o[k] }));
+  /* Every section starts expanded unless listed here as closed (registered panels add their own keys). */
+  const [open, setOpen] = React.useState({ range: false, input: false });
+  const isOpen = (k) => open[k] !== false;
+  const toggle = (k) => setOpen(o => Object.assign({}, o, { [k]: !isOpen(k) }));
   if (!widgets.length) return <RobotoText label="Select a widget first" fontSize="var(--text-size-small)" labelColor="var(--fg-medium)" height="var(--icon-size-default)" textHAlign="center" style={{ width: '100%' }} />;
   const w = widgets[0];
   const many = widgets.length > 1;
@@ -451,7 +457,7 @@ function VCWidgetProperties({ widgets, functions }) {
   const setConfig = (patch) => e.setConfig(w.id, patch);
   const setLevelChannels = (channels) => e.setLevelChannels ? e.setLevelChannels(w.id, channels) : null;
   const section = (key, label, body) => (
-    <SectionBox key={key} sectionLabel={label} isExpanded={!!open[key]} onToggle={() => toggle(key)}>{open[key] ? body : null}</SectionBox>
+    <SectionBox key={key} sectionLabel={label} isExpanded={isOpen(key)} onToggle={() => toggle(key)}>{isOpen(key) ? body : null}</SectionBox>
   );
   /* Registry: window.QLCVCProperties[widgetType] (registered from a file loaded after this one) adds
      the type-specific property sections below the shared Basic/Geometry ones. Props: { w, widgets,
