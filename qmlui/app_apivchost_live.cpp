@@ -47,6 +47,8 @@
 #include "scenevalue.h"
 #include "virtualconsole/vcwidget.h"
 #include "virtualconsole/vcxypad.h"
+#include "virtualconsole/vcxypadpreset.h"
+#include "virtualconsole/vcanimationpreset.h"
 #include "virtualconsole/vcclock.h"
 #include "virtualconsole/vcanimation.h"
 #include "virtualconsole/vcaudiotriggers.h"
