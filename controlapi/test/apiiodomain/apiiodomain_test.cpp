@@ -817,6 +817,37 @@ void ApiIoDomain_Test::simpleDeskOverrideOnUniverse1FixtureHitsItsChannel()
     }, 2000));
 }
 
+void ApiIoDomain_Test::simpleDeskOverrideSurvivesProjectUniverseReload()
+{
+    helloAndGetClientId();
+    QJsonArray channels;
+    channels.append(channelEntry(5, 123));
+    QJsonObject setParams;
+    setParams.insert(QStringLiteral("channels"), channels);
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("io.simpleDesk.setChannels"), setParams).value(QStringLiteral("ok")).toBool(), true);
+
+    QJsonObject getParams;
+    getParams.insert(QStringLiteral("universeId"), 0);
+    auto outputIs = [&](int v)
+    {
+        QJsonObject dmxReply = sendAndWaitForReply(QStringLiteral("io.dmx.universe.get"), getParams);
+        QJsonArray values = dmxReply.value(QStringLiteral("result")).toObject().value(QStringLiteral("values")).toArray();
+        return values.size() > 5 && values.at(5).toInt() == v;
+    };
+    QVERIFY(QTest::qWaitFor([&]() { return outputIs(123); }, 2000));
+
+    // What InputOutputMap::loadXML() does on every project load: every
+    // Universe is deleted (no universeRemoved) and new ones are added.
+    InputOutputMap *ioMap = m_doc->inputOutputMap();
+    ioMap->removeAllUniverses();
+    for (quint32 i = 0; i < 4; i++)
+        QVERIFY(ioMap->addUniverse(i));
+    ioMap->startUniverses();
+
+    // The held override is still reported and still reaches the output
+    QVERIFY(QTest::qWaitFor([&]() { return outputIs(123); }, 3000));
+}
+
 /*********************************************************************
  * Plugins, patches, universe update/delete, input profiles
  *********************************************************************/

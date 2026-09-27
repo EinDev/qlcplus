@@ -86,7 +86,7 @@
 
     React.useEffect(() => {
       if (!open) return;
-      setNote(null); setBusy(false); setName(''); setFilter('');
+      setNote(null); setBusy(false); setName(''); setFilter(''); setExisting(false);
       const pre = (preset && preset.fixtureIds || []).map(String);
       setSel(pre); setSelectedMode(pre.length > 0);
       if (!qlc.online) return;
@@ -513,7 +513,7 @@
               <div style={box}>
                 {info.shows.map((s, i) => (
                   <div key={s.id} data-legacy-show={s.id} style={{ display: 'flex', alignItems: 'center', gap: 6, minHeight: 32, padding: '0 8px', background: i % 2 ? 'var(--bg-medium)' : 'transparent' }}>
-                    <RobotoText label={s.name + ' — ' + s.itemCount + ' items, ' + s.bpm + ' BPM'} fontSize="var(--text-size-small)" height="auto" style={{ flex: 1, minWidth: 0 }} />
+                    <RobotoText label={s.name + ' — ' + s.itemCount + (s.itemCount === 1 ? ' item, ' : ' items, ') + s.bpm + ' BPM'} fontSize="var(--text-size-small)" height="auto" style={{ flex: 1, minWidth: 0 }} />
                     <GenericButton label="Convert…" width={90} height={26} fontSize="var(--text-size-menubar)" onClick={() => { setBpm(s.bpm || 120); setNote(''); setConvert(s); }} data-role="legacy-convert" />
                     <GenericButton label="Already correct" width={120} height={26} fontSize="var(--text-size-menubar)" onClick={() => dismiss(s)} data-role="legacy-dismiss" />
                   </div>

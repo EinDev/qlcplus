@@ -332,6 +332,19 @@ void ApiIoDomain::slotUniverseAdded(quint32 id)
     if (universe == nullptr)
         return;
 
+    {
+        // A project load replaces every Universe through
+        // InputOutputMap::removeAllUniverses(), which deletes them without
+        // emitting universeRemoved: a fader held for this id belongs to the
+        // deleted Universe and would swallow every held Simple Desk value
+        // (no DMX output, nothing for io.dmx.channel.inspect to find).
+        // Drop it and let writeDMX() request a fresh one for the values
+        // still held on this universe.
+        QMutexLocker locker(&m_simpleDeskMutex);
+        if (m_simpleDeskFaders.remove(id) > 0)
+            setChanged(true);
+    }
+
     if (m_hasPendingUniverseName)
     {
         universe->setName(m_pendingUniverseName);

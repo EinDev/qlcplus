@@ -69,6 +69,7 @@ private slots:
     void simpleDeskDumpFixtureIdsLimitsToThoseFixtures();
     void simpleDeskDumpUnknownFixtureIdIsNotFound();
     void simpleDeskOverrideOnUniverse1FixtureHitsItsChannel();
+    void simpleDeskOverrideSurvivesProjectUniverseReload();
 
     void pluginListDescribesStubPluginLines();
     void patchSetOutputBumpsRevisionAndBroadcastsUniverseUpdated();
