@@ -883,6 +883,90 @@ messages:
               type: [string, "null"]
 
   # -----------------------------------------------------------------------
+  # Host file system (read-only directory listing for server-side file
+  # pickers - the browser equivalent of popup/PopupFolderBrowser.qml).
+  # Added 2026-09-27 (web UI media editors slice).
+  # -----------------------------------------------------------------------
+
+  CoreFsListRequest:
+    payload:
+      type: object
+      required: [type, id, method, params]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: core.fs.list }
+        params:
+          type: object
+          description: >
+            Lists one directory on the machine the engine runs on, so a remote
+            client can pick audio / video / image / project files for methods
+            that take a server-side path (core.project.open, functions.audio.
+            setSource, functions.video.setSource, ...). Read-only: nothing is
+            created, renamed or deleted. Hidden entries and "."/".." are never
+            listed (QDir::NoDotAndDotDot, hidden files excluded like
+            qmlui/folderbrowser.cpp). Entries are sorted directories first,
+            then case-insensitively by name.
+          properties:
+            path:
+              type: string
+              description: >
+                Absolute directory path on the engine host, forward or back
+                slashes. Empty / omitted lists the roots instead (the user's
+                home directory plus every drive on Windows, "/" on Unix) and
+                returns no entries. A relative path is INVALID_PARAMS; a path
+                that does not exist or is not a directory is NOT_FOUND.
+            extensions:
+              type: array
+              items: { type: string }
+              description: >
+                Optional glob patterns ("*.mp3", "*.qxw") in the form the
+                capability methods report; files not matching any pattern are
+                left out, directories are always listed. Omitted or empty =
+                every file.
+            includeFiles:
+              type: boolean
+              description: "false lists directories only (a folder picker). Default true."
+
+  CoreFsListResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/CoreFsListOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  CoreFsListOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          type: object
+          required: [path, parent, entries, roots]
+          properties:
+            path:
+              type: string
+              description: "The listed directory, normalised (QDir::absolutePath, forward slashes, no trailing slash except a bare drive root like C:/). Empty when the roots were listed."
+            parent:
+              type: [string, "null"]
+              description: "Absolute path of the parent directory, or null at a root (drive root / '/', or when path was empty)."
+            entries:
+              type: array
+              items:
+                $ref: '#/components/schemas/CoreFsEntry'
+            roots:
+              type: array
+              description: "Always present so a picker can render a drives/places bar without a second call: home directory first, then the drive roots (QDir::drives())."
+              items:
+                type: object
+                required: [name, path]
+                properties:
+                  name: { type: string, description: "Display name: 'Home', 'C:/', ..." }
+                  path: { type: string }
+
+  # -----------------------------------------------------------------------
   # Shared response building blocks
   # -----------------------------------------------------------------------
 
@@ -1036,6 +1120,25 @@ schemas:
         type: [string, "null"]
       masterTimerFrequencyHz:
         type: integer
+
+  CoreFsEntry:
+    type: object
+    required: [name, path, isDir, size, mtime]
+    properties:
+      name:
+        type: string
+        description: "File or directory name without the directory part."
+      path:
+        type: string
+        description: "Absolute path of the entry (forward slashes), ready to be passed back as `path` or to a setSource / open method."
+      isDir:
+        type: boolean
+      size:
+        type: integer
+        description: "Bytes; 0 for a directory."
+      mtime:
+        type: integer
+        description: "Last modification time, epoch milliseconds (UTC); 0 when unknown."
 
 operations:
 
@@ -1339,6 +1442,20 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
       - $ref: '#/channels/qlcplus/messages/coreBeatEvent'
+
+  sendCoreFsList:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/coreFsListRequest'
+
+  receiveCoreFsListResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+      - $ref: '#/channels/qlcplus/messages/coreFsListResponse'
 
 # Note: at merge time, each message key defined above also needs a matching
 # lowerCamelCase entry added under channels.qlcplus.messages (e.g.

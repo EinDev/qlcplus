@@ -152,6 +152,12 @@ channels:
         $ref: '#/components/messages/CoreSettingsChangedEvent'
       coreLogEvent:
         $ref: '#/components/messages/CoreLogEvent'
+      coreFsListRequest:
+        $ref: '#/components/messages/CoreFsListRequest'
+      coreFsListResponse:
+        $ref: '#/components/messages/CoreFsListResponse'
+      coreFsListOkResponse:
+        $ref: '#/components/messages/CoreFsListOkResponse'
       coreDocRevisionOkResponse:
         $ref: '#/components/messages/CoreDocRevisionOkResponse'
       coreUndoRedoOkResponse:
@@ -1831,6 +1837,18 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/coreBeatEvent'
+  sendCoreFsList:
+    action: send
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/coreFsListRequest'
+  receiveCoreFsListResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/coreFsListResponse'
   sendFixturesDefsListManufacturers:
     action: send
     channel:
@@ -6706,6 +6724,103 @@ components:
                 type:
                 - string
                 - 'null'
+    CoreFsListRequest:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - method
+        - params
+        properties:
+          type:
+            const: request
+          id:
+            type: string
+          method:
+            const: core.fs.list
+          params:
+            type: object
+            description: 'Lists one directory on the machine the engine runs on, so a remote client can
+              pick audio / video / image / project files for methods that take a server-side path (core.project.open,
+              functions.audio. setSource, functions.video.setSource, ...). Read-only: nothing is created,
+              renamed or deleted. Hidden entries and "."/".." are never listed (QDir::NoDotAndDotDot,
+              hidden files excluded like qmlui/folderbrowser.cpp). Entries are sorted directories first,
+              then case-insensitively by name.'
+            properties:
+              path:
+                type: string
+                description: Absolute directory path on the engine host, forward or back slashes. Empty
+                  / omitted lists the roots instead (the user's home directory plus every drive on Windows,
+                  "/" on Unix) and returns no entries. A relative path is INVALID_PARAMS; a path that
+                  does not exist or is not a directory is NOT_FOUND.
+              extensions:
+                type: array
+                items:
+                  type: string
+                description: Optional glob patterns ("*.mp3", "*.qxw") in the form the capability methods
+                  report; files not matching any pattern are left out, directories are always listed.
+                  Omitted or empty = every file.
+              includeFiles:
+                type: boolean
+                description: false lists directories only (a folder picker). Default true.
+    CoreFsListResponse:
+      payload:
+        oneOf:
+        - $ref: '#/components/messages/CoreFsListOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+    CoreFsListOkResponse:
+      payload:
+        type: object
+        required:
+        - type
+        - id
+        - ok
+        - result
+        properties:
+          type:
+            const: response
+          id:
+            type: string
+          ok:
+            const: true
+          result:
+            type: object
+            required:
+            - path
+            - parent
+            - entries
+            - roots
+            properties:
+              path:
+                type: string
+                description: The listed directory, normalised (QDir::absolutePath, forward slashes, no
+                  trailing slash except a bare drive root like C:/). Empty when the roots were listed.
+              parent:
+                type:
+                - string
+                - 'null'
+                description: Absolute path of the parent directory, or null at a root (drive root / '/',
+                  or when path was empty).
+              entries:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CoreFsEntry'
+              roots:
+                type: array
+                description: 'Always present so a picker can render a drives/places bar without a second
+                  call: home directory first, then the drive roots (QDir::drives()).'
+                items:
+                  type: object
+                  required:
+                  - name
+                  - path
+                  properties:
+                    name:
+                      type: string
+                      description: 'Display name: ''Home'', ''C:/'', ...'
+                    path:
+                      type: string
     CoreDocRevisionOkResponse:
       payload:
         type: object
@@ -13112,6 +13227,7 @@ components:
             type: object
             required:
             - syntaxErrorLines
+            - syntaxErrors
             - functionRefs
             - fixtureRefs
             properties:
@@ -13123,7 +13239,24 @@ components:
                   text (Script::setData) INCLUDING blank lines - i.e. usable directly as a 1-based index
                   into functions.script.setSource's source split on newlines. This is a DIFFERENT numbering
                   space from functionRefs/fixtureRefs's `line` below - do not mix the two when highlighting
-                  source lines in an editor.
+                  source lines in an editor. On a qmlui (scriptv4) build the source is evaluated by a
+                  QJSEngine (ScriptRunner::collectScriptData) and this is the line the JavaScript error
+                  was raised on - one entry per error, 0 when the engine reported no line.
+              syntaxErrors:
+                type: array
+                description: 'One entry per error, same order as syntaxErrorLines, with the engine''s
+                  message (scriptv4: the QJSEngine error text, e.g. "SyntaxError: Expected token `;''";
+                  legacy: the tokenizer''s "Unrecognized command" message). Empty when the script is valid.'
+                items:
+                  type: object
+                  required:
+                  - line
+                  - message
+                  properties:
+                    line:
+                      type: integer
+                    message:
+                      type: string
               functionRefs:
                 type: array
                 description: 'Functions referenced via startfunction. NOTE: despite the name, the engine''s
@@ -13146,14 +13279,14 @@ components:
                       type: integer
               fixtureRefs:
                 type: array
-                description: Fixtures referenced via setfixture. `line` here uses the same 0-based, blank-skipping
-                  tokenized-list numbering as functionRefs.line above - see its note on the two distinct
-                  line-number spaces in this response.
+                description: Fixtures referenced via setfixture / Engine.setFixture. `line` here uses
+                  the same 0-based, blank-skipping tokenized-list numbering as functionRefs.line above
+                  - see its note on the two distinct line-number spaces in this response. On a qmlui (scriptv4)
+                  build the engine's Script::fixtureList() reports ids only, so `line` is omitted there.
                 items:
                   type: object
                   required:
                   - fixtureId
-                  - line
                   properties:
                     fixtureId:
                       type: string
@@ -13201,14 +13334,43 @@ components:
             type: object
             required:
             - commands
+            - snippets
             properties:
               commands:
                 type: array
-                description: 'The Script::*Cmd keyword set: stoponexit, startfunction, stopfunction, blackout,
-                  wait, waitkey, waitfunctionstart, waitfunctionstop, setfixture, systemcommand, label,
-                  jump'
+                description: 'The Script::*Cmd keyword set. On a qmlui (QLC+ 5) build the engine''s Script
+                  is the JavaScript-based scriptv4 (engine/src/scriptv4.cpp, selected by engine/src/scriptwrapper.h)
+                  and the keywords are the `Engine.<method>` names its ScriptRunner exposes: Engine.startFunction,
+                  Engine.stopFunction, Engine.isFunctionRunning, Engine.setFunctionAttribute, Engine.setFixture,
+                  Engine.getChannelValue, Engine.waitTime, Engine.waitFunctionStart, Engine.waitFunctionStop,
+                  Engine.setBlackout, Engine.stopOnExit, Engine.systemCommand, Engine.setBPM, Engine.random.
+                  A legacy (QLC+ 4) build would report the line-command keywords instead (stoponexit,
+                  startfunction, stopfunction, blackout, wait, waitkey, waitfunctionstart, waitfunctionstop,
+                  setfixture, systemcommand, label, jump).'
                 items:
                   type: string
+              snippets:
+                type: array
+                description: 'Editor helper entries mirroring ScriptEditor.qml''s "Add a method call at
+                  cursor position" menu: `insert` is the text to place at the cursor (e.g. "Engine.startFunction();"),
+                  `caretOffset` how many characters before the end of `insert` the caret should land (3
+                  puts it between the parentheses), `label`/`icon` are for the menu row.'
+                items:
+                  type: object
+                  required:
+                  - label
+                  - insert
+                  properties:
+                    label:
+                      type: string
+                    insert:
+                      type: string
+                    caretOffset:
+                      type: integer
+                    icon:
+                      type: string
+                      description: A hint name (play, stop, sliders, hourglass, dice, moon, terminal),
+                        not a path
     FunctionsScriptSetSourceRequest:
       payload:
         type: object
@@ -14769,6 +14931,7 @@ components:
             type: object
             required:
             - extensions
+            - devices
             properties:
               extensions:
                 type: array
@@ -14778,6 +14941,25 @@ components:
                   plugins' own reported form (e.g. AudioDecoderMad returns '*.mp3', not the bare extension
                   'mp3') - a client filtering an Open dialog should match against these patterns, not
                   treat them as bare suffixes.
+              devices:
+                type: array
+                description: 'Audio OUTPUT devices on the engine host (AudioPluginCache::audioDevicesList()
+                  filtered on AUDIO_CAP_OUTPUT), the values functions.audio.setDevice accepts. The first
+                  entry is always {id: "", name: "Default device"} - the global default output, what AudioEditor.qml''s
+                  combo shows first. Added 2026-09-27 so a client can populate the device picker; capture
+                  devices are deliberately not listed here.'
+                items:
+                  type: object
+                  required:
+                  - id
+                  - name
+                  properties:
+                    id:
+                      type: string
+                      description: The opaque privateName to pass as audioDevice; empty = default
+                    name:
+                      type: string
+                      description: Human-readable device name
     FunctionsAudioSetSourceRequest:
       payload:
         type: object
@@ -15232,6 +15414,7 @@ components:
               screens:
                 type: array
                 description: Displays available on the engine host machine for functions.video.setScreenTarget
+                  (QGuiApplication::screens(); empty on a headless engine)
                 items:
                   type: object
                   required:
@@ -15242,6 +15425,21 @@ components:
                       type: integer
                     name:
                       type: string
+                    geometry:
+                      type: object
+                      properties:
+                        x:
+                          type: integer
+                        y:
+                          type: integer
+                        width:
+                          type: integer
+                        height:
+                          type: integer
+              spoutAvailable:
+                type: boolean
+                description: Whether this build can drive the fork's Spout output mode (functions.video.setScreenTarget
+                  outputMode=spout). Added 2026-09-27.
     FunctionsVideoSetSourceRequest:
       payload:
         type: object
@@ -15676,6 +15874,19 @@ components:
                 description: Index into functions.video.listCapabilities' screens array
               fullscreen:
                 type: boolean
+                description: 'Only applied when it differs from the current Video::fullscreen(): a Video
+                  in the fork''s spout output mode is not silently dropped back to windowed by a client
+                  that sends fullscreen=false without knowing about Spout. Send outputMode to pick the
+                  mode explicitly.'
+              outputMode:
+                type: string
+                enum:
+                - windowed
+                - fullscreen
+                - spout
+                description: Optional (added 2026-09-27). When present it wins over `fullscreen` and sets
+                  Video::setOutputMode directly; spout is refused with UNSUPPORTED on a build without
+                  Spout (functions.video.listCapabilities reports spoutAvailable).
               baseRevision:
                 type: integer
     FunctionsVideoSetScreenTargetResponse:
@@ -15727,6 +15938,7 @@ components:
             - functionId
             - screen
             - fullscreen
+            - outputMode
             - docRevision
             properties:
               functionId:
@@ -15735,6 +15947,12 @@ components:
                 type: integer
               fullscreen:
                 type: boolean
+              outputMode:
+                type: string
+                enum:
+                - windowed
+                - fullscreen
+                - spout
               docRevision:
                 type: integer
     FunctionsVideoPlaybackEvent:
@@ -22394,6 +22612,30 @@ components:
           - 'null'
         masterTimerFrequencyHz:
           type: integer
+    CoreFsEntry:
+      type: object
+      required:
+      - name
+      - path
+      - isDir
+      - size
+      - mtime
+      properties:
+        name:
+          type: string
+          description: File or directory name without the directory part.
+        path:
+          type: string
+          description: Absolute path of the entry (forward slashes), ready to be passed back as `path`
+            or to a setSource / open method.
+        isDir:
+          type: boolean
+        size:
+          type: integer
+          description: Bytes; 0 for a directory.
+        mtime:
+          type: integer
+          description: Last modification time, epoch milliseconds (UTC); 0 when unknown.
     FixturesPhysical:
       type: object
       description: QLCPhysical, flattened (bulb/lens/dimensions/focus/technical groups).
@@ -24050,34 +24292,49 @@ components:
         audioDevice:
           type: string
           description: Output device identifier on the engine host; empty = global default
+        muted:
+          type: boolean
+          description: Read-only here (Audio::muted(), the editors' Mute checkbox); no API setter yet
+        bpm:
+          type: object
+          description: Result of the fork's offline BPM analysis (Audio::detectedBpm() etc.), read-only
+          properties:
+            state:
+              type: string
+              enum:
+              - notAnalyzed
+              - analyzing
+              - done
+              - failed
+            value:
+              type: number
+            confidence:
+              type: number
+        sampleRate:
+          type: integer
+          description: Decoder-reported sample rate in Hz (0 when no decoder is loaded)
+        channels:
+          type: integer
+          description: Decoder-reported channel count (0 when no decoder is loaded)
+        bitrate:
+          type: integer
+          description: Decoder-reported bitrate in kb/s (0 when no decoder is loaded)
     FunctionsVideoConfig:
       type: object
       required:
       - sourceUrl
       - customGeometry
+      - rotation
       - zIndex
       - screen
       - fullscreen
+      - outputMode
       properties:
         sourceUrl:
           type: string
         isPicture:
           type: boolean
           description: Read-only, detected from the source
-        resolution:
-          type: object
-          description: Read-only, detected from the source
-          properties:
-            width:
-              type: integer
-            height:
-              type: integer
-        videoCodec:
-          type: string
-          description: Read-only, detected
-        audioCodec:
-          type: string
-          description: Read-only, detected
         customGeometry:
           type:
           - object
@@ -24106,6 +24363,45 @@ components:
           type: integer
         fullscreen:
           type: boolean
+        outputMode:
+          type: string
+          enum:
+          - windowed
+          - fullscreen
+          - spout
+          description: Video::OutputMode. spout is this fork's Spout texture-sharing output (Windows only);
+            its window / sender is desktop-only, the mode itself is document state.
+        spoutSize:
+          type: object
+          description: Spout sender size, 0x0 = native resolution. Read-only here (no API setter yet).
+          properties:
+            width:
+              type: integer
+            height:
+              type: integer
+        volume:
+          type: number
+          description: Read-only here (Video::volume(), 0-100); no API setter yet
+        muted:
+          type: boolean
+          description: Read-only here (Video::muted()); no API setter yet
+        resolution:
+          type: object
+          description: Read-only, detected from the source
+          properties:
+            width:
+              type: integer
+            height:
+              type: integer
+        detectedDurationMs:
+          type: integer
+          description: Video::totalDuration(); 0 for a picture or an unprobed source
+        videoCodec:
+          type: string
+          description: Read-only, detected
+        audioCodec:
+          type: string
+          description: Read-only, detected
     FunctionsRgbMatrixDetail:
       type: object
       required:
@@ -24124,6 +24420,8 @@ components:
       required:
       - functionId
       - source
+      - syntaxErrorLines
+      - syntaxErrors
       - docRevision
       properties:
         functionId:
@@ -24131,6 +24429,21 @@ components:
         source:
           type: string
           description: Full raw script text (Script::data())
+        syntaxErrorLines:
+          type: array
+          items:
+            type: integer
+          description: Same as functions.script.validate's result, evaluated on every functions.get of
+            a Script
+        syntaxErrors:
+          type: array
+          items:
+            type: object
+            properties:
+              line:
+                type: integer
+              message:
+                type: string
         docRevision:
           type: integer
     FunctionsShowDetail:

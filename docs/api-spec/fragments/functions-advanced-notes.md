@@ -86,3 +86,68 @@ config and sub-resources.
   `originReloaded` signal, so it also fires when a queued background copy
   lands later and when the reload was triggered from the QML editors or
   the Actions menu rather than through the API (originClientId null then).
+
+## Implemented 2026-09-27: Script, Audio and Video editors (web UI slice)
+
+Server: `controlapi/src/domains/apimediadomain.{h,cpp}` (one domain for the
+three types), tests in `controlapi/test/apimediadomain/`. Web UI:
+`webui/ff/ScriptEditor.jsx`, `AudioEditor.jsx`, `VideoEditor.jsx` plus the
+shared `ServerFileBrowser.jsx` over `core.fs.list` (see core-notes.md).
+
+- **Script is scriptv4 on this build.** `engine/src/scriptwrapper.h` selects
+  the JavaScript `Script` (`scriptv4.cpp`, run by `ScriptRunner`) whenever
+  `QMLUI` is defined, which `variables.cmake` does globally for a qmlui
+  build. Consequences for the spec: `listCommands` returns the
+  `Engine.<method>` names (plus `snippets`, the editor's insert-at-cursor
+  menu); `validate` evaluates the source in a throwaway `QJSEngine`
+  (`ScriptRunner::collectScriptData`, every `Engine.*` call is a no-op while
+  the runner is not started) and reports `syntaxErrors: [{line, message}]`
+  next to `syntaxErrorLines`; `fixtureRefs` carry no `line` (the v4
+  `fixtureList()` reports ids only); `appendLine` runs the v4 legacy-syntax
+  converter (`Script::appendData` -> `convertLine`), so a legacy
+  `startfunction:3` line is stored as `Engine.startFunction(3);`.
+  `functions.get`'s `FunctionsScriptDetail` also carries
+  `syntaxErrorLines`/`syntaxErrors`, so an editor can mark lines without a
+  second call. Pre-existing bug fixed on the way: `apifunctionsdomain.cpp`
+  included the legacy `script.h` while the engine DLL compiles `scriptv4` -
+  `new Script(doc)` there allocated with the wrong class size; it now
+  includes `scriptwrapper.h`. `Script::syntaxErrorsLines()` also leaked a
+  `ScriptRunner` per call (its `deleteLater()` was commented out); fixed.
+- **Audio.** `setSource` goes through the same media-store import as
+  `functions.update {source}` (`ApiFunctionsDomain::applyMediaSource`, now a
+  public static) so the copy lands in `<project>.qxw.assets/`; the function
+  is renamed after the file exactly like the QML editor's Replace. `setVolume`
+  is 0..1 (the QML spinner's 0-100 is a UI conversion), `setDuration` sets
+  both `Function::duration` and `Audio::setTotalDuration`. `listCapabilities`
+  gained `devices` (output devices, `""` = default) - the fragment's original
+  "enumerating devices is out of scope" gap, closed because the editor's
+  combo cannot exist without it. `FunctionsAudioConfig` (in `functions.get`)
+  carries volume/duration/audioDevice plus read-only `muted`, `bpm`,
+  `sampleRate`/`channels`/`bitrate`. No setter for `muted` and no BPM
+  re-detect trigger yet (`Audio::setMuted`, `requestBpmDetection(true)`) -
+  the web editor shows them read-only and says so.
+- **Video.** `setSource` accepts a host path (imported into the store) or a
+  `scheme://` URL (kept as-is). `setGeometry` takes `customGeometry` object
+  or `null` per the spec; `setRotation`/`setLayer` straightforward.
+  `setScreenTarget` only touches `fullscreen` when it differs from the
+  current value, so a Spout video is not dropped back to windowed by a
+  client unaware of the fork's third mode; the optional `outputMode`
+  (`windowed|fullscreen|spout`) sets the mode explicitly, `spout` is
+  `UNSUPPORTED` off Windows (`listCapabilities.spoutAvailable`). Detected
+  resolution / codecs / duration in `FunctionsVideoConfig` come from
+  whatever the engine holds; they are probed asynchronously by qmlui's
+  `App` after a source change, so `sourceChanged` carries them only when
+  already known. No setter for volume / muted / spoutSize yet (read-only in
+  the detail).
+- Every setter that does not emit `Function::changed()` itself
+  (`Audio::setVolume/setAudioDevice/setTotalDuration`,
+  `Video::setCustomGeometry/setRotation/setZIndex`, `Script::appendData`)
+  is followed by an explicit `Doc::setModified()`, so `docRevision` moves
+  once per call. `Script::setData` bumps it itself, only when the text
+  actually changed.
+- Events are the ones already specified (`functions.script.sourceChanged`,
+  `functions.audio.{source,volume,duration,device}Changed`,
+  `functions.video.{source,geometry,rotation,layer,screenTarget}Changed`),
+  all ungated. The per-instance `playback` position events are NOT
+  implemented (no engine signal carries a playback position for Audio; the
+  Video position lives in qmlui's player).
