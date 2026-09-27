@@ -195,6 +195,40 @@ async function setEdit(page, on) {
     g = await poll(async () => { const x = await widgetGet(cueId); return !x.running ? x : null; });
     check(!!g, 'stop');
 
+    /* ---- Steps mode: the fader picks the step (0..255 mapped onto the step list) ---- */
+    console.log('cue list: side fader in Steps mode');
+    await page.click(EDIT_BTN); await sleep(400);
+    await page.click('[data-vc-widget="' + cueId + '"]'); await sleep(300);
+    await page.waitFor('!!document.querySelector(\'[data-e2e="cue-fader-mode"]\')', 8000);
+    await clickSel(page, '[data-e2e="cue-fader-mode"] > div:nth-child(3) > *:first-child');
+    g = await poll(async () => { const x = await widgetGet(cueId); return x.typeConfig.sideFaderMode === 'Steps' ? x : null; });
+    check(!!g, 'side fader mode Steps');
+    eq(g && g.sideFaderLevel, 255, 'switching to Steps reset the level to 255 (engine behaviour)');
+    await page.click(EDIT_BTN); await sleep(400);
+    await page.waitFor('document.querySelector(\'[data-e2e="cue-side-fader"]\') && document.querySelector(\'[data-e2e="cue-side-fader"]\').getAttribute("data-mode") === "Steps"', 8000);
+    check(await page.eval('document.querySelector(\'[data-e2e="cue-side-fader"]\').textContent.indexOf("%") === -1'), 'steps labels are plain values');
+    await clickSel(page, '[data-e2e="cue-play"] button');
+    g = await poll(async () => { const x = await widgetGet(cueId); return x.running && x.playbackIndex === 0 ? x : null; });
+    check(!!g, 'play again from step 0');
+    const fr2 = await page.rectOf('[data-e2e="cue-side-fader"] [data-vc-fader]');
+    await page.drag(fr2.x + fr2.w / 2, fr2.y + 4, fr2.x + fr2.w / 2, fr2.y + fr2.h - 2, 6);
+    await sleep(500);
+    g = await poll(async () => { const x = await widgetGet(cueId); return x.sideFaderLevel < 128 && x.playbackIndex === stepCount - 1 ? x : null; });
+    check(!!g, 'dragging the Steps fader down jumped to the last step (level ' + (g && g.sideFaderLevel) + ', step ' + (g && g.playbackIndex) + ')');
+    const stepLabels = await page.eval('Array.from(document.querySelectorAll(\'[data-e2e="cue-side-fader"] div\')).map(d => d.textContent.trim()).filter(t => /^#\\d+$/.test(t))');
+    eq(stepLabels, ['#' + stepCount], 'steps mode shows only the current step label');
+    await clickSel(page, '[data-e2e="cue-stop"] button');
+    g = await poll(async () => { const x = await widgetGet(cueId); return !x.running ? x : null; });
+    check(!!g, 'stop');
+    /* back to Crossfade for the reload / XML checks */
+    await page.click(EDIT_BTN); await sleep(400);
+    await page.click('[data-vc-widget="' + cueId + '"]'); await sleep(300);
+    await page.waitFor('!!document.querySelector(\'[data-e2e="cue-fader-mode"]\')', 8000);
+    await clickSel(page, '[data-e2e="cue-fader-mode"] > div:nth-child(2) > *:first-child');
+    g = await poll(async () => { const x = await widgetGet(cueId); return x.typeConfig.sideFaderMode === 'Crossfade' ? x : null; });
+    check(!!g, 'side fader mode back to Crossfade');
+    await page.click(EDIT_BTN); await sleep(400);
+
     /* ================= Speed dial properties ================= */
     console.log('speed dial: properties');
     await page.click(EDIT_BTN); await sleep(400);

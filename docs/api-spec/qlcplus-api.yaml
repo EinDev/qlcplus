@@ -21789,6 +21789,10 @@ components:
             const: vc.speedDial.preset.update
           params:
             type: object
+            description: VCSpeedDial::setPresetName()/setPresetValue() - at least one of name (non-empty)
+              / valueMs (>= 0) is required, an omitted one is left unchanged. Speed widgets only (INVALID_PARAMS
+              otherwise); unknown presetId -> NOT_FOUND. Broadcasts vc.speedDial.presetsChanged with the
+              full list.
             required:
             - widgetId
             - presetId
@@ -22250,6 +22254,10 @@ components:
             const: vc.widget.preset.remove
           params:
             type: object
+            description: Removes one preset from a Speed / XYPad / Animation widget's list. Errors CONFLICT
+              (stale baseRevision), NOT_FOUND (widget, or no preset with that presetId), INVALID_PARAMS
+              (a widget type without presets, details.widgetType). Broadcasts the type's *.presetsChanged
+              event with the resulting list.
             required:
             - widgetId
             - presetId

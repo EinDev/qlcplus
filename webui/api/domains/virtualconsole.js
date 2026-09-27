@@ -283,8 +283,9 @@
             -> ack; broadcasts vc.speedDial.tapChanged ({widgetId, tapTimeValue: 0, currentTimeMs})
             when a series was running (nothing if there was none to clear). */
         resetTap: function (widgetId) { return self.call('vc.speedDial.resetTap', { widgetId: widgetId }); },
-        /** widgetId: string. valueMs: integer >=0. Dial/absolute-value editing. Live (§4b).
-            -> ack; broadcasts vc.speedDial.currentTimeChanged. */
+        /** DEPRECATED: vc.speedDial.setCurrentTime exists in neither the spec nor the server (it was
+            renamed to vc.speedDial.setValue before anything implemented it) - kept only so an old
+            caller fails at the server with NOT_FOUND instead of a JS TypeError. Use setValue(). */
         setCurrentTime: function (widgetId, valueMs) {
           return self.call('vc.speedDial.setCurrentTime', { widgetId: widgetId, valueMs: valueMs });
         },
@@ -427,10 +428,11 @@
               widgetId's widgetType: XYPad moves the cursor (and starts the Function for an EFX/
               Scene preset); Animation sets/clears a color slot or selects an algorithm (no-ops
               server-side for a Knob-type preset — use animation.setPresetKnobValue instead, the
-              actual live control for those); SpeedDial has NO applyPreset counterpart at all — do
-              not call this for a SpeedDial widgetId, it has no defined effect; instead read the
-              preset's valueMs and call speedDial.setCurrentTime(). -> ack; broadcasts
-              vc.xyPad.activePresetChanged or vc.animation.activePresetChanged as applicable. */
+              actual live control for those); Speed (implemented 2026-09-27) sets currentTime to
+              the preset's valueMs like the on-screen preset button, reported as
+              vc.speedDial.valueChanged. XYPad/Animation are still host-side stubs (INVALID_STATE).
+              -> ack; broadcasts vc.xyPad.activePresetChanged or vc.animation.activePresetChanged
+              as applicable. */
           apply: function (widgetId, presetId) {
             return self.call('vc.widget.preset.apply', { widgetId: widgetId, presetId: presetId });
           },
