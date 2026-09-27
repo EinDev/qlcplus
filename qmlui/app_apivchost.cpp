@@ -915,9 +915,9 @@ QJsonObject App::vcWidgetSnapshot(quint32 id) const
     obj.insert(QStringLiteral("isVisible"), w->isVisible());
     obj.insert(QStringLiteral("style"), widgetStyleToJson(w));
     obj.insert(QStringLiteral("typeConfig"), widgetTypeConfigToJson(w));
-    obj.insert(QStringLiteral("inputSources"), QJsonArray());
-    obj.insert(QStringLiteral("keySequences"), QJsonArray());
-    obj.insert(QStringLiteral("externalControls"), QJsonArray());
+    obj.insert(QStringLiteral("inputSources"), vcWidgetInputSources(id));
+    obj.insert(QStringLiteral("keySequences"), vcWidgetKeySequences(id));
+    obj.insert(QStringLiteral("externalControls"), vcWidgetExternalControls(id));
     appendLiveStateToJson(w, obj);
     return obj;
 }

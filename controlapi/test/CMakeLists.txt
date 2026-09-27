@@ -15,6 +15,7 @@ add_subdirectory(apivclayoutdomain)
 add_subdirectory(apishowdomain)
 add_subdirectory(apifixturedefsdomain)
 add_subdirectory(apiioconfigdomain)
+add_subdirectory(apivcinputdomain)
 add_subdirectory(webserver)
 
 # Registered with CTest the same way engine/test/CMakeLists.txt does (see
@@ -36,6 +37,7 @@ set(QLCPLUS_CONTROLAPI_TESTS
     apishowdomain_test
     apifixturedefsdomain_test
     apiioconfigdomain_test
+    apivcinputdomain_test
     webserver_test
 )
 foreach(_qlcplus_test_target ${QLCPLUS_CONTROLAPI_TESTS})

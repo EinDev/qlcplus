@@ -36,6 +36,7 @@
 #include "domains/apishowdomain.h"
 #include "domains/apifixturedefsdomain.h"
 #include "domains/apiioconfigdomain.h"
+#include "domains/apivcinputdomain.h"
 #include "qlcconfig.h"
 #include "doc.h"
 
@@ -67,6 +68,7 @@ ApiServer::ApiServer(QObject *parent, Doc *doc)
     m_showDomain = new ApiShowDomain(m_doc, this, this);
     m_fixtureDefsDomain = new ApiFixtureDefsDomain(m_doc, this, this);
     m_ioConfigDomain = new ApiIoConfigDomain(m_doc, this, m_ioDomain, this);
+    m_vcInputDomain = new ApiVcInputDomain(m_doc, this, this);
 }
 
 ApiServer::~ApiServer()

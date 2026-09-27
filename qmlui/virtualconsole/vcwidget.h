@@ -520,6 +520,14 @@ public:
      *  registered by this widget */
     QString externalControlName(quint8 id) const;
 
+    /** Returns the ids of every external control registered by this widget,
+     *  in ascending id order */
+    QList<quint8> externalControlIds() const;
+
+    /** Returns true if the external control registered with $id may be
+     *  bound to a keyboard sequence (false for an unknown $id) */
+    bool externalControlAllowsKeyboard(quint8 id) const;
+
 protected:
     /** A list of the external controls known by this widget */
     QMap <quint8, ExternalControlInfo> m_externalControlList;

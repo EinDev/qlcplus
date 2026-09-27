@@ -19,7 +19,7 @@ set(QML_IMPORT_PATH ".")
 set(SRC_FILES
     ../plugins/interfaces/utils.h
     app.cpp app.h
-    app_apivchost.cpp app_apivchost_cue.cpp
+    app_apivchost.cpp app_apivchost_cue.cpp app_apivcinput.cpp
     app_apivcconfig.h app_apivcconfig_layout.cpp app_apivcconfig_cue.cpp app_apivcconfig_live.cpp
     asynclogwriter.cpp asynclogwriter.h
     audioeditor.cpp audioeditor.h
