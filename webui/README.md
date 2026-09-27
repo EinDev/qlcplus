@@ -53,6 +53,7 @@ default until "Use server default" is pressed.
 | `ff/CollectionEditor.jsx` | Collection editor (`window.QLCEditors.Collection`): ordered member list, add via picker, remove, move up/down over `functions.collection.*`. |
 | `ff/EfxEditor.jsx` | EFX editor (`window.QLCEditors.EFX`): live preview canvas fed by `functions.efx.getPreview`, fixture heads (mode / reverse / start offset, add / remove / reorder, offset on all), pattern parameters, propagation, timing. |
 | `tools/e2e/*.js` | Headless-Chrome end-to-end drivers per slice (`node webui/tools/e2e/efx-collection.js` against a `dev-webui-sandbox.ps1` instance). |
+| `tools/coverage/` | Dev-only JS coverage of this directory: `hook.js` (preloaded into an e2e driver, records V8 coverage through `cdp.js`) and `report.js` (maps it back to the `.jsx` sources via Babel's inline source maps). Run `.\dev-webui-coverage.ps1 -Open` from the repo root: every browser driver against its own sandbox, report in `coverage/webui/index.html`. |
 | `ff/FixtureDialogs.jsx` | Add Fixtures dialog (`fixtures.defs.*` + `fixtures.patch`), Fixture Groups panel, Palettes panel (create/edit/apply). |
 | `VirtualConsole.jsx` | Pages + widgets at their real geometry, live interaction, Design-mode layout editing, Grand Master. |
 | `vc/vc-shared.jsx`, `vc/vc-widgets.jsx`, `vc/vc-edit.jsx` | VC context + pointer-event fader/knob; one body per widget type (button, slider/knob, cue list, XY pad, speed dial, frame, label); selection/move/resize wrapper, widget palette and properties panel. |

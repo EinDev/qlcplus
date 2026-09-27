@@ -42,7 +42,7 @@ qmlui/qlcplus5
 core
 
 # coverage
-coverage/
+/coverage/
 *.gcda
 *.gcno
 
@@ -73,3 +73,6 @@ debian/tmp/
 
 # Python scratch tooling (dev_ws_client.py)
 __pycache__/
+
+# web UI coverage tooling (dev-webui-coverage.ps1)
+webui/tools/coverage/node_modules/
