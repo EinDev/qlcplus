@@ -37,6 +37,7 @@ class ApiRgbMatrixDomain;
 class ApiEfxCollectionDomain;
 class ApiMediaDomain;
 class ApiVcLayoutDomain;
+class ApiShowDomain;
 class Doc;
 
 /** Default port for the control API's WebSocket server. Distinct from
@@ -151,6 +152,7 @@ private:
     ApiEfxCollectionDomain *m_efxCollectionDomain;
     ApiMediaDomain *m_mediaDomain;
     ApiVcLayoutDomain *m_vcLayoutDomain;
+    ApiShowDomain *m_showDomain;
 };
 
 #endif

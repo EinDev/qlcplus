@@ -231,3 +231,74 @@ shared `ServerFileBrowser.jsx` over `core.fs.list` (see core-notes.md).
   all ungated. The per-instance `playback` position events are NOT
   implemented (no engine signal carries a playback position for Audio; the
   Video position lives in qmlui's player).
+
+## Show: `functions.show.*` (implemented 2026-09-27)
+
+Server: `controlapi/src/domains/apishowdomain.{h,cpp}` (tests in
+`controlapi/test/apishowdomain/`, 20 cases over a real ApiServer/QWebSocket
+with MasterTimer running), web UI: `webui/ShowManager.jsx`, e2e driver
+`webui/tools/e2e/show.js`. Everything in the fragment's Show section is
+registered; behaviour notes and the few additive deviations:
+
+- **typeDetail** (`FunctionsShowDetail`) gained `totalDuration`, and every
+  `FunctionsShowItem` carries read-only `functionType`/`functionName` (absent
+  when the placed Function no longer exists). `color` is always a string: an
+  item saved without a colour reports `ShowFunction::defaultColor(type)`, the
+  colour the Qt editor draws it with. Tracks are in `Show::tracks()` order
+  (ascending id).
+- **`track.move` swaps track ids** (that is what `Show::moveTrack` does):
+  after a move the moved Track answers to the other track's id. The result
+  and the `tracksChanged` event carry `trackId` = the moved track's *new* id,
+  and the event's patch is one `replace` of `/tracks`. A move at the top/
+  bottom edge is `INVALID_PARAMS`, not a silent no-op. `track.setSolo` uses
+  the same whole-array `tracksChanged` patch.
+- **Overlaps** are refused with `INVALID_PARAMS` exactly where the Qt editor
+  refuses them (`ShowManager::checkOverlapping`: half-open intervals, an item
+  whose Function is gone blocks nothing), plus `error.details`:
+  `item.move` -> `{blockingItemId, suggestedStartTime}` (the nearest free
+  spot from `ShowMoveHelper::resolveCollision`, now in `engine/src` so both
+  front ends share it - the web UI drops there, like the QML drag does),
+  `item.resize` -> `{blockingItemId, maxDuration}`. `item.add` refuses an
+  overlapping spot the same way (the Qt drop path does not check - it relies
+  on the later drag to resolve - so this is stricter than the desktop). Locked
+  items refuse `move`/`resize` and are skipped by the ripples; the minimum
+  duration is 1 ms (Time) / 125 ms (Beats) like
+  `ShowManager::minimumTimelineDuration`.
+- **`item.add`** defaults: `duration` = the Function's `totalDuration()`, else
+  5000 ms (Time) / 4000 ms (Beats); `color` = `defaultColor(type)`. Placing the
+  Show itself, or any Function that contains it, is `INVALID_PARAMS`.
+- **`setTimeDivision`** also sets the Show's own `tempoType` (Time/Beats)
+  like `ShowManager::setTimeDivision`, so ShowRunner schedules by beats in a
+  BPM Show; `bpm` is only required for the BPM types and is kept otherwise.
+  Accepts `functionId` (as specced) or `showId`.
+- **Ripples** (`rippleInsertTime`/`rippleCutTime`) are a host-free mirror of
+  `ShowManager::insertTimeAtCursor`/`cutTimeAtCursor` (same order, same
+  per-type rules incl. the Chaser Common->PerStep conversion and step
+  surgery), without Tardis - API edits are not undoable. The result carries
+  `changed`; nothing at the cursor is `changed:false` with no revision bump
+  and no event (the Qt buttons do nothing then too). `itemsChanged` carries
+  per-field `replace` ops (`/tracks/<t>/items/<i>/startTime|duration`) for
+  the items that moved or grew; Chaser step edits made by a ripple are not
+  announced as `functions.chaser.stepsChanged` (a client re-reads the Chaser
+  if it shows it).
+- **Revision**: nothing in `ShowFunction`/`Track` bumps `docRevision`, so
+  every mutation calls `Doc::setModified()` once (a Chaser step edit inside a
+  ripple may add more bumps, the response carries the final value).
+- **Playhead** `functions.show.<id>.playhead` is the one subscribe-gated
+  topic of this section: relayed from `Show::timeChanged` (every MasterTimer
+  tick while the Show runs, any starter - API, VC, desktop), throttled to one
+  event per 100 ms per Show; the first tick after a start and any jump
+  backwards (seek) are always sent; `originClientId` is null. Stopping is
+  reported by `functions.status.changed`, not by a final playhead event.
+- **Play from the cursor** is `functions.start` with the new optional
+  `startTime` (functions-core.yaml); see its notes.
+- Not implemented (no method in the fragment, desktop-only today): the
+  preview-at-cursor scrub mode (`Show::setScrubMode`/`requestSeek`), the
+  stretch-resize mode, track Spout output size, the legacy beat-pseudo-count
+  conversion (ADR 0001), waveform/beat-grid data for Audio items.
+- Edits made through the API reach a desktop Show Manager that has the same
+  Show open only through the engine (a running Show reschedules; the QML
+  view refreshes its duration via `scheduleChanged` but does not re-render
+  the moved/added items until the Show is reopened) - the same gap the other
+  domains have, not new here.
+- Lockable resource type: `function` (nothing new).

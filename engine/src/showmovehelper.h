@@ -23,12 +23,15 @@
 #include <QtGlobal>
 
 /**
- * Pure, engine-free placement logic for Show Manager drag & drop.
+ * Pure, engine-free placement logic for Show timeline edits (drag & drop in
+ * the Show Manager, functions.show.item.move/resize in the Control API).
  *
- * ShowManager (which needs a live QQuickView and a Doc) converts its Tracks
- * into plain ShowClipSpan lists and delegates every "where does this land /
- * is this drop legal" decision to the static methods here, so the rules can
- * be unit tested without a view (see qmlui/test/showgroupmove).
+ * ShowManager (which needs a live QQuickView and a Doc) and the API's
+ * ApiShowDomain convert a Show's Tracks into plain ShowClipSpan lists and
+ * delegate every "where does this land / is this drop legal" decision to
+ * the static methods here, so the rules can be unit tested without a view
+ * (see qmlui/test/showgroupmove) and are the same in both front ends. This
+ * file depends on Qt Core only and lives in engine/src so both can reach it.
  *
  * All times are milliseconds. Intervals are half-open: two clips whose edges
  * merely touch do NOT overlap (snapping deliberately places clips

@@ -45,7 +45,7 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | Qt UI action | Where in qmlui (file) | Web UI status | Blocker / notes |
 | --- | --- | --- | --- |
 | Switch context: Fixtures & Functions / Virtual Console / Simple Desk / Input-Output | MainView.qml | live | - |
-| Switch context: Show Manager | MainView.qml | missing | S: functions.show.*; toolbar button is a disabled placeholder (App.jsx registers a `show` screen slot); see Show Manager section |
+| Switch context: Show Manager | MainView.qml | live | - ; sandbox 2026-09-27, screen registered (Ctrl+5), driver webui/tools/e2e/show.js |
 | Keyboard shortcuts for toolbar actions (Ctrl+1..5 contexts, Ctrl+S, Ctrl+B, Ctrl+Z / Ctrl+Y) | MainView.qml, ShortcutsEditor.qml | partial | U; App.jsx has Ctrl+digit and "Hold Ctrl to see shortcuts" hints, not in the README verified list; the full QML shortcut set is not mapped |
 | New project (with "save changes first?" prompt) | ActionsMenu.qml | live | - |
 | Open project by server-side path | ActionsMenu.qml, popup/PopupFolderBrowser.qml | live | - |
@@ -169,7 +169,7 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | Audio editor: detect BPM, replace file (fork media store) | fixturesfunctions/AudioEditor.qml | partial | spec+S+U for Detect BPM (no method); Replace file live (sandbox 2026-09-27, media store copy + origin recorded) |
 | Video editor: file / URL, output screen, windowed / fullscreen, geometry, rotation, layer, looped, mute | fixturesfunctions/VideoEditor.qml, fixturesfunctions/VideoContext.qml | live | - ; sandbox 2026-09-27; volume / mute read-only (no API setter) |
 | Video editor: Spout output mode, sender name / size, replace file (fork) | fixturesfunctions/VideoEditor.qml | partial | spec+S+U for sender name / size (read-only); Spout selectable via outputMode and Replace file live (sandbox 2026-09-27) |
-| Show function: edit on the timeline | fixturesfunctions/FunctionManager.qml | missing | S: functions.show.*; see Show Manager section |
+| Show function: edit on the timeline | fixturesfunctions/FunctionManager.qml | live | - ; sandbox 2026-09-27 on the Show Manager screen |
 | Adjust a running function's intensity attribute | FunctionDelegate.qml (via the VC "Adjust" slider mode), functions.adjustAttribute | missing | S: functions.adjustAttribute |
 | Show Wizard (stage wizard: show type, fixture roles, venue, effects, controller, generate) | fixturesfunctions/RightPanel.qml, stagewizard/ShowWizard.qml, stagewizard/WizardStep1ShowType.qml ... WizardStep6Summary.qml | missing | spec+S+U; the generator runs in the desktop process |
 
@@ -318,19 +318,19 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 
 | Qt UI action | Where in qmlui (file) | Web UI status | Blocker / notes |
 | --- | --- | --- | --- |
-| Show Manager context with timeline, header and cursor | showmanager/ShowManager.qml, showmanager/HeaderAndCursor.qml | missing | S: functions.show.* (nothing registered); U for the whole screen |
-| Pick / create the Show function being edited | showmanager/ShowManager.qml | partial | U; a Show can be created and started / stopped from the function tree, not opened on a timeline |
-| Tracks: create, rename, delete, move up / down | showmanager/ShowManager.qml, showmanager/TrackDelegate.qml | missing | S: functions.show.track.add, functions.show.track.rename, functions.show.track.remove, functions.show.track.move |
-| Tracks: mute / solo | showmanager/TrackDelegate.qml | missing | S: functions.show.track.setMute, functions.show.track.setSolo |
-| Items: drop a function on the timeline, move, resize / stretch, delete | showmanager/ShowItem.qml, showmanager/ShowManager.qml | missing | S: functions.show.item.add, functions.show.item.move, functions.show.item.resize, functions.show.item.remove |
-| Items: colour, lock / unlock | showmanager/ShowManager.qml | missing | S: functions.show.item.setColor, functions.show.item.setLocked |
-| Items: copy / paste at cursor | showmanager/ShowManager.qml | missing | U once item.add exists |
-| Timing panel: start / duration / end edit, align start / end to cursor | showmanager/TimingUtils.qml | missing | S: functions.show.item.move, functions.show.item.resize |
-| Ripple: cut time / insert time | showmanager/TimingUtils.qml | missing | S: functions.show.rippleCutTime, functions.show.rippleInsertTime |
-| Time division (Time, BPM 2/4, 3/4, 4/4) | showmanager/ShowManager.qml | missing | S: functions.show.setTimeDivision |
-| Playback: play from cursor, pause, stop / rewind, cursor follows playback | showmanager/ShowManager.qml | missing | spec+S+U; functions.start has no start offset and there is no playback-position event |
+| Show Manager context with timeline, header and cursor | showmanager/ShowManager.qml, showmanager/HeaderAndCursor.qml | live | - ; sandbox 2026-09-27 |
+| Pick / create the Show function being edited | showmanager/ShowManager.qml | partial | U; pick + rename driven in the sandbox (2026-09-27); create "+" implemented via functions.create, not browser-driven |
+| Tracks: create, rename, delete, move up / down | showmanager/ShowManager.qml, showmanager/TrackDelegate.qml | partial | U; create + rename live (sandbox 2026-09-27); delete-with-confirm and move up / down implemented + server-tested, not browser-driven |
+| Tracks: mute / solo | showmanager/TrackDelegate.qml | live | - ; sandbox 2026-09-27 |
+| Items: drop a function on the timeline, move, resize / stretch, delete | showmanager/ShowItem.qml, showmanager/ShowManager.qml | live | - ; sandbox 2026-09-27; items are added from a function picker at the cursor instead of drag-drop from the tree; overlap rejected with nearest-free-spot placement; stretch mode not offered |
+| Items: colour, lock / unlock | showmanager/ShowManager.qml | live | - ; sandbox 2026-09-27 |
+| Items: copy / paste at cursor | showmanager/ShowManager.qml | live | - ; sandbox 2026-09-27 |
+| Timing panel: start / duration / end edit, align start / end to cursor | showmanager/TimingUtils.qml | partial | U; implemented over item.move / item.resize, not browser-driven |
+| Ripple: cut time / insert time | showmanager/TimingUtils.qml | partial | U; insert live (sandbox 2026-09-27); cut server-tested only |
+| Time division (Time, BPM 2/4, 3/4, 4/4) | showmanager/ShowManager.qml | live | - ; sandbox 2026-09-27 |
+| Playback: play from cursor, pause, stop / rewind, cursor follows playback | showmanager/ShowManager.qml | live | - ; sandbox 2026-09-27; functions.start startTime + the gated functions.show.<id>.playhead stream |
 | Preview the Show at the cursor while stopped / paused | showmanager/ShowManager.qml | missing | spec+S+U |
-| Snap to grid, markers, zoom | showmanager/ShowManager.qml | missing | U; client-side once the timeline exists |
+| Snap to grid, markers, zoom | showmanager/ShowManager.qml | partial | U; implemented client-side, not browser-driven |
 | Track Spout output size (set, unset, mismatch prompt) | showmanager/TrackDelegate.qml, popup/PopupTrackSpoutSize.qml, popup/PopupSpoutSizeMismatch.qml | missing | spec+S+U; the Spout sender is desktop-only, but its size is document state that the operator sets in this dialog (arguably n/a) |
 | Legacy Show timing conversion | showmanager/LegacyShowTimingDialog.qml, showmanager/LegacyShowTimingConvertDialog.qml | missing | spec+S+U; duplicate of the toolbar row |
 
@@ -425,8 +425,8 @@ the total is larger than the number of distinct actions). Recompute after editin
 
 | Status | Rows |
 | --- | --- |
-| live | 112 |
-| partial | 31 |
-| missing | 149 |
+| live | 121 |
+| partial | 35 |
+| missing | 136 |
 | n/a | 22 |
 | total | 314 |

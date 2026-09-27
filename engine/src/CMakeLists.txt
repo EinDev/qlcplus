@@ -70,6 +70,7 @@ add_library(${module_name} SHARED
     sequence.cpp sequence.h
     show.cpp show.h
     showfunction.cpp showfunction.h
+    showmovehelper.cpp showmovehelper.h
     showrunner.cpp showrunner.h
     showschedule.h
     track.cpp track.h

@@ -134,3 +134,12 @@ Web UI: `webui/ff/EfxEditor.jsx`, `webui/ff/CollectionEditor.jsx`; e2e driver
 `CustomComboBox` (`_ds_bundle.js`) never closes on an outside click, so a stale
 open dropdown swallows the next click that lands on it - left as is (bundle
 file), noted for the next re-import.
+## Implemented 2026-09-27: `functions.start` `startTime` (Show Manager slice)
+
+`FunctionsStartRequest.params.startTime` (optional, ms, default 0) is passed
+straight to `Function::start()`'s `startTime`. A Show played with it starts
+its timeline there (what `ShowManager::playShow` does with the cursor), Audio/
+Video seek into the file, a Chaser starts on the step covering the offset;
+Scene/EFX/RGBMatrix ignore it (they have no notion of an offset). Verified by
+`controlapi/test/apishowdomain`'s playhead case (the first playhead event of
+a Show started at 1000 ms is past 1000 ms).
