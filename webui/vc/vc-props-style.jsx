@@ -162,7 +162,7 @@
             <PropRow label="Height"><span data-vc-page-height={page.height} style={{ display: 'inline-flex' }}><SpinField value={page.height} from={1} to={100000} width={100} height={24} suffix="px" onCommit={(v) => setSize({ height: v })} /></span></PropRow>
           </>
         ) : <RobotoText label="This server does not report page sizes" fontSize="var(--text-size-menubar)" labelColor="var(--fg-medium)" height="auto" style={{ padding: 6 }} />}
-        <RobotoText label="Select a widget to edit its properties" fontSize="var(--text-size-menubar)" labelColor="var(--fg-medium)" height="auto" style={{ padding: 6 }} wrapText />
+        <RobotoText label="Select a widget first to edit its properties" fontSize="var(--text-size-menubar)" labelColor="var(--fg-medium)" height="auto" style={{ padding: 6 }} wrapText />
       </div>
     );
   }
