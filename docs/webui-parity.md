@@ -303,7 +303,7 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | Multiple output patches per universe | inputoutput/UniverseIOItem.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-vc.js (Loopback plugin for I/O) |
 | Enable / disable feedback | inputoutput/UniverseIOItem.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-vc.js (Loopback plugin for I/O) |
 | Refresh plugin lines / rescan | inputoutput/PluginsList.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-vc.js (Loopback plugin for I/O); Rescan and line listing driven; real re-enumeration of a hot-plugged device cannot happen in a sandbox |
-| Plugin line parameters for network plugins (ArtNet / E1.31 / OSC IP, port, transmission mode ...) | inputoutput/IOLeftPanel.qml, inputoutput/IORightPanel.qml ("Open the plugin configuration") | partial | U; io.patch.setParameters + parameter dialog built and unit-tested; not driven in a browser because network plugins (ArtNet / E1.31 / OSC) are kept out of sandboxes - the user's live video chain listens for ArtNet on this machine |
+| Plugin line parameters for network plugins (ArtNet / E1.31 / OSC IP, port, transmission mode ...) | inputoutput/IOLeftPanel.qml, inputoutput/IORightPanel.qml ("Open the plugin configuration") | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/plugin-params.js: the generic per-line parameter editor driven end to end against the engine I/O stub (add / edit string, number, boolean / remove / reopen / save to <PluginParameters> / reload); the ArtNet, E1.31 and OSC key lists and value formats verified against each plugin's setParameter() source, not driven (network plugins are excluded from sandboxes because the live video chain listens for ArtNet and VRChat for OSC on this machine) - verify once on the real rig |
 | Plugin configuration dialog for native-hardware plugins (dmxusb, MIDI device dialogs ...) | inputoutput/IOLeftPanel.qml, inputoutput/IORightPanel.qml | n/a | - ; the plugin's own configuration dialog is a native window that opens on the QLC+ machine by nature; the web UI's Configure button opens it there (io.plugin.configure) |
 | Per-output-patch blackout, play / pause an output patch | inputoutput/OutputPatchItem.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/partials-vc.js (Loopback plugin for I/O) |
 | Blackout on all output patches | inputoutput/IORightPanel.qml | live | - ; global blackout |
@@ -425,8 +425,8 @@ the total is larger than the number of distinct actions). Recompute after editin
 
 | Status | Rows |
 | --- | --- |
-| live | 293 |
-| partial | 1 |
+| live | 294 |
+| partial | 0 |
 | missing | 0 |
 | n/a | 20 |
 | total | 314 |
