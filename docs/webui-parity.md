@@ -281,8 +281,8 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | DMX / percent value display | SimpleDesk.qml, DMXPercentageButton.qml | live | - ; verified read-only in the 2026-09-26 audit pass |
 | Reset a channel | SimpleDesk.qml | live | - |
 | Reset the whole universe | SimpleDesk.qml | live | - |
-| Keypad commands (THRU, AT / @, FULL, ZERO, BY, +, -, +%, -%, CLR) | KeyPad.qml, SimpleDesk.qml | live | - ; parsed client-side (io/keypad-parser.js); io.simpleDesk.sendKeypadCommand is not used |
-| Commands history (reload a past command) | SimpleDesk.qml | partial | S: io.simpleDesk.sendKeypadCommand, io.simpleDesk.commandHistoryChanged; the web history is per browser tab, not the server's |
+| Keypad commands (THRU, AT / @, FULL, ZERO, BY, +, -, +%, -%, CLR) | KeyPad.qml, SimpleDesk.qml | live | - ; since 2026-09-27 through the engine parser (io.simpleDesk.sendKeypadCommand), browser parser as fallback; sandbox-verified |
+| Commands history (reload a past command) | SimpleDesk.qml | live | - ; sandbox 2026-09-27; the server's shared history (io.simpleDesk.get commandHistory + commandHistoryChanged) |
 | Channel value debug (which functions / sources contribute to a channel) | SimpleDesk.qml | missing | spec+S+U |
 | Fixture list side panel | SimpleDesk.qml | live | - |
 | Dump to a new Scene (name, non-zero only) | SimpleDesk.qml, popup/PopupDMXDump.qml | live | - |
@@ -300,18 +300,18 @@ old audit `docs/agent-reports/2026-09-26-webui-import-gap-list.md`). The domain 
 | Rename universe | inputoutput/UniverseIOItem.qml | live | - |
 | Passthrough toggle | inputoutput/UniverseIOItem.qml | live | - |
 | Patch input / output / feedback line (plugin + line pickers) | inputoutput/PluginsList.qml, inputoutput/InputPatchItem.qml, inputoutput/OutputPatchItem.qml, inputoutput/PatchWireBox.qml | live | - ; pickers replace drag-and-drop; verified on an instance without IO plugins, so real plugin lines are sandbox-unverified |
-| Multiple output patches per universe | inputoutput/UniverseIOItem.qml | partial | U; io.patch.set has an output `index`, InputOutput.jsx shows additional outputs read-only |
+| Multiple output patches per universe | inputoutput/UniverseIOItem.qml | partial | U; server + editable UI incl. add / remove / pause / blackout of extra output lines (2026-09-27, unit-tested with the stub plugin); not live-verified without an IO plugin |
 | Enable / disable feedback | inputoutput/UniverseIOItem.qml | partial | U; feedback picker present, not live-verified with a real line |
-| Refresh plugin lines / rescan | inputoutput/PluginsList.qml | missing | S: io.plugin.rescan, io.plugin.getLines, io.plugin.linesChanged |
-| Plugin line parameters for network plugins (ArtNet / E1.31 / OSC IP, port, transmission mode ...) | inputoutput/IOLeftPanel.qml, inputoutput/IORightPanel.qml ("Open the plugin configuration") | missing | S: io.patch.setParameters, io.plugin.getLines |
-| Plugin configuration dialog for native-hardware plugins (dmxusb, MIDI device dialogs ...) | inputoutput/IOLeftPanel.qml, inputoutput/IORightPanel.qml | n/a | - ; native Qt dialog with live hardware enumeration on the host |
-| Per-output-patch blackout, play / pause an output patch | inputoutput/OutputPatchItem.qml | missing | S: io.patch.output.setState, io.patch.output.stateChanged; shown read-only |
+| Refresh plugin lines / rescan | inputoutput/PluginsList.qml | partial | U; io.plugin.rescan / getLines / linesChanged implemented + Rescan buttons (2026-09-27); unit-tested only; DMXUSB gains rescan once Plugins dir is rebuilt |
+| Plugin line parameters for network plugins (ArtNet / E1.31 / OSC IP, port, transmission mode ...) | inputoutput/IOLeftPanel.qml, inputoutput/IORightPanel.qml ("Open the plugin configuration") | partial | U; io.patch.setParameters + parameter dialog (io/PatchProperties.jsx) with ArtNet / E1.31 / OSC key suggestions (2026-09-27); unit-tested only, no plugin in the sandbox |
+| Plugin configuration dialog for native-hardware plugins (dmxusb, MIDI device dialogs ...) | inputoutput/IOLeftPanel.qml, inputoutput/IORightPanel.qml | partial | U; io.plugin.configure opens the plugin's native dialog on the QLC+ host from a browser button (2026-09-27); the dialog itself stays on the host by nature |
+| Per-output-patch blackout, play / pause an output patch | inputoutput/OutputPatchItem.qml | partial | U; io.patch.output.setState + buttons (2026-09-27); unit-tested only |
 | Blackout on all output patches | inputoutput/IORightPanel.qml | live | - ; global blackout |
 | Assign an input profile to a universe | inputoutput/ProfilesList.qml, inputoutput/InputPatchItem.qml | partial | U; profile list is live, assignment via io.patch.set profile field present but not live-verified |
-| Input profile: create / edit / save / delete (channels, MIDI channels, colours, behaviour, sensitivity) | inputoutput/InputProfileEditor.qml, inputoutput/ProfilesList.qml, popup/PopupInputChannelEditor.qml | missing | S: io.inputProfile.get, io.inputProfile.save, io.inputProfile.delete |
-| Input profile: channel auto-detection (learn) | inputoutput/ProfilesList.qml, inputoutput/InputProfileEditor.qml | missing | S: io.inputProfile.learn.start, io.inputProfile.learn.stop, io.inputProfile.learn.signal |
-| Input profile: custom feedback and MIDI global settings | inputoutput/InputProfileEditor.qml, popup/PopupCustomFeedback.qml | missing | S: io.inputProfile.save (fields are part of the profile document) |
-| Audio input / output device selection, sample rate, channels, buffer size | inputoutput/AudioCardsList.qml, inputoutput/AudioIOItem.qml, popup/PopupAudioConfiguration.qml | n/a | - ; host device selection for the machine running QLC+ |
+| Input profile: create / edit / save / delete (channels, MIDI channels, colours, behaviour, sensitivity) | inputoutput/InputProfileEditor.qml, inputoutput/ProfilesList.qml, popup/PopupInputChannelEditor.qml | live | - ; sandbox 2026-09-27, driver webui/tools/e2e/io.js; io/InputProfileEditor.jsx, .qxi lands in the host's user profile folder (QLCPLUS_USER_INPUTPROFILE_DIR override in sandboxes / tests) |
+| Input profile: channel auto-detection (learn) | inputoutput/ProfilesList.qml, inputoutput/InputProfileEditor.qml | partial | U; io.inputProfile.learn.* scoped to the requesting client + Detect button (2026-09-27); unit-tested only (no input line in the sandbox) |
+| Input profile: custom feedback and MIDI global settings | inputoutput/InputProfileEditor.qml, popup/PopupCustomFeedback.qml | partial | U; MIDI note-off, colour table, MIDI channel labels live via the editor (sandbox 2026-09-27); custom feedback values unit-tested only (Button-only in the .qxi format) |
+| Audio input / output device selection, sample rate, channels, buffer size | inputoutput/AudioCardsList.qml, inputoutput/AudioIOItem.qml, popup/PopupAudioConfiguration.qml | partial | U; device lists live and io.audio.setDevice built (2026-09-27, not exercised: it writes the host's real settings); sample rate / channels / buffer size not exposed |
 | Audio input signal level check | popup/PopupAudioConfiguration.qml | n/a | - ; host audio capture |
 
 ## Show Manager
@@ -425,8 +425,8 @@ the total is larger than the number of distinct actions). Recompute after editin
 
 | Status | Rows |
 | --- | --- |
-| live | 126 |
-| partial | 36 |
-| missing | 130 |
-| n/a | 22 |
+| live | 128 |
+| partial | 42 |
+| missing | 124 |
+| n/a | 20 |
 | total | 314 |
