@@ -1516,6 +1516,8 @@ channels:
         $ref: '#/components/messages/VcAnimationSetPresetKnobValueResponse'
       vcAnimationActivePresetChangedEvent:
         $ref: '#/components/messages/VcAnimationActivePresetChangedEvent'
+      vcAnimationStyleChangedEvent:
+        $ref: '#/components/messages/VcAnimationStyleChangedEvent'
       vcAudioTriggersSetCaptureEnabledRequest:
         $ref: '#/components/messages/VcAudioTriggersSetCaptureEnabledRequest'
       vcAudioTriggersSetCaptureEnabledResponse:
@@ -5346,6 +5348,12 @@ operations:
       $ref: '#/channels/qlcplus'
     messages:
     - $ref: '#/channels/qlcplus/messages/vcAnimationActivePresetChangedEvent'
+  receiveVcAnimationStyleChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/qlcplus'
+    messages:
+    - $ref: '#/channels/qlcplus/messages/vcAnimationStyleChangedEvent'
   sendVcAudioTriggersSetCaptureEnabled:
     action: send
     channel:
@@ -22459,8 +22467,50 @@ components:
               activePresetId:
                 type: integer
                 description: -1 when none active.
+              knobPresetId:
+                type: integer
+                description: Present only for a knob turn (vc.animation.setPresetKnobValue) - the knob
+                  preset that was turned; knobValue is its new 0..255 value.
               knobValue:
                 type: integer
+    VcAnimationStyleChangedEvent:
+      payload:
+        type: object
+        required:
+        - type
+        - topic
+        - data
+        description: Live colour / algorithm change of an Animation widget (colour swatch, colour preset,
+          knob turn, algorithm combo - from any source). Colours and the algorithm are document state
+          (vc.widget.setConfig) but VCAnimation also changes them from live gestures that do not go through
+          setConfig, so this event keeps clients' swatches current without a vc.widget.get. Delivered
+          to every session (one event per gesture).
+        properties:
+          type:
+            const: event
+          topic:
+            const: vc.animation.styleChanged
+          originClientId:
+            type:
+            - string
+            - 'null'
+          data:
+            type: object
+            required:
+            - widgetId
+            - algorithmIndex
+            - colors
+            properties:
+              widgetId:
+                type: string
+              algorithmIndex:
+                type: integer
+              colors:
+                type: array
+                maxItems: 5
+                items:
+                  type: string
+                  description: '#rrggbb, or "" for a slot without an override.'
     VcAudioTriggersSetCaptureEnabledRequest:
       payload:
         type: object

@@ -270,6 +270,78 @@ facts and deviations:
   QML UI never checks a *frame's* PIN on screen at all (only pages prompt);
   the web UI does lock a PIN-protected frame behind a prompt.
 
+## XY Pad / Clock / Animation / Audio Triggers - implemented (2026-09-27)
+
+`controlapi/src/domains/apivclivedomain.cpp` (a third class on the same ApiVcHost seam, with its own
+`ApiVcLiveListenerExt` so ApiVcDomain did not have to grow) registers `vc.xyPad.fixture.add/remove`,
+`vc.xyPad.setHeadsRange`, `vc.xyPad.preset.move/rename`, `vc.xyPad.setFloorPosition`,
+`vc.clock.playPause/reset`, `vc.clock.schedule.add/update/remove`, `vc.animation.setFaderLevel`,
+`vc.animation.setPresetKnobValue`, `vc.animation.preset.move`, `vc.audioTriggers.setCaptureEnabled`
+and `vc.audioTriggers.setBarConfig`. `qmlui/app_apivcconfig_live.cpp` serves / applies the four
+`Vc<Type>Config`s and fills the XYPad / Animation hooks behind the generic `vc.widget.preset.*`;
+`qmlui/app_apivchost_live.cpp` is the host side. Verified end to end by `webui/tools/e2e/vc-live.js`
+(sandbox, SF3 project, save + XML grep + reopen round-trip). Facts and deviations:
+
+- **typeConfig carries the sub-resource lists read-only**: XYPad `fixtures` (VcXyPadFixtureEntry
+  plus additive `name`, `units`, `xRange/yRange.maxValue`, `xRangeLabel/yRangeLabel` in the pad's
+  current display units) and `presets`, `floorPosition` / `floorSize` / `floorHeightMax` /
+  `floorHeightStep`, `activePresetId`; Clock `schedules` (VcClockSchedule + `functionName`); Animation
+  `presets`, `colorCount`, `algorithms` (the names `algorithmIndex` indexes), `activePresetId`;
+  AudioTriggers `bars` (VcAudioTriggersBar + `label`, `functionName`, `triggeredWidgetCaption`). A
+  setConfig patch naming one is INVALID_PARAMS pointing at the method that edits it.
+- **Every structural method also broadcasts `vc.widget.configChanged`** next to its own list event
+  (`fixturesChanged` / `presetsChanged` / `schedulesChanged` / `barsChanged`), because those lists are
+  in typeConfig. The generic `vc.widget.preset.add/remove` (ApiVcDomain) emit only
+  `presetsChanged`; the web UI re-reads on that.
+- **Live seeds** added to VcWidgetSummary: XYPad `floorPosition`, `activePresetId`; Clock
+  `currentTime`, `running`; Animation `faderLevel`, `activePresetId`; AudioTriggers
+  `captureEnabled`, `levels`.
+- **`vc.xyPad.fixture.add`**: exactly one of fixtureGroupId / fixtureId (+ optional headIndex) /
+  universe. A fixture with no Pan/Tilt head, or a head already on the pad, is INVALID_PARAMS (the
+  engine skips it silently). Adding a group also creates the group's preset (VCXYPad::addGroup()):
+  `presetsChanged` is broadcast too and the response carries the new `presetId` (additive).
+  `fixture.remove` / `setHeadsRange` `heads` entries may be `{fixtureGroupId}` as well - the spec's
+  `{fixtureId, headIndex}` cannot name a group entry. setHeadsRange validates against the heads'
+  real maximum in the current units (100 %, 255 DMX, smallest Pan/Tilt travel in degrees).
+- **`preset.move` swaps ids** (VCXYPad/VCAnimation::movePresetUp/Down exchange the two presets' ids):
+  the response carries the moved preset's new `presetId` (additive).
+- **XYPad presets** (`vc.widget.preset.add`): `position` stores the *current* cursor (what the QML
+  button does; there is no position field on VcXyPadPresetData), `function` accepts an EFX or a Scene
+  with Pan/Tilt values, `fixtureGroup` takes `fixtureGroupId` or (additive) `fixtureId` = every head
+  of that fixture on the pad, `fixtureGroupHead` one head; an optional `name` is applied. The presets
+  list reports `functionType` (EFX/Scene), `color`, `headsCount`, `active`. Applying an active
+  Function / group preset again deactivates it (engine toggle).
+- **Animation presets**: `colorKnobs` adds the R/G/B trio and returns the last id; knob presets report
+  `knobChannel` / `knobColor` / `knobValue`; `algorithm` must name an installed RGB script and its
+  properties must be the script's own. `vc.widget.preset.apply` on a knob is INVALID_STATE
+  (VCAnimation::applyPreset() ignores knobs) - use setPresetKnobValue, which reports
+  `activePresetChanged` with the additive `knobPresetId` + `knobValue`. New
+  **`vc.animation.styleChanged`** `{algorithmIndex, colors}` is emitted for every live colour /
+  algorithm change (swatch, preset, knob), since those do not go through setConfig.
+  `setFaderLevel` without an attached RGB Matrix is INVALID_STATE (the engine drops it silently);
+  setConfig `functionID` must be an RGB Matrix. `colors` in a patch may be shorter than 5 and use
+  null / "" to clear a slot.
+- **Clock**: `playPause` / `reset` on a Clock-type widget, or `playPause` on a Countdown at 0, are
+  INVALID_STATE (engine no-ops). `schedule.update` range-checks startTime 0..86399, stopTime -1 or
+  0..86399, weekFlags 0..255 and re-arms a one-shot schedule. `removeSchedule`'s engine bound check
+  is off by one - the domain checks `index < count` itself. `targetTime` is ms, 0..86399999.
+  **Engine bug fixed on the way**: VCClock::saveXML() treated the ms target as seconds (any
+  countdown over 86.4 s was saved as `Time=""`) and loadXML() handed seconds to the ms setter - a
+  countdown never survived save/reload, in the desktop UI too.
+- **Audio triggers**: `setBarConfig` changes the type first (which resets the bar, like the QML
+  combo) and only when it differs, then thresholds (0..255 on the wire, stored via the engine's
+  whole-percent setter, so e.g. 230 reads back 229), function / widget / DMX channels - each refused
+  unless the bar has the matching type after this call; a bar cannot trigger its own widget.
+  `barsNumber` counts the volume bar (1..33); resizing while capturing restarts the capture.
+  `volumeLevel` is 0..100 (the engine's percent, not 0..255 as the schema says). Capture is the
+  host's audio input: with no input device the bars stay at 0, as on the desktop.
+- **Delivery**: `vc.clock.timeChanged` (1 Hz Clock / 10 Hz running timer) and
+  `vc.audioTriggers.levelsChanged` are subscribe-gated per §5; `floorPositionChanged` is delivered to
+  everyone like `positionChanged` (same gesture, same rate); the rest are one event per gesture.
+- **Live actions bump docRevision**: VCAnimation / VCClock / VCXYPad enqueue Tardis actions for fader,
+  colour, timer and preset gestures, and Tardis::enqueueAction() calls Doc::setModified() - a
+  structural call right after a live one CONFLICTs once (clients retry with the handed-back revision).
+
 ## Cross-domain touch points (things this fragment deliberately does NOT redefine)
 
 - **Grand Master / Blackout**: `io.yaml` already owns
