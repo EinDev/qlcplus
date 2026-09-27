@@ -1227,6 +1227,47 @@ messages:
         - $ref: '#/components/messages/FixturesDocRevisionOkResponse/payload'
         - $ref: '#/components/messages/ErrorResponse/payload'
 
+  FixturesMonitorGetBackgroundRequest:
+    payload:
+      type: object
+      required: [type, id, method]
+      properties:
+        type: { const: request }
+        id: { type: string }
+        method: { const: fixtures.monitor.getBackground }
+        params:
+          type: object
+          description: >
+            Read-only. Returns the bytes of the stage's common 2D background
+            picture (FixturesMonitorStage.backgroundImage, a file on the engine
+            host) so a remote client can draw it. Only that one file is ever
+            read. NOT_FOUND when no background is set or the file is missing /
+            unreadable / over 16 MB; INVALID_PARAMS when the path is not a
+            picture (png, jpg, jpeg, bmp, gif, svg, webp).
+          properties: {}
+
+  FixturesMonitorGetBackgroundResponse:
+    payload:
+      oneOf:
+        - $ref: '#/components/messages/FixturesMonitorGetBackgroundOkResponse/payload'
+        - $ref: '#/components/messages/ErrorResponse/payload'
+
+  FixturesMonitorGetBackgroundOkResponse:
+    payload:
+      type: object
+      required: [type, id, ok, result]
+      properties:
+        type: { const: response }
+        id: { type: string }
+        ok: { const: true }
+        result:
+          type: object
+          required: [path, mimeType, contentBase64]
+          properties:
+            path: { type: string, description: The backgroundImage path as stored in the stage settings. }
+            mimeType: { type: string, description: 'From the file extension, e.g. image/png.' }
+            contentBase64: { type: string, description: Base64 of the raw file bytes. }
+
   FixturesMonitorSetPlacementRequest:
     payload:
       type: object
@@ -2597,6 +2638,17 @@ operations:
     channel: { $ref: '#/channels/qlcplus' }
     messages:
       - $ref: '#/channels/qlcplus/messages/fixturesMonitorGetResponse'
+
+  sendFixturesMonitorGetBackground:
+    action: send
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesMonitorGetBackgroundRequest'
+  receiveFixturesMonitorGetBackgroundResponse:
+    action: receive
+    channel: { $ref: '#/channels/qlcplus' }
+    messages:
+      - $ref: '#/channels/qlcplus/messages/fixturesMonitorGetBackgroundResponse'
 
   sendFixturesMonitorSetStage:
     action: send

@@ -273,6 +273,53 @@ void ApiMonitorDomain_Test::setStageWithStaleRevisionConflicts()
     QCOMPARE(m_doc->monitorProperties()->labelsVisible(), false);
 }
 
+void ApiMonitorDomain_Test::getBackgroundReturnsThePictureBytes()
+{
+    helloAndGetClientId();
+
+    // nothing set yet
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("fixtures.monitor.getBackground"), QJsonObject());
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("NOT_FOUND"));
+
+    QTemporaryDir tmp;
+    QVERIFY(tmp.isValid());
+    const QByteArray bytes("\x89PNG\r\n\x1a\nfake-picture-bytes", 26);
+    const QString png = tmp.filePath(QStringLiteral("stage.png"));
+    QFile f(png);
+    QVERIFY(f.open(QIODevice::WriteOnly));
+    f.write(bytes);
+    f.close();
+
+    // picked through setStage, read back through getBackground
+    QJsonObject params;
+    params.insert(QStringLiteral("backgroundImage"), png);
+    params.insert(QStringLiteral("baseRevision"), int(m_doc->docRevision()));
+    QCOMPARE(sendAndWaitForReply(QStringLiteral("fixtures.monitor.setStage"), params).value(QStringLiteral("ok")).toBool(), true);
+    reply = sendAndWaitForReply(QStringLiteral("fixtures.monitor.getBackground"), QJsonObject());
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), true);
+    QJsonObject result = reply.value(QStringLiteral("result")).toObject();
+    QCOMPARE(result.value(QStringLiteral("path")).toString(), png);
+    QCOMPARE(result.value(QStringLiteral("mimeType")).toString(), QStringLiteral("image/png"));
+    QCOMPARE(QByteArray::fromBase64(result.value(QStringLiteral("contentBase64")).toString().toLatin1()), bytes);
+
+    // only pictures are served
+    const QString txt = tmp.filePath(QStringLiteral("notes.txt"));
+    QFile t(txt);
+    QVERIFY(t.open(QIODevice::WriteOnly));
+    t.write("secret");
+    t.close();
+    m_doc->monitorProperties()->setCommonBackgroundImage(txt);
+    reply = sendAndWaitForReply(QStringLiteral("fixtures.monitor.getBackground"), QJsonObject());
+    QCOMPARE(reply.value(QStringLiteral("ok")).toBool(), false);
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("INVALID_PARAMS"));
+
+    // a picture that went missing
+    m_doc->monitorProperties()->setCommonBackgroundImage(tmp.filePath(QStringLiteral("gone.png")));
+    reply = sendAndWaitForReply(QStringLiteral("fixtures.monitor.getBackground"), QJsonObject());
+    QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("NOT_FOUND"));
+}
+
 void ApiMonitorDomain_Test::setPlacementWritesPositionGelAndFlags()
 {
     helloAndGetClientId();

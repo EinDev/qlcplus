@@ -491,6 +491,31 @@ void ApiCoreDomain_Test::fsListRejectsRelativeAndMissingPaths()
     QCOMPARE(reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString(), QStringLiteral("NOT_FOUND"));
 }
 
+void ApiCoreDomain_Test::fsListRootsIncludeProjectFolder()
+{
+    helloAndGetClientId();
+    auto projectRoot = [this]() -> QString {
+        QJsonObject reply = sendAndWaitForReply(QStringLiteral("core.fs.list"), QJsonObject());
+        for (const QJsonValue &v : reply.value(QStringLiteral("result")).toObject().value(QStringLiteral("roots")).toArray())
+            if (v.toObject().value(QStringLiteral("name")).toString() == QStringLiteral("Project"))
+                return v.toObject().value(QStringLiteral("path")).toString();
+        return QString();
+    };
+    // a never-saved project has no folder
+    m_doc->setWorkspacePath(QString());
+    QCOMPARE(projectRoot(), QString());
+
+    QTemporaryDir tmp;
+    QVERIFY(tmp.isValid());
+    m_doc->setWorkspacePath(tmp.path());
+    QCOMPARE(projectRoot(), QDir(tmp.path()).absolutePath());
+
+    // the drives stay right after Home (pickers rely on roots[1] being a drive)
+    QJsonObject reply = sendAndWaitForReply(QStringLiteral("core.fs.list"), QJsonObject());
+    QJsonArray roots = reply.value(QStringLiteral("result")).toObject().value(QStringLiteral("roots")).toArray();
+    QVERIFY(QDir(roots.at(1).toObject().value(QStringLiteral("path")).toString()).isRoot());
+}
+
 /*********************************************************************
  * core.project.open {source: upload}
  *********************************************************************/

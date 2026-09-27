@@ -53,6 +53,7 @@ private slots:
     void fsListRootsWhenPathEmpty();
     void fsListDirectoryFiltersAndSorts();
     void fsListRejectsRelativeAndMissingPaths();
+    void fsListRootsIncludeProjectFolder();
 
     void projectOpenUploadRejectsNonWorkspace();
     void projectOpenUploadHasNoPathButReportsName();

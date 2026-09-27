@@ -958,7 +958,7 @@ messages:
                 $ref: '#/components/schemas/CoreFsEntry'
             roots:
               type: array
-              description: "Always present so a picker can render a drives/places bar without a second call: home directory first, then the drive roots (QDir::drives())."
+              description: "Always present so a picker can render a drives/places bar without a second call: home directory first, then the drive roots (QDir::drives()), then the places 'Project' (folder of the loaded project file, only when it has one) and 'Gobos' (the gobo picture folder of the installation, QLCFile::systemDirectory(GOBODIR), only when it exists)."
               items:
                 type: object
                 required: [name, path]

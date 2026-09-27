@@ -16,6 +16,9 @@
 */
 
 #include <QColor>
+#include <QFile>
+#include <QFileInfo>
+#include <QHash>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QMatrix4x4>
@@ -467,6 +470,58 @@ void ApiMonitorDomain::registerMethods()
         data.insert(QStringLiteral("stage"), stageToJson(doc));
         data.insert(QStringLiteral("docRevision"), int(doc->docRevision()));
         m_server->broadcast(QStringLiteral("fixtures.monitor.changed"), data, session->clientId(), false);
+    });
+
+    // fixtures.monitor.getBackground {} -> {path, mimeType, contentBase64}
+    // Read-only: the bytes of the stage's common 2D background picture, so a
+    // remote client can draw the file it picked on the engine host. Only the
+    // file the stage already references is ever read.
+    dispatcher->registerMethod(QStringLiteral("fixtures.monitor.getBackground"), [doc](ApiSession *session, const QString &id, const QJsonObject &params)
+    {
+        Q_UNUSED(params)
+        const QString path = doc->monitorProperties()->commonBackgroundImage();
+        if (path.isEmpty())
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrNotFound,
+                                                            QStringLiteral("No background image set")));
+            return;
+        }
+        QFileInfo info(path);
+        const QString suffix = info.suffix().toLower();
+        static const QHash<QString, QString> mimeTypes = {
+            { QStringLiteral("png"), QStringLiteral("image/png") },
+            { QStringLiteral("jpg"), QStringLiteral("image/jpeg") },
+            { QStringLiteral("jpeg"), QStringLiteral("image/jpeg") },
+            { QStringLiteral("bmp"), QStringLiteral("image/bmp") },
+            { QStringLiteral("gif"), QStringLiteral("image/gif") },
+            { QStringLiteral("svg"), QStringLiteral("image/svg+xml") },
+            { QStringLiteral("webp"), QStringLiteral("image/webp") }
+        };
+        if (mimeTypes.contains(suffix) == false)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrInvalidParams,
+                                                            QStringLiteral("The background is not a picture file: ") + path));
+            return;
+        }
+        // 16 MB is far above any sensible stage plan and keeps a frame bounded
+        if (info.isFile() == false || info.size() > 16 * 1024 * 1024)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrNotFound,
+                                                            QStringLiteral("Background image not readable: ") + path));
+            return;
+        }
+        QFile file(info.absoluteFilePath());
+        if (file.open(QIODevice::ReadOnly) == false)
+        {
+            session->send(ApiEnvelope::buildErrorResponse(id, ApiEnvelope::ErrNotFound,
+                                                            QStringLiteral("Background image not readable: ") + path));
+            return;
+        }
+        QJsonObject result;
+        result.insert(QStringLiteral("path"), path);
+        result.insert(QStringLiteral("mimeType"), mimeTypes.value(suffix));
+        result.insert(QStringLiteral("contentBase64"), QString::fromLatin1(file.readAll().toBase64()));
+        session->send(ApiEnvelope::buildOkResponse(id, result));
     });
 
     // fixtures.monitor.setPlacement {items: [FixturesMonitorPlacementUpdate], baseRevision}
